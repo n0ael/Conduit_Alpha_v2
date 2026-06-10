@@ -36,6 +36,7 @@ set(CONDUIT_CPP_SOURCES
     Source/Core/Main.cpp
     Source/Core/EngineProcessor.cpp
     Source/Core/EngineEditor.cpp
+    Source/Core/GraphManager.cpp
     Source/Modules/ConduitModule.cpp
 )
 
@@ -43,6 +44,7 @@ target_sources(Conduit PRIVATE
     ${CONDUIT_CPP_SOURCES}
     Source/Core/EngineProcessor.h
     Source/Core/EngineEditor.h
+    Source/Core/GraphManager.h
     Source/Modules/ConduitModule.h
 )
 
@@ -91,3 +93,55 @@ target_link_libraries(Conduit
         juce::juce_recommended_lto_flags
         juce::juce_recommended_warning_flags
 )
+
+# ---------------------------------------------------------------------------
+# Tests — Catch2 v3 via FetchContent (CLAUDE.md 13.4)
+# Laufen ohne Audio-Device — kein ASIO nötig.
+# ---------------------------------------------------------------------------
+option(CONDUIT_BUILD_TESTS "ConduitTests-Target bauen" ON)
+
+if(CONDUIT_BUILD_TESTS)
+    FetchContent_Declare(Catch2
+        GIT_REPOSITORY https://github.com/catchorg/Catch2.git
+        GIT_TAG        v3.7.1
+        GIT_SHALLOW    TRUE
+    )
+    FetchContent_MakeAvailable(Catch2)
+
+    juce_add_console_app(ConduitTests PRODUCT_NAME "ConduitTests")
+
+    set(CONDUIT_TEST_CPP_SOURCES
+        Tests/Core/GraphManagerTests.cpp
+    )
+
+    target_sources(ConduitTests PRIVATE
+        ${CONDUIT_TEST_CPP_SOURCES}
+        Source/Core/GraphManager.cpp
+    )
+
+    target_include_directories(ConduitTests PRIVATE Source)
+
+    if(MSVC)
+        set_source_files_properties(${CONDUIT_TEST_CPP_SOURCES} PROPERTIES COMPILE_OPTIONS "/W4;/WX")
+    else()
+        set_source_files_properties(${CONDUIT_TEST_CPP_SOURCES} PROPERTIES COMPILE_OPTIONS "-Wall;-Wextra;-Werror")
+    endif()
+
+    target_compile_definitions(ConduitTests PRIVATE
+        JUCE_MODAL_LOOPS_PERMITTED=0
+        JUCE_WEB_BROWSER=0
+        JUCE_USE_CURL=0
+    )
+
+    target_link_libraries(ConduitTests
+        PRIVATE
+            Catch2::Catch2WithMain
+            juce::juce_audio_processors
+        PUBLIC
+            juce::juce_recommended_config_flags
+            juce::juce_recommended_warning_flags
+    )
+
+    enable_testing()
+    add_test(NAME ConduitTests COMMAND ConduitTests)
+endif()

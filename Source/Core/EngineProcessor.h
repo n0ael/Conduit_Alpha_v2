@@ -2,6 +2,7 @@
 
 #include <juce_audio_processors/juce_audio_processors.h>
 
+#include "GraphManager.h"
 #include "Modules/ConduitModule.h"
 
 namespace conduit
@@ -59,6 +60,9 @@ private:
     juce::AudioProcessorGraph graph;
     juce::AudioProcessorGraph::Node::Ptr audioInputNode;
     juce::AudioProcessorGraph::Node::Ptr audioOutputNode;
+
+    // Nach rootState und graph deklariert — Initialisierungsreihenfolge!
+    GraphManager graphManager { rootState, graph };
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (EngineProcessor)
 };

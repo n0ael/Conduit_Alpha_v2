@@ -451,8 +451,8 @@ endif()
 ### 13.3 Quick Start & Build-Workflow
 
 ```bash
-# Configure (Windows)
-cmake -B build -G "Visual Studio 17 2022" -A x64
+# Configure (Windows — auf diesem System ist VS 2026 installiert, kein VS 2022)
+cmake -B build -G "Visual Studio 18 2026" -A x64
 # Configure (Ninja, alle Plattformen)
 cmake -B build -G Ninja -DCMAKE_BUILD_TYPE=Debug
 

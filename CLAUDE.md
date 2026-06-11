@@ -258,6 +258,8 @@ Dadurch gehen keine OSC-Werte beim Speichern verloren.
 
 ```
 RootTree
+  ├── scaleRoot / scaleType   (globale Session-Skala: 0–11 + chromatic/major/minor/pentatonic;
+  │                            reist pro Block im ClockState zu den Modulen)
   └── Nodes[]
        ├── nodeId         (juce::Uuid)
        ├── type           (ModuleType enum als String)

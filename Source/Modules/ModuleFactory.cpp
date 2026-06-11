@@ -3,6 +3,7 @@
 #include "AttenuatorModule.h"
 #include "LfoModule.h"
 #include "ScopeModule.h"
+#include "StepSequencerModule.h"
 
 namespace conduit
 {
@@ -37,6 +38,8 @@ void registerDefaultModules (ModuleFactory& factory)
                             [] { return std::make_unique<LfoModule>(); });
     factory.registerModule (ScopeModule::staticModuleId,
                             [] { return std::make_unique<ScopeModule>(); });
+    factory.registerModule (StepSequencerModule::staticModuleId,
+                            [] { return std::make_unique<StepSequencerModule>(); });
 }
 
 } // namespace conduit

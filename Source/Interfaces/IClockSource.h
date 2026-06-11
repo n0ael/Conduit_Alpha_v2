@@ -4,14 +4,19 @@ namespace conduit
 {
 
 //==============================================================================
-/** Takt-Schnappschuss für einen Audio-Block — POD, wird einmal pro Block vom
-    Clock-Master erzeugt und über den ClockBus an alle IClockSlaves verteilt. */
+/** Session-Schnappschuss für einen Audio-Block — POD, wird einmal pro Block
+    vom EngineProcessor erzeugt und über den ClockBus an alle IClockSlaves
+    verteilt. Trägt neben dem Takt auch die globale Tonalität (Ableton-artige
+    Session-Skala, Schema 6.2: scaleRoot/scaleType am Root-Tree). */
 struct ClockState
 {
     double bpm              = 120.0;
     double beatAtBlockStart = 0.0;      // in Beats (Viertelnoten), Session-Zeitachse
     double sampleRate       = 48000.0;
     bool   isPlaying        = false;    // Link Start/Stop-Sync (Session-Beat läuft trotzdem weiter)
+
+    int scaleRootNote  = 0;             // 0–11, C = 0 — globale Session-Tonalität
+    int scaleTypeIndex = 0;             // conduit::ScaleType als int (0 = chromatic)
 
     /** Beat-Fortschritt pro Sample — für sample-genaue Phasen in processBlock(). */
     [[nodiscard]] double beatsPerSample() const noexcept

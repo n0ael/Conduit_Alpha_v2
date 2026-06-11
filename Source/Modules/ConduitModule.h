@@ -17,6 +17,8 @@ namespace id
     inline const juce::Identifier connections       { "Connections" };
     inline const juce::Identifier calibrationProfiles { "CalibrationProfiles" };
     inline const juce::Identifier audioSetupWarning { "audioSetupWarning" };
+    inline const juce::Identifier scaleRoot { "scaleRoot" };  // globale Session-Skala (0–11, C=0)
+    inline const juce::Identifier scaleType { "scaleType" };  // "chromatic"/"major"/"minor"/"pentatonic"
 
     // Node
     inline const juce::Identifier node          { "Node" };

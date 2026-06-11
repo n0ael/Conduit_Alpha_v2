@@ -4,6 +4,7 @@
 #include <vector>
 
 #include "Interfaces/IClockSlave.h"
+#include "Interfaces/IStochastic.h"
 #include "Modules/ModuleFactory.h"
 #include "NodeUiRegistry.h"
 
@@ -496,6 +497,12 @@ std::unique_ptr<ConduitModule> GraphManager::materializeModule (juce::ValueTree 
     // läuft processBlock und der Pointer darf sich nicht mehr ändern
     if (auto* clockSlave = dynamic_cast<IClockSlave*> (module.get()))
         clockSlave->setClockBus (clockBus);
+
+    // Seed-Injektion (IStochastic, 4.2): deterministisch aus der nodeUuid —
+    // Zufalls-Patterns sind damit pro Node reproduzierbar
+    if (auto* stochastic = dynamic_cast<IStochastic*> (module.get()))
+        stochastic->setRandomSeed (static_cast<std::uint64_t> (
+            nodeTree.getProperty (id::nodeId).toString().hashCode64()));
 
     return module;
 }

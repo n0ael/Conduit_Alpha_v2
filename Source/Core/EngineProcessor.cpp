@@ -1,6 +1,7 @@
 #include "EngineProcessor.h"
 
 #include "EngineEditor.h"
+#include "Util/ScaleQuantizer.h"
 
 namespace conduit
 {
@@ -32,6 +33,42 @@ EngineProcessor::EngineProcessor()
 
     // Takt-Verteiler — IClockSlaves bekommen den Bus bei der Materialisierung
     graphManager.setClockBus (&clockBus);
+
+    // Globale Session-Skala (6.2): Defaults sicherstellen, Properties spiegeln
+    ensureSessionScaleDefaults();
+    rootState.addListener (this);
+}
+
+EngineProcessor::~EngineProcessor()
+{
+    rootState.removeListener (this);
+}
+
+//==============================================================================
+void EngineProcessor::ensureSessionScaleDefaults()
+{
+    if (! rootState.hasProperty (id::scaleRoot))
+        rootState.setProperty (id::scaleRoot, 0, nullptr);
+
+    if (! rootState.hasProperty (id::scaleType))
+        rootState.setProperty (id::scaleType, toString (ScaleType::chromatic), nullptr);
+
+    refreshScaleAtomics();
+}
+
+void EngineProcessor::refreshScaleAtomics()
+{
+    scaleRootAtomic.store (juce::jlimit (0, 11, (int) rootState.getProperty (id::scaleRoot, 0)),
+                           std::memory_order_relaxed);
+    scaleTypeAtomic.store (static_cast<int> (scaleTypeFromString (
+                               rootState.getProperty (id::scaleType).toString())),
+                           std::memory_order_relaxed);
+}
+
+void EngineProcessor::valueTreePropertyChanged (juce::ValueTree& tree, const juce::Identifier& property)
+{
+    if (tree == rootState && (property == id::scaleRoot || property == id::scaleType))
+        refreshScaleAtomics();
 }
 
 //==============================================================================
@@ -104,9 +141,11 @@ void EngineProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::Midi
         if (update.target != nullptr)
             update.target->store (update.value, std::memory_order_relaxed);
 
-    // Takt einmal pro Block einfangen — die IClockSlaves im Graph lesen
-    // den Bus im selben Callback (4.2)
+    // Session-Kontext einmal pro Block einfangen — die IClockSlaves im
+    // Graph lesen den Bus im selben Callback (4.2)
     clockBus.current = linkClock.captureClockState (buffer.getNumSamples());
+    clockBus.current.scaleRootNote  = scaleRootAtomic.load (std::memory_order_relaxed);
+    clockBus.current.scaleTypeIndex = scaleTypeAtomic.load (std::memory_order_relaxed);
 
     graph.processBlock (buffer, midiMessages);
     graphFader.process (buffer);  // Master-Fade hinter dem Graph (5.2)
@@ -150,7 +189,8 @@ void EngineProcessor::setStateInformation (const void* data, int sizeInBytes)
         if (loaded.hasType (id::root))
         {
             rootState.copyPropertiesAndChildrenFrom (loaded, nullptr);
-            ensureIONodeStates();  // Presets ohne I/O-Nodes reparieren
+            ensureIONodeStates();          // Presets ohne I/O-Nodes reparieren
+            ensureSessionScaleDefaults();  // ... und ohne Skalen-Properties
         }
     }
 }
@@ -195,7 +235,8 @@ juce::Result EngineProcessor::loadPreset (const juce::File& file)
     // einen einzigen Graph-Swap)
     undoManager.beginNewTransaction ("Preset laden");
     rootState.copyPropertiesAndChildrenFrom (loaded, &undoManager);
-    ensureIONodeStates();  // Presets ohne I/O-Nodes reparieren
+    ensureIONodeStates();          // Presets ohne I/O-Nodes reparieren
+    ensureSessionScaleDefaults();  // ... und ohne Skalen-Properties
 
     return juce::Result::ok();
 }

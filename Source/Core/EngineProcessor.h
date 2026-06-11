@@ -25,12 +25,17 @@ namespace conduit
 
     Graph-Mutationen (addNode / removeConnection) laufen ausschließlich auf
     dem Message Thread — später koordiniert durch den GraphManager.
+
+    Globale Session-Skala (scaleRoot/scaleType am Root, Schema 6.2): ein
+    privater ValueTree-Listener spiegelt die Properties in zwei Atomics
+    [Message → Audio], processBlock() schreibt sie pro Block in den ClockBus.
 */
-class EngineProcessor final : public juce::AudioProcessor
+class EngineProcessor final : public juce::AudioProcessor,
+                              private juce::ValueTree::Listener
 {
 public:
     EngineProcessor();
-    ~EngineProcessor() override = default;
+    ~EngineProcessor() override;
 
     //==========================================================================
     // AudioProcessor
@@ -83,8 +88,19 @@ private:
         falls sie fehlen — frischer Patch oder Preset ohne I/O. Idempotent. */
     void ensureIONodeStates();
 
+    /** Default-Properties der globalen Session-Skala (6.2) + Atomics-Refresh. */
+    void ensureSessionScaleDefaults();
+    void refreshScaleAtomics();
+
+    // juce::ValueTree::Listener [Message Thread] — nur die Skalen-Properties
+    void valueTreePropertyChanged (juce::ValueTree& tree, const juce::Identifier& property) override;
+
     juce::ValueTree rootState;
     juce::UndoManager undoManager;
+
+    // Globale Skala: Message Thread schreibt, Audio Thread liest (→ ClockBus)
+    std::atomic<int> scaleRootAtomic { 0 };
+    std::atomic<int> scaleTypeAtomic { 0 };
 
     juce::AudioProcessorGraph graph;
     juce::AudioProcessorGraph::Node::Ptr audioInputNode;

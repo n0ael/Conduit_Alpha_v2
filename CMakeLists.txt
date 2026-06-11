@@ -95,6 +95,7 @@ set(CONDUIT_CPP_SOURCES
     Source/Modules/AttenuatorModule.cpp
     Source/Modules/LfoModule.cpp
     Source/Modules/ScopeModule.cpp
+    Source/Modules/StepSequencerModule.cpp
     Source/UI/NodeCanvas.cpp
     Source/UI/NodeComponent.cpp
     Source/UI/PortComponent.cpp
@@ -112,6 +113,7 @@ target_sources(Conduit PRIVATE
     Source/Core/OscController.h
     Source/Interfaces/IClockSlave.h
     Source/Interfaces/IClockSource.h
+    Source/Interfaces/IStochastic.h
     Source/Modules/AnalysisModule.h
     Source/Modules/ConduitModule.h
     Source/Modules/GeneratorModule.h
@@ -120,10 +122,12 @@ target_sources(Conduit PRIVATE
     Source/Modules/AttenuatorModule.h
     Source/Modules/LfoModule.h
     Source/Modules/ScopeModule.h
+    Source/Modules/StepSequencerModule.h
     Source/UI/NodeCanvas.h
     Source/UI/NodeComponent.h
     Source/UI/PortComponent.h
     Source/UI/ScopeDisplay.h
+    Source/Util/ScaleQuantizer.h
     Source/Util/SpscQueue.h
 )
 
@@ -204,8 +208,10 @@ if(CONDUIT_BUILD_TESTS)
         Tests/Core/PatchingTests.cpp
         Tests/Core/PresetTests.cpp
         Tests/Core/ScopeModuleTests.cpp
+        Tests/Core/SequencerTests.cpp
         Tests/Core/ThreadingStressTests.cpp
         Tests/UI/NodeCanvasTests.cpp
+        Tests/Util/ScaleQuantizerTests.cpp
         Tests/Util/SpscQueueTests.cpp
     )
 
@@ -223,6 +229,7 @@ if(CONDUIT_BUILD_TESTS)
         Source/Modules/AttenuatorModule.cpp
         Source/Modules/LfoModule.cpp
         Source/Modules/ScopeModule.cpp
+        Source/Modules/StepSequencerModule.cpp
         Source/UI/NodeCanvas.cpp
         Source/UI/NodeComponent.cpp
         Source/UI/PortComponent.cpp

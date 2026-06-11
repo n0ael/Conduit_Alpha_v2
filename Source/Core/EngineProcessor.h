@@ -4,8 +4,10 @@
 
 #include "GraphFader.h"
 #include "GraphManager.h"
+#include "LinkClock.h"
 #include "NodeUiRegistry.h"
 #include "OscController.h"
+#include "Interfaces/IClockSource.h"
 #include "Modules/ConduitModule.h"
 #include "Modules/ModuleFactory.h"
 #include "Util/SpscQueue.h"
@@ -62,6 +64,7 @@ public:
     [[nodiscard]] GraphManager& getGraphManager() noexcept;
     [[nodiscard]] NodeUiRegistry& getNodeUiRegistry() noexcept;
     [[nodiscard]] OscController& getOscController() noexcept;
+    [[nodiscard]] LinkClock& getLinkClock() noexcept;
 
 private:
     /** Legt die reservierten I/O-Tree-Nodes (audio_input/audio_output) an,
@@ -77,6 +80,12 @@ private:
 
     // Master-Fade für glitch-freie Graph-Swaps (CLAUDE.md 5.2)
     GraphFader graphFader;
+
+    // Clock-Master (Ableton-Link-Session) + Takt-Verteiler (4.2):
+    // clockBus wird einmal pro Block auf dem Audio Thread gefüllt,
+    // IClockSlaves lesen im selben Callback
+    LinkClock linkClock;
+    ClockBus clockBus;
 
     // Default-Module werden im Konstruktor registriert
     ModuleFactory moduleFactory;

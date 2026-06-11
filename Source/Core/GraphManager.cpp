@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <vector>
 
+#include "Interfaces/IClockSlave.h"
 #include "Modules/ModuleFactory.h"
 #include "NodeUiRegistry.h"
 
@@ -174,6 +175,11 @@ bool GraphManager::isExternalGraphNode (juce::AudioProcessorGraph::NodeID nodeId
 {
     return std::any_of (externalEndpoints.begin(), externalEndpoints.end(),
                         [nodeId] (const auto& entry) { return entry.second == nodeId; });
+}
+
+void GraphManager::setClockBus (const ClockBus* bus) noexcept
+{
+    clockBus = bus;
 }
 
 //==============================================================================
@@ -399,6 +405,11 @@ std::unique_ptr<ConduitModule> GraphManager::materializeModule (juce::ValueTree 
         nodeTree.setProperty (id::nodeError, result.getErrorMessage(), nullptr);
         return nullptr;
     }
+
+    // Takt-Injektion VOR der Graph-Aufnahme (IClockSlave, 4.2) — danach
+    // läuft processBlock und der Pointer darf sich nicht mehr ändern
+    if (auto* clockSlave = dynamic_cast<IClockSlave*> (module.get()))
+        clockSlave->setClockBus (clockBus);
 
     return module;
 }

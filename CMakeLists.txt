@@ -55,6 +55,22 @@ FetchContent_Declare(JUCE
 )
 FetchContent_MakeAvailable(JUCE)
 
+# Ableton Link (header-only, CLAUDE.md 13.1). SOURCE_SUBDIR zeigt bewusst auf
+# ein Verzeichnis ohne CMakeLists.txt — Links eigene Beispiel-/Test-Targets
+# werden nicht konfiguriert; das Interface-Target kommt aus der Config-Datei.
+FetchContent_Declare(AbletonLink
+    GIT_REPOSITORY https://github.com/Ableton/link.git
+    GIT_TAG        Link-4.0
+    GIT_SHALLOW    TRUE
+    SOURCE_SUBDIR  cmake_include
+)
+FetchContent_MakeAvailable(AbletonLink)
+include(${abletonlink_SOURCE_DIR}/AbletonLinkConfig.cmake)
+
+# Links Config setzt global CMAKE_CXX_STANDARD auf 17 zurück — wir bauen
+# strikt C++20 (CLAUDE.md 13.1), Link selbst ist damit kompatibel
+set(CMAKE_CXX_STANDARD 20)
+
 # ---------------------------------------------------------------------------
 # App-Target (eigenständige GUI-App, kein Plugin)
 # ---------------------------------------------------------------------------
@@ -71,11 +87,13 @@ set(CONDUIT_CPP_SOURCES
     Source/Core/EngineEditor.cpp
     Source/Core/GraphFader.cpp
     Source/Core/GraphManager.cpp
+    Source/Core/LinkClock.cpp
     Source/Core/NodeUiRegistry.cpp
     Source/Core/OscController.cpp
     Source/Modules/ConduitModule.cpp
     Source/Modules/ModuleFactory.cpp
     Source/Modules/AttenuatorModule.cpp
+    Source/Modules/LfoModule.cpp
     Source/UI/NodeCanvas.cpp
     Source/UI/NodeComponent.cpp
     Source/UI/PortComponent.cpp
@@ -87,12 +105,17 @@ target_sources(Conduit PRIVATE
     Source/Core/EngineEditor.h
     Source/Core/GraphFader.h
     Source/Core/GraphManager.h
+    Source/Core/LinkClock.h
     Source/Core/NodeUiRegistry.h
     Source/Core/OscController.h
+    Source/Interfaces/IClockSlave.h
+    Source/Interfaces/IClockSource.h
     Source/Modules/ConduitModule.h
+    Source/Modules/GeneratorModule.h
     Source/Modules/ModuleFactory.h
     Source/Modules/UtilityModule.h
     Source/Modules/AttenuatorModule.h
+    Source/Modules/LfoModule.h
     Source/UI/NodeCanvas.h
     Source/UI/NodeComponent.h
     Source/UI/PortComponent.h
@@ -139,11 +162,17 @@ target_link_libraries(Conduit
     PRIVATE
         juce::juce_audio_utils
         juce::juce_osc
+        Ableton::Link
     PUBLIC
         juce::juce_recommended_config_flags
         juce::juce_recommended_lto_flags
         juce::juce_recommended_warning_flags
 )
+
+# Links asio-standalone braucht unter Windows WinSock explizit
+if(WIN32)
+    target_link_libraries(Conduit PRIVATE ws2_32 iphlpapi)
+endif()
 
 # ---------------------------------------------------------------------------
 # Tests — Catch2 v3 via FetchContent (CLAUDE.md 13.4)
@@ -162,6 +191,7 @@ if(CONDUIT_BUILD_TESTS)
     juce_add_console_app(ConduitTests PRODUCT_NAME "ConduitTests")
 
     set(CONDUIT_TEST_CPP_SOURCES
+        Tests/Core/ClockTests.cpp
         Tests/Core/GraphFaderTests.cpp
         Tests/Core/GraphManagerTests.cpp
         Tests/Core/OscControllerTests.cpp
@@ -177,11 +207,13 @@ if(CONDUIT_BUILD_TESTS)
         Source/Core/EngineProcessor.cpp
         Source/Core/GraphFader.cpp
         Source/Core/GraphManager.cpp
+        Source/Core/LinkClock.cpp
         Source/Core/NodeUiRegistry.cpp
         Source/Core/OscController.cpp
         Source/Modules/ConduitModule.cpp
         Source/Modules/ModuleFactory.cpp
         Source/Modules/AttenuatorModule.cpp
+        Source/Modules/LfoModule.cpp
         Source/UI/NodeCanvas.cpp
         Source/UI/NodeComponent.cpp
         Source/UI/PortComponent.cpp
@@ -206,10 +238,15 @@ if(CONDUIT_BUILD_TESTS)
             Catch2::Catch2WithMain
             juce::juce_audio_processors
             juce::juce_osc
+            Ableton::Link
         PUBLIC
             juce::juce_recommended_config_flags
             juce::juce_recommended_warning_flags
     )
+
+    if(WIN32)
+        target_link_libraries(ConduitTests PRIVATE ws2_32 iphlpapi)
+    endif()
 
     enable_testing()
     add_test(NAME ConduitTests COMMAND ConduitTests)

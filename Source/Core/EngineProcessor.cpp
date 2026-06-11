@@ -29,6 +29,9 @@ EngineProcessor::EngineProcessor()
     graphManager.registerExternalEndpoint (audioInputModuleId,  audioInputNode->nodeID);
     graphManager.registerExternalEndpoint (audioOutputModuleId, audioOutputNode->nodeID);
     ensureIONodeStates();
+
+    // Takt-Verteiler — IClockSlaves bekommen den Bus bei der Materialisierung
+    graphManager.setClockBus (&clockBus);
 }
 
 //==============================================================================
@@ -72,6 +75,7 @@ void EngineProcessor::prepareToPlay (double sampleRate, int samplesPerBlock)
                                 sampleRate, samplesPerBlock);
     graph.prepareToPlay (sampleRate, samplesPerBlock);
     graphFader.prepare (sampleRate);
+    linkClock.prepare (sampleRate);
 }
 
 void EngineProcessor::releaseResources()
@@ -96,6 +100,10 @@ void EngineProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::Midi
     while (oscToAudioQueue.pop (update))
         if (update.target != nullptr)
             update.target->store (update.value, std::memory_order_relaxed);
+
+    // Takt einmal pro Block einfangen — die IClockSlaves im Graph lesen
+    // den Bus im selben Callback (4.2)
+    clockBus.current = linkClock.captureClockState (buffer.getNumSamples());
 
     graph.processBlock (buffer, midiMessages);
     graphFader.process (buffer);  // Master-Fade hinter dem Graph (5.2)
@@ -150,5 +158,6 @@ juce::UndoManager& EngineProcessor::getUndoManager() noexcept  { return undoMana
 GraphManager& EngineProcessor::getGraphManager() noexcept      { return graphManager; }
 NodeUiRegistry& EngineProcessor::getNodeUiRegistry() noexcept  { return nodeUiRegistry; }
 OscController& EngineProcessor::getOscController() noexcept    { return oscController; }
+LinkClock& EngineProcessor::getLinkClock() noexcept            { return linkClock; }
 
 } // namespace conduit

@@ -6,6 +6,7 @@
 #include <juce_audio_processors/juce_audio_processors.h>
 
 #include "GraphFader.h"
+#include "Interfaces/IClockSource.h"
 #include "Modules/ConduitModule.h"
 
 namespace conduit
@@ -112,6 +113,13 @@ public:
     [[nodiscard]] bool isExternalEndpoint (const juce::String& moduleId) const noexcept;
 
     //==========================================================================
+    /** Takt-Verteiler für IClockSlave-Module — wird bei der Materialisierung
+        injiziert (5.2 Schritt 1, vor der Graph-Aufnahme). Der Bus muss jedes
+        Modul überdauern (Owner: EngineProcessor). nullptr → Slaves laufen
+        frei (Tests). Message Thread, vor den ersten addModuleNode-Aufrufen. */
+    void setClockBus (const ClockBus* bus) noexcept;
+
+    //==========================================================================
     /** Live-Modul-Instanz zu einer Tree-nodeId — nullptr solange das Modul
         noch nicht materialisiert ist (5.2 Schritt 1–3) oder nodeError gesetzt
         wurde. NUR Message Thread; der Pointer ist bis zum nächsten Swap
@@ -210,6 +218,9 @@ private:
 
     // Reservierte moduleIds → extern verwaltete Graph-Nodes (I/O)
     std::map<juce::String, juce::AudioProcessorGraph::NodeID> externalEndpoints;
+
+    // Takt-Verteiler für IClockSlaves (Owner: EngineProcessor)
+    const ClockBus* clockBus = nullptr;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (GraphManager)
 };

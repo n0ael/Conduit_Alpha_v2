@@ -2,6 +2,7 @@
 
 #include "EngineProcessor.h"
 #include "Modules/AttenuatorModule.h"
+#include "Modules/LfoModule.h"
 
 namespace conduit
 {
@@ -13,14 +14,16 @@ EngineEditor::EngineEditor (EngineProcessor& engineProcessor)
       graphManager (engineProcessor.getGraphManager()),
       canvas (rootState, engineProcessor.getGraphManager(), engineProcessor.getNodeUiRegistry())
 {
-    addButton.onClick = [this]
+    const auto addModule = [this] (const char* moduleId)
     {
         // Versetzt platzieren, damit gestapelte Nodes greifbar bleiben
         const auto offset = 24 * (canvas.getNumNodeComponents() % 8);
-        const auto created = graphManager.addModuleNode (AttenuatorModule::staticModuleId,
-                                                         { 40 + offset, 40 + offset });
+        const auto created = graphManager.addModuleNode (moduleId, { 40 + offset, 40 + offset });
         jassertquiet (created.isValid());
     };
+
+    addButton.onClick    = [addModule] { addModule (AttenuatorModule::staticModuleId); };
+    addLfoButton.onClick = [addModule] { addModule (LfoModule::staticModuleId); };
 
     undoButton.onClick = [this] { undoManager.undo(); };
     redoButton.onClick = [this] { undoManager.redo(); };
@@ -34,6 +37,7 @@ EngineEditor::EngineEditor (EngineProcessor& engineProcessor)
         warningLabel.setText ("Audio-Setup: " + warning, juce::dontSendNotification);
 
     addAndMakeVisible (addButton);
+    addAndMakeVisible (addLfoButton);
     addAndMakeVisible (undoButton);
     addAndMakeVisible (redoButton);
     addAndMakeVisible (warningLabel);
@@ -56,6 +60,8 @@ void EngineEditor::resized()
     auto toolbar = bounds.removeFromTop (toolbarHeight).reduced (8, 6);  // Buttons ≥ 44px hoch
 
     addButton.setBounds (toolbar.removeFromLeft (150));
+    toolbar.removeFromLeft (8);
+    addLfoButton.setBounds (toolbar.removeFromLeft (100));
     toolbar.removeFromLeft (8);
     undoButton.setBounds (toolbar.removeFromLeft (80));
     toolbar.removeFromLeft (8);

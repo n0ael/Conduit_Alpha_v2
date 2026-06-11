@@ -34,9 +34,10 @@ private:
     juce::UndoManager& undoManager;
     GraphManager& graphManager;
 
-    juce::TextButton addButton  { juce::String::fromUTF8 ("\xef\xbc\x8b Attenuator") };
-    juce::TextButton undoButton { "Undo" };
-    juce::TextButton redoButton { "Redo" };
+    juce::TextButton addButton    { juce::String::fromUTF8 ("\xef\xbc\x8b Attenuator") };
+    juce::TextButton addLfoButton { juce::String::fromUTF8 ("\xef\xbc\x8b LFO") };
+    juce::TextButton undoButton   { "Undo" };
+    juce::TextButton redoButton   { "Redo" };
     juce::Label warningLabel;
 
     NodeCanvas canvas;

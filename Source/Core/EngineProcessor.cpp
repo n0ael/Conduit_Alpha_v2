@@ -30,10 +30,12 @@ void EngineProcessor::prepareToPlay (double sampleRate, int samplesPerBlock)
                                 getTotalNumOutputChannels(),
                                 sampleRate, samplesPerBlock);
     graph.prepareToPlay (sampleRate, samplesPerBlock);
+    graphFader.prepare (sampleRate);
 }
 
 void EngineProcessor::releaseResources()
 {
+    graphFader.reset();  // unprepared Fader → GraphManager swappt ohne Fade
     graph.releaseResources();
 }
 
@@ -41,6 +43,7 @@ void EngineProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::Midi
 {
     juce::ScopedNoDenormals noDenormals;
     graph.processBlock (buffer, midiMessages);
+    graphFader.process (buffer);  // Master-Fade hinter dem Graph (5.2)
 }
 
 //==============================================================================

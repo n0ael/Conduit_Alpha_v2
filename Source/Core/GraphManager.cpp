@@ -3,9 +3,12 @@
 namespace conduit
 {
 
-GraphManager::GraphManager (juce::ValueTree rootTree, juce::AudioProcessorGraph& processorGraph)
+GraphManager::GraphManager (juce::ValueTree rootTree,
+                            juce::AudioProcessorGraph& processorGraph,
+                            GraphFader& faderToUse)
     : rootState (std::move (rootTree)),
-      graph (processorGraph)
+      graph (processorGraph),
+      fader (faderToUse)
 {
     rootState.addListener (this);
 }
@@ -17,8 +20,9 @@ GraphManager::~GraphManager()
 }
 
 //==============================================================================
-bool GraphManager::isTopologyDirty() const noexcept { return topologyDirty; }
-int GraphManager::getRebuildCount() const noexcept  { return rebuildCount; }
+bool GraphManager::isTopologyDirty() const noexcept     { return topologyDirty; }
+bool GraphManager::isWaitingForSilence() const noexcept { return swapPhase == SwapPhase::waitingForSilence; }
+int GraphManager::getRebuildCount() const noexcept      { return rebuildCount; }
 
 void GraphManager::flushPendingTopologyUpdate()
 {
@@ -71,18 +75,53 @@ void GraphManager::markTopologyDirty()
     triggerAsyncUpdate();  // coalesct mehrfache Trigger bis zum nächsten Loop-Durchlauf
 }
 
+//==============================================================================
 void GraphManager::handleAsyncUpdate()
 {
+    if (swapPhase == SwapPhase::waitingForSilence)
+    {
+        // Schritt 3: kein Busy-Poll, kein Timer — Self-Re-Dispatch bis der
+        // Audio Thread Stille meldet. Stoppt Audio währenddessen (Fader
+        // unprepared), wird ohne Fade direkt geswappt.
+        if (fader.isPrepared() && ! fader.isFadeOutComplete())
+        {
+            triggerAsyncUpdate();
+            return;
+        }
+
+        performTopologySwap();  // Topologie-Swap auf Stille
+        fader.beginFadeIn();    // Schritt 4
+        swapPhase = SwapPhase::idle;
+        return;
+    }
+
     if (! topologyDirty)
         return;
 
+    if (! fader.isPrepared())
+    {
+        // Audio läuft nicht — Fade wäre wirkungslos, direkt swappen.
+        performTopologySwap();
+        return;
+    }
+
+    // Schritt 2: Fade-Out anstoßen, die Graph-Topologie bleibt unverändert.
+    // Änderungen, die während des Fade-Outs eintreffen, erhöhen nur das
+    // Delta und landen im selben Swap (5.5).
+    fader.beginFadeOut();
+    swapPhase = SwapPhase::waitingForSilence;
+    triggerAsyncUpdate();
+}
+
+void GraphManager::performTopologySwap()
+{
     const auto coalescedChanges = pendingChangeCount;
     topologyDirty = false;
     pendingChangeCount = 0;
     ++rebuildCount;
 
-    // Platzhalter für den kombinierten Graph-Swap (5.2):
-    // Fade-Out → Topologie-Swap → Fade-In, EIN Zyklus für das gesamte Delta.
+    // Platzhalter für die echten Graph-Mutationen aus dem ValueTree-Delta:
+    // addNode() / addConnection() / removeConnection() — nächste Ausbaustufe.
     juce::Logger::writeToLog ("GraphManager: kombinierter Graph-Rebuild für Frame-Delta ("
                               + juce::String (coalescedChanges) + " Änderungen coalesced)");
 }

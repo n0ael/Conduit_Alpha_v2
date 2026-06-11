@@ -36,6 +36,7 @@ set(CONDUIT_CPP_SOURCES
     Source/Core/Main.cpp
     Source/Core/EngineProcessor.cpp
     Source/Core/EngineEditor.cpp
+    Source/Core/GraphFader.cpp
     Source/Core/GraphManager.cpp
     Source/Modules/ConduitModule.cpp
 )
@@ -44,6 +45,7 @@ target_sources(Conduit PRIVATE
     ${CONDUIT_CPP_SOURCES}
     Source/Core/EngineProcessor.h
     Source/Core/EngineEditor.h
+    Source/Core/GraphFader.h
     Source/Core/GraphManager.h
     Source/Modules/ConduitModule.h
 )
@@ -111,11 +113,13 @@ if(CONDUIT_BUILD_TESTS)
     juce_add_console_app(ConduitTests PRODUCT_NAME "ConduitTests")
 
     set(CONDUIT_TEST_CPP_SOURCES
+        Tests/Core/GraphFaderTests.cpp
         Tests/Core/GraphManagerTests.cpp
     )
 
     target_sources(ConduitTests PRIVATE
         ${CONDUIT_TEST_CPP_SOURCES}
+        Source/Core/GraphFader.cpp
         Source/Core/GraphManager.cpp
     )
 

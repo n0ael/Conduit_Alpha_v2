@@ -2,6 +2,7 @@
 
 #include <juce_audio_processors/juce_audio_processors.h>
 
+#include "GraphFader.h"
 #include "GraphManager.h"
 #include "Modules/ConduitModule.h"
 
@@ -61,8 +62,11 @@ private:
     juce::AudioProcessorGraph::Node::Ptr audioInputNode;
     juce::AudioProcessorGraph::Node::Ptr audioOutputNode;
 
-    // Nach rootState und graph deklariert — Initialisierungsreihenfolge!
-    GraphManager graphManager { rootState, graph };
+    // Master-Fade für glitch-freie Graph-Swaps (CLAUDE.md 5.2)
+    GraphFader graphFader;
+
+    // Nach rootState, graph und graphFader deklariert — Initialisierungsreihenfolge!
+    GraphManager graphManager { rootState, graph, graphFader };
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (EngineProcessor)
 };

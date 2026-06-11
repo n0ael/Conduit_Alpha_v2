@@ -1,5 +1,8 @@
 #pragma once
 
+#include <map>
+#include <memory>
+
 #include <juce_audio_processors/juce_audio_processors.h>
 
 #include "GraphFader.h"
@@ -7,6 +10,8 @@
 
 namespace conduit
 {
+
+class ModuleFactory;
 
 //==============================================================================
 /**
@@ -17,14 +22,21 @@ namespace conduit
     Graph-Swap zusammengefasst — gilt für Undo, Redo, Preset-Load,
     Bulk-Delete und Copy-Paste.
 
-    Fade-Zyklus (5.2) pro Swap:
+    Ablauf pro Swap (5.2):
+      Schritt 1: Async Prepare — neue Module via ModuleFactory instanziieren
+                 und prepareForGraph() VOR dem Fade-Out abschließen;
+                 Fehler → nodeError im ValueTree, kein Retry-Loop
       Schritt 2: fader.beginFadeOut() — Topologie bleibt unverändert
       Schritt 3: Self-Re-Dispatch via triggerAsyncUpdate() bis der Audio
                  Thread Stille meldet (kein Busy-Poll, kein Timer), dann
-                 Topologie-Swap auf Stille
+                 Tree → Graph synchronisieren: verschwundene Nodes entfernen,
+                 vorbereitete Module einfügen, Connections abgleichen
       Schritt 4: fader.beginFadeIn()
     Änderungen, die während des Fade-Outs eintreffen, landen im selben Swap.
     Läuft Audio nicht (Fader unprepared), wird ohne Fade direkt geswappt.
+
+    Die I/O-Nodes des EngineProcessor sind nicht tree-verwaltet und bleiben
+    von der Synchronisation unangetastet.
 
     Parameter-Wert-Änderungen (OSC-Dual-State, 6.1) lösen bewusst KEINEN
     Rebuild aus — nur Child-Add/Remove unter Nodes[]/Connections[] sowie
@@ -34,20 +46,20 @@ namespace conduit
     bewusst kein std::atomic. Kein UI-Code, kein DSP-Code (der Fade selbst
     lebt im GraphFader auf dem Audio Thread).
 
-    Nächste Ausbaustufen: echte Graph-Mutationen aus dem ValueTree-Delta
-    in performTopologySwap(), Async Prepare (5.2 Schritt 1) und das
-    zweiphasige Delete (5.3).
+    Nächste Ausbaustufe: zweiphasiges Delete mit Zombie-UI-Schutz (5.3).
 */
 class GraphManager final : private juce::ValueTree::Listener,
                            private juce::AsyncUpdater
 {
 public:
     /** rootTree ist ein ref-counted ValueTree-Handle, processorGraph das
-        Swap-Ziel, faderToUse der Master-Fade im Audio-Pfad.
+        Swap-Ziel, faderToUse der Master-Fade im Audio-Pfad, factoryToUse
+        erzeugt Module aus persistierten moduleIds.
         Registriert sich als Listener. */
     GraphManager (juce::ValueTree rootTree,
                   juce::AudioProcessorGraph& processorGraph,
-                  GraphFader& faderToUse);
+                  GraphFader& faderToUse,
+                  ModuleFactory& factoryToUse);
 
     /** Deregistriert den Listener und verwirft ausstehende Async-Updates. */
     ~GraphManager() override;
@@ -76,8 +88,23 @@ private:
     // juce::AsyncUpdater — Fade-Zustandsmaschine (5.2) + Coalescing (5.5)
     void handleAsyncUpdate() override;
 
+    //==========================================================================
+    /** Schritt 1: instanziiert + prepariert alle neuen Tree-Nodes VOR dem
+        Fade-Out. Fehler → nodeError, das Modul wird übersprungen. */
+    void prepareNewModules();
+
+    /** Factory-Create + prepareForGraph für einen Tree-Node.
+        Bei Fehler: setzt nodeError und gibt nullptr zurück. */
+    [[nodiscard]] std::unique_ptr<ConduitModule> materializeModule (juce::ValueTree nodeTree);
+
     /** Schritt 3: konsumiert das gesamte Frame-Delta in einem Swap. */
     void performTopologySwap();
+
+    void removeVanishedNodes();
+    void addNewNodes();
+    void syncConnections();
+
+    [[nodiscard]] bool isManagedGraphNode (juce::AudioProcessorGraph::NodeID nodeId) const;
 
     /** true für die Container Nodes[] und Connections[] (Schema 6.2). */
     [[nodiscard]] static bool isTopologyContainer (const juce::ValueTree& tree) noexcept;
@@ -91,15 +118,22 @@ private:
         waitingForSilence   // Fade-Out läuft, Swap wartet auf den Audio Thread
     };
 
-    juce::ValueTree rootState;                          // ref-counted Handle
-    [[maybe_unused]] juce::AudioProcessorGraph& graph;  // Mutations-Ziel (nächste Ausbaustufe)
+    juce::ValueTree rootState;          // ref-counted Handle
+    juce::AudioProcessorGraph& graph;
     GraphFader& fader;
+    ModuleFactory& factory;
 
     // Nur Message Thread — bewusst kein std::atomic (kein Cross-Thread-Zugriff)
     SwapPhase swapPhase = SwapPhase::idle;
     bool topologyDirty = false;
     int pendingChangeCount = 0;
     int rebuildCount = 0;
+
+    // Tree-nodeId (Uuid-String) → Graph-NodeID der tree-verwalteten Nodes
+    std::map<juce::String, juce::AudioProcessorGraph::NodeID> treeToGraphNode;
+
+    // In Schritt 1 vorbereitete Instanzen, warten auf den Swap
+    std::map<juce::String, std::unique_ptr<ConduitModule>> preparedModules;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (GraphManager)
 };

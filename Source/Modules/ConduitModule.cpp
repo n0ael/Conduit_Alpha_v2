@@ -59,6 +59,14 @@ juce::ValueTree ConduitModule::createState()
     return nodeTree;
 }
 
+juce::Result ConduitModule::prepareForGraph (double sampleRate, int maximumBlockSize)
+{
+    setPlayConfigDetails (getTotalNumInputChannels(), getTotalNumOutputChannels(),
+                          sampleRate, maximumBlockSize);
+    prepareToPlay (sampleRate, maximumBlockSize);
+    return juce::Result::ok();
+}
+
 void ConduitModule::appendParametersTo (juce::ValueTree&)
 {
     // Default: Modul ohne Parameter.

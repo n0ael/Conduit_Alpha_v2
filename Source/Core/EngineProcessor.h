@@ -5,6 +5,7 @@
 #include "GraphFader.h"
 #include "GraphManager.h"
 #include "Modules/ConduitModule.h"
+#include "Modules/ModuleFactory.h"
 
 namespace conduit
 {
@@ -65,8 +66,12 @@ private:
     // Master-Fade für glitch-freie Graph-Swaps (CLAUDE.md 5.2)
     GraphFader graphFader;
 
-    // Nach rootState, graph und graphFader deklariert — Initialisierungsreihenfolge!
-    GraphManager graphManager { rootState, graph, graphFader };
+    // Default-Module werden im Konstruktor registriert
+    ModuleFactory moduleFactory;
+
+    // Nach rootState, graph, graphFader und moduleFactory deklariert —
+    // Initialisierungsreihenfolge!
+    GraphManager graphManager { rootState, graph, graphFader, moduleFactory };
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (EngineProcessor)
 };

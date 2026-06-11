@@ -39,6 +39,8 @@ set(CONDUIT_CPP_SOURCES
     Source/Core/GraphFader.cpp
     Source/Core/GraphManager.cpp
     Source/Modules/ConduitModule.cpp
+    Source/Modules/ModuleFactory.cpp
+    Source/Modules/AttenuatorModule.cpp
 )
 
 target_sources(Conduit PRIVATE
@@ -48,6 +50,9 @@ target_sources(Conduit PRIVATE
     Source/Core/GraphFader.h
     Source/Core/GraphManager.h
     Source/Modules/ConduitModule.h
+    Source/Modules/ModuleFactory.h
+    Source/Modules/UtilityModule.h
+    Source/Modules/AttenuatorModule.h
 )
 
 target_include_directories(Conduit PRIVATE Source)
@@ -121,6 +126,9 @@ if(CONDUIT_BUILD_TESTS)
         ${CONDUIT_TEST_CPP_SOURCES}
         Source/Core/GraphFader.cpp
         Source/Core/GraphManager.cpp
+        Source/Modules/ConduitModule.cpp
+        Source/Modules/ModuleFactory.cpp
+        Source/Modules/AttenuatorModule.cpp
     )
 
     target_include_directories(ConduitTests PRIVATE Source)

@@ -16,6 +16,8 @@ EngineProcessor::EngineProcessor()
     rootState.appendChild (juce::ValueTree (id::connections),         nullptr);
     rootState.appendChild (juce::ValueTree (id::calibrationProfiles), nullptr);
 
+    registerDefaultModules (moduleFactory);
+
     // Graph-I/O-Nodes (Konstruktor läuft auf dem Message Thread).
     // Bewusst keine Verbindung Input→Output — kein Mic-Passthrough.
     using IOProcessor = juce::AudioProcessorGraph::AudioGraphIOProcessor;

@@ -108,6 +108,20 @@ public:
     [[nodiscard]] virtual int getStateVersion() const = 0;
 
     //==========================================================================
+    /** Schritt 1 des Graph-Swaps (CLAUDE.md 5.2, Async Prepare): wird vom
+        GraphManager manuell VOR addNode() aufgerufen. Speicherintensive
+        Allokationen (Delay-Buffer etc.) hier abschließen.
+
+        JUCEs prepareToPlay() gibt void zurück — Fehler werden deshalb über
+        dieses Result gemeldet: bei failed() schreibt der GraphManager
+        nodeError ins ValueTree, das Modul kommt nicht in den Graph,
+        kein Crash, kein Retry-Loop.
+
+        Basis-Implementierung: setPlayConfigDetails() + prepareToPlay().
+        Muss idempotent sein — der Graph ruft prepareToPlay() später erneut. */
+    [[nodiscard]] virtual juce::Result prepareForGraph (double sampleRate, int maximumBlockSize);
+
+    //==========================================================================
     // AudioProcessor-Defaults (Subklassen überschreiben bei Bedarf)
 
     const juce::String getName() const override;

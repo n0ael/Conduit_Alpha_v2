@@ -1,14 +1,21 @@
 #include "GraphManager.h"
 
+#include <algorithm>
+#include <vector>
+
+#include "Modules/ModuleFactory.h"
+
 namespace conduit
 {
 
 GraphManager::GraphManager (juce::ValueTree rootTree,
                             juce::AudioProcessorGraph& processorGraph,
-                            GraphFader& faderToUse)
+                            GraphFader& faderToUse,
+                            ModuleFactory& factoryToUse)
     : rootState (std::move (rootTree)),
       graph (processorGraph),
-      fader (faderToUse)
+      fader (faderToUse),
+      factory (factoryToUse)
 {
     rootState.addListener (this);
 }
@@ -98,6 +105,11 @@ void GraphManager::handleAsyncUpdate()
     if (! topologyDirty)
         return;
 
+    // Schritt 1 (Async Prepare): neue Module VOR dem Fade-Out instanziieren
+    // und vorbereiten — speicherintensive Allokationen passieren hier,
+    // nicht während der Stille.
+    prepareNewModules();
+
     if (! fader.isPrepared())
     {
         // Audio läuft nicht — Fade wäre wirkungslos, direkt swappen.
@@ -113,6 +125,54 @@ void GraphManager::handleAsyncUpdate()
     triggerAsyncUpdate();
 }
 
+//==============================================================================
+void GraphManager::prepareNewModules()
+{
+    const auto nodesTree = rootState.getChildWithName (id::nodes);
+
+    for (int i = 0; i < nodesTree.getNumChildren(); ++i)
+    {
+        auto nodeTree = nodesTree.getChild (i);
+        const auto nodeUuid = nodeTree.getProperty (id::nodeId).toString();
+
+        if (nodeUuid.isEmpty()
+            || treeToGraphNode.contains (nodeUuid)
+            || preparedModules.contains (nodeUuid)
+            || nodeTree.getProperty (id::nodeError).toString().isNotEmpty())
+            continue;
+
+        if (auto module = materializeModule (nodeTree))
+            preparedModules[nodeUuid] = std::move (module);
+    }
+}
+
+std::unique_ptr<ConduitModule> GraphManager::materializeModule (juce::ValueTree nodeTree)
+{
+    const auto moduleId = nodeTree.getProperty (id::moduleId).toString();
+    auto module = factory.create (moduleId);
+
+    if (module == nullptr)
+    {
+        nodeTree.setProperty (id::nodeError, "Unbekanntes Modul: " + moduleId, nullptr);
+        return nullptr;
+    }
+
+    // Läuft Audio noch nicht, werden die Latenz-Ziele aus CLAUDE.md 3.2
+    // angenommen — graph.prepareToPlay() re-prepariert später mit Ist-Werten.
+    const auto sampleRate = graph.getSampleRate() > 0.0 ? graph.getSampleRate() : 48000.0;
+    const auto blockSize  = graph.getBlockSize()  > 0   ? graph.getBlockSize()  : 32;
+
+    if (const auto result = module->prepareForGraph (sampleRate, blockSize); result.failed())
+    {
+        // Kein Crash, kein Retry-Loop — UI zeigt den Fehlerzustand (5.2 Schritt 1)
+        nodeTree.setProperty (id::nodeError, result.getErrorMessage(), nullptr);
+        return nullptr;
+    }
+
+    return module;
+}
+
+//==============================================================================
 void GraphManager::performTopologySwap()
 {
     const auto coalescedChanges = pendingChangeCount;
@@ -120,10 +180,112 @@ void GraphManager::performTopologySwap()
     pendingChangeCount = 0;
     ++rebuildCount;
 
-    // Platzhalter für die echten Graph-Mutationen aus dem ValueTree-Delta:
-    // addNode() / addConnection() / removeConnection() — nächste Ausbaustufe.
-    juce::Logger::writeToLog ("GraphManager: kombinierter Graph-Rebuild für Frame-Delta ("
-                              + juce::String (coalescedChanges) + " Änderungen coalesced)");
+    removeVanishedNodes();
+    addNewNodes();
+    syncConnections();
+
+    // Übrig gebliebene Instanzen (Tree-Node wurde während des Fade-Outs
+    // wieder entfernt) verwerfen
+    preparedModules.clear();
+
+    juce::Logger::writeToLog ("GraphManager: Graph-Swap #" + juce::String (rebuildCount)
+                              + " (" + juce::String (coalescedChanges) + " Änderungen coalesced, "
+                              + juce::String (graph.getNumNodes()) + " Graph-Nodes)");
+}
+
+void GraphManager::removeVanishedNodes()
+{
+    const auto nodesTree = rootState.getChildWithName (id::nodes);
+
+    for (auto it = treeToGraphNode.begin(); it != treeToGraphNode.end();)
+    {
+        if (nodesTree.getChildWithProperty (id::nodeId, it->first).isValid())
+        {
+            ++it;
+            continue;
+        }
+
+        graph.removeNode (it->second);  // entfernt auch alle Kabel dieses Nodes
+        it = treeToGraphNode.erase (it);
+    }
+}
+
+void GraphManager::addNewNodes()
+{
+    const auto nodesTree = rootState.getChildWithName (id::nodes);
+
+    for (int i = 0; i < nodesTree.getNumChildren(); ++i)
+    {
+        auto nodeTree = nodesTree.getChild (i);
+        const auto nodeUuid = nodeTree.getProperty (id::nodeId).toString();
+
+        if (nodeUuid.isEmpty()
+            || treeToGraphNode.contains (nodeUuid)
+            || nodeTree.getProperty (id::nodeError).toString().isNotEmpty())
+            continue;
+
+        std::unique_ptr<ConduitModule> module;
+
+        if (const auto it = preparedModules.find (nodeUuid); it != preparedModules.end())
+        {
+            module = std::move (it->second);  // in Schritt 1 vorbereitet
+            preparedModules.erase (it);
+        }
+        else
+        {
+            // Node kam erst während des Fade-Outs hinzu — jetzt vorbereiten
+            module = materializeModule (nodeTree);
+        }
+
+        if (module == nullptr)
+            continue;
+
+        if (const auto graphNode = graph.addNode (std::move (module)))
+            treeToGraphNode[nodeUuid] = graphNode->nodeID;
+    }
+}
+
+void GraphManager::syncConnections()
+{
+    // Soll-Menge aus dem Tree (Schema 6.2). Kabel mit fehlendem Endpunkt
+    // (z.B. Node mit nodeError) bleiben außen vor — sie werden beim
+    // nächsten Swap erneut geprüft.
+    std::vector<juce::AudioProcessorGraph::Connection> desired;
+    const auto connectionsTree = rootState.getChildWithName (id::connections);
+
+    for (int i = 0; i < connectionsTree.getNumChildren(); ++i)
+    {
+        const auto connection = connectionsTree.getChild (i);
+        const auto source = treeToGraphNode.find (connection.getProperty (id::sourceNodeId).toString());
+        const auto dest   = treeToGraphNode.find (connection.getProperty (id::destNodeId).toString());
+
+        if (source == treeToGraphNode.end() || dest == treeToGraphNode.end())
+            continue;
+
+        desired.push_back ({ { source->second, (int) connection.getProperty (id::sourceChannel) },
+                             { dest->second,   (int) connection.getProperty (id::destChannel) } });
+    }
+
+    // Ist-Zustand abgleichen: nur Kabel zwischen tree-verwalteten Nodes —
+    // die I/O-Nodes des EngineProcessor bleiben unangetastet.
+    for (const auto& existing : graph.getConnections())
+    {
+        if (! isManagedGraphNode (existing.source.nodeID) || ! isManagedGraphNode (existing.destination.nodeID))
+            continue;
+
+        if (std::find (desired.begin(), desired.end(), existing) == desired.end())
+            graph.removeConnection (existing);
+    }
+
+    for (const auto& wanted : desired)
+        if (! graph.isConnected (wanted) && ! graph.addConnection (wanted))
+            juce::Logger::writeToLog ("GraphManager: ungültige Verbindung verworfen (Kanal außerhalb des Busses?)");
+}
+
+bool GraphManager::isManagedGraphNode (juce::AudioProcessorGraph::NodeID nodeId) const
+{
+    return std::any_of (treeToGraphNode.begin(), treeToGraphNode.end(),
+                        [nodeId] (const auto& entry) { return entry.second == nodeId; });
 }
 
 } // namespace conduit

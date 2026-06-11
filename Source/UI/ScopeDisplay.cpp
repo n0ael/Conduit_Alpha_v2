@@ -87,7 +87,8 @@ void ScopeDisplay::paint (juce::Graphics& g)
 
     for (int x = 0; x < static_cast<int> (width); ++x)
     {
-        const auto age = static_cast<int> ((width - 1.0f - x) / width * static_cast<float> (available));
+        const auto age = static_cast<int> ((width - 1.0f - static_cast<float> (x)) / width
+                                           * static_cast<float> (available));
         auto index = writeIndex - 1 - age;
 
         while (index < 0)

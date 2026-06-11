@@ -76,6 +76,8 @@ set(CONDUIT_CPP_SOURCES
     Source/Modules/ConduitModule.cpp
     Source/Modules/ModuleFactory.cpp
     Source/Modules/AttenuatorModule.cpp
+    Source/UI/NodeCanvas.cpp
+    Source/UI/NodeComponent.cpp
 )
 
 target_sources(Conduit PRIVATE
@@ -90,6 +92,8 @@ target_sources(Conduit PRIVATE
     Source/Modules/ModuleFactory.h
     Source/Modules/UtilityModule.h
     Source/Modules/AttenuatorModule.h
+    Source/UI/NodeCanvas.h
+    Source/UI/NodeComponent.h
     Source/Util/SpscQueue.h
 )
 
@@ -160,6 +164,7 @@ if(CONDUIT_BUILD_TESTS)
         Tests/Core/GraphManagerTests.cpp
         Tests/Core/OscControllerTests.cpp
         Tests/Core/ThreadingStressTests.cpp
+        Tests/UI/NodeCanvasTests.cpp
         Tests/Util/SpscQueueTests.cpp
     )
 
@@ -172,6 +177,8 @@ if(CONDUIT_BUILD_TESTS)
         Source/Modules/ConduitModule.cpp
         Source/Modules/ModuleFactory.cpp
         Source/Modules/AttenuatorModule.cpp
+        Source/UI/NodeCanvas.cpp
+        Source/UI/NodeComponent.cpp
     )
 
     target_include_directories(ConduitTests PRIVATE Source)

@@ -77,6 +77,13 @@ public:
     ~GraphManager() override;
 
     //==========================================================================
+    /** Patch-Aktion: erzeugt das Modul über die Factory, baut seinen State
+        (createState VOR addNode, 4.4) und hängt ihn in einer eigenen
+        UndoManager-Transaktion an Nodes[] — die Materialisierung folgt über
+        den normalen Swap. Invalides ValueTree bei unbekannter moduleId.
+        Message Thread. */
+    juce::ValueTree addModuleNode (const juce::String& moduleId, juce::Point<int> position);
+
     /** Phase 1 des zweiphasigen Deletes (5.3): setzt nodeState → Deleting.
         false, wenn kein Node mit dieser nodeId existiert. Message Thread. */
     [[nodiscard]] bool requestNodeDelete (const juce::String& nodeUuid);
@@ -132,6 +139,11 @@ private:
     void removeVanishedNodes();
     void addNewNodes();
     void syncConnections();
+
+    /** Tree → Atomic (Dual-State-Gegenstück zu 6.1): spiegelt paramValue auf
+        das Echtzeit-Target des live-Moduls — bedient UI-Slider, Preset-Load
+        und Undo. Kein Rebuild, nur ein atomic store. */
+    void syncParameterValue (juce::ValueTree parameterTree);
 
     [[nodiscard]] bool isManagedGraphNode (juce::AudioProcessorGraph::NodeID nodeId) const;
 

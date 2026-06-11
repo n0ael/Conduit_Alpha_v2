@@ -59,6 +59,27 @@ ConduitModule* GraphManager::getModuleFor (const juce::String& nodeUuid) const
 }
 
 //==============================================================================
+juce::ValueTree GraphManager::addModuleNode (const juce::String& moduleId, juce::Point<int> position)
+{
+    JUCE_ASSERT_MESSAGE_THREAD
+
+    // Instanz nur für createState() (4.4) — die Graph-Instanz erzeugt der
+    // Swap später frisch über prepareNewModules().
+    const auto module = factory.create (moduleId);
+
+    if (module == nullptr)
+        return {};
+
+    auto nodeTree = module->createState();
+    nodeTree.setProperty (id::positionX, position.x, nullptr);
+    nodeTree.setProperty (id::positionY, position.y, nullptr);
+
+    undoManager.beginNewTransaction ("Modul hinzufügen");
+    rootState.getChildWithName (id::nodes).appendChild (nodeTree, &undoManager);
+    return nodeTree;
+}
+
+//==============================================================================
 bool GraphManager::requestNodeDelete (const juce::String& nodeUuid)
 {
     JUCE_ASSERT_MESSAGE_THREAD
@@ -96,9 +117,39 @@ void GraphManager::valueTreePropertyChanged (juce::ValueTree& tree, const juce::
         return;
     }
 
-    // Sonst bewusst keine Reaktion: Parameter-Updates kommen via
-    // OSC-Dual-State (6.1) im Millisekundentakt — sie ändern die Topologie
-    // nicht und dürfen keinen Graph-Rebuild auslösen.
+    // Tree → Atomic: paramValue-Änderungen (UI-Slider, OSC-Nachzug, Undo,
+    // Preset-Load) auf das Echtzeit-Target spiegeln — KEIN Rebuild.
+    if (property == id::paramValue && tree.hasType (id::parameter))
+    {
+        syncParameterValue (tree);
+        return;
+    }
+
+    // Sonst bewusst keine Reaktion — Topologie ändert sich hier nicht,
+    // ein Graph-Rebuild wäre falsch (6.1).
+}
+
+void GraphManager::syncParameterValue (juce::ValueTree parameterTree)
+{
+    // Parameter → Parameters[] → Node (Schema 6.2)
+    const auto nodeTree = parameterTree.getParent().getParent();
+
+    if (! nodeTree.hasType (id::node))
+        return;
+
+    auto* module = getModuleFor (nodeTree.getProperty (id::nodeId).toString());
+
+    if (module == nullptr)
+        return;  // noch nicht materialisiert — addNewNodes() spiegelt initial
+
+    if (auto* target = module->getParameterTarget (parameterTree.getProperty (id::paramId).toString()))
+    {
+        const auto minValue = static_cast<float> ((double) parameterTree.getProperty (id::paramMin, 0.0));
+        const auto maxValue = static_cast<float> ((double) parameterTree.getProperty (id::paramMax, 1.0));
+        const auto value    = static_cast<float> ((double) parameterTree.getProperty (id::paramValue, 0.0));
+
+        target->store (juce::jlimit (minValue, maxValue, value), std::memory_order_relaxed);
+    }
 }
 
 void GraphManager::valueTreeChildAdded (juce::ValueTree& parent, juce::ValueTree& child)
@@ -347,6 +398,13 @@ void GraphManager::addNewNodes()
             // Lifecycle-Status zurücksetzen — relevant nach Undo eines
             // Deletes: der Subtree wurde mit nodeState == Deleting restauriert
             nodeTree.setProperty (id::nodeState, toString (NodeState::active), nullptr);
+
+            // Persistierte Parameter auf die frischen Atomic-Targets spiegeln
+            // (Preset-Load, Undo-Restore — Tree ist Single Source of Truth)
+            const auto parameters = nodeTree.getChildWithName (id::parameters);
+
+            for (int p = 0; p < parameters.getNumChildren(); ++p)
+                syncParameterValue (parameters.getChild (p));
         }
     }
 }

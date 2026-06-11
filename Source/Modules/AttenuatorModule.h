@@ -33,8 +33,12 @@ public:
     [[nodiscard]] int getStateVersion() const override;
 
     //==========================================================================
-    /** Thread-safe; wird später vom OSC-Dual-State (6.1) bedient. */
+    /** Thread-safe; UI-seitiger Setter mit eigenem Clamping. */
     void setGain (float newGain) noexcept;
+
+    /** Echtzeit-Ziel für "gain" (Dual-State 6.1) — der Schreiber clamped
+        anhand des Parameters-Subtrees [0, 1], identisch zu setGain(). */
+    [[nodiscard]] std::atomic<float>* getParameterTarget (const juce::String& parameterId) noexcept override;
 
     //==========================================================================
     // AudioProcessor

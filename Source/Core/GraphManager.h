@@ -82,6 +82,13 @@ public:
     [[nodiscard]] bool requestNodeDelete (const juce::String& nodeUuid);
 
     //==========================================================================
+    /** Live-Modul-Instanz zu einer Tree-nodeId — nullptr solange das Modul
+        noch nicht materialisiert ist (5.2 Schritt 1–3) oder nodeError gesetzt
+        wurde. NUR Message Thread; der Pointer ist bis zum nächsten Swap
+        gültig (der OscController nutzt ihn zur Endpoint-Auflösung, 7.1). */
+    [[nodiscard]] ConduitModule* getModuleFor (const juce::String& nodeUuid) const;
+
+    //==========================================================================
     /** true, solange ein gesammeltes Frame-Delta auf den Rebuild wartet. */
     [[nodiscard]] bool isTopologyDirty() const noexcept;
 

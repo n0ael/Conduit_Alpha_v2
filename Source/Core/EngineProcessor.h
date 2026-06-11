@@ -5,8 +5,10 @@
 #include "GraphFader.h"
 #include "GraphManager.h"
 #include "NodeUiRegistry.h"
+#include "OscController.h"
 #include "Modules/ConduitModule.h"
 #include "Modules/ModuleFactory.h"
+#include "Util/SpscQueue.h"
 
 namespace conduit
 {
@@ -59,6 +61,7 @@ public:
     /** Patch-Aktionen (Delete-Requests) und UI-Bindungs-Registry. */
     [[nodiscard]] GraphManager& getGraphManager() noexcept;
     [[nodiscard]] NodeUiRegistry& getNodeUiRegistry() noexcept;
+    [[nodiscard]] OscController& getOscController() noexcept;
 
 private:
     juce::ValueTree rootState;
@@ -80,6 +83,12 @@ private:
     // Nach allen Abhängigkeiten deklariert — Initialisierungsreihenfolge!
     GraphManager graphManager { rootState, graph, graphFader,
                                 moduleFactory, undoManager, nodeUiRegistry };
+
+    // OSC-Dual-State (CLAUDE.md 6.1): Netzwerk → Audio (lock-free) und
+    // Netzwerk → ValueTree (async). Nach dem GraphManager deklariert —
+    // der OscController löst Endpoints über ihn auf und wird zuerst zerstört.
+    SpscQueue<ParameterUpdate> oscToAudioQueue { 1024 };
+    OscController oscController { rootState, graphManager, oscToAudioQueue };
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (EngineProcessor)
 };

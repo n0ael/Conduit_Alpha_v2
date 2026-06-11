@@ -72,6 +72,7 @@ set(CONDUIT_CPP_SOURCES
     Source/Core/GraphFader.cpp
     Source/Core/GraphManager.cpp
     Source/Core/NodeUiRegistry.cpp
+    Source/Core/OscController.cpp
     Source/Modules/ConduitModule.cpp
     Source/Modules/ModuleFactory.cpp
     Source/Modules/AttenuatorModule.cpp
@@ -84,6 +85,7 @@ target_sources(Conduit PRIVATE
     Source/Core/GraphFader.h
     Source/Core/GraphManager.h
     Source/Core/NodeUiRegistry.h
+    Source/Core/OscController.h
     Source/Modules/ConduitModule.h
     Source/Modules/ModuleFactory.h
     Source/Modules/UtilityModule.h
@@ -156,6 +158,7 @@ if(CONDUIT_BUILD_TESTS)
     set(CONDUIT_TEST_CPP_SOURCES
         Tests/Core/GraphFaderTests.cpp
         Tests/Core/GraphManagerTests.cpp
+        Tests/Core/OscControllerTests.cpp
         Tests/Core/ThreadingStressTests.cpp
         Tests/Util/SpscQueueTests.cpp
     )
@@ -165,6 +168,7 @@ if(CONDUIT_BUILD_TESTS)
         Source/Core/GraphFader.cpp
         Source/Core/GraphManager.cpp
         Source/Core/NodeUiRegistry.cpp
+        Source/Core/OscController.cpp
         Source/Modules/ConduitModule.cpp
         Source/Modules/ModuleFactory.cpp
         Source/Modules/AttenuatorModule.cpp
@@ -188,6 +192,7 @@ if(CONDUIT_BUILD_TESTS)
         PRIVATE
             Catch2::Catch2WithMain
             juce::juce_audio_processors
+            juce::juce_osc
         PUBLIC
             juce::juce_recommended_config_flags
             juce::juce_recommended_warning_flags

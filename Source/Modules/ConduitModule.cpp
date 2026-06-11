@@ -67,6 +67,12 @@ juce::Result ConduitModule::prepareForGraph (double sampleRate, int maximumBlock
     return juce::Result::ok();
 }
 
+std::atomic<float>* ConduitModule::getParameterTarget (const juce::String&) noexcept
+{
+    // Default: kein Echtzeit-Parameter-Ziel.
+    return nullptr;
+}
+
 void ConduitModule::appendParametersTo (juce::ValueTree&)
 {
     // Default: Modul ohne Parameter.

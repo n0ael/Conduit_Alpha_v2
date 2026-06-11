@@ -47,6 +47,18 @@ void GraphManager::flushPendingTopologyUpdate()
 }
 
 //==============================================================================
+ConduitModule* GraphManager::getModuleFor (const juce::String& nodeUuid) const
+{
+    JUCE_ASSERT_MESSAGE_THREAD
+
+    if (const auto it = treeToGraphNode.find (nodeUuid); it != treeToGraphNode.end())
+        if (const auto graphNode = graph.getNodeForId (it->second))
+            return dynamic_cast<ConduitModule*> (graphNode->getProcessor());
+
+    return nullptr;
+}
+
+//==============================================================================
 bool GraphManager::requestNodeDelete (const juce::String& nodeUuid)
 {
     JUCE_ASSERT_MESSAGE_THREAD

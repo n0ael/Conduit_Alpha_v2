@@ -1,5 +1,7 @@
 #pragma once
 
+#include <atomic>
+
 #include <juce_audio_processors/juce_audio_processors.h>
 
 namespace conduit
@@ -120,6 +122,20 @@ public:
         Basis-Implementierung: setPlayConfigDetails() + prepareToPlay().
         Muss idempotent sein — der Graph ruft prepareToPlay() später erneut. */
     [[nodiscard]] virtual juce::Result prepareForGraph (double sampleRate, int maximumBlockSize);
+
+    //==========================================================================
+    /** Atomic-Schreibziel für Echtzeit-Parameter-Updates (Dual-State 6.1).
+
+        Generische Parameter-API — das Modul weiß nichts von OSC (7.1, Single
+        Responsibility). nullptr, wenn der Parameter kein Echtzeit-Ziel hat;
+        Werte-Clamping auf [min, max] übernimmt der Schreiber (OscController)
+        anhand des Parameters-Subtrees.
+
+        Aufruf auf dem Message Thread (Registrierung). Der zurückgegebene
+        Atomic wird von Fremd-Threads per store() beschrieben und vom Audio
+        Thread in processBlock() gelesen. Der Pointer muss bis zur Zerstörung
+        des Moduls gültig bleiben. */
+    [[nodiscard]] virtual std::atomic<float>* getParameterTarget (const juce::String& parameterId) noexcept;
 
     //==========================================================================
     // AudioProcessor-Defaults (Subklassen überschreiben bei Bedarf)

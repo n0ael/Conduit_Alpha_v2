@@ -26,6 +26,11 @@ void AttenuatorModule::setGain (float newGain) noexcept
     gainTarget.store (juce::jlimit (0.0f, 1.0f, newGain), std::memory_order_relaxed);
 }
 
+std::atomic<float>* AttenuatorModule::getParameterTarget (const juce::String& parameterId) noexcept
+{
+    return parameterId == "gain" ? &gainTarget : nullptr;
+}
+
 //==============================================================================
 void AttenuatorModule::prepareToPlay (double sampleRate, int)
 {

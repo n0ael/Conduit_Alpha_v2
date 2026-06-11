@@ -2,6 +2,7 @@
 
 #include <juce_audio_processors/juce_audio_processors.h>
 
+#include "LinkClock.h"
 #include "UI/NodeCanvas.h"
 
 namespace conduit
@@ -14,10 +15,16 @@ class EngineProcessor;
     Haupt-Editor der App — read/listen-only gegenüber dem Datenmodell
     (CLAUDE.md 6); Patch-Aktionen laufen über GraphManager/UndoManager.
 
-    Layout: Toolbar (Add/Undo/Redo, Touch-Targets ≥ 44px) über dem NodeCanvas;
-    die audioSetupWarning (9.1) erscheint rechts in der Toolbar.
+    Layout: Toolbar (Add/Undo/Redo + Link-Transport, Touch-Targets ≥ 44px)
+    über dem NodeCanvas; die audioSetupWarning (9.1) erscheint rechts.
+
+    Link-Transport: Tempo und Peer-Zahl kommen aus der Link-Session — NICHT
+    aus dem ValueTree (Session-Zustand, kein Patch-Zustand). Ein 4-Hz-Timer
+    pollt die thread-sicheren LinkClock-Getter, damit Peer-Änderungen aus
+    dem Netz in der UI ankommen; der Slider schreibt via setTempo() zurück.
 */
-class EngineEditor final : public juce::AudioProcessorEditor
+class EngineEditor final : public juce::AudioProcessorEditor,
+                           private juce::Timer
 {
 public:
     explicit EngineEditor (EngineProcessor& engineProcessor);
@@ -28,16 +35,21 @@ public:
     bool keyPressed (const juce::KeyPress& key) override;
 
 private:
+    void timerCallback() override;
+
     static constexpr int toolbarHeight = 56;
 
     juce::ValueTree rootState;  // ref-counted Handle, read/listen-only
     juce::UndoManager& undoManager;
     GraphManager& graphManager;
+    LinkClock& linkClock;
 
     juce::TextButton addButton    { juce::String::fromUTF8 ("\xef\xbc\x8b Attenuator") };
     juce::TextButton addLfoButton { juce::String::fromUTF8 ("\xef\xbc\x8b LFO") };
     juce::TextButton undoButton   { "Undo" };
     juce::TextButton redoButton   { "Redo" };
+    juce::Slider tempoSlider      { juce::Slider::LinearBar, juce::Slider::TextBoxLeft };
+    juce::Label peersLabel;
     juce::Label warningLabel;
 
     NodeCanvas canvas;

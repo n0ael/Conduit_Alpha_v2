@@ -12,6 +12,7 @@ EngineEditor::EngineEditor (EngineProcessor& engineProcessor)
       rootState (engineProcessor.getRootState()),
       undoManager (engineProcessor.getUndoManager()),
       graphManager (engineProcessor.getGraphManager()),
+      linkClock (engineProcessor.getLinkClock()),
       canvas (rootState, engineProcessor.getGraphManager(), engineProcessor.getNodeUiRegistry())
 {
     const auto addModule = [this] (const char* moduleId)
@@ -28,6 +29,15 @@ EngineEditor::EngineEditor (EngineProcessor& engineProcessor)
     undoButton.onClick = [this] { undoManager.undo(); };
     redoButton.onClick = [this] { undoManager.redo(); };
 
+    // Link-Transport: Slider schreibt in die Session, der Timer pollt zurück
+    tempoSlider.setRange (20.0, 300.0, 0.1);
+    tempoSlider.setTextValueSuffix (" BPM");
+    tempoSlider.setValue (linkClock.getTempo(), juce::dontSendNotification);
+    tempoSlider.onValueChange = [this] { linkClock.setTempo (tempoSlider.getValue()); };
+
+    peersLabel.setColour (juce::Label::textColourId, juce::Colours::white.withAlpha (0.7f));
+    peersLabel.setJustificationType (juce::Justification::centredLeft);
+
     warningLabel.setColour (juce::Label::textColourId, juce::Colours::orange);
     warningLabel.setJustificationType (juce::Justification::centredRight);
 
@@ -40,12 +50,34 @@ EngineEditor::EngineEditor (EngineProcessor& engineProcessor)
     addAndMakeVisible (addLfoButton);
     addAndMakeVisible (undoButton);
     addAndMakeVisible (redoButton);
+    addAndMakeVisible (tempoSlider);
+    addAndMakeVisible (peersLabel);
     addAndMakeVisible (warningLabel);
     addAndMakeVisible (canvas);
 
     setWantsKeyboardFocus (true);
     setResizable (true, true);
     setSize (960, 640);
+
+    timerCallback();    // Peer-Label sofort befüllen, nicht erst nach 250ms
+    startTimerHz (4);   // Session-Polling — Tempo/Peers können sich im Netz ändern
+}
+
+//==============================================================================
+void EngineEditor::timerCallback()
+{
+    // Kein Kampf mit dem User: während des Drags gewinnt der Slider
+    if (! tempoSlider.isMouseButtonDown())
+        tempoSlider.setValue (linkClock.getTempo(), juce::dontSendNotification);
+
+    const auto numPeers = linkClock.getNumPeers();
+    const auto text = numPeers == 0
+                          ? juce::String ("Link: keine Peers")
+                          : "Link: " + juce::String (numPeers)
+                                + (numPeers == 1 ? " Peer" : " Peers");
+
+    if (peersLabel.getText() != text)
+        peersLabel.setText (text, juce::dontSendNotification);
 }
 
 //==============================================================================
@@ -66,6 +98,10 @@ void EngineEditor::resized()
     undoButton.setBounds (toolbar.removeFromLeft (80));
     toolbar.removeFromLeft (8);
     redoButton.setBounds (toolbar.removeFromLeft (80));
+    toolbar.removeFromLeft (16);
+    tempoSlider.setBounds (toolbar.removeFromLeft (150));
+    toolbar.removeFromLeft (8);
+    peersLabel.setBounds (toolbar.removeFromLeft (130));
     warningLabel.setBounds (toolbar);
 
     canvas.setBounds (bounds);

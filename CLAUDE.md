@@ -465,6 +465,8 @@ cmake --build build --config Debug
 cmake --preset asan && cmake --build --preset asan   # ASan (MSVC) — läuft lokal unter Windows
 cmake --preset tsan && cmake --build --preset tsan   # TSan (Clang) — NUR Linux/macOS/WSL,
                                                      # unter Windows nicht verfügbar
+# TSan + ASan laufen außerdem automatisch in GitHub Actions (Ubuntu) bei jedem
+# Push auf master — .github/workflows/ci.yml ('tsan' + 'asan-linux' Presets)
 ```
 
 ### 13.4 Testing & Validierung

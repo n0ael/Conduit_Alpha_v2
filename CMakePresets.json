@@ -28,12 +28,26 @@
                 "CMAKE_CXX_COMPILER": "clang++",
                 "CONDUIT_ENABLE_TSAN": "ON"
             }
+        },
+        {
+            "name": "asan-linux",
+            "displayName": "AddressSanitizer — Clang, Linux/macOS (CI-Pendant zu 'asan')",
+            "generator": "Ninja",
+            "binaryDir": "${sourceDir}/build-asan-linux",
+            "condition": { "type": "notEquals", "lhs": "${hostSystemName}", "rhs": "Windows" },
+            "cacheVariables": {
+                "CMAKE_BUILD_TYPE": "Debug",
+                "CMAKE_C_COMPILER": "clang",
+                "CMAKE_CXX_COMPILER": "clang++",
+                "CONDUIT_ENABLE_ASAN": "ON"
+            }
         }
     ],
     "buildPresets": [
         { "name": "windows-vs", "configurePreset": "windows-vs", "configuration": "Debug" },
         { "name": "asan", "configurePreset": "asan", "configuration": "Debug" },
-        { "name": "tsan", "configurePreset": "tsan" }
+        { "name": "tsan", "configurePreset": "tsan" },
+        { "name": "asan-linux", "configurePreset": "asan-linux" }
     ],
     "testPresets": [
         {
@@ -45,6 +59,11 @@
         {
             "name": "tsan",
             "configurePreset": "tsan",
+            "output": { "outputOnFailure": true }
+        },
+        {
+            "name": "asan-linux",
+            "configurePreset": "asan-linux",
             "output": { "outputOnFailure": true }
         }
     ]

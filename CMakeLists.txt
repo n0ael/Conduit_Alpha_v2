@@ -94,9 +94,11 @@ set(CONDUIT_CPP_SOURCES
     Source/Modules/ModuleFactory.cpp
     Source/Modules/AttenuatorModule.cpp
     Source/Modules/LfoModule.cpp
+    Source/Modules/ScopeModule.cpp
     Source/UI/NodeCanvas.cpp
     Source/UI/NodeComponent.cpp
     Source/UI/PortComponent.cpp
+    Source/UI/ScopeDisplay.cpp
 )
 
 target_sources(Conduit PRIVATE
@@ -110,15 +112,18 @@ target_sources(Conduit PRIVATE
     Source/Core/OscController.h
     Source/Interfaces/IClockSlave.h
     Source/Interfaces/IClockSource.h
+    Source/Modules/AnalysisModule.h
     Source/Modules/ConduitModule.h
     Source/Modules/GeneratorModule.h
     Source/Modules/ModuleFactory.h
     Source/Modules/UtilityModule.h
     Source/Modules/AttenuatorModule.h
     Source/Modules/LfoModule.h
+    Source/Modules/ScopeModule.h
     Source/UI/NodeCanvas.h
     Source/UI/NodeComponent.h
     Source/UI/PortComponent.h
+    Source/UI/ScopeDisplay.h
     Source/Util/SpscQueue.h
 )
 
@@ -196,6 +201,7 @@ if(CONDUIT_BUILD_TESTS)
         Tests/Core/GraphManagerTests.cpp
         Tests/Core/OscControllerTests.cpp
         Tests/Core/PatchingTests.cpp
+        Tests/Core/ScopeModuleTests.cpp
         Tests/Core/ThreadingStressTests.cpp
         Tests/UI/NodeCanvasTests.cpp
         Tests/Util/SpscQueueTests.cpp
@@ -214,9 +220,11 @@ if(CONDUIT_BUILD_TESTS)
         Source/Modules/ModuleFactory.cpp
         Source/Modules/AttenuatorModule.cpp
         Source/Modules/LfoModule.cpp
+        Source/Modules/ScopeModule.cpp
         Source/UI/NodeCanvas.cpp
         Source/UI/NodeComponent.cpp
         Source/UI/PortComponent.cpp
+        Source/UI/ScopeDisplay.cpp
     )
 
     target_include_directories(ConduitTests PRIVATE Source)

@@ -1,6 +1,7 @@
 #include "NodeComponent.h"
 
 #include "Modules/ConduitModule.h"
+#include "Modules/ScopeModule.h"
 
 namespace conduit
 {
@@ -63,7 +64,18 @@ NodeComponent::NodeComponent (juce::ValueTree nodeTreeToBind,
         addAndMakeVisible (parameterSlider);
     }
 
-    setSize (defaultWidth, defaultHeight);
+    // Scope-Nodes zeigen die Waveform direkt in der Kachel
+    if (nodeTree.getProperty (id::moduleId).toString() == ScopeModule::staticModuleId)
+    {
+        scopeDisplay = std::make_unique<ScopeDisplay> (graphManager, nodeUuid);
+        addAndMakeVisible (*scopeDisplay);
+        setSize (252, 168);
+    }
+    else
+    {
+        setSize (defaultWidth, defaultHeight);
+    }
+
     applyTreePosition();
 }
 
@@ -87,6 +99,10 @@ void NodeComponent::beginTeardown()
     setInterceptsMouseClicks (false, false);
     deleteButton.setEnabled (false);
     parameterSlider.setEnabled (false);
+
+    if (scopeDisplay != nullptr)
+        scopeDisplay->stopUpdates();  // keine Rendering-Updates mehr (5.3 Phase 1)
+
     repaint();
 
     teardownVBlank = std::make_unique<juce::VBlankAttachment> (this, [this] (double)
@@ -234,6 +250,10 @@ void NodeComponent::resized()
 
     // Eingerückt, damit der Slider nicht unter den Port-Hit-Zonen liegt
     parameterSlider.setBounds (bounds.removeFromBottom (touchTarget).reduced (28, 0));
+
+    if (scopeDisplay != nullptr)
+        scopeDisplay->setBounds (getLocalBounds().withTrimmedTop (touchTarget)
+                                     .reduced (24, 8));  // Platz für die Port-Hit-Zonen
 
     const auto placePorts = [this] (std::vector<std::unique_ptr<PortComponent>>& ports)
     {

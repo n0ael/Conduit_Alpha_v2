@@ -44,8 +44,9 @@ private:
     GraphManager& graphManager;
     LinkClock& linkClock;
 
-    juce::TextButton addButton    { juce::String::fromUTF8 ("\xef\xbc\x8b Attenuator") };
-    juce::TextButton addLfoButton { juce::String::fromUTF8 ("\xef\xbc\x8b LFO") };
+    juce::TextButton addButton      { juce::String::fromUTF8 ("\xef\xbc\x8b Attenuator") };
+    juce::TextButton addLfoButton   { juce::String::fromUTF8 ("\xef\xbc\x8b LFO") };
+    juce::TextButton addScopeButton { juce::String::fromUTF8 ("\xef\xbc\x8b Scope") };
     juce::TextButton undoButton   { "Undo" };
     juce::TextButton redoButton   { "Redo" };
     juce::Slider tempoSlider      { juce::Slider::LinearBar, juce::Slider::TextBoxLeft };

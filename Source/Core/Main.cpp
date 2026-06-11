@@ -67,7 +67,13 @@ private:
     // Latenz-Ziele: 48 kHz / 32 Samples, Fallback 44.1 kHz / 64 Samples (3.2).
     void initAudio()
     {
-        const auto initError = deviceManager.initialiseWithDefaultDevices (2, 2);
+        auto initError = deviceManager.initialiseWithDefaultDevices (2, 2);
+
+        // Schlägt der Input fehl (kein Mikrofon/Interface), scheitert das
+        // gesamte Device-Open — Output-only-Fallback: Conduit braucht primär
+        // Ausgänge (CV out), Eingänge (ES-6-Rückweg) sind optional (9.1).
+        if (deviceManager.getCurrentAudioDevice() == nullptr)
+            initError = deviceManager.initialiseWithDefaultDevices (0, 2);
 
         auto setup = deviceManager.getAudioDeviceSetup();
         setup.sampleRate = 48000.0;

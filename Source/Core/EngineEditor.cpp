@@ -3,6 +3,7 @@
 #include "EngineProcessor.h"
 #include "Modules/AttenuatorModule.h"
 #include "Modules/LfoModule.h"
+#include "Modules/ScopeModule.h"
 
 namespace conduit
 {
@@ -23,8 +24,9 @@ EngineEditor::EngineEditor (EngineProcessor& engineProcessor)
         jassertquiet (created.isValid());
     };
 
-    addButton.onClick    = [addModule] { addModule (AttenuatorModule::staticModuleId); };
-    addLfoButton.onClick = [addModule] { addModule (LfoModule::staticModuleId); };
+    addButton.onClick      = [addModule] { addModule (AttenuatorModule::staticModuleId); };
+    addLfoButton.onClick   = [addModule] { addModule (LfoModule::staticModuleId); };
+    addScopeButton.onClick = [addModule] { addModule (ScopeModule::staticModuleId); };
 
     undoButton.onClick = [this] { undoManager.undo(); };
     redoButton.onClick = [this] { undoManager.redo(); };
@@ -48,6 +50,7 @@ EngineEditor::EngineEditor (EngineProcessor& engineProcessor)
 
     addAndMakeVisible (addButton);
     addAndMakeVisible (addLfoButton);
+    addAndMakeVisible (addScopeButton);
     addAndMakeVisible (undoButton);
     addAndMakeVisible (redoButton);
     addAndMakeVisible (tempoSlider);
@@ -94,6 +97,8 @@ void EngineEditor::resized()
     addButton.setBounds (toolbar.removeFromLeft (150));
     toolbar.removeFromLeft (8);
     addLfoButton.setBounds (toolbar.removeFromLeft (100));
+    toolbar.removeFromLeft (8);
+    addScopeButton.setBounds (toolbar.removeFromLeft (110));
     toolbar.removeFromLeft (8);
     undoButton.setBounds (toolbar.removeFromLeft (80));
     toolbar.removeFromLeft (8);

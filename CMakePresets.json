@@ -1,0 +1,51 @@
+{
+    "version": 6,
+    "configurePresets": [
+        {
+            "name": "windows-vs",
+            "displayName": "Windows — Visual Studio 2026 (Default)",
+            "generator": "Visual Studio 18 2026",
+            "architecture": "x64",
+            "binaryDir": "${sourceDir}/build",
+            "condition": { "type": "equals", "lhs": "${hostSystemName}", "rhs": "Windows" }
+        },
+        {
+            "name": "asan",
+            "displayName": "AddressSanitizer — Graph-Swap/Delete-Pfade (CLAUDE.md 13.4)",
+            "inherits": "windows-vs",
+            "binaryDir": "${sourceDir}/build-asan",
+            "cacheVariables": { "CONDUIT_ENABLE_ASAN": "ON" }
+        },
+        {
+            "name": "tsan",
+            "displayName": "ThreadSanitizer — Clang, Linux/macOS/WSL (CLAUDE.md 13.4)",
+            "generator": "Ninja",
+            "binaryDir": "${sourceDir}/build-tsan",
+            "condition": { "type": "notEquals", "lhs": "${hostSystemName}", "rhs": "Windows" },
+            "cacheVariables": {
+                "CMAKE_BUILD_TYPE": "Debug",
+                "CMAKE_C_COMPILER": "clang",
+                "CMAKE_CXX_COMPILER": "clang++",
+                "CONDUIT_ENABLE_TSAN": "ON"
+            }
+        }
+    ],
+    "buildPresets": [
+        { "name": "windows-vs", "configurePreset": "windows-vs", "configuration": "Debug" },
+        { "name": "asan", "configurePreset": "asan", "configuration": "Debug" },
+        { "name": "tsan", "configurePreset": "tsan" }
+    ],
+    "testPresets": [
+        {
+            "name": "asan",
+            "configurePreset": "asan",
+            "configuration": "Debug",
+            "output": { "outputOnFailure": true }
+        },
+        {
+            "name": "tsan",
+            "configurePreset": "tsan",
+            "output": { "outputOnFailure": true }
+        }
+    ]
+}

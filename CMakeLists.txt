@@ -11,6 +11,39 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
 # ---------------------------------------------------------------------------
+# Sanitizer-Configs (CLAUDE.md 13.4) — via CMakePresets: 'tsan' / 'asan'.
+# Gelten global (inkl. JUCE-Module), Builds laufen mit Dummy-Audio-Device —
+# kein ASIO nötig. TSan ist unter Windows nicht verfügbar → WSL/Linux/macOS.
+# ---------------------------------------------------------------------------
+option(CONDUIT_ENABLE_TSAN "ThreadSanitizer aktivieren (nur Clang, nicht Windows)" OFF)
+option(CONDUIT_ENABLE_ASAN "AddressSanitizer aktivieren" OFF)
+
+if(CONDUIT_ENABLE_TSAN AND CONDUIT_ENABLE_ASAN)
+    message(FATAL_ERROR "TSan und ASan schließen sich gegenseitig aus")
+endif()
+
+if(CONDUIT_ENABLE_TSAN)
+    if(NOT CMAKE_CXX_COMPILER_ID MATCHES "Clang")
+        message(FATAL_ERROR "TSan erfordert Clang (CLAUDE.md 13.4) — Preset 'tsan' nutzen")
+    endif()
+    add_compile_options(-fsanitize=thread -fno-omit-frame-pointer -g)
+    add_link_options(-fsanitize=thread)
+endif()
+
+if(CONDUIT_ENABLE_ASAN)
+    if(MSVC)
+        # /RTC1 (CMake-Default für Debug) ist mit /fsanitize=address inkompatibel
+        string(REPLACE "/RTC1" "" CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG}")
+        string(REPLACE "/RTC1" "" CMAKE_C_FLAGS_DEBUG "${CMAKE_C_FLAGS_DEBUG}")
+        add_compile_options(/fsanitize=address)
+        add_link_options(/INCREMENTAL:NO)
+    else()
+        add_compile_options(-fsanitize=address -fno-omit-frame-pointer -g)
+        add_link_options(-fsanitize=address)
+    endif()
+endif()
+
+# ---------------------------------------------------------------------------
 # Abhängigkeiten via FetchContent — kein Submodule, kein System-Install
 # ---------------------------------------------------------------------------
 include(FetchContent)
@@ -122,6 +155,7 @@ if(CONDUIT_BUILD_TESTS)
     set(CONDUIT_TEST_CPP_SOURCES
         Tests/Core/GraphFaderTests.cpp
         Tests/Core/GraphManagerTests.cpp
+        Tests/Core/ThreadingStressTests.cpp
     )
 
     target_sources(ConduitTests PRIVATE

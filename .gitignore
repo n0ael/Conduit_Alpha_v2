@@ -1,5 +1,7 @@
 # Build
 build/
+build-asan/
+build-tsan/
 out/
 cmake-build-*/
 

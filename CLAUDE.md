@@ -460,6 +460,11 @@ cmake -B build -G Ninja -DCMAKE_BUILD_TYPE=Debug
 cmake --build build --config Debug
 
 # Test: Standalone-Target aus build/ ausführen
+
+# Sanitizer-Presets (13.4):
+cmake --preset asan && cmake --build --preset asan   # ASan (MSVC) — läuft lokal unter Windows
+cmake --preset tsan && cmake --build --preset tsan   # TSan (Clang) — NUR Linux/macOS/WSL,
+                                                     # unter Windows nicht verfügbar
 ```
 
 ### 13.4 Testing & Validierung

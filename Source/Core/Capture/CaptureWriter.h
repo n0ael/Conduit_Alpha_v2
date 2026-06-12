@@ -38,6 +38,9 @@ namespace conduit
     Sicherheitsmarge (Kapazität / overrunMarginDivisor), bricht der Kanal
     ab, BEVOR sich Leser und Live-Schreiber räumlich überlappen.
     CaptureChannel::read() validiert zusätzlich nach dem Kopieren.
+    Gegenstück im CaptureService: Snapshots noch LAUFENDER Aufnahmen werden
+    beim Einreihen auf Kapazität − 2×Marge gekürzt (voller Ring würde sonst
+    sofort am Margin-Check scheitern); held-Quellen behalten alles.
     Quellen mit ringCapacitySamples == 0 (eingefrorene Test-/FIFO-Quellen)
     sind vom Schutz ausgenommen.
 

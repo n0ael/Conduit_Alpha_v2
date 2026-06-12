@@ -111,6 +111,7 @@ set(CONDUIT_CPP_SOURCES
     Source/UI/ScopeDisplay.cpp
     Source/UI/SequencerControlPanel.cpp
     Source/UI/StepGridDisplay.cpp
+    Source/Util/RtAllocationGuard.cpp
 )
 
 target_sources(Conduit PRIVATE
@@ -153,6 +154,7 @@ target_sources(Conduit PRIVATE
     Source/UI/ScopeDisplay.h
     Source/UI/SequencerControlPanel.h
     Source/UI/StepGridDisplay.h
+    Source/Util/RtAllocationGuard.h
     Source/Util/ScaleQuantizer.h
     Source/Util/SpscQueue.h
 )
@@ -177,6 +179,9 @@ target_compile_definitions(Conduit PUBLIC
     JUCE_USE_CURL=0
     JUCE_APPLICATION_NAME_STRING="$<TARGET_PROPERTY:Conduit,JUCE_PRODUCT_NAME>"
     JUCE_APPLICATION_VERSION_STRING="$<TARGET_PROPERTY:Conduit,JUCE_VERSION>"
+    # RT-Audit (Util/RtAllocationGuard): Debug-Builds ersetzen operator
+    # new/delete und zählen Allokationen in Echtzeit-Abschnitten
+    $<$<CONFIG:Debug>:CONDUIT_RT_ALLOCATION_CHECKS=1>
 )
 
 # Plattform-conditional — NICHT global setzen (CLAUDE.md 13.2)
@@ -230,6 +235,7 @@ if(CONDUIT_BUILD_TESTS)
         Tests/Core/CaptureGateTests.cpp
         Tests/Core/CaptureMeterTests.cpp
         Tests/Core/CaptureSettingsTests.cpp
+        Tests/Core/CaptureStressTests.cpp
         Tests/Core/CaptureWriterTests.cpp
         Tests/Core/ClockTests.cpp
         Tests/Core/GraphFaderTests.cpp
@@ -277,6 +283,7 @@ if(CONDUIT_BUILD_TESTS)
         Source/UI/ScopeDisplay.cpp
         Source/UI/SequencerControlPanel.cpp
         Source/UI/StepGridDisplay.cpp
+        Source/Util/RtAllocationGuard.cpp
     )
 
     target_include_directories(ConduitTests PRIVATE Source)
@@ -291,6 +298,8 @@ if(CONDUIT_BUILD_TESTS)
         JUCE_MODAL_LOOPS_PERMITTED=0
         JUCE_WEB_BROWSER=0
         JUCE_USE_CURL=0
+        # RT-Audit aktiv: die Stress-Tests auditieren den Input-Tap-Pfad
+        $<$<CONFIG:Debug>:CONDUIT_RT_ALLOCATION_CHECKS=1>
     )
 
     target_link_libraries(ConduitTests

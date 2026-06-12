@@ -64,6 +64,9 @@ namespace conduit
     Als ICaptureBufferHost beantwortet der Service die Resize-Policy der
     Settings: Aktivitäts-Status (Gate offen oder held), Invalidierung
     (Gates zu, Puffer verwerfen, bewusst KEIN Auto-Export) und Reallokation.
+    Die einzige Ausnahme vom Verwerfen ohne Export ist prepare(): ein
+    Device-/Samplerate-Wechsel exportiert aktives Material vorab
+    (Sicherheitsnetz — der Wechsel kommt von außen, ohne Rückfrage-Dialog).
 
     Gate-Detektion (Baustein 4): pro Kanal entscheidet ein CaptureGate im
     Tap — Reihenfolge Meter → Gate → Kanal-Verarbeitung. Öffnet, sobald der
@@ -105,9 +108,12 @@ public:
     ~CaptureService() override;
 
     /** [Message Thread, aus EngineProcessor::prepareToPlay — Audio steht]
-        Resettet die SampleClock (Samplerate-Wechsel invalidiert alle
-        Positionen), konfiguriert das Metering und installiert einen
-        frischen Puffersatz anhand der Settings. */
+        Sicherheitsnetz Device-/Samplerate-Wechsel: aktives Material
+        (recording/held) wird VOR der Invalidierung automatisch exportiert —
+        die einzige Ausnahme von "Verwerfen ohne Auto-Export", Begründung
+        in der .cpp. Resettet dann die SampleClock (Samplerate-Wechsel
+        invalidiert alle Positionen), konfiguriert das Metering und
+        installiert einen frischen Puffersatz anhand der Settings. */
     void prepare (double sampleRate, int samplesPerBlock, int numInputChannels);
 
     /** [Audio Thread] ERSTE Operation in processBlock() — allocation-free,

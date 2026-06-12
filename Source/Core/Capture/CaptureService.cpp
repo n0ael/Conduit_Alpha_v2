@@ -38,6 +38,20 @@ CaptureService::~CaptureService()
 //==============================================================================
 void CaptureService::prepare (double sampleRate, int samplesPerBlock, int numInputChannels)
 {
+    // Sicherheitsnetz Device-/Samplerate-Wechsel: prepare() invalidiert
+    // ALLES (SampleClock-Reset + frischer Puffersatz) — aktives Material
+    // (recording/held) wäre unwiederbringlich verloren. Deshalb VOR der
+    // Invalidierung ein Auto-Export mit der ALTEN Samplerate (mit ihr wurde
+    // aufgenommen, deshalb muss er vor dem Überschreiben der prepared-Werte
+    // laufen); die Export-Pins halten den alten Satz am Leben, bis der
+    // Writer fertig ist. Bewusst die EINZIGE Ausnahme von "Verwerfen ohne
+    // Auto-Export" (Resize-Policy, CaptureSettings): den Resize bestätigt
+    // der User explizit per Dialog, der Device-Wechsel kommt von außen —
+    // ohne Gelegenheit zur Rückfrage. Ohne aktive Kanäle ist der Aufruf
+    // ein No-op (enqueueExport prüft die Kanal-Zustände).
+    if (preparedSampleRate > 0.0)
+        enqueueExport (-1);
+
     preparedSampleRate = sampleRate;
     preparedBlockSize  = samplesPerBlock;
     preparedChannels   = juce::jlimit (0, MAX_CAPTURE_CHANNELS, numInputChannels);
@@ -439,6 +453,25 @@ int CaptureService::enqueueExport (int onlyChannel)
         task.trackName     = "in" + juce::String (ch + 1);  // Strip-Namen mit dem Mixer
         task.startPosition = range.from;
         task.endPosition   = range.to;
+
+        // Überholschutz-Vorsorge: Läuft die Aufnahme noch (liveEnd wandert),
+        // startet der Leser bei VOLLEM Ring exakt Kapazität hinter dem
+        // Schreib-Cursor — der erste Margin-Check des Writers würde sofort
+        // abbrechen. Deshalb den Snapshot auf Kapazität − 2×Marge kürzen:
+        // 1×Marge bleibt als Writer-Abbruchgrenze, 1×Marge als echter
+        // Vorsprung für die weiterlaufende Aufnahme (bei 15 min ≈ 2 min
+        // Echtzeit, der Writer streamt in Sekunden). held-Kanäle behalten
+        // den vollen Bereich — ihr Ende steht, nichts überholt den Leser.
+        if (state == CaptureChannel::State::recording && set->ringCapacity > 0)
+        {
+            const auto capacity = static_cast<std::uint64_t> (set->ringCapacity);
+            const auto margin   = capacity
+                                / static_cast<std::uint64_t> (CaptureWriter::overrunMarginDivisor);
+            const auto maxLength = capacity > 2 * margin ? capacity - 2 * margin : capacity;
+
+            if (range.to - range.from > maxLength)
+                task.startPosition = range.to - maxLength;
+        }
         task.source.read = [channel] (std::uint64_t position, float* dest, int numSamples)
         { return channel->read (position, dest, numSamples); };
         task.source.getCurrentEnd = [channel] { return channel->getEndPosition(); };

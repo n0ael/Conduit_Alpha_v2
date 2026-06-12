@@ -1,6 +1,7 @@
 #include "EngineProcessor.h"
 
 #include "EngineEditor.h"
+#include "Util/RtAllocationGuard.h"
 #include "Util/ScaleQuantizer.h"
 
 namespace conduit
@@ -143,7 +144,13 @@ void EngineProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::Midi
     // Hardware-Input im Buffer — der Graph überschreibt ihn gleich mit
     // Modul-Outputs und der GraphFader blendet bei Swaps; beides gehört
     // nicht in Metering und (spätere) Aufzeichnung.
-    captureService.processInputTap (buffer, getTotalNumInputChannels());
+    {
+        // RT-Audit (Dev-Builds): der Tap muss allocation-free sein — jede
+        // new/delete in diesem Abschnitt zählt als Violation und hält unter
+        // dem Debugger sofort an (Util/RtAllocationGuard)
+        const rt::ScopedRealtimeSection rtAudit;
+        captureService.processInputTap (buffer, getTotalNumInputChannels());
+    }
 
     // Pfad 1 des OSC-Dual-State (6.1): Queue VOR dem Graph vollständig
     // dränieren — lock-free, allocation-free, < 1ms vom Empfang bis hier

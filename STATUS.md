@@ -16,11 +16,19 @@
 
 ## Aktueller Meilenstein (Juni 2026 — abgeschlossen)
 
-**Step-Sequencer, Urzwerg-inspiriert:**
+**Capture-System, Baustein 1 — Sample-Clock + Input-Metering (`Source/Core/Capture/`):**
+- `SampleClock`: globale, lock-free Sample-Position (atomic uint64, release/acquire); tickt am Ende des Input-Taps, Reset bei `prepareToPlay`
+- `InputMeter`: Peak/RMS (~50 ms) + Noise-Floor-Schätzer (Minimum-Tracking, ~30-s-Release) für bis zu 64 Kanäle, fixe Arrays, atomics Audio→UI
+- `CaptureService`: Input-Tap als ERSTE Operation in `processBlock` (roher Hardware-Input, vor Graph/GraphFader); Marker für Gate, PreRoll-Ring, Capture-Trigger
+- Tests: RMS gegen Sinus-Referenz, Noise-Floor-Konvergenz, SampleClock-Monotonie (`Tests/Core/CaptureMeterTests.cpp`)
+
+**Davor: Step-Sequencer, Urzwerg-inspiriert:**
 - Engine: 4×16 Steps, CV/Gate ×4, Scale-Quantize über globale Session-Skala (`scaleRoot`/`scaleType` im RootTree, reist pro Block im ClockState)
 - UI: 4×16-Grid-Kachel, Scale-Auswahl in der Toolbar, Kontrollleiste für alle Engine-Parameter
 
 ## Nächste Kandidaten (offen, Reihenfolge nicht festgelegt)
+
+- Capture-Baustein 2–4: Gate (Signal über Noise-Floor), PreRoll-Ringbuffer, Capture-Trigger/Export
 
 - Mixer-Modul (mehrere Inputs)
 - Envelope-Modul (`IClockSlave`)

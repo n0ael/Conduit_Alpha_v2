@@ -90,6 +90,8 @@ set(CONDUIT_CPP_SOURCES
     Source/Core/LinkClock.cpp
     Source/Core/NodeUiRegistry.cpp
     Source/Core/OscController.cpp
+    Source/Core/Capture/CaptureService.cpp
+    Source/Core/Capture/InputMeter.cpp
     Source/Modules/ConduitModule.cpp
     Source/Modules/ModuleFactory.cpp
     Source/Modules/AttenuatorModule.cpp
@@ -113,6 +115,9 @@ target_sources(Conduit PRIVATE
     Source/Core/LinkClock.h
     Source/Core/NodeUiRegistry.h
     Source/Core/OscController.h
+    Source/Core/Capture/CaptureService.h
+    Source/Core/Capture/InputMeter.h
+    Source/Core/Capture/SampleClock.h
     Source/Interfaces/IClockSlave.h
     Source/Interfaces/IClockSource.h
     Source/Interfaces/IStochastic.h
@@ -204,6 +209,7 @@ if(CONDUIT_BUILD_TESTS)
     juce_add_console_app(ConduitTests PRODUCT_NAME "ConduitTests")
 
     set(CONDUIT_TEST_CPP_SOURCES
+        Tests/Core/CaptureMeterTests.cpp
         Tests/Core/ClockTests.cpp
         Tests/Core/GraphFaderTests.cpp
         Tests/Core/NamedIdTests.cpp
@@ -229,6 +235,8 @@ if(CONDUIT_BUILD_TESTS)
         Source/Core/LinkClock.cpp
         Source/Core/NodeUiRegistry.cpp
         Source/Core/OscController.cpp
+        Source/Core/Capture/CaptureService.cpp
+        Source/Core/Capture/InputMeter.cpp
         Source/Modules/ConduitModule.cpp
         Source/Modules/ModuleFactory.cpp
         Source/Modules/AttenuatorModule.cpp

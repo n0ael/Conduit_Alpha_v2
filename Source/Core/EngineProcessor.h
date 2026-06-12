@@ -2,6 +2,7 @@
 
 #include <juce_audio_processors/juce_audio_processors.h>
 
+#include "Capture/CaptureService.h"
 #include "GraphFader.h"
 #include "GraphManager.h"
 #include "LinkClock.h"
@@ -82,6 +83,7 @@ public:
     [[nodiscard]] NodeUiRegistry& getNodeUiRegistry() noexcept;
     [[nodiscard]] OscController& getOscController() noexcept;
     [[nodiscard]] LinkClock& getLinkClock() noexcept;
+    [[nodiscard]] const CaptureService& getCaptureService() const noexcept;
 
 private:
     /** Legt die reservierten I/O-Tree-Nodes (audio_input/audio_output) an,
@@ -114,6 +116,10 @@ private:
     // IClockSlaves lesen im selben Callback
     LinkClock linkClock;
     ClockBus clockBus;
+
+    // Capture-Fundament (SampleClock + Input-Metering): processInputTap()
+    // läuft als ERSTE Operation in processBlock auf dem rohen Hardware-Input
+    CaptureService captureService;
 
     // Default-Module werden im Konstruktor registriert
     ModuleFactory moduleFactory;

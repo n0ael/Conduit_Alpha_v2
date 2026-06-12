@@ -116,6 +116,7 @@ void EngineProcessor::prepareToPlay (double sampleRate, int samplesPerBlock)
     graph.prepareToPlay (sampleRate, samplesPerBlock);
     graphFader.prepare (sampleRate);
     linkClock.prepare (sampleRate);
+    captureService.prepare (sampleRate, samplesPerBlock, getTotalNumInputChannels());
 }
 
 void EngineProcessor::releaseResources()
@@ -133,6 +134,12 @@ void EngineProcessor::releaseResources()
 void EngineProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::MidiBuffer& midiMessages)
 {
     juce::ScopedNoDenormals noDenormals;
+
+    // Capture-Input-Tap als ERSTE Operation: hier liegt noch der rohe
+    // Hardware-Input im Buffer — der Graph überschreibt ihn gleich mit
+    // Modul-Outputs und der GraphFader blendet bei Swaps; beides gehört
+    // nicht in Metering und (spätere) Aufzeichnung.
+    captureService.processInputTap (buffer, getTotalNumInputChannels());
 
     // Pfad 1 des OSC-Dual-State (6.1): Queue VOR dem Graph vollständig
     // dränieren — lock-free, allocation-free, < 1ms vom Empfang bis hier
@@ -248,5 +255,6 @@ GraphManager& EngineProcessor::getGraphManager() noexcept      { return graphMan
 NodeUiRegistry& EngineProcessor::getNodeUiRegistry() noexcept  { return nodeUiRegistry; }
 OscController& EngineProcessor::getOscController() noexcept    { return oscController; }
 LinkClock& EngineProcessor::getLinkClock() noexcept            { return linkClock; }
+const CaptureService& EngineProcessor::getCaptureService() const noexcept { return captureService; }
 
 } // namespace conduit

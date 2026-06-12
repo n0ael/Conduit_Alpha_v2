@@ -39,6 +39,10 @@ EngineProcessor::EngineProcessor()
     // moduleId bei der Materialisierung (7.2)
     graphManager.setLinkClock (&linkClock);
 
+    // Capture-Kontext — ICaptureTapClients (Tap-Module) bekommen Service +
+    // moduleId bei der Materialisierung (Spurname == moduleId)
+    graphManager.setCaptureService (&captureService);
+
     // Globale Session-Skala (6.2): Defaults sicherstellen, Properties spiegeln
     ensureSessionScaleDefaults();
     rootState.addListener (this);

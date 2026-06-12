@@ -68,6 +68,7 @@ private:
     juce::TextButton addScopeButton { juce::String::fromUTF8 ("\xef\xbc\x8b Scope") };
     juce::TextButton addSeqButton   { juce::String::fromUTF8 ("\xef\xbc\x8b Seq") };
     juce::TextButton addLinkSendButton { juce::String::fromUTF8 ("\xef\xbc\x8b LinkSend") };
+    juce::TextButton addTapButton { juce::String::fromUTF8 ("\xef\xbc\x8b Tap") };
     juce::TextButton undoButton   { "Undo" };
     juce::TextButton redoButton   { "Redo" };
     juce::TextButton saveButton   { "Save" };

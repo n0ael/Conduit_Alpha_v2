@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <vector>
 
+#include "Interfaces/ICaptureTapClient.h"
 #include "Interfaces/IClockSlave.h"
 #include "Interfaces/ILinkAudioClient.h"
 #include "Interfaces/IStochastic.h"
@@ -273,6 +274,11 @@ void GraphManager::setLinkClock (LinkClock* clock) noexcept
     linkClock = clock;
 }
 
+void GraphManager::setCaptureService (CaptureService* service) noexcept
+{
+    captureService = service;
+}
+
 //==============================================================================
 bool GraphManager::isTopologyContainer (const juce::ValueTree& tree) noexcept
 {
@@ -292,8 +298,14 @@ void GraphManager::valueTreePropertyChanged (juce::ValueTree& tree, const juce::
         // Phase-1-Hook (7.2): Link-Audio-Sinks SOFORT zurückziehen — wie die
         // OSC-Deregistrierung nicht erst beim Subtree-Remove, sonst sehen
         // die Peers Zombie-Kanäle bis Phase 2.
-        if (auto* linkAudioClient = dynamic_cast<ILinkAudioClient*> (getModuleFor (nodeUuid)))
+        auto* deletingModule = getModuleFor (nodeUuid);
+        if (auto* linkAudioClient = dynamic_cast<ILinkAudioClient*> (deletingModule))
             linkAudioClient->releaseSessionResources();
+
+        // Phase-1-Hook Capture-Taps: Schreibpfad sofort trennen — laufendes
+        // Material bleibt beim Service als "held" erhalten (5.3)
+        if (auto* tapClient = dynamic_cast<ICaptureTapClient*> (deletingModule))
+            tapClient->releaseCaptureResources();
 
         pendingDeletes[nodeUuid] = tree.getProperty (id::moduleId).toString();
         triggerAsyncUpdate();
@@ -305,9 +317,14 @@ void GraphManager::valueTreePropertyChanged (juce::ValueTree& tree, const juce::
     // bekommen die aktuelle moduleId ohnehin bei der Materialisierung.
     if (property == id::moduleId && tree.hasType (id::node))
     {
-        if (auto* linkAudioClient = dynamic_cast<ILinkAudioClient*> (
-                getModuleFor (tree.getProperty (id::nodeId).toString())))
-            linkAudioClient->moduleIdRenamed (tree.getProperty (id::moduleId).toString());
+        auto* renamedModule = getModuleFor (tree.getProperty (id::nodeId).toString());
+        const auto newName = tree.getProperty (id::moduleId).toString();
+
+        if (auto* linkAudioClient = dynamic_cast<ILinkAudioClient*> (renamedModule))
+            linkAudioClient->moduleIdRenamed (newName);
+
+        if (auto* tapClient = dynamic_cast<ICaptureTapClient*> (renamedModule))
+            tapClient->captureModuleIdRenamed (newName);  // Spurnamen folgen live
 
         return;
     }
@@ -510,6 +527,12 @@ std::unique_ptr<ConduitModule> GraphManager::materializeModule (juce::ValueTree 
     // prepareToPlay und braucht Clock + moduleId (Kanal-Name == moduleId)
     if (auto* linkAudioClient = dynamic_cast<ILinkAudioClient*> (module.get()))
         linkAudioClient->setLinkAudioContext (linkClock,
+            nodeTree.getProperty (id::moduleId).toString());
+
+    // Capture-Kontext VOR prepareForGraph: die Kanal-Registrierung passiert
+    // dort und braucht Service + moduleId (Spurname == moduleId)
+    if (auto* tapClient = dynamic_cast<ICaptureTapClient*> (module.get()))
+        tapClient->setCaptureTapContext (captureService,
             nodeTree.getProperty (id::moduleId).toString());
 
     // Läuft Audio noch nicht, werden die Latenz-Ziele aus CLAUDE.md 3.2

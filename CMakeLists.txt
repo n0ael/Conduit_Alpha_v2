@@ -99,6 +99,7 @@ set(CONDUIT_CPP_SOURCES
     Source/Modules/ConduitModule.cpp
     Source/Modules/ModuleFactory.cpp
     Source/Modules/AttenuatorModule.cpp
+    Source/Modules/CaptureTapModule.cpp
     Source/Modules/LfoModule.cpp
     Source/Modules/LinkAudioSendModule.cpp
     Source/Modules/ScopeModule.cpp
@@ -135,6 +136,7 @@ target_sources(Conduit PRIVATE
     Source/Core/Capture/InputMeter.h
     Source/Core/Capture/PreRollBuffer.h
     Source/Core/Capture/SampleClock.h
+    Source/Interfaces/ICaptureTapClient.h
     Source/Interfaces/IClockSlave.h
     Source/Interfaces/IClockSource.h
     Source/Interfaces/ILinkAudioClient.h
@@ -147,6 +149,7 @@ target_sources(Conduit PRIVATE
     Source/Modules/NetworkIOModule.h
     Source/Modules/UtilityModule.h
     Source/Modules/AttenuatorModule.h
+    Source/Modules/CaptureTapModule.h
     Source/Modules/LfoModule.h
     Source/Modules/LinkAudioSendModule.h
     Source/Modules/ScopeModule.h
@@ -243,6 +246,7 @@ if(CONDUIT_BUILD_TESTS)
         Tests/Core/CaptureMeterTests.cpp
         Tests/Core/CaptureSettingsTests.cpp
         Tests/Core/CaptureStressTests.cpp
+        Tests/Core/CaptureTapTests.cpp
         Tests/Core/CaptureWriterTests.cpp
         Tests/Core/ClockTests.cpp
         Tests/Core/GraphFaderTests.cpp
@@ -279,6 +283,7 @@ if(CONDUIT_BUILD_TESTS)
         Source/Modules/ConduitModule.cpp
         Source/Modules/ModuleFactory.cpp
         Source/Modules/AttenuatorModule.cpp
+        Source/Modules/CaptureTapModule.cpp
         Source/Modules/LfoModule.cpp
         Source/Modules/LinkAudioSendModule.cpp
         Source/Modules/ScopeModule.cpp

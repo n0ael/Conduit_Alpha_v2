@@ -103,6 +103,21 @@ public:
         return Event::none;
     }
 
+    /** [Audio Thread] Gate sofort schließen, ohne den Hold abzuwarten —
+        Deregistrierung eines virtuellen Kanals (Tap, Delete Phase 1):
+        Material bleibt gebunden, Status wird held wie beim Hold-Ablauf.
+        none, wenn das Gate bereits zu ist. */
+    Event close() noexcept
+    {
+        if (! gateOpen)
+            return Event::none;
+
+        gateOpen = false;
+        samplesBelowClose = 0;
+        status.store (Status::held, std::memory_order_release);
+        return Event::closed;
+    }
+
     /** [Audio Thread] Invalidate / Puffersatz-Swap: Gate zu, Status idle. */
     void reset() noexcept
     {

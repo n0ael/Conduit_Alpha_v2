@@ -114,16 +114,13 @@ private:
     LinkClock linkClock;
     ClockBus clockBus;
 
-    juce::AudioProcessorGraph graph;
-    juce::AudioProcessorGraph::Node::Ptr audioInputNode;
-    juce::AudioProcessorGraph::Node::Ptr audioOutputNode;
-
-    // Master-Fade für glitch-freie Graph-Swaps (CLAUDE.md 5.2)
-    GraphFader graphFader;
-
-    // Capture-Settings: App-Zustand via ApplicationProperties, KEIN Patch-
-    // Zustand — loadPreset() ersetzt den Root-Tree, Capture bleibt unberührt
-    // (gleiche Trennung wie das Link-Tempo, siehe EngineEditor-Doku)
+    // Capture VOR dem Graph deklariert — CaptureTapModule-Instanzen im Graph
+    // halten einen CaptureService-Pointer (ICaptureTapClient) und
+    // deregistrieren sich im Destruktor; der Service muss die
+    // Graph-Destruktion deshalb überleben (gleiche Lektion wie linkClock).
+    // Settings: App-Zustand via ApplicationProperties, KEIN Patch-Zustand —
+    // loadPreset() ersetzt den Root-Tree, Capture bleibt unberührt
+    // (gleiche Trennung wie das Link-Tempo, siehe EngineEditor-Doku).
     CaptureSettings captureSettings;
 
     // Capture-Fundament (SampleClock + Input-Metering + Ring-Allokation):
@@ -131,6 +128,13 @@ private:
     // rohen Hardware-Input. Nach den Settings deklariert (Konstruktor-Ref);
     // die Host-Verdrahtung für die Resize-Policy passiert im Konstruktor.
     CaptureService captureService { captureSettings };
+
+    juce::AudioProcessorGraph graph;
+    juce::AudioProcessorGraph::Node::Ptr audioInputNode;
+    juce::AudioProcessorGraph::Node::Ptr audioOutputNode;
+
+    // Master-Fade für glitch-freie Graph-Swaps (CLAUDE.md 5.2)
+    GraphFader graphFader;
 
     // Default-Module werden im Konstruktor registriert
     ModuleFactory moduleFactory;

@@ -26,6 +26,13 @@ namespace conduit
     Die Kanalanzahl folgt dem aktiven Device: prepare() feuert einen
     ChangeBroadcast, refresh() prüft zusätzlich pro Tick (defensiv).
 
+    Virtuelle Kanäle (Capture-Taps): unter den Hardware-Zeilen erscheint
+    ein Abschnitt "Taps" mit denselben Zeilen (LED/Pegel/Einzel-Capture) —
+    Zeilenname = registrierter Spurname (moduleId). Register/Unregister/
+    Rename feuern einen ChangeBroadcast des Service; ein Tap ohne Puffer
+    (Erweiterung wartet auf inaktive Kanäle) zeigt seine Zeile mit
+    idle-LED und stummem Pegel.
+
     Resize-Policy-UI (CaptureSettings-Doku): bufferMinutes/preRollSeconds
     laufen über die Settings-Setter; bei aktiver Aufnahme feuert
     onPendingResize → async Ok/Cancel-AlertWindow
@@ -66,7 +73,10 @@ private:
     class ChannelRow : public juce::Component
     {
     public:
-        ChannelRow (int channelIndexToUse, std::function<void (int)> onCaptureToUse);
+        /** captureIndex = Kanal-Index beim Service (Hardware oder
+            virtueller Slot); -1 = Tap ohne Puffer (nur Name + idle-LED). */
+        ChannelRow (int captureIndexToUse, juce::String nameToUse,
+                    std::function<void (int, juce::String)> onCaptureToUse);
 
         struct DisplayState
         {
@@ -83,20 +93,32 @@ private:
         void resized() override;
 
     private:
-        int channelIndex;
+        int captureIndex;
+        juce::String name;
         DisplayState display;
         juce::TextButton captureButton { "CAP" };
 
         JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (ChannelRow)
     };
 
+    /** Soll-Zustand der Zeilenliste — Hardware-Kanäle plus genutzte
+        Tap-Slots; Vergleichsbasis für den Rebuild (Repaint-Disziplin). */
+    struct RowSpec
+    {
+        int captureIndex = -1;
+        juce::String name;
+        bool isTap = false;
+        bool operator== (const RowSpec&) const = default;
+    };
+
     void changeListenerCallback (juce::ChangeBroadcaster* source) override;
     void syncControls();
     void chooseExportDirectory();
     void applyRingSlider (juce::Slider& slider, bool isBufferMinutes);
+    [[nodiscard]] std::vector<RowSpec> makeRowSpecs() const;
     void rebuildChannelRows();
     void layoutChannelRows();
-    void captureSingleChannel (int channelIndex);
+    void captureSingleChannel (int captureIndex, const juce::String& rowName);
 
     CaptureSettings& settings;
     CaptureService& service;
@@ -118,6 +140,8 @@ private:
     juce::Viewport channelViewport;
     juce::Component channelContainer;
     std::vector<std::unique_ptr<ChannelRow>> channelRows;
+    std::vector<RowSpec> currentRowSpecs;     // parallel zu channelRows
+    juce::Label tapsHeaderLabel { {}, "Taps" };
     juce::Rectangle<int> channelArea;
 
     // Muss den async Callback überleben (JUCE_MODAL_LOOPS_PERMITTED=0)

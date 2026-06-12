@@ -57,7 +57,13 @@ void CaptureService::prepare (double sampleRate, int samplesPerBlock, int numInp
     preparedChannels   = juce::jlimit (0, MAX_CAPTURE_CHANNELS, numInputChannels);
 
     sampleClock.reset();  // Samplerate-Wechsel invalidiert alle Positionen
-    inputMeter.prepare (sampleRate, numInputChannels);
+
+    // Meter großzügig über die maximal möglichen Tap-Indizes preparen:
+    // eine spätere Slot-Erweiterung (reallocateBuffers) re-prepared das
+    // Metering NICHT — ungeschriebene Kanäle liefern schlicht 0
+    inputMeter.prepare (sampleRate,
+                        preparedChannels + clampedVirtualSlots (preparedChannels,
+                                                                MAX_VIRTUAL_CHANNELS));
 
     audioSampleRate = sampleRate;  // Audio steht — der Tap liest den Wert später
 
@@ -163,26 +169,34 @@ CaptureService::BufferSet* CaptureService::buildSet()
     auto* fresh = newSet.get();
 
     const auto channels = preparedChannels;
+
+    // Virtuelle Slots nur für tatsächlich registrierte Taps bauen — ohne
+    // Taps bleibt der Satz (und damit das RAM-Budget pro Kanal) identisch
+    // zum reinen Hardware-Betrieb
+    const auto virtualSlotCount = clampedVirtualSlots (channels, registeredVirtualSlotCount());
+    const auto totalEntries = channels + virtualSlotCount;
+
     const auto ringCapacity = computeRingCapacitySamples (settings.getBufferMinutes(),
                                                           preparedSampleRate,
-                                                          juce::jmax (1, channels),
+                                                          juce::jmax (1, totalEntries),
                                                           settings.getRamLimitGb());
     const auto preRollCapacity = computePreRollCapacitySamples (settings.getPreRollSeconds(),
                                                                 preparedSampleRate);
 
-    if (channels > 0 && ringCapacity > 0)
+    if (totalEntries > 0 && ringCapacity > 0)
     {
         fresh->numChannels     = channels;
+        fresh->numVirtualSlots = virtualSlotCount;
         fresh->ringCapacity    = ringCapacity;
         fresh->preRollCapacity = preRollCapacity;
 
         const auto segmentBytes = static_cast<std::int64_t> (ringCapacity)
                                 * static_cast<std::int64_t> (sizeof (float));
-        const auto preRollBytes = static_cast<std::int64_t> (channels)
+        const auto preRollBytes = static_cast<std::int64_t> (totalEntries)
                                 * static_cast<std::int64_t> (preRollCapacity)
                                 * static_cast<std::int64_t> (sizeof (float));
         const auto maxSegments = computeMaxSegments (settings.getRamLimitGb(), segmentBytes,
-                                                     preRollBytes, channels);
+                                                     preRollBytes, totalEntries);
 
         // Ein Segment im Vorhalteziel: das erste Gate-Open wird im nächsten
         // Guard-Tick ohne frische Allokation bedient (HeapBlock allokiert
@@ -197,9 +211,9 @@ CaptureService::BufferSet* CaptureService::buildSet()
         // Kosten — vier zusätzliche memcpy-Blöcke gegen das DSP-Budget.
         const auto takeoverBudget = 4 * juce::jmax (1, preparedBlockSize);
 
-        fresh->preRolls.reserve (static_cast<size_t> (channels));
-        fresh->channels.reserve (static_cast<size_t> (channels));
-        for (int ch = 0; ch < channels; ++ch)
+        fresh->preRolls.reserve (static_cast<size_t> (totalEntries));
+        fresh->channels.reserve (static_cast<size_t> (totalEntries));
+        for (int ch = 0; ch < totalEntries; ++ch)
         {
             auto preRoll = std::make_unique<PreRollBuffer>();
             preRoll->prepare (preRollCapacity);
@@ -286,7 +300,7 @@ void CaptureService::processInputTap (const juce::AudioBuffer<float>& buffer,
         // wieder — neues Material landet dann in frischen Puffern
         if (invalidateRequested.exchange (false, std::memory_order_acq_rel))
         {
-            for (int ch = 0; ch < set->numChannels; ++ch)
+            for (int ch = 0; ch < set->totalEntries(); ++ch)
             {
                 set->channels[static_cast<size_t> (ch)]->releaseStorage();
                 set->preRolls[static_cast<size_t> (ch)]->clear();
@@ -334,6 +348,36 @@ void CaptureService::processInputTap (const juce::AudioBuffer<float>& buffer,
             anyActive = anyActive || channelState != CaptureChannel::State::idle;
         }
 
+        // -- Virtuelle Slots (Capture-Taps): Pflege der Zustandsmaschinen ------
+        // Aktive Slots treibt das Modul selbst über writeVirtualChannel()
+        // (läuft im Graph SPÄTER in diesem Callback); hier laufen nur
+        // Deregistrierungs-Quittung und verwaiste Slots — sonst stürben
+        // Release-Quittungen und Übernahme-Restkopien mit dem Modul.
+        for (int s = 0; s < set->numVirtualSlots; ++s)
+        {
+            const auto index = set->numChannels + s;
+            const auto idx = static_cast<size_t> (index);
+            auto& slot = virtualSlots[static_cast<size_t> (s)];
+
+            // Phase-1-Quittung (5.3): Kanal sofort schließen — Material →
+            // held. Detektions-Gate UND Kanal unabhängig voneinander, denn
+            // das Channel-Gate kann auch über die Test-Seam offen sein.
+            if (slot.detachRequested.exchange (false, std::memory_order_acq_rel))
+            {
+                gates[idx].close();  // falls die Detektion offen war
+                closeGate (index);   // recording → held; awaiting → idle
+            }
+
+            if (! slot.writerActive.load (std::memory_order_acquire))
+                set->channels[idx]->process (nullptr, numSamples, blockStart);
+
+            const auto channelState = set->channels[idx]->getState();
+            if (channelState == CaptureChannel::State::idle)
+                gates[idx].notifyContentDiscarded();
+
+            anyActive = anyActive || channelState != CaptureChannel::State::idle;
+        }
+
         anyChannelActive.store (anyActive, std::memory_order_relaxed);
     }
 
@@ -350,7 +394,7 @@ void CaptureService::processInputTap (const juce::AudioBuffer<float>& buffer,
 //==============================================================================
 void CaptureService::openGate (int channel) noexcept
 {
-    if (audioSet == nullptr || channel < 0 || channel >= audioSet->numChannels)
+    if (audioSet == nullptr || channel < 0 || channel >= audioSet->totalEntries())
         return;
 
     // Pre-Roll-Fenster ≤ halbe Ring-Kapazität: garantiert, dass der Live-
@@ -363,10 +407,173 @@ void CaptureService::openGate (int channel) noexcept
 
 void CaptureService::closeGate (int channel) noexcept
 {
-    if (audioSet == nullptr || channel < 0 || channel >= audioSet->numChannels)
+    if (audioSet == nullptr || channel < 0 || channel >= audioSet->totalEntries())
         return;
 
     audioSet->channels[static_cast<size_t> (channel)]->closeGate (sampleClock.now());
+}
+
+//==============================================================================
+int CaptureService::clampedVirtualSlots (int hardwareChannels, int wanted) noexcept
+{
+    return juce::jlimit (0, juce::jmax (0, MAX_CAPTURE_CHANNELS - hardwareChannels),
+                         juce::jmin (wanted, MAX_VIRTUAL_CHANNELS));
+}
+
+int CaptureService::registeredVirtualSlotCount() const noexcept
+{
+    for (int s = MAX_VIRTUAL_CHANNELS; --s >= 0;)
+        if (virtualSlots[static_cast<size_t> (s)].occupied)
+            return s + 1;
+
+    return 0;
+}
+
+bool CaptureService::needsVirtualExpansion() const noexcept
+{
+    if (preparedSampleRate <= 0.0 || currentSet == nullptr)
+        return false;
+
+    return clampedVirtualSlots (preparedChannels, registeredVirtualSlotCount())
+           > currentSet->numVirtualSlots;
+}
+
+CaptureService::VirtualChannelHandle CaptureService::registerVirtualChannel (const juce::String& name)
+{
+    for (int s = 0; s < MAX_VIRTUAL_CHANNELS; ++s)
+    {
+        auto& slot = virtualSlots[static_cast<size_t> (s)];
+        if (slot.occupied)
+            continue;
+
+        // Slot mit noch gebundenem Material (held nach Deregistrierung)
+        // nicht wiedervergeben — der Puffer gehört bis Export/Reclaim dem
+        // alten Tap
+        if (currentSet != nullptr && s < currentSet->numVirtualSlots)
+        {
+            const auto idx = static_cast<size_t> (currentSet->numChannels + s);
+            if (currentSet->channels[idx]->getState() != CaptureChannel::State::idle)
+                continue;
+        }
+
+        slot.occupied = true;
+        slot.name = name;
+        slot.detachRequested.store (false, std::memory_order_relaxed);
+        slot.writerActive.store (true, std::memory_order_release);
+
+        // Satz-Erweiterung: verlustfrei nur bei inaktiven Kanälen — sonst
+        // holt der Guard-Tick sie nach, sobald nichts mehr aufnimmt/hält
+        if (needsVirtualExpansion() && ! isAnyChannelActive())
+            reallocateBuffers();
+
+        sendChangeMessage();  // CapturePanel baut die Tap-Zeilen neu
+        return { s };
+    }
+
+    return {};
+}
+
+void CaptureService::unregisterVirtualChannel (VirtualChannelHandle& handle)
+{
+    if (! juce::isPositiveAndBelow (handle.slot, MAX_VIRTUAL_CHANNELS))
+    {
+        handle = {};
+        return;
+    }
+
+    auto& slot = virtualSlots[static_cast<size_t> (handle.slot)];
+    handle = {};
+
+    if (! slot.occupied)
+        return;
+
+    // Phase-1-Pattern (5.3): Schreibpfad SOFORT trennen; die Gate-Schließung
+    // (Material → held) quittiert der Audio Thread im nächsten Block.
+    // slot.name bleibt stehen — der Export gehaltenen Materials braucht ihn.
+    slot.writerActive.store (false, std::memory_order_release);
+    slot.detachRequested.store (true, std::memory_order_release);
+    slot.occupied = false;
+
+    sendChangeMessage();
+}
+
+void CaptureService::setVirtualChannelName (VirtualChannelHandle handle, const juce::String& name)
+{
+    if (! juce::isPositiveAndBelow (handle.slot, MAX_VIRTUAL_CHANNELS))
+        return;
+
+    auto& slot = virtualSlots[static_cast<size_t> (handle.slot)];
+    if (! slot.occupied || slot.name == name)
+        return;
+
+    slot.name = name;
+    sendChangeMessage();
+}
+
+void CaptureService::writeVirtualChannel (VirtualChannelHandle handle,
+                                          const float* data, int numSamples) noexcept
+{
+    auto* set = audioSet;
+
+    if (set == nullptr || data == nullptr || numSamples <= 0
+        || ! juce::isPositiveAndBelow (handle.slot, set->numVirtualSlots))
+        return;
+
+    auto& slot = virtualSlots[static_cast<size_t> (handle.slot)];
+    if (! slot.writerActive.load (std::memory_order_acquire))
+        return;  // Phase 1 lief — höchstens dieser eine Block geht noch verloren
+
+    // Die SampleClock hat am Tap-Ende bereits weitergetickt — der Graph-Block
+    // gehört zum selben Callback, sein Start liegt also numSamples zurück.
+    const auto clockNow = sampleClock.now();
+    if (clockNow < static_cast<std::uint64_t> (numSamples))
+        return;  // defensiv: noch kein Input-Tap gelaufen
+
+    const auto blockStart = clockNow - static_cast<std::uint64_t> (numSamples);
+    const auto index = set->numChannels + handle.slot;
+    const auto idx = static_cast<size_t> (index);
+
+    // Identischer Ablauf wie der Hardware-Pfad im Tap: Meter → Gate →
+    // Kanal-Verarbeitung → Pre-Roll-Write (Reihenfolge entscheidend)
+    inputMeter.processChannel (index, data, numSamples);
+
+    const auto holdSamples = computeHoldSamples (settings.getHoldMinutes(), audioSampleRate);
+    switch (gates[idx].process (inputMeter.getRms (index), numSamples, holdSamples))
+    {
+        case CaptureGate::Event::opened: openGate (index);  break;
+        case CaptureGate::Event::closed: closeGate (index); break;
+        case CaptureGate::Event::none:                      break;
+    }
+
+    set->channels[idx]->process (data, numSamples, blockStart);
+    set->preRolls[idx]->write (data, numSamples, blockStart);
+
+    if (set->channels[idx]->getState() == CaptureChannel::State::idle)
+        gates[idx].notifyContentDiscarded();
+}
+
+CaptureService::VirtualChannelUiInfo CaptureService::getVirtualChannelUiInfo (int slot) const
+{
+    VirtualChannelUiInfo info;
+
+    if (! juce::isPositiveAndBelow (slot, MAX_VIRTUAL_CHANNELS))
+        return info;
+
+    const auto& virtualSlot = virtualSlots[static_cast<size_t> (slot)];
+    info.name  = virtualSlot.name;
+    info.inUse = virtualSlot.occupied;
+
+    if (currentSet != nullptr && slot < currentSet->numVirtualSlots)
+    {
+        info.captureIndex = currentSet->numChannels + slot;
+
+        // Deregistrierter Slot mit gehaltenem Material bleibt sichtbar
+        if (! info.inUse)
+            info.inUse = currentSet->channels[static_cast<size_t> (info.captureIndex)]
+                             ->getState() != CaptureChannel::State::idle;
+    }
+
+    return info;
 }
 
 //==============================================================================
@@ -425,7 +632,7 @@ int CaptureService::enqueueExport (int onlyChannel)
     CaptureWriter::Job job;
     std::vector<CaptureChannel*> pinnedChannels;
 
-    for (int ch = 0; ch < set->numChannels; ++ch)
+    for (int ch = 0; ch < set->totalEntries(); ++ch)
     {
         if (onlyChannel >= 0 && ch != onlyChannel)
             continue;
@@ -450,9 +657,20 @@ int CaptureService::enqueueExport (int onlyChannel)
 
         CaptureWriter::Task task;
         task.channelIndex  = ch;
-        task.trackName     = "in" + juce::String (ch + 1);  // Strip-Namen mit dem Mixer
         task.startPosition = range.from;
         task.endPosition   = range.to;
+
+        // Hardware: "inN" (Strip-Namen mit dem Mixer); virtuelle Kanäle
+        // tragen den registrierten Namen (== moduleId des Tap-Moduls)
+        if (ch < set->numChannels)
+            task.trackName = "in" + juce::String (ch + 1);
+        else
+        {
+            const auto& slotName = virtualSlots[static_cast<size_t> (ch - set->numChannels)].name;
+            task.trackName = slotName.isNotEmpty()
+                           ? slotName
+                           : "tap" + juce::String (ch - set->numChannels + 1);
+        }
 
         // Überholschutz-Vorsorge: Läuft die Aufnahme noch (liveEnd wandert),
         // startet der Leser bei VOLLEM Ring exakt Kapazität hinter dem
@@ -512,7 +730,7 @@ void CaptureService::releaseExportedHeldChannels (const std::vector<int>& channe
 
     for (const auto ch : channelIndices)
     {
-        if (ch < 0 || ch >= currentSet->numChannels)
+        if (ch < 0 || ch >= currentSet->totalEntries())
             continue;
 
         auto& channel = *currentSet->channels[static_cast<size_t> (ch)];
@@ -529,7 +747,7 @@ CaptureService::UiStatus CaptureService::getUiStatus() const
     if (currentSet == nullptr)
         return status;
 
-    for (int ch = 0; ch < currentSet->numChannels; ++ch)
+    for (int ch = 0; ch < currentSet->totalEntries(); ++ch)
     {
         const auto& channel = *currentSet->channels[static_cast<size_t> (ch)];
         const auto state = channel.getState();
@@ -582,7 +800,12 @@ void CaptureService::runAutoCalibration()
     const auto manualDb = settings.getThresholdDb();
     const auto autoCal  = settings.getAutoCalibrate();
 
-    for (int ch = 0; ch < preparedChannels; ++ch)
+    // Hardware + virtuelle Slots — ungeschriebene Taps haben Floor 0 und
+    // fallen damit auf den manuellen Threshold zurück
+    const auto totalChannels = preparedChannels
+                             + (currentSet != nullptr ? currentSet->numVirtualSlots : 0);
+
+    for (int ch = 0; ch < totalChannels; ++ch)
         gates[static_cast<size_t> (ch)].setEffectiveThresholdDb (
             computeEffectiveThresholdDb (manualDb, inputMeter.getNoiseFloor (ch), autoCal));
 }
@@ -594,6 +817,11 @@ void CaptureService::runRamGuard()
 
     if (currentSet == nullptr)
         return;
+
+    // Aufgeschobene Tap-Slot-Erweiterung nachholen, sobald kein Kanal mehr
+    // aktiv ist — laufende Aufnahmen werden NIE für einen Tap verworfen
+    if (needsVirtualExpansion() && ! isAnyChannelActive())
+        reallocateBuffers();
 
     auto& pool = currentSet->pool;
     pool.service();
@@ -632,7 +860,7 @@ std::int64_t CaptureService::getCommittedBytes() const noexcept
     if (currentSet == nullptr)
         return 0;
 
-    const auto preRollBytes = static_cast<std::int64_t> (currentSet->numChannels)
+    const auto preRollBytes = static_cast<std::int64_t> (currentSet->totalEntries())
                             * static_cast<std::int64_t> (currentSet->preRollCapacity)
                             * static_cast<std::int64_t> (sizeof (float));
     return currentSet->pool.getAllocatedBytes() + preRollBytes;
@@ -651,7 +879,7 @@ int CaptureService::getRingNumChannels() const noexcept
 
 const CaptureChannel* CaptureService::getChannel (int channel) const noexcept
 {
-    if (currentSet == nullptr || channel < 0 || channel >= currentSet->numChannels)
+    if (currentSet == nullptr || channel < 0 || channel >= currentSet->totalEntries())
         return nullptr;
 
     return currentSet->channels[static_cast<size_t> (channel)].get();

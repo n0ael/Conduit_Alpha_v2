@@ -12,6 +12,7 @@
 namespace conduit
 {
 
+class CaptureService;
 class LinkClock;
 class ModuleFactory;
 class NodeUiRegistry;
@@ -138,6 +139,14 @@ public:
         ohne Session-Kanal (Tests). Message Thread. */
     void setLinkClock (LinkClock* clock) noexcept;
 
+    /** Capture-Kontext für ICaptureTapClient-Module — wird bei der
+        Materialisierung VOR prepareForGraph injiziert (die Kanal-
+        Registrierung passiert dort, Spurname == moduleId). Der Service muss
+        jedes Modul überdauern (Owner: EngineProcessor, VOR dem Graph
+        deklariert). nullptr → Module bleiben reines Pass-Through (Tests).
+        Message Thread. */
+    void setCaptureService (CaptureService* service) noexcept;
+
     //==========================================================================
     /** Live-Modul-Instanz zu einer Tree-nodeId — nullptr solange das Modul
         noch nicht materialisiert ist (5.2 Schritt 1–3) oder nodeError gesetzt
@@ -250,6 +259,9 @@ private:
 
     // Link-Audio-Kontext für ILinkAudioClients (Owner: EngineProcessor)
     LinkClock* linkClock = nullptr;
+
+    // Capture-Kontext für ICaptureTapClients (Owner: EngineProcessor)
+    CaptureService* captureService = nullptr;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (GraphManager)
 };

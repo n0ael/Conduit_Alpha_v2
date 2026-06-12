@@ -2,6 +2,7 @@
 
 #include "EngineProcessor.h"
 #include "Modules/AttenuatorModule.h"
+#include "Modules/CaptureTapModule.h"
 #include "Modules/LfoModule.h"
 #include "Modules/LinkAudioSendModule.h"
 #include "Modules/ScopeModule.h"
@@ -34,6 +35,7 @@ EngineEditor::EngineEditor (EngineProcessor& engineProcessor)
     addScopeButton.onClick = [addModule] { addModule (ScopeModule::staticModuleId); };
     addSeqButton.onClick   = [addModule] { addModule (StepSequencerModule::staticModuleId); };
     addLinkSendButton.onClick = [addModule] { addModule (LinkAudioSendModule::staticModuleId); };
+    addTapButton.onClick      = [addModule] { addModule (CaptureTapModule::staticModuleId); };
 
     undoButton.onClick = [this] { undoManager.undo(); };
     redoButton.onClick = [this] { undoManager.redo(); };
@@ -121,6 +123,7 @@ EngineEditor::EngineEditor (EngineProcessor& engineProcessor)
     addAndMakeVisible (addScopeButton);
     addAndMakeVisible (addSeqButton);
     addAndMakeVisible (addLinkSendButton);
+    addAndMakeVisible (addTapButton);
     addAndMakeVisible (undoButton);
     addAndMakeVisible (redoButton);
     addAndMakeVisible (saveButton);
@@ -283,6 +286,7 @@ void EngineEditor::resized()
     place (addScopeButton,  90);
     place (addSeqButton,    80);
     place (addLinkSendButton, 110);
+    place (addTapButton,    70);
     place (undoButton,      65);
     place (redoButton,      65, 16);
     place (saveButton,      65);

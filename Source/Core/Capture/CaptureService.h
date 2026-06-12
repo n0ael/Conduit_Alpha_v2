@@ -97,6 +97,32 @@ namespace conduit
     Kanal-Leser, dann den Satz-Pin. Der Writer-Report wird per AsyncUpdater
     auf den Message Thread gehoben (onExportFinished); der Writer-Thread
     wird im Dtor VOR den Puffersätzen gestoppt.
+
+    Virtuelle Kanäle (Capture-Taps aus dem Graph): registerVirtualChannel()
+    [MT] vergibt einen von MAX_VIRTUAL_CHANNELS Registry-Slots; im Puffersatz
+    liegen die zugehörigen Einträge HINTER den Hardware-Kanälen (Index =
+    numChannels + Slot) und nutzen exakt dieselben Pfade (PreRoll, Gate,
+    Ring, BufferPool, Auto-Kalibrierung). Hardware + virtuell teilen
+    MAX_CAPTURE_CHANNELS, das RAM-Budget der Ring-Dimensionierung und den
+    Pool. Sätze werden nur für tatsächlich registrierte Slots dimensioniert —
+    ohne Taps ändert sich nichts. Braucht ein neuer Slot Puffer, wird bei
+    inaktiven Kanälen still reallokiert (verlustfrei); bei aktiven Kanälen
+    wartet die Erweiterung auf den Guard-Timer (needsVirtualExpansion) —
+    laufende Aufnahmen werden NIE für einen Tap verworfen, der Tap nimmt
+    bis dahin nichts auf.
+
+    writeVirtualChannel() [Audio Thread, aus Modul-processBlock NACH dem
+    Tap desselben Callbacks] stempelt mit derselben SampleClock wie die
+    Hardware-Kanäle (blockStart = now − numSamples, die Clock tickt am
+    Tap-Ende) — Capture All exportiert Hardware- und Tap-Spuren deshalb
+    sample-aligned in einem Job. Tap-Spurnamen im Export = registrierter
+    Kanal-Name (moduleId) statt "inN".
+
+    Deregistrierung folgt Phase 1 des zweiphasigen Deletes (5.3): der
+    Schreibpfad wird sofort atomar getrennt, der Audio Thread schließt das
+    Gate im nächsten Block — laufendes Material bleibt als "held" erhalten
+    (Export/Reclaim wie Hardware), bekommt aber keine neuen Daten. Der Slot
+    wird erst wiedervergeben, wenn sein Kanal wieder idle ist.
 */
 class CaptureService : public ICaptureBufferHost,
                        public juce::ChangeBroadcaster,
@@ -104,6 +130,10 @@ class CaptureService : public ICaptureBufferHost,
                        private juce::AsyncUpdater
 {
 public:
+    /** Registry-Obergrenze virtueller Kanäle (Capture-Taps). Teilt sich
+        MAX_CAPTURE_CHANNELS mit der Hardware — buildSet() clampt. */
+    static constexpr int MAX_VIRTUAL_CHANNELS = 8;
+
     explicit CaptureService (CaptureSettings& settingsToUse);
     ~CaptureService() override;
 
@@ -126,6 +156,51 @@ public:
     // public als Test-Seam (manuelles Öffnen unterhalb der Schwelle)
     void openGate (int channel) noexcept;
     void closeGate (int channel) noexcept;
+
+    //==========================================================================
+    // Virtuelle Kanäle (Capture-Taps aus dem Graph) — Klassendoku oben
+
+    /** Opaker Slot-Verweis — ungültig (slot == -1), wenn die Registry voll
+        ist. Nach unregisterVirtualChannel() ist der Handle verbraucht. */
+    struct VirtualChannelHandle
+    {
+        int slot = -1;
+        [[nodiscard]] bool isValid() const noexcept { return slot >= 0; }
+    };
+
+    /** [Message Thread] Slot vergeben (Spurname für Export/UI = name).
+        Ungültiger Handle, wenn alle Slots belegt sind oder noch gehaltenes
+        Material tragen. Erweitert den Puffersatz verlustfrei, sobald kein
+        Kanal aktiv ist (sonst übernimmt der Guard-Timer). */
+    [[nodiscard]] VirtualChannelHandle registerVirtualChannel (const juce::String& name);
+
+    /** [Message Thread, Delete Phase 1 (5.3)] Schreibpfad sofort trennen;
+        laufendes Material geht in "held" (Gate-Schließung quittiert der
+        Audio Thread im nächsten Block) und bleibt bis Export/Reclaim
+        erhalten. Invalidiert den Handle. */
+    void unregisterVirtualChannel (VirtualChannelHandle& handle);
+
+    /** [Message Thread] Rename der moduleId → Spurname folgt live. */
+    void setVirtualChannelName (VirtualChannelHandle handle, const juce::String& name);
+
+    /** [Audio Thread, 3.1 — aus Modul-processBlock, NACH dem Input-Tap
+        desselben Callbacks] Einen Block in den virtuellen Kanal schreiben:
+        Meter → Gate → Kanal-Verarbeitung → Pre-Roll, identisch zum
+        Hardware-Pfad. No-op bei ungültigem/getrenntem Handle oder solange
+        der Puffersatz den Slot (noch) nicht trägt. Höchstens ein Aufruf
+        pro Handle und Block. */
+    void writeVirtualChannel (VirtualChannelHandle handle,
+                              const float* data, int numSamples) noexcept;
+
+    /** UI-Sicht eines Registry-Slots [Message Thread]. */
+    struct VirtualChannelUiInfo
+    {
+        bool inUse = false;       // Modul registriert ODER Material noch gebunden
+        juce::String name;        // registrierter Spurname (bleibt für held-Material)
+        int captureIndex = -1;    // Index für getChannel()/exportChannel();
+                                  // -1 solange der Puffersatz den Slot nicht trägt
+    };
+    [[nodiscard]] VirtualChannelUiInfo getVirtualChannelUiInfo (int slot) const;
 
     //==========================================================================
     /** [Message Thread] AutoCalibrator-Tick (1 Hz via Guard-Timer) — public,
@@ -214,13 +289,22 @@ public:
                                                             float noiseFloorLinear,
                                                             bool autoCalibrate) noexcept;
 
+    /** Wie viele virtuelle Slots ein Satz bei hardwareChannels tragen kann —
+        geclampt auf MAX_VIRTUAL_CHANNELS und die geteilte Obergrenze
+        MAX_CAPTURE_CHANNELS. */
+    [[nodiscard]] static int clampedVirtualSlots (int hardwareChannels, int wanted) noexcept;
+
     //==========================================================================
     // Status des aktuellen (neuesten) Puffersatzes [Message Thread]
     [[nodiscard]] int getRingCapacitySamples() const noexcept;
+
+    /** NUR Hardware-Kanäle — virtuelle Slots liegen dahinter
+        (getVirtualChannelUiInfo liefert deren captureIndex). */
     [[nodiscard]] int getRingNumChannels() const noexcept;
 
-    /** nullptr außerhalb des Kanalbereichs. Status-Getter des Kanals sind
-        von jedem Thread lesbar; read() folgt der Leser-Disziplin. */
+    /** nullptr außerhalb des Kanalbereichs (Hardware + virtuelle Slots).
+        Status-Getter des Kanals sind von jedem Thread lesbar; read() folgt
+        der Leser-Disziplin. */
     [[nodiscard]] const CaptureChannel* getChannel (int channel) const noexcept;
 
     /** nullptr außerhalb von [0, MAX_CAPTURE_CHANNELS). Status und
@@ -235,12 +319,17 @@ private:
     /** Unveränderlicher Audio-Puffersatz — komplett ersetzt statt mutiert. */
     struct BufferSet
     {
+        // Einträge: [0, numChannels) Hardware, dahinter numVirtualSlots
+        // virtuelle Kanäle (Registry-Slot s → Index numChannels + s)
         std::vector<std::unique_ptr<PreRollBuffer>> preRolls;
         std::vector<std::unique_ptr<CaptureChannel>> channels;
         BufferPool pool;
-        int numChannels = 0;
+        int numChannels = 0;      // Hardware-Kanäle
+        int numVirtualSlots = 0;  // gebaute virtuelle Slots (≤ MAX_VIRTUAL_CHANNELS)
         int ringCapacity = 0;     // Samples pro Kanal
         int preRollCapacity = 0;  // Samples pro Kanal
+
+        [[nodiscard]] int totalEntries() const noexcept { return numChannels + numVirtualSlots; }
 
         // Export-Pinning: > 0 solange ein Writer-Job aus dem Satz liest —
         // ausgemusterte Sätze werden erst bei 0 zerstört
@@ -256,6 +345,30 @@ private:
 
     /** [MT] Gemeinsamer Export-Pfad — onlyChannel = -1 exportiert alle. */
     int enqueueExport (int onlyChannel);
+
+    //==========================================================================
+    // Virtuelle Kanäle — Registry (Slot-Indizes stabil über Puffersatz-Swaps)
+
+    /** [MT] Höchster belegter Registry-Slot + 1 (Sätze decken alle
+        registrierten Slots ab, Lücken inklusive — Indizes sind stabil). */
+    [[nodiscard]] int registeredVirtualSlotCount() const noexcept;
+
+    /** [MT] true, wenn der aktuelle Satz weniger virtuelle Slots trägt als
+        registriert sind — die Erweiterung läuft verlustfrei, sobald kein
+        Kanal mehr aktiv ist (sofort oder im Guard-Tick). */
+    [[nodiscard]] bool needsVirtualExpansion() const noexcept;
+
+    struct VirtualSlot
+    {
+        // Nur Message Thread
+        bool occupied = false;
+        juce::String name;  // bleibt nach unregister stehen (Export gehaltenen Materials)
+
+        // Message → Audio
+        std::atomic<bool> writerActive { false };     // Modul darf schreiben
+        std::atomic<bool> detachRequested { false };  // Gate im nächsten Block schließen
+    };
+    std::array<VirtualSlot, MAX_VIRTUAL_CHANNELS> virtualSlots;
 
     static constexpr int guardIntervalMs = 200;
     static constexpr int guardTicksPerCalibration = 5;     // 5 × 200 ms = 1 Hz

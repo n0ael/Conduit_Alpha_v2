@@ -1,6 +1,7 @@
 #include "ModuleFactory.h"
 
 #include "AttenuatorModule.h"
+#include "CaptureTapModule.h"
 #include "LfoModule.h"
 #include "LinkAudioSendModule.h"
 #include "ScopeModule.h"
@@ -43,6 +44,8 @@ void registerDefaultModules (ModuleFactory& factory)
                             [] { return std::make_unique<StepSequencerModule>(); });
     factory.registerModule (LinkAudioSendModule::staticModuleId,
                             [] { return std::make_unique<LinkAudioSendModule>(); });
+    factory.registerModule (CaptureTapModule::staticModuleId,
+                            [] { return std::make_unique<CaptureTapModule>(); });
 }
 
 } // namespace conduit

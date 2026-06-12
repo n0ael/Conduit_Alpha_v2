@@ -1,11 +1,14 @@
 #include "CapturePanel.h"
 
+#include <algorithm>
+
 namespace conduit
 {
 
 namespace
 {
     constexpr int rowHeight = 44;   // Touch-Target (CLAUDE.md 10)
+    constexpr int tapsHeaderHeight = 18;
     constexpr int gap = 8;
     constexpr int meterSteps = 64;  // dB-Quantisierung (Repaint-Schwelle)
     constexpr float meterFloorDb = -80.0f;
@@ -39,12 +42,13 @@ namespace
 }
 
 //==============================================================================
-CapturePanel::ChannelRow::ChannelRow (int channelIndexToUse,
-                                      std::function<void (int)> onCaptureToUse)
-    : channelIndex (channelIndexToUse)
+CapturePanel::ChannelRow::ChannelRow (int captureIndexToUse, juce::String nameToUse,
+                                      std::function<void (int, juce::String)> onCaptureToUse)
+    : captureIndex (captureIndexToUse), name (std::move (nameToUse))
 {
     captureButton.onClick = [this, onCapture = std::move (onCaptureToUse)]
-    { onCapture (channelIndex); };
+    { onCapture (captureIndex, name); };
+    captureButton.setEnabled (captureIndex >= 0);  // Tap ohne Puffer: nichts zu exportieren
     addAndMakeVisible (captureButton);
 }
 
@@ -73,11 +77,11 @@ void CapturePanel::ChannelRow::paint (juce::Graphics& g)
     g.setColour (colourForState (display.state));
     g.fillEllipse (led);
 
-    // Kanal-Name
+    // Kanal-Name (Hardware "inN" oder Tap-Spurname — drawText clippt)
     g.setColour (juce::Colours::white.withAlpha (0.7f));
     g.setFont (juce::FontOptions { 13.0f });
-    g.drawText ("in" + juce::String (channelIndex + 1),
-                bounds.removeFromLeft (34), juce::Justification::centredLeft);
+    g.drawText (name, bounds.removeFromLeft (juce::jmin (96, bounds.getWidth() / 2)),
+                juce::Justification::centredLeft);
 
     // Mini-Pegel: RMS-Füllung, Peak-Strich, Noise-Floor-Marker
     const auto meter = bounds.reduced (2, 14);
@@ -199,6 +203,12 @@ CapturePanel::CapturePanel (CaptureSettings& settingsToUse, CaptureService& serv
     channelViewport.setViewedComponent (&channelContainer, false);
     channelViewport.setScrollBarsShown (true, false);
 
+    tapsHeaderLabel.setColour (juce::Label::textColourId,
+                               juce::Colours::white.withAlpha (0.45f));
+    tapsHeaderLabel.setFont (juce::FontOptions { 12.0f });
+    tapsHeaderLabel.setJustificationType (juce::Justification::bottomLeft);
+    channelContainer.addChildComponent (tapsHeaderLabel);  // sichtbar nur mit Taps
+
     addAndMakeVisible (thresholdSlider);
     addAndMakeVisible (holdSlider);
     addAndMakeVisible (preRollSlider);
@@ -259,19 +269,38 @@ void CapturePanel::changeListenerCallback (juce::ChangeBroadcaster*)
 }
 
 //==============================================================================
+std::vector<CapturePanel::RowSpec> CapturePanel::makeRowSpecs() const
+{
+    std::vector<RowSpec> specs;
+
+    const auto numChannels = service.getRingNumChannels();
+    for (int ch = 0; ch < numChannels; ++ch)
+        specs.push_back ({ ch, "in" + juce::String (ch + 1), false });
+
+    // Abschnitt "Taps": genutzte virtuelle Slots (registriert ODER mit
+    // gehaltenem Material) — Reihenfolge = Slot-Reihenfolge, stabil
+    for (int slot = 0; slot < CaptureService::MAX_VIRTUAL_CHANNELS; ++slot)
+        if (const auto info = service.getVirtualChannelUiInfo (slot); info.inUse)
+            specs.push_back ({ info.captureIndex, info.name, true });
+
+    return specs;
+}
+
 void CapturePanel::rebuildChannelRows()
 {
-    const auto numChannels = service.getRingNumChannels();
-    if (static_cast<int> (channelRows.size()) == numChannels)
+    auto specs = makeRowSpecs();
+    if (specs == currentRowSpecs)
         return;
 
+    currentRowSpecs = std::move (specs);
     channelRows.clear();
-    channelRows.reserve (static_cast<size_t> (juce::jmax (0, numChannels)));
+    channelRows.reserve (currentRowSpecs.size());
 
-    for (int ch = 0; ch < numChannels; ++ch)
+    for (const auto& spec : currentRowSpecs)
     {
-        auto row = std::make_unique<ChannelRow> (ch, [this] (int channelIndex)
-                                                 { captureSingleChannel (channelIndex); });
+        auto row = std::make_unique<ChannelRow> (spec.captureIndex, spec.name,
+                                                 [this] (int captureIndex, juce::String rowName)
+                                                 { captureSingleChannel (captureIndex, rowName); });
         channelContainer.addAndMakeVisible (*row);
         channelRows.push_back (std::move (row));
     }
@@ -282,21 +311,37 @@ void CapturePanel::rebuildChannelRows()
 
 void CapturePanel::layoutChannelRows()
 {
-    const auto numRows = static_cast<int> (channelRows.size());
     const auto width = juce::jmax (0, channelViewport.getWidth()
                                           - channelViewport.getScrollBarThickness());
-    channelContainer.setSize (width, numRows * (rowHeight + 2));
 
-    for (int i = 0; i < numRows; ++i)
-        channelRows[static_cast<size_t> (i)]->setBounds (0, i * (rowHeight + 2),
-                                                         width, rowHeight);
+    // Vor der ersten Tap-Zeile sitzt die "Taps"-Überschrift
+    const auto firstTap = std::find_if (currentRowSpecs.begin(), currentRowSpecs.end(),
+                                        [] (const RowSpec& spec) { return spec.isTap; });
+    const auto hasTaps = firstTap != currentRowSpecs.end();
+
+    int y = 0;
+    for (size_t i = 0; i < channelRows.size(); ++i)
+    {
+        if (hasTaps && currentRowSpecs[i].isTap
+            && static_cast<int> (i) == static_cast<int> (firstTap - currentRowSpecs.begin()))
+        {
+            tapsHeaderLabel.setBounds (0, y, width, tapsHeaderHeight);
+            y += tapsHeaderHeight;
+        }
+
+        channelRows[i]->setBounds (0, y, width, rowHeight);
+        y += rowHeight + 2;
+    }
+
+    tapsHeaderLabel.setVisible (hasTaps);
+    channelContainer.setSize (width, y);
 }
 
-void CapturePanel::captureSingleChannel (int channelIndex)
+void CapturePanel::captureSingleChannel (int captureIndex, const juce::String& rowName)
 {
-    const auto numTracks = service.exportChannel (channelIndex);
+    const auto numTracks = captureIndex >= 0 ? service.exportChannel (captureIndex) : 0;
     if (numTracks == 0 && onToast)
-        onToast ("in" + juce::String (channelIndex + 1) + ": keine aktive Aufnahme");
+        onToast (rowName + ": keine aktive Aufnahme");
 }
 
 void CapturePanel::syncControls()
@@ -323,10 +368,10 @@ void CapturePanel::refresh()
 
     for (size_t i = 0; i < channelRows.size(); ++i)
     {
-        const auto ch = static_cast<int> (i);
+        const auto ch = currentRowSpecs[i].captureIndex;
         const auto* channel = service.getChannel (ch);
         if (channel == nullptr)
-            continue;
+            continue;  // Tap ohne Puffer: Zeile bleibt idle/stumm
 
         ChannelRow::DisplayState state;
         state.state      = channel->getState();

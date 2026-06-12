@@ -38,6 +38,12 @@ public:
     /** [Audio Thread] Misst die ersten numChannels Kanäle des Buffers. */
     void process (const juce::AudioBuffer<float>& buffer, int numChannels) noexcept;
 
+    /** [Audio Thread] Misst einen einzelnen Kanal — gleiche Ballistik wie
+        process(). Für virtuelle Capture-Kanäle (Taps), deren Daten aus dem
+        Graph statt aus dem Input-Buffer kommen (CaptureService). No-op
+        außerhalb des aktiven Kanalbereichs. */
+    void processChannel (int channel, const float* data, int numSamples) noexcept;
+
     //==========================================================================
     // [beliebiger Thread] Außerhalb des aktiven Kanalbereichs: 0.0f
     [[nodiscard]] float getPeak (int channel) const noexcept;
@@ -54,10 +60,14 @@ private:
     static constexpr double peakReleaseSeconds     = 0.5;   // Peak-Ballistik (UI-Anzeige)
     static constexpr double noiseFloorRiseSeconds  = 30.0;  // sanfter Floor-Anstieg
 
+    /** Gemeinsamer Mess-Kern: ein Kanal, ein Block. Warm-Start pro Kanal
+        über den Floor-Sentinel (erster Block seedet den RMS-Zustand). */
+    void meterOneChannel (int channel, const float* data, int numSamples,
+                          float peakDecay, float floorRise) noexcept;
+
     double sampleRate = 48000.0;
     int activeChannels = 0;       // nur in prepare() geschrieben (Audio steht)
     float rmsCoeff = 0.0f;        // One-Pole-Koeffizient pro Sample
-    bool warmedUp = false;        // erster Block seedet den RMS-Zustand
 
     // Interner Zustand — nur der Audio Thread liest/schreibt
     std::array<float, MAX_CAPTURE_CHANNELS> meanSquareState {};

@@ -29,6 +29,12 @@ void CaptureService::prepare (double sampleRate, int samplesPerBlock, int numInp
     sampleClock.reset();  // Samplerate-Wechsel invalidiert alle Positionen
     inputMeter.prepare (sampleRate, numInputChannels);
 
+    audioSampleRate = sampleRate;  // Audio steht — der Tap liest den Wert später
+
+    const auto initialThresholdDb = settings.getThresholdDb();
+    for (auto& gate : gates)
+        gate.prepare (initialThresholdDb);
+
     // Audio steht (prepareToPlay-Kontrakt) → Handoff synchron abwickeln:
     // ungelesene Mailbox leeren, Quittungen einsammeln, direkt installieren
     if (auto* unclaimed = pendingSet.exchange (nullptr, std::memory_order_acq_rel))
@@ -92,6 +98,28 @@ int CaptureService::computeMaxSegments (int ramLimitGb, std::int64_t segmentByte
 
     return static_cast<int> (juce::jmin (available / segmentBytes,
                                          static_cast<std::int64_t> (numChannels)));
+}
+
+std::int64_t CaptureService::computeHoldSamples (int holdMinutes, double sampleRate) noexcept
+{
+    if (holdMinutes <= 0 || sampleRate <= 0.0)
+        return 0;
+
+    return static_cast<std::int64_t> (holdMinutes) * 60
+         * static_cast<std::int64_t> (sampleRate);
+}
+
+float CaptureService::computeEffectiveThresholdDb (float manualThresholdDb,
+                                                   float noiseFloorLinear,
+                                                   bool autoCalibrate) noexcept
+{
+    if (! autoCalibrate)
+        return manualThresholdDb;
+
+    // Schwelle über das Grundrauschen heben — der manuelle Threshold bleibt
+    // als Untergrenze (Override) bestehen; Stille fällt auf ihn zurück
+    const auto floorDb = juce::Decibels::gainToDecibels (noiseFloorLinear, silenceFloorDb);
+    return juce::jmax (manualThresholdDb, floorDb + autoCalibrateHeadroomDb);
 }
 
 //==============================================================================
@@ -182,6 +210,11 @@ void CaptureService::processInputTap (const juce::AudioBuffer<float>& buffer,
         if (audioSet != nullptr)
             retiredSets.push (audioSet);
         audioSet = incoming;
+
+        // Frischer Satz: alle Kanäle starten idle — der Detektionszustand
+        // zieht mit, sonst lieferte ein offenes Gate nie wieder ein Open-Event
+        for (auto& gate : gates)
+            gate.reset();
     }
 
     // -- Metering: Peak / RMS / Noise-Floor pro Kanal -------------------------
@@ -193,13 +226,16 @@ void CaptureService::processInputTap (const juce::AudioBuffer<float>& buffer,
     if (auto* set = audioSet)
     {
         // Resize-Policy: User hat den Verlust bestätigt — Gates schließen,
-        // Material verwerfen, bewusst KEIN Auto-Export
+        // Material verwerfen, bewusst KEIN Auto-Export. Liegt weiterhin
+        // Signal über der Schwelle an, öffnet die Detektion unten sofort
+        // wieder — neues Material landet dann in frischen Puffern
         if (invalidateRequested.exchange (false, std::memory_order_acq_rel))
         {
             for (int ch = 0; ch < set->numChannels; ++ch)
             {
                 set->channels[static_cast<size_t> (ch)]->releaseStorage();
                 set->preRolls[static_cast<size_t> (ch)]->clear();
+                gates[static_cast<size_t> (ch)].reset();
             }
         }
 
@@ -207,11 +243,25 @@ void CaptureService::processInputTap (const juce::AudioBuffer<float>& buffer,
                                            buffer.getNumChannels(),
                                            set->numChannels);
 
+        const auto holdSamples = computeHoldSamples (settings.getHoldMinutes(),
+                                                     audioSampleRate);
+
         bool anyActive = false;
         for (int ch = 0; ch < set->numChannels; ++ch)
         {
             const auto index = static_cast<size_t> (ch);
             const float* src = ch < available ? buffer.getReadPointer (ch) : nullptr;
+
+            // -- Gate [Baustein 4]: Block-RMS gegen die effektive Schwelle.
+            //    Das Meter hat diesen Block bereits gemessen — Open wirkt ab
+            //    dem Block, der die Schwelle reißt; den Attack davor liefert
+            //    die Pre-Roll-Übernahme
+            switch (gates[index].process (inputMeter.getRms (ch), numSamples, holdSamples))
+            {
+                case CaptureGate::Event::opened: openGate (ch);  break;
+                case CaptureGate::Event::closed: closeGate (ch); break;
+                case CaptureGate::Event::none:                   break;
+            }
 
             // Reihenfolge entscheidend: erst die Kanal-Verarbeitung (die
             // Übernahme liest die ältesten Pre-Roll-Inhalte), DANN den
@@ -220,16 +270,17 @@ void CaptureService::processInputTap (const juce::AudioBuffer<float>& buffer,
             if (src != nullptr)
                 set->preRolls[index]->write (src, numSamples, blockStart);
 
-            anyActive = anyActive
-                     || set->channels[index]->getState() != CaptureChannel::State::idle;
+            // RAM-Wächter oder Invalidate haben gehaltenes Material gelöst —
+            // der publizierte Gate-Status folgt dem Kanal zurück auf idle
+            const auto channelState = set->channels[index]->getState();
+            if (channelState == CaptureChannel::State::idle)
+                gates[index].notifyContentDiscarded();
+
+            anyActive = anyActive || channelState != CaptureChannel::State::idle;
         }
 
         anyChannelActive.store (anyActive, std::memory_order_relaxed);
     }
-
-    // -- [Capture-Baustein 4] Gate: Signal-über-Noise-Floor-Detektion ---------
-    //    (nutzt inputMeter.getNoiseFloor() + Settings-Atomics und ruft
-    //     openGate/closeGate — bis dahin Test-Seam)
 
     // -- [Capture-Baustein 5] Capture-Trigger / Export -------------------------
 
@@ -293,6 +344,28 @@ void CaptureService::reallocateBuffers()
         destroySet (unclaimed);
 
     drainRetiredSets();
+}
+
+//==============================================================================
+void CaptureService::timerCallback()
+{
+    runRamGuard();
+
+    if (++guardTicksSinceCalibration >= guardTicksPerCalibration)
+    {
+        guardTicksSinceCalibration = 0;
+        runAutoCalibration();
+    }
+}
+
+void CaptureService::runAutoCalibration()
+{
+    const auto manualDb = settings.getThresholdDb();
+    const auto autoCal  = settings.getAutoCalibrate();
+
+    for (int ch = 0; ch < preparedChannels; ++ch)
+        gates[static_cast<size_t> (ch)].setEffectiveThresholdDb (
+            computeEffectiveThresholdDb (manualDb, inputMeter.getNoiseFloor (ch), autoCal));
 }
 
 //==============================================================================
@@ -363,6 +436,13 @@ const CaptureChannel* CaptureService::getChannel (int channel) const noexcept
         return nullptr;
 
     return currentSet->channels[static_cast<size_t> (channel)].get();
+}
+
+const CaptureGate* CaptureService::getGate (int channel) const noexcept
+{
+    return juce::isPositiveAndBelow (channel, MAX_CAPTURE_CHANNELS)
+         ? &gates[static_cast<size_t> (channel)]
+         : nullptr;
 }
 
 } // namespace conduit

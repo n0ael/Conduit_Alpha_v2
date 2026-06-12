@@ -16,7 +16,14 @@
 
 ## Aktueller Meilenstein (Juni 2026 — abgeschlossen)
 
-**Capture-System, Baustein 3 — Puffer-Herzstück (`Source/Core/Capture/`):**
+**Capture-System, Baustein 4 — Gate-Detektion + AutoCalibrator (`Source/Core/Capture/`):**
+- `CaptureGate` pro Kanal (header-only, läuft im Input-Tap): Zustandsmaschine IDLE → OPEN → (Hold abgelaufen) → IDLE; öffnet bei Block-RMS über der effektiven Schwelle, schließt erst nach holdMinutes durchgehend unter Schwelle − 6 dB (Hysterese — Flattern an der Schwelle resettet den Hold-Zähler); Hold zählt in SAMPLES (`computeHoldSamples`: holdMinutes × 60 × sampleRate), nie Wall-Clock
+- UI-Status pro Kanal als Atomic (idle/recording/held): recording solange offen, held nach dem Schließen bis Export/RAM-Reclaim — `CaptureService` quittiert Freigaben über `notifyContentDiscarded()`; dB→Gain audio-seitig gecacht (kein pow pro Block)
+- AutoCalibrator [Message Thread, 1 Hz über den Guard-Timer]: publiziert `effectiveThreshold = max(Settings-Threshold, NoiseFloor + 12 dB)` in die Kanal-Atomics (`autoCalibrate`), manueller Threshold als Override-Untergrenze; `runAutoCalibration()` public für Tests
+- Tap-Verdrahtung: Meter → Gate → (open?) Pre-Roll-Übernahme + Ring-Schreiben; Gates leben unabhängig vom Puffersatz und werden bei Satz-Swap/Invalidate zurückgesetzt; `openGate`/`closeGate` bleiben als Test-Seam public
+- Tests (`Tests/Core/CaptureGateTests.cpp`): Zustandsmaschine mit synthetischen Pegelverläufen (Flatter-Test, Hold-Reset, Reopen aus held), pure Helfer, Auto-Kalibrierung hebt die Schwelle über Dauerbrummen (Service-Level), Gate-steuert-Aufnahme end-to-end; bestehende Service-Tests füttern die Rampe jetzt mit 2⁻³⁰ skaliert (unter der Schwelle, Werte bleiben exakt vergleichbar)
+
+**Davor: Capture-System, Baustein 3 — Puffer-Herzstück (`Source/Core/Capture/`):**
 - `PreRollBuffer` pro Kanal, IMMER aktiv: positionsadressierter Mono-Ring (Sample p bei `p % capacity`), Allokation nur in `prepare()`; überbrückt die Pool-Latenz nach Gate-Open
 - `BufferPool`: RAM erst bei Bedarf — MT besitzt Segmente (HeapBlock, bewusst uninitialisiert, kein Gigabyte-Memset), Audio fordert per atomarem Zähler an, Publikation/Rückgabe über zwei `SpscQueue<float*>`; Vorhalteziel 1 Segment, Surplus wird abgebaut
 - `CaptureRingBuffer` pro Kanal: positionsadressierter Aufnahme-Ring (Speicher vom Pool), `startSamplePosition`/`endPosition` atomar — jede Position absolut rekonstruierbar; Leser-Disziplin wie `SpscQueue` (hinter dem Schreib-Cursor)
@@ -42,7 +49,7 @@
 
 ## Nächste Kandidaten (offen, Reihenfolge nicht festgelegt)
 
-- Capture-Baustein 4–5: Gate (Signal über Noise-Floor, Hold-Zeit, Auto-Calibrate) ruft die vorhandene `openGate`/`closeGate`-Seam; Capture-Trigger/Export (WAV, Leser-Halte-Protokoll am `CaptureRingBuffer`); danach Settings-UI (async Resize-Confirm, RAM-Warnungs-Listener)
+- Capture-Baustein 5: Capture-Trigger/Export (WAV, Leser-Halte-Protokoll am `CaptureRingBuffer`); danach Settings-UI (async Resize-Confirm, RAM-Warnungs-Listener, Gate-Status pro Kanal via `getGate()`)
 
 - Mixer-Modul (mehrere Inputs)
 - Envelope-Modul (`IClockSlave`)

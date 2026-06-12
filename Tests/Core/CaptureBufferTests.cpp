@@ -25,15 +25,24 @@ float rampValue (std::uint64_t position) noexcept
     return static_cast<float> (position % 1'000'003ull);
 }
 
-void fillRamp (float* dest, int numSamples, std::uint64_t startPosition)
+/** Service-Tests skalieren die Rampe unter die Gate-Schwelle: seit
+    Baustein 4 detektiert der Tap automatisch (RMS über effektiver
+    Schwelle öffnet das Gate) — diese Tests steuern die Gates aber gezielt
+    über die manuelle Seam. 2^-30 hält den Pegel ≤ −60 dBFS (deutlich
+    unter Threshold −40 dB) und verschiebt nur den Float-Exponenten:
+    die Werte bleiben exakt vergleichbar. */
+constexpr float serviceRampScale = 1.0f / static_cast<float> (1 << 30);
+
+void fillRamp (float* dest, int numSamples, std::uint64_t startPosition, float scale = 1.0f)
 {
     for (int i = 0; i < numSamples; ++i)
-        dest[i] = rampValue (startPosition + static_cast<std::uint64_t> (i));
+        dest[i] = scale * rampValue (startPosition + static_cast<std::uint64_t> (i));
 }
 
 /** Liest [from, to) aus dem Kanal und zählt Abweichungen von der Rampe.
     -1 wenn der Bereich nicht lesbar ist. */
-int countRampMismatches (const CaptureChannel& channel, std::uint64_t from, std::uint64_t to)
+int countRampMismatches (const CaptureChannel& channel, std::uint64_t from, std::uint64_t to,
+                         float scale = 1.0f)
 {
     const auto length = static_cast<int> (to - from);
     std::vector<float> samples (static_cast<size_t> (length));
@@ -44,7 +53,7 @@ int countRampMismatches (const CaptureChannel& channel, std::uint64_t from, std:
     int mismatches = 0;
     for (int i = 0; i < length; ++i)
         if (! juce::exactlyEqual (samples[static_cast<size_t> (i)],
-                                  rampValue (from + static_cast<std::uint64_t> (i))))
+                                  scale * rampValue (from + static_cast<std::uint64_t> (i))))
             ++mismatches;
     return mismatches;
 }
@@ -112,14 +121,16 @@ struct TempCaptureSettings
     std::unique_ptr<CaptureSettings> settings;
 };
 
-/** Füllt alle Kanäle eines Buffers mit der Rampe und füttert den Tap. */
+/** Füllt alle Kanäle eines Buffers mit der (leisen) Rampe und füttert den
+    Tap — unter der Gate-Schwelle, damit die Auto-Detektion stumm bleibt. */
 void feedServiceBlocks (CaptureService& service, juce::AudioBuffer<float>& buffer,
                         int count, std::uint64_t& position)
 {
     for (int i = 0; i < count; ++i)
     {
         for (int ch = 0; ch < buffer.getNumChannels(); ++ch)
-            fillRamp (buffer.getWritePointer (ch), buffer.getNumSamples(), position);
+            fillRamp (buffer.getWritePointer (ch), buffer.getNumSamples(), position,
+                      serviceRampScale);
 
         service.processInputTap (buffer, buffer.getNumChannels());
         position += static_cast<std::uint64_t> (buffer.getNumSamples());
@@ -502,7 +513,7 @@ TEST_CASE ("CaptureService: Gate → Pool → Aufnahme end-to-end mit Resize-Pol
 
     const auto range = channel->getReadableRange();
     REQUIRE (range.to == position);
-    REQUIRE (countRampMismatches (*channel, range.from, range.to) == 0);
+    REQUIRE (countRampMismatches (*channel, range.from, range.to, serviceRampScale) == 0);
 
     // Gate zu → held zählt weiterhin als aktiv (Resize-Policy)
     service.closeGate (0);

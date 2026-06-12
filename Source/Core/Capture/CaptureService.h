@@ -1,5 +1,6 @@
 #pragma once
 
+#include <array>
 #include <atomic>
 #include <cstdint>
 #include <memory>
@@ -10,6 +11,7 @@
 
 #include "BufferPool.h"
 #include "CaptureChannel.h"
+#include "CaptureGate.h"
 #include "CaptureSettings.h"
 #include "InputMeter.h"
 #include "PreRollBuffer.h"
@@ -62,8 +64,20 @@ namespace conduit
     Settings: Aktivitäts-Status (Gate offen oder held), Invalidierung
     (Gates zu, Puffer verwerfen, bewusst KEIN Auto-Export) und Reallokation.
 
-    Die Gate-API (openGate/closeGate) ist der Einstichpunkt für Baustein 4
-    (Signal-über-Noise-Floor-Detektion) — bis dahin Test-Seam.
+    Gate-Detektion (Baustein 4): pro Kanal entscheidet ein CaptureGate im
+    Tap — Reihenfolge Meter → Gate → Kanal-Verarbeitung. Öffnet, sobald der
+    Block-RMS die effektive Schwelle reißt; schließt erst nach holdMinutes
+    durchgehend unter Schwelle − 6 dB (Hold in Samples, nie Wall-Clock).
+    Die Gates leben UNABHÄNGIG vom Puffersatz (Detektionszustand, kein
+    Speicher) und werden bei Satz-Swap und Invalidate zurückgesetzt. Die
+    Gate-API (openGate/closeGate) bleibt public als Test-Seam für Signale
+    unterhalb der Schwelle.
+
+    AutoCalibrator [Message Thread, 1-Hz-Tick des Guard-Timers]: publiziert
+    die effektive Schwelle in die Kanal-Atomics der Gates — bei
+    autoCalibrate max(Settings-Threshold, NoiseFloor + 12 dB), der manuelle
+    Threshold wirkt als Override-Untergrenze; ohne autoCalibrate der
+    Settings-Threshold direkt.
 */
 class CaptureService : public ICaptureBufferHost,
                        public juce::ChangeBroadcaster,
@@ -85,9 +99,15 @@ public:
     void processInputTap (const juce::AudioBuffer<float>& buffer, int numInputChannels) noexcept;
 
     //==========================================================================
-    // Gate-API [Audio Thread] — Baustein 4 ruft sie aus der Detektion
+    // Gate-API [Audio Thread] — die Detektion im Tap ruft sie automatisch;
+    // public als Test-Seam (manuelles Öffnen unterhalb der Schwelle)
     void openGate (int channel) noexcept;
     void closeGate (int channel) noexcept;
+
+    //==========================================================================
+    /** [Message Thread] AutoCalibrator-Tick (1 Hz via Guard-Timer) — public,
+        damit Tests ohne Dispatch-Loop kalibrieren können. */
+    void runAutoCalibration();
 
     //==========================================================================
     // ICaptureBufferHost [Message Thread] — Gegenstück der Resize-Policy
@@ -125,6 +145,17 @@ public:
                                                  std::int64_t preRollBytesTotal,
                                                  int numChannels) noexcept;
 
+    /** Hold-Zeit in Samples: holdMinutes × 60 × sampleRate — die Detektion
+        zählt Puffer-Samples, nie Wall-Clock. */
+    [[nodiscard]] static std::int64_t computeHoldSamples (int holdMinutes,
+                                                          double sampleRate) noexcept;
+
+    /** Effektive Gate-Schwelle: bei autoCalibrate max(manuell, Floor + 12 dB),
+        sonst der manuelle Threshold. Stille (Floor 0) fällt auf manuell zurück. */
+    [[nodiscard]] static float computeEffectiveThresholdDb (float manualThresholdDb,
+                                                            float noiseFloorLinear,
+                                                            bool autoCalibrate) noexcept;
+
     //==========================================================================
     // Status des aktuellen (neuesten) Puffersatzes [Message Thread]
     [[nodiscard]] int getRingCapacitySamples() const noexcept;
@@ -133,6 +164,10 @@ public:
     /** nullptr außerhalb des Kanalbereichs. Status-Getter des Kanals sind
         von jedem Thread lesbar; read() folgt der Leser-Disziplin. */
     [[nodiscard]] const CaptureChannel* getChannel (int channel) const noexcept;
+
+    /** nullptr außerhalb von [0, MAX_CAPTURE_CHANNELS). Status und
+        effektive Schwelle sind von jedem Thread lesbar. */
+    [[nodiscard]] const CaptureGate* getGate (int channel) const noexcept;
 
     [[nodiscard]] const SampleClock& getSampleClock() const noexcept { return sampleClock; }
     [[nodiscard]] const InputMeter& getInputMeter() const noexcept   { return inputMeter; }
@@ -153,9 +188,12 @@ private:
     BufferSet* buildSet();              // [MT] erzeugt + registriert als currentSet
     void destroySet (BufferSet* set);   // [MT] aus ownedSets entfernen
     void drainRetiredSets();            // [MT] Audio-Quittungen einsammeln
-    void timerCallback() override { runRamGuard(); }
+    void timerCallback() override;      // RAM-Wächter + 1-Hz-AutoCalibrator
 
     static constexpr int guardIntervalMs = 200;
+    static constexpr int guardTicksPerCalibration = 5;     // 5 × 200 ms = 1 Hz
+    static constexpr float autoCalibrateHeadroomDb = 12.0f;
+    static constexpr float silenceFloorDb = -120.0f;        // gainToDecibels-Untergrenze
 
     CaptureSettings& settings;
 
@@ -166,6 +204,14 @@ private:
     double preparedSampleRate = 0.0;
     int preparedBlockSize = 0;
     int preparedChannels = 0;
+
+    // Gate-Detektion pro Kanal — lebt unabhängig vom Puffersatz
+    std::array<CaptureGate, MAX_CAPTURE_CHANNELS> gates;
+
+    // Im Tap gelesen; nur in prepare() geschrieben (Audio steht)
+    double audioSampleRate = 0.0;
+
+    int guardTicksSinceCalibration = 0;  // nur Message Thread (Timer)
 
     // -- Puffersatz-Handoff (Protokoll siehe Klassendoku) ----------------------
     std::vector<std::unique_ptr<BufferSet>> ownedSets;  // MT: Besitz aller lebenden Sätze

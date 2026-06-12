@@ -120,6 +120,7 @@ target_sources(Conduit PRIVATE
     Source/Core/OscController.h
     Source/Core/Capture/BufferPool.h
     Source/Core/Capture/CaptureChannel.h
+    Source/Core/Capture/CaptureGate.h
     Source/Core/Capture/CaptureRingBuffer.h
     Source/Core/Capture/CaptureService.h
     Source/Core/Capture/CaptureSettings.h
@@ -218,6 +219,7 @@ if(CONDUIT_BUILD_TESTS)
 
     set(CONDUIT_TEST_CPP_SOURCES
         Tests/Core/CaptureBufferTests.cpp
+        Tests/Core/CaptureGateTests.cpp
         Tests/Core/CaptureMeterTests.cpp
         Tests/Core/CaptureSettingsTests.cpp
         Tests/Core/ClockTests.cpp

@@ -82,7 +82,10 @@ int CaptureService::computeMaxSegments (int ramLimitGb, std::int64_t segmentByte
     if (ramLimitGb <= 0 || segmentBytes <= 0 || numChannels <= 0)
         return 0;
 
-    const auto limitBytes = static_cast<std::int64_t> (ramLimitGb) * (1024LL * 1024 * 1024);
+    // std::int64_t statt 1024LL: auf Linux ist int64_t "long", das Literal
+    // "long long" — gemischte Typen finden keine jmin/jmax-Überladung
+    const auto limitBytes = static_cast<std::int64_t> (ramLimitGb)
+                          * (std::int64_t { 1024 } * 1024 * 1024);
     const auto available  = limitBytes - juce::jmax (std::int64_t { 0 }, preRollBytesTotal);
     if (available < segmentBytes)
         return 0;

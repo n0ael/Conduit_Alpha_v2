@@ -106,6 +106,14 @@ ScopedAllocationAllowance::~ScopedAllocationAllowance() noexcept
 // Aligned-Varianten (align_val_t) werden bewusst nicht ersetzt: deren
 // Default-Implementierung bildet ein eigenes konsistentes Paar.
 
+// Clang meldet -Wmissing-prototypes für die unsized operator-delete-
+// Ersetzungen (libstdc++-Deklarations-Eigenheit) — Ersetzungen brauchen
+// per Standard keine vorherige Deklaration
+#if defined (__clang__)
+ #pragma clang diagnostic push
+ #pragma clang diagnostic ignored "-Wmissing-prototypes"
+#endif
+
 void* operator new (std::size_t size)
 {
     if (auto* pointer = checkedAllocate (size))
@@ -138,5 +146,9 @@ void operator delete (void* pointer, std::size_t) noexcept      { checkedFree (p
 void operator delete[] (void* pointer, std::size_t) noexcept    { checkedFree (pointer); }
 void operator delete (void* pointer, const std::nothrow_t&) noexcept   { checkedFree (pointer); }
 void operator delete[] (void* pointer, const std::nothrow_t&) noexcept { checkedFree (pointer); }
+
+#if defined (__clang__)
+ #pragma clang diagnostic pop
+#endif
 
 #endif // CONDUIT_RT_ALLOCATION_CHECKS

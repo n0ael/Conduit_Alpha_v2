@@ -37,6 +37,15 @@ Denke in Architektur und Modulen, bevor du Code schreibst. Liefere Code-Snippets
 // PFLICHT:
 // - juce::AbstractFifo oder std::atomic<> für Parameter-Updates
 // - SPSC-Ringbuffer zwischen UI-Thread und Audio-Thread
+
+// PFLICHT (Ergänzung):
+// - Zufall im Audio-Thread NUR via inline LCG (state = 1664525*state +
+//   1013904223), nie rand()/<random>-Engines — heap- und lock-frei,
+//   deterministisch pro Seed (IStochastic).
+// - Zeitbasen: musikalische Zeit aus dem ClockState des Blocks,
+//   absolute Zeit in SAMPLES (SampleClock). Keine Wall-Clock-/ns-Mathematik
+//   im Audio-Thread mischen (v1-Lektion: ns-Basis funktioniert, aber
+//   Mischbetrieb erzeugt Drift- und Rundungsfehler an den Nahtstellen).
 ```
 
 ### 3.2 Latenz-Ziele
@@ -99,6 +108,19 @@ class StepSequencer
 - `getModuleDisplayName()` — lokalisierter UI-Name, getrennt von moduleId
 - `getType()` — ModuleType enum für GraphManager
 - `getStateVersion()` — int für Serialisierungs-Versioning (Rückwärtskompatibilität)
+
+### 4.5 Launch-Quantisierung (Pattern für IClockSlave-Module)
+
+Quantisierte Start/Stop/Reset-Aktionen folgen dem Ableton-Grid
+(None/8/4/2/1 Bar, 1/2 … 1/32). Kanonisches Muster (v1-erprobt):
+
+- UI/OSC setzt `startPending`/`stopPending` (std::atomic<bool>, release).
+- Audio-Thread erkennt Grid-Überquerung pro Block sample-genau:
+  `floor(beat / qBeats) > floor(prevBeat / qBeats)` → Aktion ausführen,
+  Flag per `exchange(false, acq_rel)` konsumieren.
+- qBeats == 0 → sofort am Blockanfang.
+- Grid-Größen und Namen zentral definieren (ein Enum, app-weit), damit
+  Sequencer/Euclid/Clock-Module identisch quantisieren.
 
 ---
 
@@ -212,6 +234,12 @@ Dies gilt für: Undo, Redo, Preset-Load, Bulk-Delete, Copy-Paste.
 - `createState()` erzeugt Subtree mit Properties, Defaults und Ranges
 - `GraphManager` hängt Subtree via `addChild()` in Root-Tree (nie das Modul selbst)
 - `getStateVersion()` — jeder Subtree trägt eine Versionsnummer für Migration
+- **Session-transiente IDs nie serialisieren:** Connections/Referenzen auf
+  Objekte, deren IDs pro Session neu vergeben werden, dürfen nicht in
+  Presets landen (v1-Lektion: gespeicherte Encoder-Verbindungen luden als
+  Phantom-Connections). In v2 sind Node-Uuids persistent — die Regel gilt
+  für alles Künftige mit Laufzeit-IDs (z. B. Link-Audio-ChannelIds von
+  Peers: discoverbar, nie Teil des Patches).
 
 ### 6.1 OSC Dual-State (Echtzeit vs. UI-Konsistenz)
 
@@ -286,6 +314,19 @@ RootTree
        └── gainTrim           (float)
 ```
 
+**Session-Skala (Ergänzung zu scaleRoot/scaleType, ClockState):**
+
+- Skalen-Vollausbau: die globale Session-Skala unterstützt die 25 Scale-
+  Presets in Ableton-Reihenfolge (Major … Pelog, 12-Bit-Maske pro Skala,
+  Quelle: v1 TuringEngine — verifiziert gegen Live Scale Awareness 11.3+).
+- `followAbleton`-Pattern: Skala kann via OSC von Live gesetzt werden
+  (Root + 12-Bit-Maske als Atomics gestaged, Audio-Thread übernimmt am
+  Blockanfang); manuelle Auswahl und OSC-Follow schließen sich pro
+  Session aus.
+- Scale-Quantisierung als Index-Mapping in die aktive Notenliste
+  (jedes Bitmuster trifft eine gültige Note), nicht Nearest-Note-Rundung —
+  klingt bei generativen Quellen (Turing/Random) deutlich musikalischer.
+
 ---
 
 ## 7. OSC-Integration
@@ -303,12 +344,47 @@ RootTree
 - OSC-Deregistrierung erfolgt in Phase 1, **nicht** erst in `valueTreeChildRemoved`
 - DSP-Module wissen nichts von OSC — Single Responsibility
 
+### 7.2 Link Audio (Senden/Empfangen von Audio in der Link-Session)
+
+- **LinkAudio ERSETZT Link** — beide Klassen nie parallel instanziieren
+  (Header-Doku Link 4.0). `LinkClock`-Pimpl hält die einzige
+  `ableton::LinkAudio`-Instanz für Timing UND Audio.
+- **IWYU-Falle:** `<ableton/LinkAudio.hpp>` in JEDER Compilation Unit
+  inkludieren, die LinkAudio-Typen berührt — die Link-Header sind nicht
+  selbsttragend.
+- **Format:** interleaved 16-bit signed int. Float→Int16 IMMER mit
+  TPDF-Dither (LCG-basiert, kein rand()). Sink-Größe in SAMPLES anlegen
+  (`samplesPerBlock * numChannels`) — Frames und Samples nie mischen.
+- **Sinks senden erst, wenn mindestens eine Source subscribt** —
+  Idle-Sinks sind gratis. UI unterscheidet „announced" vs. „streaming".
+- **Threading:** `enableLinkAudio()`, `channels()`, Callbacks → Message
+  Thread; `ChannelsChangedCallback` und Source-Callbacks kommen auf einem
+  Link-Thread und werden via `MessageManager::callAsync` gemarshallt.
+  `BufferHandle::commit()` ist RT-safe und nutzt dieselbe
+  SessionState/Beat/Quantum-Basis wie das lokale Rendering (aus dem
+  ClockState des Blocks — kein zweites captureAudioSessionState im Modul).
+- **Sink-Lifecycle = zweiphasiges Delete:** Sink-Reset in Phase 1
+  (Pattern OscController), sonst Zombie-Kanäle bei den Peers.
+- **Kanal-Name = moduleId**, Rename via `sink.setName()` live propagiert.
+- **Empfangen (Phase 2):** Buffer-Alignment über `BufferHandle::Info::
+  beginBeats(sessionState, quantum)` — nie naiv FIFO'en (v1-Drift-Lektion).
+
 ---
 
 ## 8. CV-Hardware-Kalibrierung
 
 DC-coupled Interfaces (ES-3, ESX-8CV etc.) haben hardware-spezifische DC-Offsets und
 Gain-Abweichungen. `0.0f` digital ≠ `0.000V` analog → Out-of-Tune bei 1V/Oct.
+
+### 8.0 Interne Spannungs-Konvention
+
+- Intern gilt: float ±1.0 == Full Scale des Interfaces. Bei ±10-V-Hardware
+  (ES-Serie) entspricht 1 V also 0.1f; Eurorack-Gate-High (+5 V) = 0.5f.
+- Module rechnen IMMER in dieser normalisierten Skala; die Umrechnung in
+  echte Volt passiert ausschließlich im HardwareIOModule über das
+  CalibrationProfile (dcOffset/gainTrim) plus `fullScaleVolts` pro
+  Interface (neues Profil-Feld, Default 10.0).
+- UI zeigt Volt an, speichert normalisiert.
 
 ### 8.1 CalibrationProfile (per Interface)
 
@@ -349,6 +425,13 @@ class CVTunerModule : public AnalysisModule {
     // Messung läuft auf separatem Analyse-Thread
 };
 ```
+
+### 8.3 Latenz-Trim für CV-Ausgänge
+
+Hardware-Realität (v1-erprobt): Modulsysteme brauchen ms-genauen Versatz.
+- Pro CV-Ausgangskanal: `shiftMs` (±50 ms), zusätzlich globales
+  `globalShiftMs` — beide als Beat-Offset im Audio-Thread eingerechnet.
+- Gehört ins CalibrationProfile bzw. den Kanal-State, user-adjustierbar.
 
 ---
 
@@ -415,6 +498,10 @@ Plattform-spezifisches Setup in `initAudio()` und CMake ist explizit erlaubt.
 | IPolyphonic | v2.x | Interface vorbereitet, noch nicht implementiert |
 | VST3-Hosting | v3.0+ | Steinberg-Lizenz, nach CLAP |
 | Cardinal/VCV Integration | v3.0+ | Touch-native Modular UI |
+| Link Audio Send (LinkAudioSendModule) | v2.0 | NetworkIOModule, Sink = moduleId |
+| Link Audio Receive | v2.x | beginBeats()-Alignment, Monitoring-Latenz dokumentieren |
+| Expert-Sleepers-Encoder (ES-5/ES-4(0)/8CV/8GT) | v2.x | v1-Port vorhanden (EncoderEngines.hpp, MIT/VCV) — HardwareIOModule-Grundstein |
+| Euclid-/Turing-Module | v2.x | v1-Engines als Referenz (Launch-Quant, parametrischer Swing, Scale-Quantize) |
 
 ---
 
@@ -504,4 +591,4 @@ cmake --preset tsan && cmake --build --preset tsan   # TSan (Clang) — NUR Linu
 
 ---
 
-*Conduit Alpha v2 — Claude Code Instructions v4.1  |  Juni 2026*
+*Conduit Alpha v2 — Claude Code Instructions v4.2  |  Juni 2026*

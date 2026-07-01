@@ -133,6 +133,31 @@ void EngineProcessor::ensureIONodeStates()
     ensure (audioOutputModuleId, "audio_out", 2, 0, 700, 260);
 }
 
+void EngineProcessor::syncHardwareIOChannels (int deviceInputs, int deviceOutputs)
+{
+    JUCE_ASSERT_MESSAGE_THREAD
+
+    auto nodesTree = rootState.getChildWithName (id::nodes);
+
+    const auto apply = [&nodesTree] (const char* factoryKey,
+                                     const juce::Identifier& channelProp, int count)
+    {
+        auto node = nodesTree.getChildWithProperty (id::factoryId, juce::String (factoryKey));
+        if (! node.isValid())
+            node = nodesTree.getChildWithProperty (id::moduleId, juce::String (factoryKey));
+
+        // Idempotent: nur bei echter Abweichung schreiben, sonst löst jeder
+        // Gerätewechsel unnötige UI-Rebuilds aus. Geräte-getrieben → kein Undo.
+        if (node.isValid() && (int) node.getProperty (channelProp, -1) != count)
+            node.setProperty (channelProp, count, nullptr);
+    };
+
+    // Input-Prozessor LIEFERT Kanäle → Ausgangs-Ports am audio_in-Node;
+    // Output-Prozessor NIMMT Kanäle → Eingangs-Ports am audio_out-Node
+    apply (audioInputModuleId,  id::numOutputChannels, juce::jmax (0, deviceInputs));
+    apply (audioOutputModuleId, id::numInputChannels,  juce::jmax (0, deviceOutputs));
+}
+
 //==============================================================================
 void EngineProcessor::prepareToPlay (double sampleRate, int samplesPerBlock)
 {

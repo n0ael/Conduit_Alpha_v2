@@ -22,7 +22,8 @@ NodeComponent::NodeComponent (juce::ValueTree nodeTreeToBind,
     nodeTree.addListener (this);
 
     const auto factoryKey = GraphManager::factoryKeyOf (nodeTree);
-    const auto isExternal = graphManager.isExternalEndpoint (factoryKey);
+    isExternalEndpoint = graphManager.isExternalEndpoint (factoryKey);
+    const auto isExternal = isExternalEndpoint;
 
     deleteButton.setButtonText (juce::String::fromUTF8 ("\xc3\x97"));  // ×
     deleteButton.onClick = [this]
@@ -50,28 +51,13 @@ NodeComponent::NodeComponent (juce::ValueTree nodeTreeToBind,
     };
     addAndMakeVisible (titleLabel);
 
-    // Ports aus den persistierten Kanalzahlen (Schema 6.2)
-    const auto makePorts = [this] (bool isInput, int count,
-                                   std::vector<std::unique_ptr<PortComponent>>& ports)
-    {
-        for (int channel = 0; channel < count; ++channel)
-        {
-            auto port = std::make_unique<PortComponent> (PortInfo { nodeUuid, isInput, channel });
-            addAndMakeVisible (*port);
-            ports.push_back (std::move (port));
-        }
-    };
+    // Ports aus den persistierten Kanalzahlen (Schema 6.2); Kanal-Labels der
+    // I/O-Endpunkte zieht rebuildPorts() gleich mit nach
+    rebuildPorts();
 
-    makePorts (true,  (int) nodeTree.getProperty (id::numInputChannels,  0), inputPorts);
-    makePorts (false, (int) nodeTree.getProperty (id::numOutputChannels, 0), outputPorts);
-
-    // Kanal-Labels der I/O-Endpunkte (ChannelNames als eine Quelle):
-    // Tooltips jetzt, gemalte Labels in paint(); Änderungen ziehen nach
+    // Änderungen der ChannelNames (Rename, Gerätewechsel) ziehen Labels nach
     if (channelNames != nullptr && portLabelDirection().has_value())
-    {
         channelNames->addChangeListener (this);
-        refreshPortTooltips();
-    }
 
     // Sequencer- und Send-Kacheln haben eine eigene Bedienleiste (Grid bzw.
     // Attenuator-Zeilen) — kein generischer Slider
@@ -122,6 +108,10 @@ NodeComponent::NodeComponent (juce::ValueTree nodeTreeToBind,
         // Höhe folgt der Eingangszahl (fixe Zahl, kein Live-Umbau)
         const auto numInputs = juce::jmax (1, nodeTree.getChildWithName (id::inputs).getNumChildren());
         setSize (280, touchTarget + LinkAudioSendPanel::heightForInputs (numInputs));
+    }
+    else if (isExternalEndpoint)
+    {
+        updateEndpointSize();  // Höhe folgt der Hardware-Kanalzahl (Schritt B)
     }
     else
     {
@@ -217,6 +207,21 @@ void NodeComponent::valueTreePropertyChanged (juce::ValueTree& tree, const juce:
         else if (property == id::moduleId)  // Rename (auch Undo/OSC-extern)
             titleLabel.setText (tree.getProperty (id::moduleId).toString(),
                                 juce::dontSendNotification);
+        else if (property == id::numInputChannels || property == id::numOutputChannels)
+        {
+            // I/O-Endpunkt hat die Hardware-Kanalzahl geändert (Schritt B):
+            // Ports neu bauen, Kachel an die neue Zahl anpassen, Kabel folgen
+            rebuildPorts();
+
+            if (isExternalEndpoint)
+                updateEndpointSize();
+
+            resized();   // neue Ports positionieren (auch bei gleicher Größe)
+            repaint();
+
+            if (auto* parent = getParentComponent())
+                parent->repaint();  // Kabel-Pfade des Canvas neu zeichnen
+        }
 
         return;
     }
@@ -238,6 +243,36 @@ void NodeComponent::applyTreePosition()
 juce::ValueTree NodeComponent::firstParameter() const
 {
     return nodeTree.getChildWithName (id::parameters).getChild (0);
+}
+
+void NodeComponent::rebuildPorts()
+{
+    inputPorts.clear();
+    outputPorts.clear();
+
+    const auto makePorts = [this] (bool isInput, int count,
+                                   std::vector<std::unique_ptr<PortComponent>>& ports)
+    {
+        for (int channel = 0; channel < count; ++channel)
+        {
+            auto port = std::make_unique<PortComponent> (PortInfo { nodeUuid, isInput, channel });
+            addAndMakeVisible (*port);
+            ports.push_back (std::move (port));
+        }
+    };
+
+    makePorts (true,  (int) nodeTree.getProperty (id::numInputChannels,  0), inputPorts);
+    makePorts (false, (int) nodeTree.getProperty (id::numOutputChannels, 0), outputPorts);
+
+    refreshPortTooltips();  // Kanal-Labels der I/O-Endpunkte nachziehen
+}
+
+void NodeComponent::updateEndpointSize()
+{
+    // Ein Port braucht rund eine Touch-Reihe; die Höhe folgt dem größeren der
+    // beiden Port-Bänke. defaultHeight (2 Ports) bleibt so unverändert.
+    const auto maxPorts = juce::jmax (getNumInputPorts(), getNumOutputPorts(), 1);
+    setSize (defaultWidth, touchTarget + maxPorts * 30);
 }
 
 //==============================================================================

@@ -103,6 +103,15 @@ private:
     void applyTreePosition();
     [[nodiscard]] juce::ValueTree firstParameter() const;
 
+    /** (Neu-)Baut die Port-Components aus numInputChannels/numOutputChannels
+        (Schema 6.2) und zieht die Kanal-Labels nach. Aufgerufen im Konstruktor
+        und wenn ein I/O-Endpunkt seine Hardware-Kanalzahl ändert (Schritt B). */
+    void rebuildPorts();
+
+    /** Kachelhöhe der I/O-Endpunkte folgt der Portzahl (Hardware-Kanäle).
+        Andere Module haben feste Busse und setzen ihre Größe selbst. */
+    void updateEndpointSize();
+
     //==========================================================================
     juce::ValueTree nodeTree;   // NUR der Subtree (5.3)
     GraphManager& graphManager;
@@ -117,6 +126,10 @@ private:
 
     std::vector<std::unique_ptr<PortComponent>> inputPorts;
     std::vector<std::unique_ptr<PortComponent>> outputPorts;
+
+    // audio_input/audio_output — Grundausstattung, Höhe folgt der Hardware-
+    // Kanalzahl (Schritt B); im Konstruktor gesetzt.
+    bool isExternalEndpoint = false;
 
     // Nur bei Scope-Nodes (factoryId == "scope") — 30-fps-Waveform
     std::unique_ptr<ScopeDisplay> scopeDisplay;

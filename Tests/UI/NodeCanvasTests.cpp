@@ -186,6 +186,49 @@ TEST_CASE ("NodeCanvas: Sequencer-Node bekommt die Grid-Kachel", "[ui]")
 }
 
 //==============================================================================
+TEST_CASE ("NodeComponent: I/O-Ports folgen der Hardware-Kanalzahl (Schritt B)", "[ui][io]")
+{
+    UiTestRig rig;
+
+    // Externen Endpunkt registrieren (in der App: der AudioGraphIOProcessor)
+    const auto graphNode = rig.graph.addNode (std::make_unique<conduit::AttenuatorModule>())->nodeID;
+    rig.manager.registerExternalEndpoint (conduit::audioInputModuleId, graphNode);
+
+    // audio_input-Tree-Node von Hand anlegen (wie EngineProcessor::ensureIONodeStates):
+    // liefert Kanäle → Ausgangs-Ports, startet stereo
+    juce::ValueTree node (conduit::id::node);
+    node.setProperty (conduit::id::nodeId,            juce::Uuid().toString(),                    nullptr);
+    node.setProperty (conduit::id::factoryId,         conduit::audioInputModuleId,                nullptr);
+    node.setProperty (conduit::id::moduleId,          "audio_in",                                 nullptr);
+    node.setProperty (conduit::id::nodeState,         conduit::toString (conduit::NodeState::active), nullptr);
+    node.setProperty (conduit::id::numInputChannels,  0,                                          nullptr);
+    node.setProperty (conduit::id::numOutputChannels, 2,                                          nullptr);
+    node.appendChild (juce::ValueTree (conduit::id::parameters), nullptr);
+    rig.nodes().appendChild (node, nullptr);
+
+    auto* component = rig.canvas.findNodeComponent (UiTestRig::uuidOf (node));
+    REQUIRE (component != nullptr);
+    REQUIRE (component->getNumOutputPorts() == 2);
+    const auto stereoHeight = component->getHeight();
+
+    SECTION ("Multichannel-Gerätewechsel: 8 Ausgangs-Ports, höhere Kachel")
+    {
+        node.setProperty (conduit::id::numOutputChannels, 8, nullptr);
+        REQUIRE (component->getNumOutputPorts() == 8);
+        REQUIRE (component->getNumInputPorts()  == 0);  // andere Bank unberührt
+        REQUIRE (component->getHeight() > stereoHeight);
+    }
+
+    SECTION ("Schrumpfen zurück auf stereo stellt die Ausgangsgröße wieder her")
+    {
+        node.setProperty (conduit::id::numOutputChannels, 8, nullptr);
+        node.setProperty (conduit::id::numOutputChannels, 2, nullptr);
+        REQUIRE (component->getNumOutputPorts() == 2);
+        REQUIRE (component->getHeight() == stereoHeight);
+    }
+}
+
+//==============================================================================
 TEST_CASE ("GraphManager: Parameter-Sync Tree → Atomic (UI/Preset/Undo-Pfad)", "[ui]")
 {
     UiTestRig rig;

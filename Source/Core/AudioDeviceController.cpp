@@ -117,6 +117,12 @@ void AudioDeviceController::applyActiveDevice()
                                                    device->getInputChannelNames(),
                                                    device->getOutputChannelNames());
 
+        // Echte Hardware-Kanalzahl an die I/O-Tree-Nodes koppeln (Schritt B).
+        // Aktive Kanäle wie der AudioProcessorPlayer (findMostSuitableLayout →
+        // deviceChannels), damit Port-UI und Graph dieselbe Zahl tragen.
+        engine->syncHardwareIOChannels (device->getActiveInputChannels().countNumberOfSetBits(),
+                                        device->getActiveOutputChannels().countNumberOfSetBits());
+
         const auto warning = computeWarning (device->getCurrentSampleRate(),
                                              device->getCurrentBufferSizeSamples());
 

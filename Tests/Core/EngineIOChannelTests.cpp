@@ -16,6 +16,18 @@ juce::AudioProcessor::BusesLayout ioLayout (int ins, int outs)
     return layout;
 }
 
+// Der reservierte I/O-Tree-Node zu einem factoryKey (audio_input/audio_output).
+juce::ValueTree ioNode (conduit::EngineProcessor& engine, const char* factoryKey)
+{
+    return engine.getRootState().getChildWithName (conduit::id::nodes)
+                 .getChildWithProperty (conduit::id::factoryId, juce::String (factoryKey));
+}
+
+int propInt (const juce::ValueTree& node, const juce::Identifier& prop)
+{
+    return (int) node.getProperty (prop, -1);
+}
+
 } // namespace
 
 //==============================================================================
@@ -60,5 +72,61 @@ TEST_CASE ("EngineProcessor reicht die Device-Kanalzahl bis zum Graph durch", "[
         engine.setPlayConfigDetails (0, 2, 48000.0, 32);
         REQUIRE (engine.getTotalNumInputChannels()  == 0);
         REQUIRE (engine.getTotalNumOutputChannels() == 2);
+    }
+}
+
+//==============================================================================
+// Schritt B: syncHardwareIOChannels koppelt die I/O-Tree-Nodes an die echte
+// Device-Kanalzahl → die Port-UI (numInputChannels/numOutputChannels) folgt.
+//==============================================================================
+TEST_CASE ("syncHardwareIOChannels koppelt die I/O-Nodes an die Device-Kanalzahl", "[engine][io]")
+{
+    conduit::EngineProcessor engine;
+
+    const auto in  = ioNode (engine, conduit::audioInputModuleId);
+    const auto out = ioNode (engine, conduit::audioOutputModuleId);
+    REQUIRE (in.isValid());
+    REQUIRE (out.isValid());
+
+    SECTION ("Defaults sind stereo (2 In / 2 Out)")
+    {
+        REQUIRE (propInt (in,  conduit::id::numOutputChannels) == 2);
+        REQUIRE (propInt (out, conduit::id::numInputChannels)  == 2);
+    }
+
+    SECTION ("Multichannel-Interface (8 In / 6 Out)")
+    {
+        engine.syncHardwareIOChannels (8, 6);
+
+        // audio_in liefert Kanäle → Ausgangs-Ports; audio_out nimmt sie → Eingangs-Ports
+        REQUIRE (propInt (in,  conduit::id::numOutputChannels) == 8);
+        REQUIRE (propInt (out, conduit::id::numInputChannels)  == 6);
+
+        // Die jeweils andere Bank bleibt unangetastet (0)
+        REQUIRE (propInt (in,  conduit::id::numInputChannels)  == 0);
+        REQUIRE (propInt (out, conduit::id::numOutputChannels) == 0);
+    }
+
+    SECTION ("Ausgabe-only-Interface (0 Eingänge)")
+    {
+        engine.syncHardwareIOChannels (0, 2);
+        REQUIRE (propInt (in,  conduit::id::numOutputChannels) == 0);
+        REQUIRE (propInt (out, conduit::id::numInputChannels)  == 2);
+    }
+
+    SECTION ("Schrumpfen: 8 Out zurück auf 2")
+    {
+        engine.syncHardwareIOChannels (2, 8);
+        REQUIRE (propInt (out, conduit::id::numInputChannels) == 8);
+
+        engine.syncHardwareIOChannels (2, 2);
+        REQUIRE (propInt (out, conduit::id::numInputChannels) == 2);
+    }
+
+    SECTION ("negative Werte werden auf 0 geklemmt")
+    {
+        engine.syncHardwareIOChannels (-1, -5);
+        REQUIRE (propInt (in,  conduit::id::numOutputChannels) == 0);
+        REQUIRE (propInt (out, conduit::id::numInputChannels)  == 0);
     }
 }

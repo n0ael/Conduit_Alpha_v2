@@ -16,11 +16,18 @@
 
 ## Aktueller Meilenstein (Juli 2026 — in Arbeit)
 
-**Echte Hardware-Kanalzahl für Audio-I/O (CLAUDE.md 9), Schritt A — Bus-Fundament (verhaltensneutral):**
-- **`EngineProcessor::isBusesLayoutSupported`**: expliziter Override, der jede diskrete I/O-Kanalzahl akzeptiert (Ausgänge ≥ 1, Eingänge auch 0 → Ausgabe-only-Interface, 9.1). Damit probiert der `AudioProcessorPlayer` in `findMostSuitableLayout` die **echte Device-Kanalzahl zuerst** und reicht sie via `graph.setPlayConfigDetails()` bis in den Graph durch — statt sich still auf den JUCE-Default (Basis liefert `true`) zu verlassen. Der Vertrag ist jetzt festgeschrieben und unit-getestet
-- **Erkenntnis:** Der Graph adaptiert die Kanalzahl auf Audio-Ebene bereits automatisch; der eigentliche Bruch liegt nur noch in der ValueTree-/UI-Ebene (Schritt B/C)
-- **Verifikation:** 136 Testfälle / 10132 Assertions grün (Debug + ASan). Neue Tests (`EngineIOChannelTests`): akzeptiert 8/8, 2/8, 6/6, 0/2; lehnt 2/0 (kein Ausgang) ab; `setPlayConfigDetails(8,8)`/`(0,2)` propagiert die Kanalzahl in den Prozessor. Verhaltensneutral für das Stereo-Dev-Gerät → keine UI-Änderung sichtbar
-- **Offen:** Schritt B (`audio_in/out`-Tree-Nodes an aktive Device-Kanalzahl koppeln → Port-UI), Schritt C (Connection-Pruning beim Schrumpfen der Kanalzahl); beide geräte-getrieben, **nicht** undo-fähig
+**Echte Hardware-Kanalzahl für Audio-I/O (CLAUDE.md 9):**
+
+*Schritt B — Tree-Kopplung (Port-UI folgt der Hardware):*
+- **`EngineProcessor::syncHardwareIOChannels(ins, outs)`**: koppelt die reservierten I/O-Tree-Nodes an die echte Device-Kanalzahl — `audio_in` bekommt `ins` Ausgangs-Ports (`numOutputChannels`), `audio_out` `outs` Eingangs-Ports (`numInputChannels`). Idempotent (schreibt nur bei Abweichung), geräte-getrieben → **nicht undo-fähig** (Umgebungs-Zustand wie `ensureIONodeStates`), negative Werte auf 0 geklemmt
+- **`AudioDeviceController::applyActiveDevice`** ruft sie bei Start + jedem Gerätewechsel mit den aktiven Kanälen (`getActiveInputChannels().countNumberOfSetBits()`) — dieselbe Basis wie `findMostSuitableLayout`, damit Port-UI und Graph exakt dieselbe Zahl tragen
+- **`NodeComponent`**: reagiert auf `numInputChannels`/`numOutputChannels`-Änderungen — `rebuildPorts()` baut die Ports neu, I/O-Endpunkte wachsen in der Höhe mit der Portzahl (`updateEndpointSize`, `touchTarget + maxPorts·30`), Re-Layout + Canvas-Repaint (Kabel folgen). Port-Bau aus dem Konstruktor in `rebuildPorts()` extrahiert
+- **Verifikation:** 138 Testfälle / 10163 Assertions grün (Debug + ASan). Neue Tests: `syncHardwareIOChannels` (8/6, 0/2, Schrumpfen, Klemmen, andere Bank unberührt); NodeComponent-UI (Ports + Kachelhöhe folgen der Kanalzahl, Schrumpfen stellt Größe wieder her). **Smoke: gespeichertes Multichannel-Interface → `audio_in`/`audio_out` zeigen live einen Port pro Kanal (Analog/Headphones/CV-Gate/ADAT) mit echten Namen, Kacheln mitgewachsen**
+
+*Schritt A — Bus-Fundament (verhaltensneutral):*
+- **`EngineProcessor::isBusesLayoutSupported`**: expliziter Override, der jede diskrete I/O-Kanalzahl akzeptiert (Ausgänge ≥ 1, Eingänge auch 0 → Ausgabe-only-Interface, 9.1). Damit probiert der `AudioProcessorPlayer` in `findMostSuitableLayout` die **echte Device-Kanalzahl zuerst** und reicht sie via `graph.setPlayConfigDetails()` bis in den Graph durch
+- **Erkenntnis:** Der Graph adaptiert die Kanalzahl auf Audio-Ebene bereits automatisch; der eigentliche Bruch lag nur in der ValueTree-/UI-Ebene (→ Schritt B behoben)
+- **Offen:** Schritt C (Connection-Pruning beim Schrumpfen der Kanalzahl — Kabel auf verschwundene I/O-Kanäle entfernen); geräte-getrieben, **nicht** undo-fähig
 
 **Davor: Audio-Settings-Fenster — Grundstein für ASIO/CoreAudio/Linux (CLAUDE.md 9 / 13.2):**
 - **`AudioDeviceController`** (`Source/Core/`): App-Layer-Bündelung von `AudioDeviceManager` + `AudioProcessorPlayer`. Kapselt das bisher in `Main.cpp::initAudio()` inline liegende Geräte-Handling. Lauscht als `ChangeListener` und wendet bei JEDEM Gerätewechsel dieselbe Glue-Logik an: ChannelNames-Kontext setzen + `audioSetupWarning` setzen/löschen. Persistenz via eigener `PropertiesFile` (`Conduit/AudioDevice.settings`, App-Zustand wie ChannelNames — überlebt Preset-Load, kein Undo). Force auf 48k/32 nur beim Erststart ohne gespeicherten Zustand; bewusste Nutzerwahl bleibt erhalten. Reiner Helfer `computeWarning(rate, buffer)` unit-testbar

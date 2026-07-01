@@ -87,6 +87,16 @@ public:
     [[nodiscard]] juce::UndoManager& getUndoManager() noexcept;
 
     /** Patch-Aktionen (Delete-Requests) und UI-Bindungs-Registry. */
+    /** Koppelt die reservierten I/O-Tree-Nodes (audio_in/audio_out) an die
+        echte Device-Kanalzahl (CLAUDE.md 9, Schritt B): audio_in bekommt
+        deviceInputs Ausgangs-Ports, audio_out deviceOutputs Eingangs-Ports —
+        die Port-UI folgt der Hardware. Idempotent (schreibt nur bei
+        Abweichung). Geräte-getrieben und daher NICHT undo-fähig (Umgebungs-
+        Zustand wie ensureIONodeStates, nicht Teil des Patches). Aufgerufen
+        vom AudioDeviceController bei Start und jedem Gerätewechsel.
+        Message Thread. */
+    void syncHardwareIOChannels (int deviceInputs, int deviceOutputs);
+
     [[nodiscard]] GraphManager& getGraphManager() noexcept;
     [[nodiscard]] NodeUiRegistry& getNodeUiRegistry() noexcept;
     [[nodiscard]] OscController& getOscController() noexcept;

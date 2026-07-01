@@ -111,6 +111,14 @@ private:
         falls sie fehlen — frischer Patch oder Preset ohne I/O. Idempotent. */
     void ensureIONodeStates();
 
+    /** Schritt C: entfernt Kabel, die einen jetzt verschwundenen I/O-Kanal
+        referenzieren (Kanal >= validChannels), wenn ein kleineres Interface
+        gewählt/ausgesteckt wird. asSource = der Endpunkt ist die Quelle
+        (audio_in); sonst das Ziel (audio_out). Geräte-getrieben → kein Undo
+        (Umgebungs-Zustand, nicht Teil des Patches, verhindert Phantom-
+        Connections beim Preset-Save). Message Thread. */
+    void pruneEndpointConnections (const juce::String& nodeId, bool asSource, int validChannels);
+
     /** Default-Properties der globalen Session-Skala (6.2) + Atomics-Refresh. */
     void ensureSessionScaleDefaults();
     void refreshScaleAtomics();

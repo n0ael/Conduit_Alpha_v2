@@ -16,7 +16,11 @@
 
 ## Aktueller Meilenstein (Juli 2026 — in Arbeit)
 
-**Echte Hardware-Kanalzahl für Audio-I/O (CLAUDE.md 9):**
+**Echte Hardware-Kanalzahl für Audio-I/O (CLAUDE.md 9) — Meilenstein abgeschlossen:**
+
+*Schritt C — Connection-Pruning (Phantom-Connection-Schutz):*
+- **`EngineProcessor::pruneEndpointConnections(nodeId, asSource, validChannels)`**: entfernt beim Schrumpfen der Kanalzahl (kleineres Interface / Ausstecken) genau die Kabel, die einen jetzt verschwundenen I/O-Kanal referenzieren (Kanal ≥ validChannels). `audio_in` als Quelle (`sourceChannel`), `audio_out` als Ziel (`destChannel`). Rückwärts-Iteration, geräte-getrieben → **nicht undo-fähig** (verhindert Phantom-Connections beim Preset-Save, v1-Lektion 6). `syncHardwareIOChannels` ruft es nach dem Kanalzahl-Update; die Tree-Entfernung zieht Graph-Connection (GraphManager-Swap) und Kabel-Repaint (Canvas) nach
+- **Verifikation:** 139 Testfälle / 10175 Assertions grün (Debug + ASan). Neue Tests: Schrumpfen 8→2 kappt genau die out-of-range Kabel (gültige bleiben), gleiche Kanalzahl lässt alle stehen, Ausstecken (0/0) kappt alle I/O-Kabel, fremde Kabel (kein I/O-Endpunkt) unangetastet
 
 *Schritt B — Tree-Kopplung (Port-UI folgt der Hardware):*
 - **`EngineProcessor::syncHardwareIOChannels(ins, outs)`**: koppelt die reservierten I/O-Tree-Nodes an die echte Device-Kanalzahl — `audio_in` bekommt `ins` Ausgangs-Ports (`numOutputChannels`), `audio_out` `outs` Eingangs-Ports (`numInputChannels`). Idempotent (schreibt nur bei Abweichung), geräte-getrieben → **nicht undo-fähig** (Umgebungs-Zustand wie `ensureIONodeStates`), negative Werte auf 0 geklemmt
@@ -26,8 +30,7 @@
 
 *Schritt A — Bus-Fundament (verhaltensneutral):*
 - **`EngineProcessor::isBusesLayoutSupported`**: expliziter Override, der jede diskrete I/O-Kanalzahl akzeptiert (Ausgänge ≥ 1, Eingänge auch 0 → Ausgabe-only-Interface, 9.1). Damit probiert der `AudioProcessorPlayer` in `findMostSuitableLayout` die **echte Device-Kanalzahl zuerst** und reicht sie via `graph.setPlayConfigDetails()` bis in den Graph durch
-- **Erkenntnis:** Der Graph adaptiert die Kanalzahl auf Audio-Ebene bereits automatisch; der eigentliche Bruch lag nur in der ValueTree-/UI-Ebene (→ Schritt B behoben)
-- **Offen:** Schritt C (Connection-Pruning beim Schrumpfen der Kanalzahl — Kabel auf verschwundene I/O-Kanäle entfernen); geräte-getrieben, **nicht** undo-fähig
+- **Erkenntnis:** Der Graph adaptiert die Kanalzahl auf Audio-Ebene bereits automatisch; der eigentliche Bruch lag nur in der ValueTree-/UI-Ebene (→ Schritt B/C behoben)
 
 **Davor: Audio-Settings-Fenster — Grundstein für ASIO/CoreAudio/Linux (CLAUDE.md 9 / 13.2):**
 - **`AudioDeviceController`** (`Source/Core/`): App-Layer-Bündelung von `AudioDeviceManager` + `AudioProcessorPlayer`. Kapselt das bisher in `Main.cpp::initAudio()` inline liegende Geräte-Handling. Lauscht als `ChangeListener` und wendet bei JEDEM Gerätewechsel dieselbe Glue-Logik an: ChannelNames-Kontext setzen + `audioSetupWarning` setzen/löschen. Persistenz via eigener `PropertiesFile` (`Conduit/AudioDevice.settings`, App-Zustand wie ChannelNames — überlebt Preset-Load, kein Undo). Force auf 48k/32 nur beim Erststart ohne gespeicherten Zustand; bewusste Nutzerwahl bleibt erhalten. Reiner Helfer `computeWarning(rate, buffer)` unit-testbar

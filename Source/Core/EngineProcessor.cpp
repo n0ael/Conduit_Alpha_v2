@@ -137,25 +137,63 @@ void EngineProcessor::syncHardwareIOChannels (int deviceInputs, int deviceOutput
 {
     JUCE_ASSERT_MESSAGE_THREAD
 
+    const auto ins  = juce::jmax (0, deviceInputs);
+    const auto outs = juce::jmax (0, deviceOutputs);
+
     auto nodesTree = rootState.getChildWithName (id::nodes);
 
-    const auto apply = [&nodesTree] (const char* factoryKey,
-                                     const juce::Identifier& channelProp, int count)
+    const auto ioNodeFor = [&nodesTree] (const char* factoryKey)
     {
         auto node = nodesTree.getChildWithProperty (id::factoryId, juce::String (factoryKey));
         if (! node.isValid())
             node = nodesTree.getChildWithProperty (id::moduleId, juce::String (factoryKey));
-
-        // Idempotent: nur bei echter Abweichung schreiben, sonst löst jeder
-        // Gerätewechsel unnötige UI-Rebuilds aus. Geräte-getrieben → kein Undo.
-        if (node.isValid() && (int) node.getProperty (channelProp, -1) != count)
-            node.setProperty (channelProp, count, nullptr);
+        return node;
     };
 
-    // Input-Prozessor LIEFERT Kanäle → Ausgangs-Ports am audio_in-Node;
-    // Output-Prozessor NIMMT Kanäle → Eingangs-Ports am audio_out-Node
-    apply (audioInputModuleId,  id::numOutputChannels, juce::jmax (0, deviceInputs));
-    apply (audioOutputModuleId, id::numInputChannels,  juce::jmax (0, deviceOutputs));
+    auto inNode  = ioNodeFor (audioInputModuleId);
+    auto outNode = ioNodeFor (audioOutputModuleId);
+
+    // Kanalzahl setzen — idempotent (nur bei Abweichung, sonst unnötige
+    // UI-Rebuilds pro Gerätewechsel). Input-Prozessor LIEFERT Kanäle →
+    // Ausgangs-Ports am audio_in-Node; Output-Prozessor NIMMT Kanäle →
+    // Eingangs-Ports am audio_out-Node. Geräte-getrieben → kein Undo.
+    if (inNode.isValid() && (int) inNode.getProperty (id::numOutputChannels, -1) != ins)
+        inNode.setProperty (id::numOutputChannels, ins, nullptr);
+
+    if (outNode.isValid() && (int) outNode.getProperty (id::numInputChannels, -1) != outs)
+        outNode.setProperty (id::numInputChannels, outs, nullptr);
+
+    // Schritt C: Kabel auf verschwundene I/O-Kanäle kappen (kleineres
+    // Interface / Ausstecken), damit keine Phantom-Connections zurückbleiben
+    if (inNode.isValid())
+        pruneEndpointConnections (inNode.getProperty (id::nodeId).toString(),  true,  ins);
+
+    if (outNode.isValid())
+        pruneEndpointConnections (outNode.getProperty (id::nodeId).toString(), false, outs);
+}
+
+void EngineProcessor::pruneEndpointConnections (const juce::String& nodeId, bool asSource, int validChannels)
+{
+    JUCE_ASSERT_MESSAGE_THREAD
+
+    auto connections = rootState.getChildWithName (id::connections);
+
+    // Rückwärts iterieren — removeChild verschiebt die nachfolgenden Indizes
+    for (int i = connections.getNumChildren() - 1; i >= 0; --i)
+    {
+        const auto conn = connections.getChild (i);
+
+        const auto endpointId = (asSource ? conn.getProperty (id::sourceNodeId)
+                                          : conn.getProperty (id::destNodeId)).toString();
+        if (endpointId != nodeId)
+            continue;
+
+        const int channel = (int) (asSource ? conn.getProperty (id::sourceChannel, 0)
+                                            : conn.getProperty (id::destChannel, 0));
+
+        if (channel >= validChannels)
+            connections.removeChild (i, nullptr);  // geräte-getrieben → kein Undo
+    }
 }
 
 //==============================================================================

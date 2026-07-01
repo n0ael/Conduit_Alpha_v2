@@ -28,6 +28,42 @@ int propInt (const juce::ValueTree& node, const juce::Identifier& prop)
     return (int) node.getProperty (prop, -1);
 }
 
+juce::ValueTree connectionsOf (conduit::EngineProcessor& engine)
+{
+    return engine.getRootState().getChildWithName (conduit::id::connections);
+}
+
+// Legt ein Kabel direkt im Tree an (ohne UndoManager) — der andere Endpunkt
+// darf ein beliebiger Uuid sein, das Pruning inspiziert nur die I/O-Seite.
+void addConnection (conduit::EngineProcessor& engine,
+                    const juce::String& srcId, int srcCh,
+                    const juce::String& dstId, int dstCh)
+{
+    juce::ValueTree c (conduit::id::connection);
+    c.setProperty (conduit::id::sourceNodeId,  srcId, nullptr);
+    c.setProperty (conduit::id::sourceChannel, srcCh, nullptr);
+    c.setProperty (conduit::id::destNodeId,    dstId, nullptr);
+    c.setProperty (conduit::id::destChannel,   dstCh, nullptr);
+    connectionsOf (engine).appendChild (c, nullptr);
+}
+
+bool hasConnection (conduit::EngineProcessor& engine,
+                    const juce::String& srcId, int srcCh,
+                    const juce::String& dstId, int dstCh)
+{
+    const auto conns = connectionsOf (engine);
+    for (int i = 0; i < conns.getNumChildren(); ++i)
+    {
+        const auto c = conns.getChild (i);
+        if (c.getProperty (conduit::id::sourceNodeId).toString() == srcId
+            && (int) c.getProperty (conduit::id::sourceChannel) == srcCh
+            && c.getProperty (conduit::id::destNodeId).toString() == dstId
+            && (int) c.getProperty (conduit::id::destChannel) == dstCh)
+            return true;
+    }
+    return false;
+}
+
 } // namespace
 
 //==============================================================================
@@ -128,5 +164,60 @@ TEST_CASE ("syncHardwareIOChannels koppelt die I/O-Nodes an die Device-Kanalzahl
         engine.syncHardwareIOChannels (-1, -5);
         REQUIRE (propInt (in,  conduit::id::numOutputChannels) == 0);
         REQUIRE (propInt (out, conduit::id::numInputChannels)  == 0);
+    }
+}
+
+//==============================================================================
+// Schritt C: Beim Schrumpfen der Kanalzahl werden Kabel auf verschwundene
+// I/O-Kanäle gekappt (Phantom-Connection-Schutz), gültige bleiben stehen.
+//==============================================================================
+TEST_CASE ("syncHardwareIOChannels kappt Kabel auf verschwundene I/O-Kanäle", "[engine][io]")
+{
+    conduit::EngineProcessor engine;
+    engine.syncHardwareIOChannels (8, 8);  // Multichannel-Interface
+
+    const auto inId  = ioNode (engine, conduit::audioInputModuleId).getProperty (conduit::id::nodeId).toString();
+    const auto outId = ioNode (engine, conduit::audioOutputModuleId).getProperty (conduit::id::nodeId).toString();
+    const juce::String moduleId = juce::Uuid().toString();  // Gegenstelle (beliebig)
+
+    // audio_in ist Quelle: Kanäle 1 und 6 in ein Modul
+    addConnection (engine, inId, 1, moduleId, 0);
+    addConnection (engine, inId, 6, moduleId, 1);
+    // audio_out ist Ziel: Modul in die Kanäle 0 und 7
+    addConnection (engine, moduleId, 0, outId, 0);
+    addConnection (engine, moduleId, 1, outId, 7);
+    REQUIRE (connectionsOf (engine).getNumChildren() == 4);
+
+    SECTION ("Schrumpfen auf 2/2 entfernt genau die out-of-range Kabel")
+    {
+        engine.syncHardwareIOChannels (2, 2);
+
+        REQUIRE (connectionsOf (engine).getNumChildren() == 2);
+        REQUIRE      (hasConnection (engine, inId, 1, moduleId, 0));      // Kanal 1 < 2 bleibt
+        REQUIRE_FALSE (hasConnection (engine, inId, 6, moduleId, 1));     // Kanal 6 weg
+        REQUIRE      (hasConnection (engine, moduleId, 0, outId, 0));     // Kanal 0 < 2 bleibt
+        REQUIRE_FALSE (hasConnection (engine, moduleId, 1, outId, 7));    // Kanal 7 weg
+    }
+
+    SECTION ("gleiche Kanalzahl lässt alle Kabel stehen")
+    {
+        engine.syncHardwareIOChannels (8, 8);
+        REQUIRE (connectionsOf (engine).getNumChildren() == 4);
+    }
+
+    SECTION ("Ausstecken (0/0) kappt alle I/O-Kabel")
+    {
+        engine.syncHardwareIOChannels (0, 0);
+        REQUIRE (connectionsOf (engine).getNumChildren() == 0);
+    }
+
+    SECTION ("fremde Kabel (kein I/O-Endpunkt) bleiben unangetastet")
+    {
+        const juce::String otherA = juce::Uuid().toString();
+        const juce::String otherB = juce::Uuid().toString();
+        addConnection (engine, otherA, 5, otherB, 9);  // hohe Kanäle, aber kein I/O
+
+        engine.syncHardwareIOChannels (0, 0);
+        REQUIRE (hasConnection (engine, otherA, 5, otherB, 9));
     }
 }

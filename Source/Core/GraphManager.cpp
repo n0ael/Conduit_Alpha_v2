@@ -6,7 +6,9 @@
 #include "Interfaces/ICaptureTapClient.h"
 #include "Interfaces/IClockSlave.h"
 #include "Interfaces/ILinkAudioClient.h"
+#include "Interfaces/ISendConfigClient.h"
 #include "Interfaces/IStochastic.h"
+#include "Modules/LinkAudioSendModule.h"
 #include "Modules/ModuleFactory.h"
 #include "NodeUiRegistry.h"
 
@@ -63,7 +65,8 @@ ConduitModule* GraphManager::getModuleFor (const juce::String& nodeUuid) const
 }
 
 //==============================================================================
-juce::ValueTree GraphManager::addModuleNode (const juce::String& factoryKey, juce::Point<int> position)
+juce::ValueTree GraphManager::addModuleNode (const juce::String& factoryKey, juce::Point<int> position,
+                                             const std::function<void (juce::ValueTree&)>& configure)
 {
     JUCE_ASSERT_MESSAGE_THREAD
 
@@ -75,6 +78,12 @@ juce::ValueTree GraphManager::addModuleNode (const juce::String& factoryKey, juc
         return {};
 
     auto nodeTree = module->createState();
+
+    // Anlege-Konfiguration (z.B. Send-Eingangszahl) vor dem Einhängen —
+    // der Node materialisiert dann direkt mit dem konfigurierten Layout.
+    if (configure)
+        configure (nodeTree);
+
     nodeTree.setProperty (id::positionX, position.x, nullptr);
     nodeTree.setProperty (id::positionY, position.y, nullptr);
 
@@ -165,6 +174,10 @@ void GraphManager::normalizeNode (juce::ValueTree nodeTree)
     if (! nodeTree.hasProperty (id::factoryId))
         nodeTree.setProperty (id::factoryId,
                               nodeTree.getProperty (id::moduleId).toString(), nullptr);
+
+    // Modul-spezifische Migration: Multi-Input-Send-Schema (stateVersion 1→2)
+    if (factoryKeyOf (nodeTree) == LinkAudioSendModule::staticModuleId)
+        LinkAudioSendModule::migrate (nodeTree);
 }
 
 //==============================================================================
@@ -524,10 +537,16 @@ std::unique_ptr<ConduitModule> GraphManager::materializeModule (juce::ValueTree 
     }
 
     // Link-Audio-Kontext VOR prepareForGraph (7.2): der Sink entsteht in
-    // prepareToPlay und braucht Clock + moduleId (Kanal-Name == moduleId)
+    // prepareToPlay und braucht Clock + moduleId (Kanal-Name = {moduleId}/…)
     if (auto* linkAudioClient = dynamic_cast<ILinkAudioClient*> (module.get()))
         linkAudioClient->setLinkAudioContext (linkClock,
             nodeTree.getProperty (id::moduleId).toString());
+
+    // Send-Kanal-Layout VOR prepareForGraph (7.2): setzt die Bus-Kanalzahl
+    // (fixe Eingangszahl) und die Eingangs-Struktur, aus der prepareToPlay
+    // die Sinks baut.
+    if (auto* sendClient = dynamic_cast<ISendConfigClient*> (module.get()))
+        sendClient->applySendConfig (LinkAudioSendModule::readInputConfig (nodeTree));
 
     // Capture-Kontext VOR prepareForGraph: die Kanal-Registrierung passiert
     // dort und braucht Service + moduleId (Spurname == moduleId)

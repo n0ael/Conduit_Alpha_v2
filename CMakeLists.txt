@@ -142,6 +142,7 @@ target_sources(Conduit PRIVATE
     Source/Interfaces/IClockSlave.h
     Source/Interfaces/IClockSource.h
     Source/Interfaces/ILinkAudioClient.h
+    Source/Interfaces/ISendConfigClient.h
     Source/Interfaces/IStochastic.h
     Source/Modules/AnalysisModule.h
     Source/Modules/ConduitModule.h

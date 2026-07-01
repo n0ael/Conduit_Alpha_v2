@@ -194,30 +194,44 @@ TEST_CASE ("LinkAudioSendModule: Sink-Lifecycle über den GraphManager (7.2)", "
     REQUIRE_FALSE (clock.isAudioEnabled());
 
     //==========================================================================
-    // Materialisierung: Sink-Name == moduleId, Refcount aktiviert Audio
+    // Materialisierung: Default = 1 Stereo-Eingang, Kanal-Name {moduleId}/input1
     const auto node1 = manager.addModuleNode (conduit::LinkAudioSendModule::staticModuleId, {});
     REQUIRE (node1.isValid());
     manager.flushPendingTopologyUpdate();
 
+    const auto module1Id = node1.getProperty (conduit::id::moduleId).toString();
     auto* module1 = dynamic_cast<conduit::LinkAudioSendModule*> (manager.getModuleFor (uuidOf (node1)));
     REQUIRE (module1 != nullptr);
-    REQUIRE (module1->getSinkName() == node1.getProperty (conduit::id::moduleId).toString());
+    REQUIRE (module1->getNumSlots() == 1);
+    REQUIRE (module1->getTotalNumInputChannels()  == 2);   // Stereo-Eingang
+    REQUIRE (module1->getTotalNumOutputChannels() == 0);   // reiner Sender
+    REQUIRE (module1->getSinkNames() == juce::StringArray (module1Id + "/input1"));
     REQUIRE (clock.isAudioEnabled());
 
-    // Zweites Modul → Refcount 2
-    const auto node2 = manager.addModuleNode (conduit::LinkAudioSendModule::staticModuleId, {});
+    // Zweites Modul mit gemischter Anlege-Config (2 mono + 1 stereo → 4 Kanäle)
+    const auto node2 = manager.addModuleNode (
+        conduit::LinkAudioSendModule::staticModuleId, {},
+        [] (juce::ValueTree& tree)
+        {
+            using Mode = conduit::LinkAudioSendModule::InputMode;
+            conduit::LinkAudioSendModule::applyInputConfig (tree, { Mode::mono, Mode::mono, Mode::stereo });
+        });
     manager.flushPendingTopologyUpdate();
+
+    auto* module2 = dynamic_cast<conduit::LinkAudioSendModule*> (manager.getModuleFor (uuidOf (node2)));
+    REQUIRE (module2 != nullptr);
+    REQUIRE (module2->getNumSlots() == 3);
+    REQUIRE (module2->getTotalNumInputChannels() == 4);
     REQUIRE (clock.isAudioEnabled());
 
     //==========================================================================
-    // Rename propagiert live auf den Sink (sanitiert, undo-fähig)
+    // Rename propagiert live auf ALLE Sinks (Präfix-Wechsel, sanitiert, undo-fähig)
     REQUIRE (manager.renameNode (uuidOf (node1), "Drum Bus"));
     REQUIRE (node1.getProperty (conduit::id::moduleId).toString() == "drum_bus");
-    REQUIRE (module1->getSinkName() == "drum_bus");
+    REQUIRE (module1->getSinkNames() == juce::StringArray ("drum_bus/input1"));
 
     undoManager.undo();
-    REQUIRE (module1->getSinkName() == node1.getProperty (conduit::id::moduleId).toString());
-    REQUIRE (module1->getSinkName() != "drum_bus");
+    REQUIRE (module1->getSinkNames() == juce::StringArray (module1Id + "/input1"));
 
     //==========================================================================
     // Ohne Subscriber: Status announced (Sinks senden erst bei Source, 7.2)
@@ -229,10 +243,10 @@ TEST_CASE ("LinkAudioSendModule: Sink-Lifecycle über den GraphManager (7.2)", "
     REQUIRE (module1->getSendStatusForUi() == conduit::LinkAudioSendModule::SendStatus::announced);
 
     //==========================================================================
-    // Delete Phase 1 (5.3): Sink sofort weg, Refcount −1 — Audio bleibt an
+    // Delete Phase 1 (5.3): Sinks sofort weg, Refcount −1 — Audio bleibt an
     // (Modul 2 lebt), die Sink-Destruktion folgt nach dem Epoch-Handshake
     REQUIRE (manager.requestNodeDelete (uuidOf (node1)));
-    REQUIRE (module1->getSinkName().isEmpty());
+    REQUIRE (module1->getSinkNames().isEmpty());
     REQUIRE (module1->isSinkRetirePending());
     REQUIRE (module1->getSendStatusForUi() == conduit::LinkAudioSendModule::SendStatus::offline);
     REQUIRE (clock.isAudioEnabled());
@@ -262,23 +276,28 @@ TEST_CASE ("LinkAudioSendModule: Destruktion ohne Phase 1 balanciert den Refcoun
     conduit::LinkClock clock (120.0, "ConduitTest");
     clock.prepare (48000.0);
 
+    const std::vector<conduit::SendInputConfig> oneStereo {
+        { "in-uuid", 2, "input1", "in1_gain" } };
+
     {
         conduit::LinkAudioSendModule module;
-        module.setLinkAudioContext (&clock, "solo_sink");
+        module.setLinkAudioContext (&clock, "solo");
+        module.applySendConfig (oneStereo);
         REQUIRE (module.prepareForGraph (48000.0, 32).wasOk());
-        REQUIRE (module.getSinkName() == "solo_sink");
+        REQUIRE (module.getSinkNames() == juce::StringArray ("solo/input1"));
         REQUIRE (clock.isAudioEnabled());
 
         // Re-Prepare mit größerem Block ist idempotent (kein zweiter Sink,
         // kein doppelter Refcount), Kapazität wächst mit
         REQUIRE (module.prepareForGraph (48000.0, 64).wasOk());
-        REQUIRE (module.getSinkName() == "solo_sink");
+        REQUIRE (module.getSinkNames() == juce::StringArray ("solo/input1"));
     }
 
     REQUIRE_FALSE (clock.isAudioEnabled());
 
-    // Ohne Link-Kontext (Tests): reines Pass-Through, Status offline
+    // Ohne Link-Kontext (Tests): kein Sink, Status offline, Input unangetastet
     conduit::LinkAudioSendModule offline;
+    offline.applySendConfig (oneStereo);
     REQUIRE (offline.prepareForGraph (48000.0, 32).wasOk());
 
     juce::AudioBuffer<float> buffer (2, 32);
@@ -290,7 +309,7 @@ TEST_CASE ("LinkAudioSendModule: Destruktion ohne Phase 1 balanciert den Refcoun
     offline.processBlock (buffer, midi);
 
     REQUIRE (offline.getSendStatusForUi() == conduit::LinkAudioSendModule::SendStatus::offline);
-    REQUIRE (buffer.getSample (0, 17) == Approx (0.25f));  // Pass-Through unangetastet
+    REQUIRE (buffer.getSample (0, 17) == Approx (0.25f));  // reiner Sender liest nur
     REQUIRE (buffer.getSample (1, 31) == Approx (0.25f));
 }
 
@@ -307,7 +326,9 @@ TEST_CASE ("LinkAudioSendModule: Retire-Handshake unter echtem Audio-Thread", "[
     conduit::ClockBus bus;
 
     conduit::LinkAudioSendModule module;
-    module.setLinkAudioContext (&clock, "stress_sink");
+    module.setLinkAudioContext (&clock, "stress");
+    module.applySendConfig ({ { "a", 2, "input1", "in1_gain" },
+                             { "b", 1, "input2", "in2_gain" } });
     module.setClockBus (&bus);
     REQUIRE (module.prepareForGraph (48000.0, 32).wasOk());
 
@@ -346,4 +367,98 @@ TEST_CASE ("LinkAudioSendModule: Retire-Handshake unter echtem Audio-Thread", "[
 
     REQUIRE_FALSE (clock.isAudioEnabled());
     REQUIRE (module.getSendStatusForUi() == conduit::LinkAudioSendModule::SendStatus::offline);
+}
+
+//==============================================================================
+TEST_CASE ("LinkAudioSendModule: Migration Alt-Stereo-Send → Multi-Input (v1→v2)", "[linkaudio]")
+{
+    using Send = conduit::LinkAudioSendModule;
+
+    // Alt-Node: fester Stereo-Send ohne <Inputs>, moduleId trägt den Namen
+    juce::ValueTree node (conduit::id::node);
+    node.setProperty (conduit::id::nodeId,           juce::Uuid().toString(), nullptr);
+    node.setProperty (conduit::id::factoryId,        Send::staticModuleId,    nullptr);
+    node.setProperty (conduit::id::moduleId,         "old_send",              nullptr);
+    node.setProperty (conduit::id::stateVersion,     1,                       nullptr);
+    node.setProperty (conduit::id::numInputChannels,  2,                      nullptr);
+    node.setProperty (conduit::id::numOutputChannels, 2,                      nullptr);
+    node.appendChild (juce::ValueTree (conduit::id::parameters), nullptr);
+
+    Send::migrate (node);
+
+    const auto inputs = node.getChildWithName (conduit::id::inputs);
+    REQUIRE (inputs.isValid());
+    REQUIRE (inputs.getNumChildren() == 1);
+    REQUIRE (inputs.getChild (0).getProperty (conduit::id::inputMode).toString() == Send::modeStereo);
+    // Namensstabilität: alter moduleId wird zum Auto-Namen des Eingangs
+    REQUIRE (inputs.getChild (0).getProperty (conduit::id::inputAutoName).toString() == "old_send");
+    REQUIRE ((int) node.getProperty (conduit::id::numInputChannels)  == 2);
+    REQUIRE ((int) node.getProperty (conduit::id::numOutputChannels) == 0);   // reiner Sender
+    REQUIRE ((int) node.getProperty (conduit::id::stateVersion) == Send::stateVersion);
+    REQUIRE (node.getChildWithName (conduit::id::parameters)
+                 .getChildWithProperty (conduit::id::paramId, "in1_gain").isValid());
+
+    // Idempotent
+    Send::migrate (node);
+    REQUIRE (node.getChildWithName (conduit::id::inputs).getNumChildren() == 1);
+}
+
+//==============================================================================
+TEST_CASE ("LinkAudioSendModule: applyInputConfig + readInputConfig (Offsets/Namen)", "[linkaudio]")
+{
+    using Send = conduit::LinkAudioSendModule;
+    using Mode = Send::InputMode;
+
+    juce::ValueTree node (conduit::id::node);
+    node.appendChild (juce::ValueTree (conduit::id::parameters), nullptr);
+
+    Send::applyInputConfig (node, { Mode::mono, Mode::stereo });
+
+    REQUIRE ((int) node.getProperty (conduit::id::numInputChannels)  == 3);   // 1 + 2
+    REQUIRE ((int) node.getProperty (conduit::id::numOutputChannels) == 0);
+
+    auto cfg = Send::readInputConfig (node);
+    REQUIRE (cfg.size() == 2);
+    REQUIRE (cfg[0].width == 1);
+    REQUIRE (cfg[0].effectiveName == "input1");
+    REQUIRE (cfg[0].gainParamId == "in1_gain");
+    REQUIRE (cfg[1].width == 2);
+    REQUIRE (cfg[1].effectiveName == "input2");
+    REQUIRE (cfg[1].gainParamId == "in2_gain");
+
+    // userName überschreibt, autoName ist Fallback vor "input{n}"
+    auto inputs = node.getChildWithName (conduit::id::inputs);
+    inputs.getChild (0).setProperty (conduit::id::inputUserName, "kick",  nullptr);
+    inputs.getChild (1).setProperty (conduit::id::inputAutoName, "synth", nullptr);
+    cfg = Send::readInputConfig (node);
+    REQUIRE (cfg[0].effectiveName == "kick");
+    REQUIRE (cfg[1].effectiveName == "synth");
+
+    // Re-Apply ersetzt <Inputs> + Gain-Params ohne Dubletten
+    Send::applyInputConfig (node, { Mode::mono });
+    REQUIRE (node.getChildWithName (conduit::id::inputs).getNumChildren() == 1);
+    int gainParams = 0;
+    const auto params = node.getChildWithName (conduit::id::parameters);
+    for (int i = 0; i < params.getNumChildren(); ++i)
+        if (params.getChild (i).getProperty (conduit::id::paramId).toString().endsWith ("_gain"))
+            ++gainParams;
+    REQUIRE (gainParams == 1);
+}
+
+//==============================================================================
+TEST_CASE ("LinkAudioSendModule: getParameterTarget mappt in{n}_gain auf getrennte Slots", "[linkaudio]")
+{
+    juce::ScopedJuceInitialiser_GUI juceRuntime;
+    conduit::LinkAudioSendModule module;
+    module.applySendConfig ({ { "a", 1, "input1", "in1_gain" },
+                             { "b", 2, "input2", "in2_gain" } });
+    REQUIRE (module.prepareForGraph (48000.0, 32).wasOk());
+
+    REQUIRE (module.getNumSlots() == 2);
+    auto* g1 = module.getParameterTarget ("in1_gain");
+    auto* g2 = module.getParameterTarget ("in2_gain");
+    REQUIRE (g1 != nullptr);
+    REQUIRE (g2 != nullptr);
+    REQUIRE (g1 != g2);
+    REQUIRE (module.getParameterTarget ("unknown") == nullptr);
 }

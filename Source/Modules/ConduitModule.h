@@ -34,6 +34,15 @@ namespace id
     inline const juce::Identifier numInputChannels  { "numInputChannels" };   // für die Port-UI
     inline const juce::Identifier numOutputChannels { "numOutputChannels" };
 
+    // Inputs (Multi-Input Link Audio Send, 7.2) — pro Eingang ein Kanal-Slot
+    inline const juce::Identifier inputs            { "Inputs" };
+    inline const juce::Identifier input             { "Input" };
+    inline const juce::Identifier inputId           { "inputId" };       // stabile UUID (serialisiert)
+    inline const juce::Identifier inputMode         { "mode" };          // "mono" / "stereo"
+    inline const juce::Identifier inputUserName     { "userName" };      // vom User gesetzt (überschreibt auto)
+    inline const juce::Identifier inputAutoName     { "autoName" };      // Snapshot aus der Quelle
+    inline const juce::Identifier inputGainParamId  { "gainParamId" };   // "in{n}_gain"
+
     // Parameters
     inline const juce::Identifier parameters    { "Parameters" };
     inline const juce::Identifier parameter     { "Parameter" };

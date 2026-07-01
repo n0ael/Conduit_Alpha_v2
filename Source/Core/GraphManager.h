@@ -1,5 +1,6 @@
 #pragma once
 
+#include <functional>
 #include <map>
 #include <memory>
 
@@ -84,8 +85,12 @@ public:
         (createState VOR addNode, 4.4) und hängt ihn in einer eigenen
         UndoManager-Transaktion an Nodes[] — die Materialisierung folgt über
         den normalen Swap. Invalides ValueTree bei unbekannter moduleId.
-        Message Thread. */
-    juce::ValueTree addModuleNode (const juce::String& factoryKey, juce::Point<int> position);
+
+        configure (optional) läuft nach createState() und vor dem Einhängen —
+        für Module mit Anlege-Konfiguration (z.B. Multi-Input Link Audio Send:
+        Eingangszahl/Modi). Message Thread. */
+    juce::ValueTree addModuleNode (const juce::String& factoryKey, juce::Point<int> position,
+                                   const std::function<void (juce::ValueTree&)>& configure = {});
 
     /** Patch-Aktion: benennt die named_id (OSC-Pfad, UI-Titel) eines Nodes
         undo-fähig um. Der Name wird OSC-pfadtauglich saniert (lowercase,

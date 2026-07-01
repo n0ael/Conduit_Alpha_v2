@@ -89,6 +89,7 @@ set(CONDUIT_CPP_SOURCES
     Source/Core/EngineEditor.cpp
     Source/Core/GraphFader.cpp
     Source/Core/GraphManager.cpp
+    Source/Core/InputLinkSend.cpp
     Source/Core/LinkClock.cpp
     Source/Core/LinkSendTaps.cpp
     Source/Core/MeterSettings.cpp
@@ -137,6 +138,7 @@ target_sources(Conduit PRIVATE
     Source/Core/EngineEditor.h
     Source/Core/GraphFader.h
     Source/Core/GraphManager.h
+    Source/Core/InputLinkSend.h
     Source/Core/LinkClock.h
     Source/Core/LinkSendTaps.h
     Source/Core/NodeUiRegistry.h
@@ -276,6 +278,7 @@ if(CONDUIT_BUILD_TESTS)
         Tests/Core/NamedIdTests.cpp
         Tests/Core/GraphManagerTests.cpp
         Tests/Core/LevelMeterTests.cpp
+        Tests/Core/InputLinkSendTests.cpp
         Tests/Core/LinkAudioSendTests.cpp
         Tests/Core/LinkSendTapsTests.cpp
         Tests/Core/MeterSettingsTests.cpp
@@ -302,6 +305,7 @@ if(CONDUIT_BUILD_TESTS)
         Source/Core/EngineProcessor.cpp
         Source/Core/GraphFader.cpp
         Source/Core/GraphManager.cpp
+        Source/Core/InputLinkSend.cpp
         Source/Core/LinkClock.cpp
         Source/Core/LinkSendTaps.cpp
         Source/Core/MeterSettings.cpp

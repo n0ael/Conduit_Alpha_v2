@@ -109,6 +109,19 @@ public:
     void setPortPairedWithNext (Direction direction, int portIndex, bool paired);
 
     //==========================================================================
+    // Eingebetteter Link-Send (Port-Sicht, Mapping am Rand wie das Pairing)
+
+    /** true, wenn der Kanal des Ports als Link-Audio-Kanal gesendet wird.
+        Bei Stereo-Paaren zählt das Flag am ANKER-Kanal. App-Zustand wie das
+        Pairing: läge der Send im Patch, würde jeder Preset-Load den
+        Ableton-Stream abreißen — genau das Gegenteil der Anforderung 7.2. */
+    [[nodiscard]] bool isPortLinkSendEnabled (Direction direction, int portIndex) const;
+
+    /** Send für den physischen Kanal des Ports (de)aktivieren.
+        No-op ohne aktives Device. */
+    void setPortLinkSendEnabled (Direction direction, int portIndex, bool enabled);
+
+    //==========================================================================
     // Pure Helfer — testbar ohne Datei und ohne Device
 
     /** "ES-3 (2)" → "ES-3"; Namen ohne " (N)"-Suffix bleiben unverändert. */
@@ -134,12 +147,14 @@ private:
         int channelIndex = 0;
         juce::String userLabel;
         juce::String imagePath;
-        bool pairedWithNext = false;  // Stereo-Paar (channelIndex, channelIndex+1)
+        bool pairedWithNext = false;   // Stereo-Paar (channelIndex, channelIndex+1)
+        bool linkSendEnabled = false;  // Kanal wird als Link-Audio-Kanal gesendet
 
         /** Trägt der Eintrag noch etwas Persistierenswertes? (Prune-Regel) */
         [[nodiscard]] bool isEmpty() const noexcept
         {
-            return userLabel.isEmpty() && imagePath.isEmpty() && ! pairedWithNext;
+            return userLabel.isEmpty() && imagePath.isEmpty()
+                && ! pairedWithNext && ! linkSendEnabled;
         }
     };
 

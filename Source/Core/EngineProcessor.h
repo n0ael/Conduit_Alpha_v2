@@ -7,6 +7,7 @@
 #include "ChannelNames.h"
 #include "GraphFader.h"
 #include "GraphManager.h"
+#include "InputLinkSend.h"
 #include "LinkClock.h"
 #include "MeterSettings.h"
 #include "NodeUiRegistry.h"
@@ -120,6 +121,10 @@ public:
         LevelMeter (Auto-Clear). */
     [[nodiscard]] MeterSettings& getMeterSettings() noexcept;
 
+    /** Eingebetteter Link-Send des Hardware-Eingangs (7.2) — die Send-UI
+        an den audio_in-Kanal-Zeilen liest den Status daraus. */
+    [[nodiscard]] InputLinkSend& getInputLinkSend() noexcept;
+
 private:
     /** Legt die reservierten I/O-Tree-Nodes (audio_input/audio_output) an,
         falls sie fehlen — frischer Patch oder Preset ohne I/O. Idempotent. */
@@ -140,9 +145,16 @@ private:
     // juce::ValueTree::Listener [Message Thread] — nur die Skalen-Properties
     void valueTreePropertyChanged (juce::ValueTree& tree, const juce::Identifier& property) override;
 
-    // juce::ChangeListener [Message Thread] — MeterSettings → LevelMeter
+    // juce::ChangeListener [Message Thread] — MeterSettings → LevelMeter,
+    // ChannelNames → Input-Link-Sends (Enable/Pairing/Labels)
     void changeListenerCallback (juce::ChangeBroadcaster* source) override;
     void applyMeterSettings();
+
+    /** Zieht die Input-Link-Sends diff-basiert aus dem ChannelNames-Zustand
+        nach (Enable-Flags, Pairing, Labels) — bei jedem ChannelNames-
+        Broadcast und nach syncHardwareIOChannels (Kanal-Schrumpfen retired).
+        Message Thread. */
+    void rebuildInputSends();
 
     juce::ValueTree rootState;
     juce::UndoManager undoManager;
@@ -172,6 +184,11 @@ private:
     // (eigene Settings-Datei, überlebt Preset-Load, kein Undo). Main.cpp
     // setzt den aktiven Device-Kontext nach initAudio().
     ChannelNames channelNames;
+
+    // Eingebetteter Link-Send des Hardware-Eingangs (7.2). NACH der
+    // linkClock deklariert — hält Sinks, die vor der Clock sterben müssen;
+    // der Zustand (Enable/Pairing/Namen) kommt aus channelNames.
+    InputLinkSend inputLinkSend;
 
     // Capture-Fundament (SampleClock + Input-Metering + Ring-Allokation):
     // processInputTap() läuft als ERSTE Operation in processBlock auf dem

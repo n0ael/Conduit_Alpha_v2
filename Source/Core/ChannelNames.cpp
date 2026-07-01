@@ -21,6 +21,7 @@ namespace
     const juce::Identifier xmlLabel     { "label" };
     const juce::Identifier xmlImagePath { "imagePath" };
     const juce::Identifier xmlPaired    { "paired" };
+    const juce::Identifier xmlLinkSend  { "linkSend" };
 
     [[nodiscard]] const char* toString (ChannelNames::Direction direction)
     {
@@ -83,8 +84,9 @@ void ChannelNames::loadFromFile()
             entry.channelIndex = channelXml->getIntAttribute (xmlIndex.toString(), -1);
             entry.userLabel    = channelXml->getStringAttribute (xmlLabel.toString())
                                      .substring (0, maxLabelLength);
-            entry.imagePath      = channelXml->getStringAttribute (xmlImagePath.toString());
-            entry.pairedWithNext = channelXml->getBoolAttribute (xmlPaired.toString(), false);
+            entry.imagePath       = channelXml->getStringAttribute (xmlImagePath.toString());
+            entry.pairedWithNext  = channelXml->getBoolAttribute (xmlPaired.toString(), false);
+            entry.linkSendEnabled = channelXml->getBoolAttribute (xmlLinkSend.toString(), false);
 
             if (entry.channelIndex >= 0 && ! entry.isEmpty())
                 device.entries.push_back (std::move (entry));
@@ -115,6 +117,9 @@ void ChannelNames::writeToFile()
 
             if (entry.pairedWithNext)
                 channelXml->setAttribute (xmlPaired.toString(), 1);
+
+            if (entry.linkSendEnabled)
+                channelXml->setAttribute (xmlLinkSend.toString(), 1);
         }
     }
 
@@ -283,6 +288,28 @@ void ChannelNames::setPortPairedWithNext (Direction direction, int portIndex, bo
             if (other.direction == direction && &other != &entry
                 && (other.channelIndex == anchor - 1 || other.channelIndex == anchor + 1))
                 other.pairedWithNext = false;
+
+    pruneAndStore (device);
+}
+
+bool ChannelNames::isPortLinkSendEnabled (Direction direction, int portIndex) const
+{
+    const auto* entry = findEntry (direction, toDeviceChannel (direction, portIndex));
+    return entry != nullptr && entry->linkSendEnabled;
+}
+
+void ChannelNames::setPortLinkSendEnabled (Direction direction, int portIndex, bool enabled)
+{
+    if (activeDeviceName.isEmpty() || portIndex < 0)
+        return;  // ohne Device-Kontext gibt es keinen Key zum Speichern
+
+    const auto deviceChannel = toDeviceChannel (direction, portIndex);
+
+    auto& device = findOrCreateActiveDevice();
+    auto& entry  = findOrCreateEntry (device, direction, deviceChannel);
+
+    if (entry.linkSendEnabled != enabled)
+        entry.linkSendEnabled = enabled;
 
     pruneAndStore (device);
 }

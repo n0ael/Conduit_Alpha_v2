@@ -55,6 +55,12 @@ EngineProcessor::EngineProcessor()
     meterSettings.addChangeListener (this);
     applyMeterSettings();
 
+    // Eingebetteter Input-Link-Send (7.2): Zustand lebt in channelNames —
+    // jeder Broadcast (Enable-Toggle, Pairing, Label-Rename, Device-Wechsel
+    // via setActiveDevice) zieht den Diff nach
+    inputLinkSend.setLinkClock (&linkClock);
+    channelNames.addChangeListener (this);
+
     // Resize-Policy der Capture-Settings gegen den Service verdrahten
     // (Aktivitäts-Check, Invalidierung, Reallokation — CaptureSettings-Doku)
     captureSettings.setBufferHost (&captureService);
@@ -71,6 +77,7 @@ EngineProcessor::EngineProcessor()
 
 EngineProcessor::~EngineProcessor()
 {
+    channelNames.removeChangeListener (this);
     meterSettings.removeChangeListener (this);
     rootState.removeListener (this);
 }
@@ -80,6 +87,26 @@ void EngineProcessor::changeListenerCallback (juce::ChangeBroadcaster* source)
 {
     if (source == &meterSettings)
         applyMeterSettings();
+    else if (source == &channelNames)
+        rebuildInputSends();
+}
+
+void EngineProcessor::rebuildInputSends()
+{
+    JUCE_ASSERT_MESSAGE_THREAD
+
+    // Hardware-Eingangszahl aus dem audio_in-Tree-Node (trägt Ausgangs-Ports,
+    // von syncHardwareIOChannels an die echte Device-Zahl gekoppelt)
+    auto nodesTree = rootState.getChildWithName (id::nodes);
+    auto inNode = nodesTree.getChildWithProperty (id::factoryId, juce::String (audioInputModuleId));
+    if (! inNode.isValid())
+        inNode = nodesTree.getChildWithProperty (id::moduleId, juce::String (audioInputModuleId));
+
+    const auto channels = inNode.isValid()
+                        ? (int) inNode.getProperty (id::numOutputChannels, 0)
+                        : 0;
+
+    inputLinkSend.applySends (InputLinkSend::buildSpecs (channelNames, channels));
 }
 
 void EngineProcessor::applyMeterSettings()
@@ -189,6 +216,10 @@ void EngineProcessor::syncHardwareIOChannels (int deviceInputs, int deviceOutput
 
     if (outNode.isValid())
         pruneEndpointConnections (outNode.getProperty (id::nodeId).toString(), false, outs);
+
+    // Input-Link-Sends an die neue Kanalzahl anpassen (Schrumpfen retired
+    // die betroffenen Kanäle; buildSpecs sieht nur noch gültige Anker)
+    rebuildInputSends();
 }
 
 void EngineProcessor::pruneEndpointConnections (const juce::String& nodeId, bool asSource, int validChannels)
@@ -227,6 +258,7 @@ void EngineProcessor::prepareToPlay (double sampleRate, int samplesPerBlock)
     captureService.prepare (sampleRate, samplesPerBlock, getTotalNumInputChannels());
     inputLevels.prepare  (sampleRate, getTotalNumInputChannels());
     outputLevels.prepare (sampleRate, getTotalNumOutputChannels());
+    inputLinkSend.prepare (samplesPerBlock);
 }
 
 void EngineProcessor::releaseResources()
@@ -270,6 +302,14 @@ void EngineProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::Midi
     clockBus.current = linkClock.captureClockState (buffer.getNumSamples());
     clockBus.current.scaleRootNote  = scaleRootAtomic.load (std::memory_order_relaxed);
     clockBus.current.scaleTypeIndex = scaleTypeAtomic.load (std::memory_order_relaxed);
+
+    // Eingebetteter Input-Link-Send (7.2): NACH captureClockState (der Commit
+    // braucht den SessionState-Stash dieses Blocks) und VOR dem Graph (der
+    // Buffer trägt hier noch den rohen Hardware-Input). Allocation-free.
+    {
+        const rt::ScopedRealtimeSection rtAudit;
+        inputLinkSend.processBlock (buffer, getTotalNumInputChannels(), clockBus.current);
+    }
 
     graph.processBlock (buffer, midiMessages);
     graphFader.process (buffer);  // Master-Fade hinter dem Graph (5.2)
@@ -397,5 +437,6 @@ ChannelNames& EngineProcessor::getChannelNames() noexcept       { return channel
 LevelMeter& EngineProcessor::getInputLevels() noexcept  { return inputLevels; }
 LevelMeter& EngineProcessor::getOutputLevels() noexcept { return outputLevels; }
 MeterSettings& EngineProcessor::getMeterSettings() noexcept { return meterSettings; }
+InputLinkSend& EngineProcessor::getInputLinkSend() noexcept { return inputLinkSend; }
 
 } // namespace conduit

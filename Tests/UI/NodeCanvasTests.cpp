@@ -1,5 +1,6 @@
 #include <catch2/catch_test_macros.hpp>
 
+#include "Core/Capture/LevelMeter.h"
 #include "Core/GraphFader.h"
 #include "Core/GraphManager.h"
 #include "Core/NodeUiRegistry.h"
@@ -28,6 +29,8 @@ struct UiTestRig
     UiTestRig()
     {
         conduit::registerDefaultModules (factory);
+        inputLevels.prepare (48000.0, 64);
+        outputLevels.prepare (48000.0, 64);
     }
 
     [[nodiscard]] juce::ValueTree nodes() { return root.getChildWithName (conduit::id::nodes); }
@@ -51,7 +54,9 @@ struct UiTestRig
     juce::UndoManager undoManager;
     conduit::NodeUiRegistry uiRegistry;
     conduit::GraphManager manager { root, graph, fader, factory, undoManager, uiRegistry };
-    conduit::NodeCanvas canvas { root, manager, uiRegistry };
+    conduit::LevelMeter inputLevels;
+    conduit::LevelMeter outputLevels;
+    conduit::NodeCanvas canvas { root, manager, uiRegistry, nullptr, &inputLevels, &outputLevels };
 };
 
 } // namespace
@@ -226,6 +231,54 @@ TEST_CASE ("NodeComponent: I/O-Ports folgen der Hardware-Kanalzahl (Schritt B)",
         REQUIRE (component->getNumOutputPorts() == 2);
         REQUIRE (component->getHeight() == stereoHeight);
     }
+}
+
+//==============================================================================
+TEST_CASE ("NodeComponent: I/O-Endpunkt zeigt eine Pegelanzeige pro Kanal (Schritt 2)", "[ui][io]")
+{
+    UiTestRig rig;
+
+    const auto graphNode = rig.graph.addNode (std::make_unique<conduit::AttenuatorModule>())->nodeID;
+    rig.manager.registerExternalEndpoint (conduit::audioInputModuleId, graphNode);
+
+    juce::ValueTree node (conduit::id::node);
+    node.setProperty (conduit::id::nodeId,            juce::Uuid().toString(),                        nullptr);
+    node.setProperty (conduit::id::factoryId,         conduit::audioInputModuleId,                    nullptr);
+    node.setProperty (conduit::id::moduleId,          "audio_in",                                     nullptr);
+    node.setProperty (conduit::id::nodeState,         conduit::toString (conduit::NodeState::active), nullptr);
+    node.setProperty (conduit::id::numInputChannels,  0,                                              nullptr);
+    node.setProperty (conduit::id::numOutputChannels, 4,                                              nullptr);
+    node.appendChild (juce::ValueTree (conduit::id::parameters), nullptr);
+    rig.nodes().appendChild (node, nullptr);
+
+    auto* component = rig.canvas.findNodeComponent (UiTestRig::uuidOf (node));
+    REQUIRE (component != nullptr);
+
+    SECTION ("eine Bar pro Ausgangs-Port, Kachel verbreitert")
+    {
+        REQUIRE (component->getNumMeterBars() == 4);
+        REQUIRE (component->getWidth() == 300);  // endpointWidth mit Metern
+    }
+
+    SECTION ("Meter folgen der Hardware-Kanalzahl")
+    {
+        node.setProperty (conduit::id::numOutputChannels, 8, nullptr);
+        REQUIRE (component->getNumMeterBars() == 8);
+
+        node.setProperty (conduit::id::numOutputChannels, 2, nullptr);
+        REQUIRE (component->getNumMeterBars() == 2);
+    }
+}
+
+TEST_CASE ("NodeComponent: normale Module haben keine Pegelanzeigen", "[ui][io]")
+{
+    UiTestRig rig;
+    const auto node = rig.manager.addModuleNode (attenuatorId, { 10, 10 });
+    REQUIRE (node.isValid());
+
+    auto* component = rig.canvas.findNodeComponent (UiTestRig::uuidOf (node));
+    REQUIRE (component != nullptr);
+    REQUIRE (component->getNumMeterBars() == 0);
 }
 
 //==============================================================================

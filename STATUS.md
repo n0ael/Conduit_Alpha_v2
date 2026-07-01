@@ -18,11 +18,16 @@
 
 **Ableton-Style Pegelanzeigen für audio_in/audio_out (CLAUDE.md 10):**
 
+*Schritt 2 — Meter-UI (horizontale Balken, verbreiterte I/O-Kacheln):*
+- **`LevelMeterBar`** (`Source/UI/`, Muster `ScopeDisplay`): horizontaler Balken pro Kanal, 30-fps-Timer, liest Peak/Peak-Hold/RMS/Clip lock-free vom `LevelMeter`-Provider. Zeichnet RMS-Füllung (pegelabhängig grün/gelb/rot), Peak-Marker-Linie, Peak-Hold-Tick und Clip-Feld (rot, Latch). Nur das Clip-Feld ist klickbar (`resetClip`, Default in diesem Schritt) — sonst fällt der Klick an die Kachel durch (Node-Drag). `normFromLinear`: dBFS-Mapping −60…0 dB
+- **`NodeComponent`**: baut für I/O-Endpunkte eine Bar pro Kanal (`rebuildMeters`), verbreiterte Kachel (300 px), Layout pro Reihe `audio_in` = [Label · Balken · ○Port], `audio_out` = [○Port · Balken · Label]. Meter folgen der Kanalzahl (Schritt-B-Kopplung), Teardown stoppt sie (5.3). Provider `const/non-const LevelMeter*` von `EngineProcessor` → `NodeCanvas` → `NodeComponent` durchgereicht
+- **Verifikation:** 148 Testfälle / 10225 Assertions grün (Debug + ASan). Neue Tests: eine Bar pro Kanal + verbreiterte Kachel, Meter folgen der Kanalzahl, normale Module ohne Meter, `normFromLinear`-dB-Mapping (0/−6/−60 dB, Clip-Klemmung, Monotonie). Smoke: verbreiterte Kacheln mit Balken pro Kanal (Label · Balken · Port)
+- **Offen:** Schritt 3 (Einstellungen-Menü mit konfigurierbarem Clip-Reset, bündelt Audio-/Capture-Einstellungen)
+
 *Schritt 1 — Meter-DSP-Backend (verhaltensneutral):*
 - **`LevelMeter`** (`Source/Core/Capture/`): lock-free Sicht-Metering pro Kanal (getrennt vom capture-`InputMeter`) — RMS (~150 ms One-Pole), Peak (sofortiger Attack, ~1,5 s Release), Peak-Hold (~1,5 s halten, dann Abfall), Clip-Latch bei ≥ 0 dBFS mit `resetClip`. Feste Arrays bis `MAX_CAPTURE_CHANNELS`, atomics, allocation-free. Muster: `InputMeter`
 - **`EngineProcessor`**: zwei Instanzen `inputLevels`/`outputLevels`, `prepare()` in `prepareToPlay`; `processBlock` misst Input beim Tap (roher Hardware-Input) und Output nach `graphFader.process()` (beide im `rt::ScopedRealtimeSection`). Getter `getInputLevels()/getOutputLevels()`
 - **Verifikation:** 145 Testfälle / 10207 Assertions grün (Debug + ASan). Neue Tests (`LevelMeterTests`): Peak-Attack/Release-Ballistik, RMS-Konvergenz (Warm-Start), Peak-Hold hält über den Momentan-Peak, Clip-Latch + kanalweiser Reset, Out-of-range-Nullwerte. Verhaltensneutral → noch keine UI-Änderung
-- **Offen:** Schritt 2 (horizontale `LevelMeterBar` pro Kanal in verbreiterten I/O-Kacheln), Schritt 3 (Einstellungen-Menü mit konfigurierbarem Clip-Reset, bündelt Audio-/Capture-Einstellungen)
 
 **Davor: Echte Hardware-Kanalzahl für Audio-I/O (CLAUDE.md 9) — Meilenstein abgeschlossen:**
 

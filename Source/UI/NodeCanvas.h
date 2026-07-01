@@ -39,11 +39,15 @@ class NodeCanvas final : public juce::Component,
 {
 public:
     /** channelNamesToUse darf nullptr sein (Tests) — die NodeComponents
-        der I/O-Endpunkte zeigen dann keine Port-Labels. */
+        der I/O-Endpunkte zeigen dann keine Port-Labels. inputLevels/
+        outputLevels (nullptr in Tests) speisen die Pegelanzeigen der
+        I/O-Endpunkte. */
     NodeCanvas (juce::ValueTree rootTree,
                 GraphManager& graphManagerToUse,
                 NodeUiRegistry& uiRegistryToUse,
-                ChannelNames* channelNamesToUse = nullptr);
+                ChannelNames* channelNamesToUse = nullptr,
+                LevelMeter* inputLevelsToUse = nullptr,
+                LevelMeter* outputLevelsToUse = nullptr);
     ~NodeCanvas() override;
 
     [[nodiscard]] int getNumNodeComponents() const noexcept;
@@ -85,6 +89,8 @@ private:
     GraphManager& graphManager;
     NodeUiRegistry& uiRegistry;
     ChannelNames* channelNames;  // nullptr in Tests
+    LevelMeter* inputLevels;     // Sicht-Metering audio_in (nullptr in Tests)
+    LevelMeter* outputLevels;    // Sicht-Metering audio_out (nullptr in Tests)
 
     std::vector<std::unique_ptr<NodeComponent>> nodeComponents;
 

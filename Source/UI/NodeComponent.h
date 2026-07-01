@@ -10,6 +10,7 @@
 #include "Core/ChannelNames.h"
 #include "Core/GraphManager.h"
 #include "Core/NodeUiRegistry.h"
+#include "UI/LevelMeterBar.h"
 #include "UI/LinkAudioSendPanel.h"
 #include "UI/PortComponent.h"
 #include "UI/ScopeDisplay.h"
@@ -45,11 +46,15 @@ class NodeComponent final : public juce::Component,
                             private juce::ChangeListener
 {
 public:
-    /** channelNamesToUse darf nullptr sein (Tests) — dann keine Port-Labels. */
+    /** channelNamesToUse darf nullptr sein (Tests) — dann keine Port-Labels.
+        inputLevels/outputLevels darf nullptr sein (Tests) — dann keine Meter;
+        die I/O-Endpunkte lesen daraus Peak/RMS/Clip pro Kanal (Ableton-Style). */
     NodeComponent (juce::ValueTree nodeTreeToBind,
                    GraphManager& graphManagerToUse,
                    NodeUiRegistry& uiRegistryToUse,
-                   ChannelNames* channelNamesToUse = nullptr);
+                   ChannelNames* channelNamesToUse = nullptr,
+                   LevelMeter* inputLevelsToUse = nullptr,
+                   LevelMeter* outputLevelsToUse = nullptr);
     ~NodeComponent() override;
 
     static constexpr int defaultWidth  = 168;
@@ -79,6 +84,7 @@ public:
 
     [[nodiscard]] int getNumInputPorts() const noexcept;
     [[nodiscard]] int getNumOutputPorts() const noexcept;
+    [[nodiscard]] int getNumMeterBars() const noexcept;  // Pegelanzeigen (I/O-Endpunkte)
 
     //==========================================================================
     void paint (juce::Graphics& g) override;
@@ -112,11 +118,23 @@ private:
         Andere Module haben feste Busse und setzen ihre Größe selbst. */
     void updateEndpointSize();
 
+    /** (Neu-)Baut die Pegelanzeigen der I/O-Endpunkte (eine pro Kanal), wenn
+        ein LevelMeter-Provider vorhanden ist. */
+    void rebuildMeters();
+
+    /** true, wenn dieser Endpunkt Meter zeigt (Provider + externer Endpunkt). */
+    [[nodiscard]] bool hasMeters() const noexcept;
+
+    /** Balken-Rechteck eines Kanals (isInputEndpoint = audio_in). */
+    [[nodiscard]] juce::Rectangle<int> meterBoundsFor (bool isInputEndpoint, int channel) const;
+
     //==========================================================================
     juce::ValueTree nodeTree;   // NUR der Subtree (5.3)
     GraphManager& graphManager;
     NodeUiRegistry& uiRegistry;
     ChannelNames* channelNames;  // nullptr außerhalb der App (Tests)
+    LevelMeter* inputLevels;     // Sicht-Metering audio_in (nullptr in Tests)
+    LevelMeter* outputLevels;    // Sicht-Metering audio_out (nullptr in Tests)
     const juce::String nodeUuid;
 
     juce::Label titleLabel;  // named_id — Doppelklick benennt um (renameNode)
@@ -127,9 +145,13 @@ private:
     std::vector<std::unique_ptr<PortComponent>> inputPorts;
     std::vector<std::unique_ptr<PortComponent>> outputPorts;
 
+    // Pegelanzeigen der I/O-Endpunkte — eine pro Kanal der aktiven Bank
+    std::vector<std::unique_ptr<LevelMeterBar>> meterBars;
+
     // audio_input/audio_output — Grundausstattung, Höhe folgt der Hardware-
     // Kanalzahl (Schritt B); im Konstruktor gesetzt.
     bool isExternalEndpoint = false;
+    bool endpointIsInput = false;  // true = audio_in (Meter-Layout/Provider)
 
     // Nur bei Scope-Nodes (factoryId == "scope") — 30-fps-Waveform
     std::unique_ptr<ScopeDisplay> scopeDisplay;

@@ -8,14 +8,27 @@
 namespace conduit
 {
 
+namespace
+{
+    // Layout der I/O-Endpunkte MIT Pegelanzeigen
+    constexpr int endpointMeterWidth  = 120;
+    constexpr int endpointMeterHeight = 14;
+    constexpr int endpointPortInset   = 24;   // Port ↔ Meter-Kante
+    constexpr int endpointWidth       = 300;  // verbreiterte Kachel (Label + Meter + Port)
+}
+
 NodeComponent::NodeComponent (juce::ValueTree nodeTreeToBind,
                               GraphManager& graphManagerToUse,
                               NodeUiRegistry& uiRegistryToUse,
-                              ChannelNames* channelNamesToUse)
+                              ChannelNames* channelNamesToUse,
+                              LevelMeter* inputLevelsToUse,
+                              LevelMeter* outputLevelsToUse)
     : nodeTree (std::move (nodeTreeToBind)),
       graphManager (graphManagerToUse),
       uiRegistry (uiRegistryToUse),
       channelNames (channelNamesToUse),
+      inputLevels (inputLevelsToUse),
+      outputLevels (outputLevelsToUse),
       nodeUuid (nodeTree.getProperty (id::nodeId).toString())
 {
     uiRegistry.acquire (nodeUuid);
@@ -23,6 +36,7 @@ NodeComponent::NodeComponent (juce::ValueTree nodeTreeToBind,
 
     const auto factoryKey = GraphManager::factoryKeyOf (nodeTree);
     isExternalEndpoint = graphManager.isExternalEndpoint (factoryKey);
+    endpointIsInput    = (factoryKey == audioInputModuleId);
     const auto isExternal = isExternalEndpoint;
 
     deleteButton.setButtonText (juce::String::fromUTF8 ("\xc3\x97"));  // ×
@@ -54,6 +68,7 @@ NodeComponent::NodeComponent (juce::ValueTree nodeTreeToBind,
     // Ports aus den persistierten Kanalzahlen (Schema 6.2); Kanal-Labels der
     // I/O-Endpunkte zieht rebuildPorts() gleich mit nach
     rebuildPorts();
+    rebuildMeters();  // Pegelanzeigen der I/O-Endpunkte (falls Provider da)
 
     // Änderungen der ChannelNames (Rename, Gerätewechsel) ziehen Labels nach
     if (channelNames != nullptr && portLabelDirection().has_value())
@@ -161,6 +176,9 @@ void NodeComponent::beginTeardown()
     if (sendPanel != nullptr)
         sendPanel->stopUpdates();
 
+    for (auto& bar : meterBars)
+        bar->stopUpdates();
+
     repaint();
 
     teardownVBlank = std::make_unique<juce::VBlankAttachment> (this, [this] (double)
@@ -210,8 +228,9 @@ void NodeComponent::valueTreePropertyChanged (juce::ValueTree& tree, const juce:
         else if (property == id::numInputChannels || property == id::numOutputChannels)
         {
             // I/O-Endpunkt hat die Hardware-Kanalzahl geändert (Schritt B):
-            // Ports neu bauen, Kachel an die neue Zahl anpassen, Kabel folgen
+            // Ports + Meter neu bauen, Kachel anpassen, Kabel folgen
             rebuildPorts();
+            rebuildMeters();
 
             if (isExternalEndpoint)
                 updateEndpointSize();
@@ -270,9 +289,48 @@ void NodeComponent::rebuildPorts()
 void NodeComponent::updateEndpointSize()
 {
     // Ein Port braucht rund eine Touch-Reihe; die Höhe folgt dem größeren der
-    // beiden Port-Bänke. defaultHeight (2 Ports) bleibt so unverändert.
+    // beiden Port-Bänke. Mit Metern breitere Kachel (Label + Balken + Port).
     const auto maxPorts = juce::jmax (getNumInputPorts(), getNumOutputPorts(), 1);
-    setSize (defaultWidth, touchTarget + maxPorts * 30);
+    setSize (hasMeters() ? endpointWidth : defaultWidth, touchTarget + maxPorts * 30);
+}
+
+void NodeComponent::rebuildMeters()
+{
+    for (auto& bar : meterBars)
+        bar->stopUpdates();
+    meterBars.clear();
+
+    if (! isExternalEndpoint)
+        return;
+
+    // audio_in liest das Input-Metering (Ausgangs-Ports = Hardware-Inputs),
+    // audio_out das Output-Metering (Eingangs-Ports)
+    auto* provider = endpointIsInput ? inputLevels : outputLevels;
+    if (provider == nullptr)
+        return;
+
+    const int count = endpointIsInput ? getNumOutputPorts() : getNumInputPorts();
+    for (int channel = 0; channel < count; ++channel)
+    {
+        auto bar = std::make_unique<LevelMeterBar> (provider, channel);
+        addAndMakeVisible (*bar);
+        meterBars.push_back (std::move (bar));
+    }
+}
+
+bool NodeComponent::hasMeters() const noexcept
+{
+    return ! meterBars.empty();
+}
+
+juce::Rectangle<int> NodeComponent::meterBoundsFor (bool isInputEndpoint, int channel) const
+{
+    // Port-Bank des Endpunkts: audio_in trägt Ausgangs-Ports, audio_out Eingangs
+    const auto rowY = getPortCentre (! isInputEndpoint, channel).y;
+    const int  y    = rowY - endpointMeterHeight / 2;
+    const int  x    = isInputEndpoint ? getWidth() - endpointPortInset - endpointMeterWidth
+                                      : endpointPortInset;
+    return { x, y, endpointMeterWidth, endpointMeterHeight };
 }
 
 //==============================================================================
@@ -314,6 +372,7 @@ void NodeComponent::changeListenerCallback (juce::ChangeBroadcaster*)
 //==============================================================================
 int NodeComponent::getNumInputPorts() const noexcept  { return static_cast<int> (inputPorts.size()); }
 int NodeComponent::getNumOutputPorts() const noexcept { return static_cast<int> (outputPorts.size()); }
+int NodeComponent::getNumMeterBars() const noexcept   { return static_cast<int> (meterBars.size()); }
 
 juce::Point<int> NodeComponent::getPortCentre (bool isInput, int channel) const
 {
@@ -388,11 +447,24 @@ void NodeComponent::paint (juce::Graphics& g)
 
         for (int channel = 0; channel < numPorts; ++channel)
         {
-            // audio_input: Ports rechts → Label links davon, rechtsbündig
             const auto centre = getPortCentre (! isInputEndpoint, channel);
-            const auto area = isInputEndpoint
-                            ? juce::Rectangle<int> (centre.x - 110, centre.y - 8, 90, 16)
-                            : juce::Rectangle<int> (centre.x + 20,  centre.y - 8, 90, 16);
+
+            // Mit Metern liegt das Label jenseits des Balkens; sonst direkt am Port
+            juce::Rectangle<int> area;
+            if (hasMeters())
+            {
+                const auto meter = meterBoundsFor (isInputEndpoint, channel);
+                area = isInputEndpoint
+                     ? juce::Rectangle<int> (8, centre.y - 8, meter.getX() - 12, 16)          // links vom Meter
+                     : juce::Rectangle<int> (meter.getRight() + 8, centre.y - 8,
+                                             getWidth() - meter.getRight() - 14, 16);          // rechts vom Meter
+            }
+            else
+            {
+                area = isInputEndpoint
+                     ? juce::Rectangle<int> (centre.x - 110, centre.y - 8, 90, 16)
+                     : juce::Rectangle<int> (centre.x + 20,  centre.y - 8, 90, 16);
+            }
 
             g.drawText (channelNames->getLabel (*direction, channel), area,
                         isInputEndpoint ? juce::Justification::centredRight
@@ -437,6 +509,9 @@ void NodeComponent::resized()
 
     placePorts (inputPorts);
     placePorts (outputPorts);
+
+    for (int channel = 0; channel < (int) meterBars.size(); ++channel)
+        meterBars[(std::size_t) channel]->setBounds (meterBoundsFor (endpointIsInput, channel));
 }
 
 void NodeComponent::mouseDown (const juce::MouseEvent& event)

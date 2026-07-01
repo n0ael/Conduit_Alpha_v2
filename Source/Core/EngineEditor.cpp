@@ -26,7 +26,8 @@ EngineEditor::EngineEditor (EngineProcessor& engineProcessor,
       capturePanel (engineProcessor.getCaptureSettings(), engineProcessor.getCaptureService(),
                     engineProcessor.getChannelNames()),
       canvas (rootState, engineProcessor.getGraphManager(), engineProcessor.getNodeUiRegistry(),
-              &engineProcessor.getChannelNames())
+              &engineProcessor.getChannelNames(),
+              &engineProcessor.getInputLevels(), &engineProcessor.getOutputLevels())
 {
     const auto addModule = [this] (const char* moduleId)
     {

@@ -375,7 +375,7 @@ const CaptureService& EngineProcessor::getCaptureService() const noexcept { retu
 CaptureService& EngineProcessor::getCaptureService() noexcept   { return captureService; }
 CaptureSettings& EngineProcessor::getCaptureSettings() noexcept { return captureSettings; }
 ChannelNames& EngineProcessor::getChannelNames() noexcept       { return channelNames; }
-const LevelMeter& EngineProcessor::getInputLevels() const noexcept  { return inputLevels; }
-const LevelMeter& EngineProcessor::getOutputLevels() const noexcept { return outputLevels; }
+LevelMeter& EngineProcessor::getInputLevels() noexcept  { return inputLevels; }
+LevelMeter& EngineProcessor::getOutputLevels() noexcept { return outputLevels; }
 
 } // namespace conduit

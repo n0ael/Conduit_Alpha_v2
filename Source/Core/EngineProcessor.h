@@ -110,8 +110,8 @@ public:
     /** Sicht-Metering der Hardware-I/O (Ableton-Style, CLAUDE.md 10) — die
         audio_in/audio_out-Kacheln lesen Peak/RMS/Clip pro Kanal. Owner:
         EngineProcessor; Werte werden lock-free im processBlock publiziert. */
-    [[nodiscard]] const LevelMeter& getInputLevels() const noexcept;
-    [[nodiscard]] const LevelMeter& getOutputLevels() const noexcept;
+    [[nodiscard]] LevelMeter& getInputLevels() noexcept;
+    [[nodiscard]] LevelMeter& getOutputLevels() noexcept;
 
 private:
     /** Legt die reservierten I/O-Tree-Nodes (audio_input/audio_output) an,

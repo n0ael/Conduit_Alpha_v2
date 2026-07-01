@@ -112,6 +112,7 @@ set(CONDUIT_CPP_SOURCES
     Source/UI/CaptureAllButton.cpp
     Source/UI/CapturePanel.cpp
     Source/UI/CaptureToast.cpp
+    Source/UI/LevelMeterBar.cpp
     Source/UI/LinkAudioSendPanel.cpp
     Source/UI/LinkAudioStatusBadge.cpp
     Source/UI/LinkSendCreateDialog.cpp
@@ -279,6 +280,7 @@ if(CONDUIT_BUILD_TESTS)
         Tests/Core/SourceNameResolverTests.cpp
         Tests/Core/ThreadingStressTests.cpp
         Tests/UI/NodeCanvasTests.cpp
+        Tests/UI/LevelMeterBarTests.cpp
         Tests/UI/LinkAudioSendPanelTests.cpp
         Tests/UI/SequencerControlPanelTests.cpp
         Tests/Util/ScaleQuantizerTests.cpp
@@ -316,6 +318,7 @@ if(CONDUIT_BUILD_TESTS)
         Source/UI/CaptureAllButton.cpp
         Source/UI/CapturePanel.cpp
         Source/UI/CaptureToast.cpp
+        Source/UI/LevelMeterBar.cpp
         Source/UI/LinkAudioSendPanel.cpp
         Source/UI/LinkAudioStatusBadge.cpp
         Source/UI/LinkSendCreateDialog.cpp

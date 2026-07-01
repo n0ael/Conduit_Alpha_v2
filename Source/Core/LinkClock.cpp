@@ -47,6 +47,65 @@ struct LinkClock::Sink::Impl
     ableton::LinkAudioSink sink;
 };
 
+namespace
+{
+    // Die 8-Byte-Link-NodeId <-> uint64 (Big-Endian). Header-sichere,
+    // stabile Kanal-Identität für die Discovery-/Receive-API (7.2).
+    LinkClock::ChannelKey packChannelId (const ableton::ChannelId& id) noexcept
+    {
+        LinkClock::ChannelKey key = 0;
+        for (const auto byte : id)
+            key = (key << 8) | static_cast<LinkClock::ChannelKey> (byte);
+        return key;
+    }
+
+    ableton::ChannelId unpackChannelId (LinkClock::ChannelKey key) noexcept
+    {
+        ableton::ChannelId id;
+        for (std::size_t i = 0; i < id.size(); ++i)
+            id[id.size() - 1 - i] = static_cast<std::uint8_t> ((key >> (8 * i)) & 0xffu);
+        return id;
+    }
+}
+
+struct LinkClock::Source::Impl
+{
+    Impl (LinkClock::Impl& ownerImpl, ableton::ChannelId id, ReceiveCallback cb)
+        : owner (ownerImpl),
+          callback (std::move (cb)),
+          channelKey (packChannelId (id)),
+          source (ownerImpl.link, id,
+                  [this] (ableton::LinkAudioSource::BufferHandle handle) { onBuffer (handle); })
+    {
+    }
+
+    void onBuffer (const ableton::LinkAudioSource::BufferHandle& handle)
+    {
+        // Link-Thread: Beat-Alignment sofort gegen den aktuellen SessionState
+        // rechnen (beginBeats), damit das Modul nie selbst captureAudioSessionState
+        // braucht (7.2). captureAppSessionState ist thread-safe (Link-Garantie).
+        const auto sessionState = owner.link.captureAppSessionState();
+
+        ReceivedBuffer rb;
+        rb.interleavedSamples = handle.samples;
+        rb.numFrames          = static_cast<int> (handle.info.numFrames);
+        rb.numChannels        = static_cast<int> (handle.info.numChannels);
+        rb.sampleRate         = static_cast<double> (handle.info.sampleRate);
+        rb.beatAtBufferBegin  = handle.info.beginBeats (sessionState, LinkClock::quantum);
+
+        callback (rb);
+    }
+
+    LinkClock::Impl& owner;      // Source darf die LinkClock nicht überleben (Header-Doku)
+    ReceiveCallback  callback;
+    ChannelKey       channelKey;
+
+    // Member-Reihenfolge: source ZULETZT — destruiert zuerst (~LinkAudioSource
+    // setzt den internen Callback auf No-op), danach erst callback/owner. So
+    // referenziert kein Link-Thread-Callback mehr this nach der Freigabe.
+    ableton::LinkAudioSource source;
+};
+
 //==============================================================================
 LinkClock::LinkClock (double initialBpm, const juce::String& peerName)
     : impl (std::make_unique<Impl> (initialBpm, peerName))
@@ -189,6 +248,43 @@ std::unique_ptr<LinkClock::Sink> LinkClock::createSink (const juce::String& name
     // das Ergebnis landet unmittelbar im unique_ptr.
     return std::unique_ptr<Sink> (
         new Sink (std::make_unique<Sink::Impl> (*impl, name, maxNumSamples)));
+}
+
+//==============================================================================
+std::vector<LinkClock::ChannelInfo> LinkClock::availableChannels() const
+{
+    std::vector<ChannelInfo> result;
+    const auto channels = impl->link.channels();
+    result.reserve (channels.size());
+
+    for (const auto& ch : channels)
+        result.push_back ({ packChannelId (ch.id),
+                            juce::String (ch.name),
+                            juce::String (ch.peerName) });
+
+    return result;
+}
+
+LinkClock::Source::Source (std::unique_ptr<Impl> implToUse)
+    : impl (std::move (implToUse))
+{
+}
+
+LinkClock::Source::~Source() = default;
+
+LinkClock::ChannelKey LinkClock::Source::channelId() const noexcept
+{
+    return impl->channelKey;
+}
+
+std::unique_ptr<LinkClock::Source> LinkClock::createSource (ChannelKey channel,
+                                                            Source::ReceiveCallback callback)
+{
+    // new statt make_unique: der Source-Ctor ist privat (friend LinkClock).
+    return std::unique_ptr<Source> (
+        new Source (std::make_unique<Source::Impl> (*impl,
+                                                    unpackChannelId (channel),
+                                                    std::move (callback))));
 }
 
 //==============================================================================

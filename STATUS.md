@@ -1,6 +1,6 @@
 # Conduit Alpha — Projektstatus
 
-> Letzte Aktualisierung: 2026-06-13 | wird nach jedem Meilenstein gepflegt
+> Letzte Aktualisierung: 2026-07-01 | wird nach jedem Meilenstein gepflegt
 > Architektur-Referenz: [CLAUDE.md](CLAUDE.md) | Repo: n0ael/Conduit_Alpha_v2
 
 ## Fundament (steht komplett)
@@ -14,9 +14,16 @@
 - **Scope-Modul:** lock-free Ringbuffer (min/max-Bins), 30-fps-Waveform, Audio-Fallback
 - **CI:** GitHub Actions (Ubuntu) mit TSan + ASan bei jedem Push auf master; lokal ASan via MSVC-Preset
 
-## Aktueller Meilenstein (Juni 2026 — abgeschlossen)
+## Aktueller Meilenstein (Juli 2026 — in Arbeit)
 
-**ChannelNames — benutzerdefinierte Namen für Hardware-Kanäle (`Source/Core/ChannelNames`):**
+**Link Audio Receive, Schritt 1 — LinkClock-Empfangsinfrastruktur (CLAUDE.md 7.2 Schritt 3, verhaltensneutral):**
+- **Header-sichere Kanal-Identität `LinkClock::ChannelKey` (uint64):** die opake 8-Byte-Link-`NodeId` Big-Endian gepackt (Pack/Unpack in der .cpp), damit kein Link-/asio-Header in Projekt-Header leckt (IWYU-Falle 7.2). Bewusst NICHT serialisierbar — ChannelIds werden pro Session neu vergeben, Peer-Kanäle sind discoverbar, nie Teil des Patches (CLAUDE.md 6, v1-Phantom-Connection-Lektion)
+- **Discovery-API `availableChannels()` [MT]:** wrappt `link.channels()` → `{ id, name, peerName }`; Änderungen melden sich über den bestehenden `ChangeBroadcaster` der LinkClock (ChannelsChanged, Link-Thread → `MessageManager::callAsync`)
+- **`LinkClock::Source` (Pimpl-Wrapper analog `Sink`):** kapselt `ableton::LinkAudioSource`; der Empfangs-Callback (Link-Thread) rechnet DORT bereits das Beat-Alignment — `Info::beginBeats(sessionState, quantum)` gegen den frisch gecaptureten SessionState — und liefert dem Empfänger einen beat-gestempelten `ReceivedBuffer` (Samples nur während des Callbacks gültig, synchron herauskopieren). `nullopt` bei fremder Link-Session → Empfänger verwirft (nie naiv FIFO'en, v1-Drift-Lektion). Member-Reihenfolge so, dass `LinkAudioSource` zuerst destruiert (kein Link-Thread-Callback referenziert `this` nach der Freigabe); Teardown-Race gegen den Audio-Thread löst später das Modul über das zweiphasige Delete
+- **Verhaltensneutralität belegt:** alle 119 Testfälle (10040 Assertions) grün — Debug UND ASan; neuer Test (`Tests/Core/LinkAudioSendTests.cpp`): ChannelKey-Round-Trip inkl. Grenzwerte (0, all-ones, 1) + Discovery-Struktur. App + Tests linken sauber; keine UI-Änderung
+- **Offen (Schritt 2):** `LinkAudioReceiveModule` mit beat-aligned Jitter-Buffer (eigene header-only, ohne Link unit-testbar — hier landet die Alignment-Test-Suite), Int16→Float, zweiphasiges Delete der Source, Discovery-UI über den Broadcast, Monitoring-Latenz dokumentiert
+
+**Davor: ChannelNames — benutzerdefinierte Namen für Hardware-Kanäle (`Source/Core/ChannelNames`):**
 - **App-Zustand, KEIN Patch-Zustand** (gleiche Trennung wie CaptureSettings): Mapping (deviceKey, direction, channelIndex) → { userLabel, imagePath } — imagePath ist persistierter Platzhalter fürs spätere Kanal-Bild. Persistenz in EIGENER Datei `Conduit/ChannelNames.settings` (eine geteilte PropertiesFile mit den CaptureSettings würde sich beim Speichern gegenseitig mit veralteten Werten überschreiben — im Header begründet)
 - **Device-Matching wie CalibrationProfile 8.1:** exakt → Prefix (Suffix " (N)" beidseitig ignoriert, `stripDeviceSuffix`) → kein Match; Schreiben bei Prefix-Match aktualisiert das bestehende Profil der Hardware-Familie. Default ohne Eintrag: vom Device gemeldeter Kanalname (`getInputChannelNames`, von Main.cpp nach initAudio als aktiver Kontext gesetzt), Fallback "In N"/"Out N". `ChangeBroadcaster` bei Änderungen; alle Methoden Message Thread
 - **Eine Quelle, überall angewendet:** CapturePanel-Hardware-Zeilen zeigen das effektive Label, Doppelklick/Long-Press (500 ms, eigenes NameLabel) öffnet den Inline-TextEditor (kein Modal-Loop 13.2; leer = zurück zum Default; Tap-Zeilen nicht editierbar — Rename am Node-Titel); Export-Dateinamen nutzen das sanitierte Label (`sanitizeFileLabel`: verbotene Zeichen → `_`, Trim, 48 Zeichen; Provider-Hook `CaptureService::hardwareTrackName`, unverdrahtet → "inN" wie bisher); die I/O-Endpunkt-Nodes (audio_input/audio_output) malen die Labels neben ihre Ports (Touch hat keinen Hover) und setzen sie als Tooltip (PortComponent jetzt SettableTooltipClient, TooltipWindow im Editor). Richtungs-Mapping beachtet: audio_input trägt OUTPUT-Ports → Input-Labels
@@ -108,7 +115,7 @@
 
 ## Nächste Kandidaten (offen, Reihenfolge nicht festgelegt)
 
-- Link Audio Receive (CLAUDE.md 7.2, Schritt 3): `LinkAudioSource` + `beginBeats()`-Alignment (nie naiv FIFO'en — v1-Drift-Lektion), Monitoring-Latenz dokumentieren; Kanal-Discovery-UI über den bestehenden ChannelsChanged-Broadcast der LinkClock
+- **Link Audio Receive, Schritt 2** (CLAUDE.md 7.2 Schritt 3): `LinkAudioReceiveModule` auf der in Schritt 1 gebauten `LinkClock::Source`/Discovery-Infrastruktur — beat-aligned Jitter-Buffer (nie naiv FIFO'en — v1-Drift-Lektion), Int16→Float, zweiphasiges Delete der Source, Kanal-Discovery-UI über den ChannelsChanged-Broadcast, Monitoring-Latenz dokumentieren
 - Mixer-Modul (mehrere Inputs) — Capture-Kanal-Buttons wandern dann vom CapturePanel in die Channel-Strips (Export-Dateinamen nutzen seit ChannelNames bereits das Kanal-Label statt `in{N}`)
 - Live-FIFO (kontinuierliches Multitrack-Recording) über die bestehende CaptureWriter-Pipeline (TrackSource-Interface liegt bereit)
 - Capture-Restpunkte (aus der Baustein-5-Planung): LinkBox-Zielordner (feste Partition vs. USB-Stick-Erkennung "Take mitnehmen" — Writer nimmt das Verzeichnis schon pro Job, nur ein Mount-Watcher fehlt, gehört zum LinkBox-Meilenstein); 24-bit-Packing im RAM (−25 %) erst nach Messung via `getCommittedBytes()` — Float bleibt Default

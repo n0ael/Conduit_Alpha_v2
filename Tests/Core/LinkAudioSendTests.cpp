@@ -140,6 +140,37 @@ TEST_CASE ("LinkClock::Sink: Kapazität in SAMPLES (Frames × Kanäle), wächst 
 }
 
 //==============================================================================
+TEST_CASE ("LinkClock Receive: ChannelKey-Round-Trip + Discovery ohne Peers (7.2)", "[linkaudio]")
+{
+    juce::ScopedJuceInitialiser_GUI juceRuntime;
+    conduit::LinkClock clock (120.0, "ConduitTest");
+    clock.prepare (48000.0);
+
+    // Frisch konstruiert, kein Peer im Test-Kontext angemeldet: keine eigenen
+    // Sinks announcet → Kanalliste leer (Peers im LAN sind test-extern, daher
+    // NICHT auf Leerheit prüfen, sondern nur auf konsistente Struktur).
+    for (const auto& ch : clock.availableChannels())
+        REQUIRE (ch.id != 0);  // eine announcete ID ist nie 0
+
+    // createSource packt/entpackt den opaken ChannelKey verlustfrei durch die
+    // 8-Byte-NodeId-Kodierung (Big-Endian) — inkl. der Grenzwerte.
+    for (const conduit::LinkClock::ChannelKey key :
+         { conduit::LinkClock::ChannelKey { 0x0123456789abcdefULL },
+           conduit::LinkClock::ChannelKey { 0xffffffffffffffffULL },
+           conduit::LinkClock::ChannelKey { 1 } })
+    {
+        auto source = clock.createSource (key, [] (const conduit::LinkClock::Source::ReceivedBuffer&) {});
+        REQUIRE (source != nullptr);
+        REQUIRE (source->channelId() == key);
+    }
+
+    // key == 0 (unbekannt): Source entsteht trotzdem, empfängt nur nichts.
+    auto idle = clock.createSource (0, [] (const conduit::LinkClock::Source::ReceivedBuffer&) {});
+    REQUIRE (idle != nullptr);
+    REQUIRE (idle->channelId() == 0);
+}
+
+//==============================================================================
 TEST_CASE ("LinkAudioSendModule: Sink-Lifecycle über den GraphManager (7.2)", "[linkaudio]")
 {
     juce::ScopedJuceInitialiser_GUI juceRuntime;

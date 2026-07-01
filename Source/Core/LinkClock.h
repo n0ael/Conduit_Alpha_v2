@@ -3,7 +3,10 @@
 #include <atomic>
 #include <cstddef>
 #include <cstdint>
+#include <functional>
 #include <memory>
+#include <optional>
+#include <vector>
 
 #include <juce_events/juce_events.h>
 
@@ -153,6 +156,90 @@ public:
     */
     [[nodiscard]] std::unique_ptr<Sink> createSink (const juce::String& name,
                                                     std::size_t maxNumSamples);
+
+    //==========================================================================
+    // Link Audio Receive (CLAUDE.md 7.2, Schritt 3) — Message Thread
+
+    /** Header-sichere, opake Kanal-Identität: die 8-Byte-Link-NodeId als
+        std::uint64_t gepackt (Big-Endian). Persistent für die Lebensdauer
+        des Kanals (7.2 — Names ändern sich, IDs nicht). 0 == ungültig.
+
+        Bewusst NICHT serialisierbar: ChannelIds werden pro Session neu
+        vergeben — Peer-Kanäle sind discoverbar, nie Teil des Patches
+        (CLAUDE.md 6, v1-Phantom-Connection-Lektion). */
+    using ChannelKey = std::uint64_t;
+
+    /** Ein in der Session announceter Audio-Kanal. name/peerName nur zur
+        Anzeige, id ist der stabile Schlüssel. */
+    struct ChannelInfo
+    {
+        ChannelKey   id { 0 };
+        juce::String name;
+        juce::String peerName;
+    };
+
+    /** Aktuell in der Session verfügbare Audio-Kanäle (inkl. der eigenen
+        Sinks — der Aufrufer filtert bei Bedarf über peerName()). Änderungen
+        melden sich über den ChangeBroadcaster (ChannelsChanged, 7.2). */
+    [[nodiscard]] std::vector<ChannelInfo> availableChannels() const;
+
+    //==========================================================================
+    /**
+        Opaker Handle auf einen abonnierten Audio-Kanal (Source) der Session
+        — das Empfangs-Gegenstück zu Sink (7.2).
+
+        Design wie Sink: Pimpl-Wrapper, damit der Link-/asio-Header in der
+        .cpp bleibt. Der Empfangs-Callback läuft auf einem Link-Thread und
+        rechnet dort bereits das Beat-Alignment (Info::beginBeats gegen den
+        aktuellen SessionState + quantum) — der Aufrufer bekommt einen
+        beat-gestempelten Buffer und muss nie selbst captureAudioSessionState
+        aufrufen (7.2). Die Samples sind NUR während des Callbacks gültig.
+
+        Lifecycle: eine Source darf die LinkClock nicht überleben. Der
+        Callback kann bis zur Destruktion der Source feuern (Link-Thread) —
+        Teardown-Race gegen den Audio-Thread löst das empfangende Modul über
+        das zweiphasige Delete (5.3), analog zum Sink-Retire.
+    */
+    class Source final
+    {
+    public:
+        ~Source();
+
+        [[nodiscard]] ChannelKey channelId() const noexcept;
+
+        /** Ein empfangener Buffer. Gültig NUR während des Callbacks
+            (Link-Thread) — der Empfänger kopiert synchron heraus. */
+        struct ReceivedBuffer
+        {
+            const std::int16_t* interleavedSamples;  // numFrames × numChannels
+            int    numFrames;
+            int    numChannels;
+            double sampleRate;
+
+            /** Lokale Beat-Zeit am Buffer-Anfang (beginBeats gegen den
+                aktuellen SessionState, quantum). nullopt: Buffer aus einer
+                FREMDEN Link-Session — nicht alignbar, der Empfänger verwirft
+                ihn (nie naiv FIFO'en, v1-Drift-Lektion 7.2). */
+            std::optional<double> beatAtBufferBegin;
+        };
+
+        /** Callback läuft auf einem Link-Thread (7.2). */
+        using ReceiveCallback = std::function<void (const ReceivedBuffer&)>;
+
+    private:
+        friend class LinkClock;
+        struct Impl;
+        explicit Source (std::unique_ptr<Impl> impl);
+        std::unique_ptr<Impl> impl;
+
+        JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (Source)
+    };
+
+    /** Abonniert einen Session-Kanal. callback feuert auf einem Link-Thread,
+        sobald ein Buffer eintrifft. channel == 0 oder unbekannt → die Source
+        entsteht trotzdem, empfängt aber nichts, bis der Kanal auftaucht. */
+    [[nodiscard]] std::unique_ptr<Source> createSource (ChannelKey channel,
+                                                        Source::ReceiveCallback callback);
 
     //==========================================================================
     // Audio Thread

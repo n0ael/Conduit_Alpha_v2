@@ -111,17 +111,25 @@ void AudioDeviceController::applyActiveDevice()
 
     if (auto* device = deviceManager.getCurrentAudioDevice())
     {
+        // Aktive Kanal-Auswahl aus dem Audio-Setup — Port/Prozessor-Kanäle sind
+        // die komprimierten aktiven Kanäle (AudioProcessorPlayer)
+        const auto activeInputs  = device->getActiveInputChannels();
+        const auto activeOutputs = device->getActiveOutputChannels();
+
         // Kanal-Namen-Kontext: Device-Name als Key, gemeldete Kanalnamen als
-        // Default-Labels (ChannelNames-Doku)
+        // Default-Labels; die Auswahl-Masken sorgen für das korrekte Port →
+        // Geräte-Kanal-Mapping (ChannelNames-Doku)
         engine->getChannelNames().setActiveDevice (device->getName(),
                                                    device->getInputChannelNames(),
-                                                   device->getOutputChannelNames());
+                                                   device->getOutputChannelNames(),
+                                                   activeInputs,
+                                                   activeOutputs);
 
         // Echte Hardware-Kanalzahl an die I/O-Tree-Nodes koppeln (Schritt B).
         // Aktive Kanäle wie der AudioProcessorPlayer (findMostSuitableLayout →
         // deviceChannels), damit Port-UI und Graph dieselbe Zahl tragen.
-        engine->syncHardwareIOChannels (device->getActiveInputChannels().countNumberOfSetBits(),
-                                        device->getActiveOutputChannels().countNumberOfSetBits());
+        engine->syncHardwareIOChannels (activeInputs.countNumberOfSetBits(),
+                                        activeOutputs.countNumberOfSetBits());
 
         const auto warning = computeWarning (device->getCurrentSampleRate(),
                                              device->getCurrentBufferSizeSamples());

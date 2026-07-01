@@ -206,6 +206,64 @@ TEST_CASE ("ChannelNames: sanitizeFileLabel für Dateinamen", "[channelnames]")
 }
 
 //==============================================================================
+namespace
+{
+juce::BigInteger channelMask (std::initializer_list<int> channels)
+{
+    juce::BigInteger mask;
+    for (const auto ch : channels)
+        mask.setBit (ch);
+    return mask;
+}
+}
+
+TEST_CASE ("ChannelNames: aktive Teil-Auswahl mappt Port → Geräte-Kanal", "[channelnames][io]")
+{
+    juce::ScopedJuceInitialiser_GUI juceRuntime;
+    TempSettingsFolder temp;
+    ChannelNames names (temp.options());
+
+    // 4-Kanal-Device, aktiv nur Kanal 1 und 3 (0 und 2 deaktiviert) — der
+    // AudioProcessorPlayer komprimiert: Port 0 → Kanal 1, Port 1 → Kanal 3
+    names.setActiveDevice ("Interface", { "A", "B", "C", "D" }, {},
+                           channelMask ({ 1, 3 }), {});
+
+    SECTION ("Labels folgen den aktiven Kanälen, nicht dem Port-Index")
+    {
+        REQUIRE (names.getLabel (Direction::input, 0) == "B");  // Kanal 1
+        REQUIRE (names.getLabel (Direction::input, 1) == "D");  // Kanal 3
+    }
+
+    SECTION ("User-Label bleibt am Geräte-Kanal verankert, wenn sich die Auswahl ändert")
+    {
+        names.setUserLabel (Direction::input, 0, "Kick");        // Port 0 = Kanal 1
+        REQUIRE (names.getLabel (Direction::input, 0) == "Kick");
+
+        // Kanal 0 zusätzlich aktivieren → Port 0 = Kanal 0, Port 1 = Kanal 1
+        names.setActiveDevice ("Interface", { "A", "B", "C", "D" }, {},
+                               channelMask ({ 0, 1, 3 }), {});
+
+        REQUIRE (names.getLabel (Direction::input, 0) == "A");     // Kanal 0
+        REQUIRE (names.getLabel (Direction::input, 1) == "Kick");  // Kick folgt Kanal 1
+        REQUIRE (names.getLabel (Direction::input, 2) == "D");     // Kanal 3
+    }
+
+    SECTION ("Default-Fallback nutzt den echten Kanal (In N+1)")
+    {
+        // Kanal ohne gemeldeten Namen: aktiv nur Kanal 5 eines namenlosen Devices
+        names.setActiveDevice ("Bare", {}, {}, channelMask ({ 5 }), {});
+        REQUIRE (names.getLabel (Direction::input, 0) == "In 6");  // Kanal 5
+    }
+
+    SECTION ("Leere Maske → identisches Mapping (Rückwärtskompatibilität)")
+    {
+        names.setActiveDevice ("Interface", { "A", "B", "C", "D" }, {});
+        REQUIRE (names.getLabel (Direction::input, 0) == "A");
+        REQUIRE (names.getLabel (Direction::input, 2) == "C");
+    }
+}
+
+//==============================================================================
 TEST_CASE ("ChannelNames: Persistenz-Roundtrip", "[channelnames]")
 {
     juce::ScopedJuceInitialiser_GUI juceRuntime;

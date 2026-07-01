@@ -49,10 +49,22 @@ public:
 
     //==========================================================================
     /** Aktiven Geräte-Kontext setzen (initAudio bzw. Device-Wechsel).
-        reportedNames = vom Device gemeldete Kanalnamen (Default-Quelle). */
+        reportedNames = vom Device gemeldete Kanalnamen (Default-Quelle,
+        indiziert über den vollen Geräte-Kanal-Index).
+
+        activeInputChannels/activeOutputChannels = Auswahl aus dem Audio-Setup
+        (welche Geräte-Kanäle aktiv sind). Der AudioProcessorPlayer komprimiert
+        die aktiven Kanäle: Port/Prozessor-Kanal i trägt den i-ten *aktiven*
+        Geräte-Kanal. getLabel & Co. bekommen diesen Port-Index und mappen ihn
+        intern auf den echten Geräte-Kanal — so stimmen Namen auch bei
+        Teil-Auswahl, und User-Labels bleiben am Geräte-Kanal verankert (stabil
+        beim Ein-/Ausschalten früherer Kanäle). Leere Maske (Tests / vor
+        Device-Init) → identisches Mapping. */
     void setActiveDevice (const juce::String& deviceName,
                           const juce::StringArray& reportedInputNames,
-                          const juce::StringArray& reportedOutputNames);
+                          const juce::StringArray& reportedOutputNames,
+                          const juce::BigInteger& activeInputChannels  = {},
+                          const juce::BigInteger& activeOutputChannels = {});
 
     [[nodiscard]] juce::String getActiveDeviceName() const { return activeDeviceName; }
 
@@ -112,6 +124,13 @@ private:
     [[nodiscard]] const Entry* findEntry (Direction direction, int channelIndex) const;
     void pruneAndStore (DeviceEntry& device);
 
+    /** Port/Prozessor-Kanal-Index → echter Geräte-Kanal-Index über die aktive
+        Auswahl (i-ter gesetzter Bit). Ohne Auswahl-Info: identisch. */
+    [[nodiscard]] int toDeviceChannel (Direction direction, int portIndex) const;
+
+    /** Gesetzte Bits einer Maske aufsteigend als Kanal-Indizes. */
+    [[nodiscard]] static std::vector<int> toChannelList (const juce::BigInteger& mask);
+
     void loadFromFile();
     void writeToFile();
 
@@ -121,6 +140,10 @@ private:
     juce::String activeDeviceName;
     juce::StringArray activeInputNames;
     juce::StringArray activeOutputNames;
+
+    // Port-Index → Geräte-Kanal-Index (i-ter aktiver Kanal); leer = identisch
+    std::vector<int> activeInputChannelMap;
+    std::vector<int> activeOutputChannelMap;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (ChannelNames)
 };

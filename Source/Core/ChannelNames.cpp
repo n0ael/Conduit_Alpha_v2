@@ -118,34 +118,61 @@ void ChannelNames::writeToFile()
 }
 
 //==============================================================================
+std::vector<int> ChannelNames::toChannelList (const juce::BigInteger& mask)
+{
+    std::vector<int> list;
+    for (int bit = 0; bit <= mask.getHighestBit(); ++bit)
+        if (mask[bit])
+            list.push_back (bit);
+    return list;
+}
+
+int ChannelNames::toDeviceChannel (Direction direction, int portIndex) const
+{
+    const auto& map = direction == Direction::input ? activeInputChannelMap
+                                                    : activeOutputChannelMap;
+    if (portIndex >= 0 && portIndex < (int) map.size())
+        return map[(size_t) portIndex];
+
+    return portIndex;  // keine Auswahl-Info (Tests / vor Device-Init) → identisch
+}
+
 void ChannelNames::setActiveDevice (const juce::String& deviceName,
                                     const juce::StringArray& reportedInputNames,
-                                    const juce::StringArray& reportedOutputNames)
+                                    const juce::StringArray& reportedOutputNames,
+                                    const juce::BigInteger& activeInputChannels,
+                                    const juce::BigInteger& activeOutputChannels)
 {
-    activeDeviceName  = deviceName;
-    activeInputNames  = reportedInputNames;
-    activeOutputNames = reportedOutputNames;
+    activeDeviceName       = deviceName;
+    activeInputNames       = reportedInputNames;
+    activeOutputNames      = reportedOutputNames;
+    activeInputChannelMap  = toChannelList (activeInputChannels);
+    activeOutputChannelMap = toChannelList (activeOutputChannels);
     sendChangeMessage();
 }
 
 //==============================================================================
 juce::String ChannelNames::getLabel (Direction direction, int channelIndex) const
 {
-    if (const auto userLabel = getUserLabel (direction, channelIndex); userLabel.isNotEmpty())
-        return userLabel;
+    // channelIndex ist der (komprimierte) Port-Index → echter Geräte-Kanal
+    const auto deviceChannel = toDeviceChannel (direction, channelIndex);
+
+    if (const auto* entry = findEntry (direction, deviceChannel);
+        entry != nullptr && entry->userLabel.isNotEmpty())
+        return entry->userLabel;
 
     const auto& reported = direction == Direction::input ? activeInputNames
                                                          : activeOutputNames;
-    if (channelIndex >= 0 && channelIndex < reported.size()
-        && reported[channelIndex].isNotEmpty())
-        return reported[channelIndex];
+    if (deviceChannel >= 0 && deviceChannel < reported.size()
+        && reported[deviceChannel].isNotEmpty())
+        return reported[deviceChannel];
 
-    return defaultLabel (direction, channelIndex);
+    return defaultLabel (direction, deviceChannel);
 }
 
 juce::String ChannelNames::getUserLabel (Direction direction, int channelIndex) const
 {
-    if (const auto* entry = findEntry (direction, channelIndex))
+    if (const auto* entry = findEntry (direction, toDeviceChannel (direction, channelIndex)))
         return entry->userLabel;
 
     return {};
@@ -153,7 +180,7 @@ juce::String ChannelNames::getUserLabel (Direction direction, int channelIndex) 
 
 juce::String ChannelNames::getImagePath (Direction direction, int channelIndex) const
 {
-    if (const auto* entry = findEntry (direction, channelIndex))
+    if (const auto* entry = findEntry (direction, toDeviceChannel (direction, channelIndex)))
         return entry->imagePath;
 
     return {};
@@ -164,6 +191,9 @@ void ChannelNames::setUserLabel (Direction direction, int channelIndex, const ju
     if (activeDeviceName.isEmpty() || channelIndex < 0)
         return;  // ohne Device-Kontext gibt es keinen Key zum Speichern
 
+    // Am echten Geräte-Kanal verankern (stabil beim Ein-/Ausschalten früherer
+    // Kanäle), nicht am komprimierten Port-Index
+    const auto deviceChannel = toDeviceChannel (direction, channelIndex);
     const auto trimmed = label.trim().substring (0, maxLabelLength);
 
     if (trimmed == getUserLabel (direction, channelIndex))
@@ -173,12 +203,12 @@ void ChannelNames::setUserLabel (Direction direction, int channelIndex, const ju
     const auto it = std::find_if (device.entries.begin(), device.entries.end(),
                                   [&] (const Entry& entry)
                                   { return entry.direction == direction
-                                        && entry.channelIndex == channelIndex; });
+                                        && entry.channelIndex == deviceChannel; });
 
     if (it != device.entries.end())
         it->userLabel = trimmed;
     else if (trimmed.isNotEmpty())
-        device.entries.push_back ({ direction, channelIndex, trimmed, {} });
+        device.entries.push_back ({ direction, deviceChannel, trimmed, {} });
 
     pruneAndStore (device);
 }
@@ -188,6 +218,8 @@ void ChannelNames::setImagePath (Direction direction, int channelIndex, const ju
     if (activeDeviceName.isEmpty() || channelIndex < 0)
         return;
 
+    const auto deviceChannel = toDeviceChannel (direction, channelIndex);
+
     if (path == getImagePath (direction, channelIndex))
         return;
 
@@ -195,12 +227,12 @@ void ChannelNames::setImagePath (Direction direction, int channelIndex, const ju
     const auto it = std::find_if (device.entries.begin(), device.entries.end(),
                                   [&] (const Entry& entry)
                                   { return entry.direction == direction
-                                        && entry.channelIndex == channelIndex; });
+                                        && entry.channelIndex == deviceChannel; });
 
     if (it != device.entries.end())
         it->imagePath = path;
     else if (path.isNotEmpty())
-        device.entries.push_back ({ direction, channelIndex, {}, path });
+        device.entries.push_back ({ direction, deviceChannel, {}, path });
 
     pruneAndStore (device);
 }

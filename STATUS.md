@@ -18,6 +18,11 @@
 
 **Echte Hardware-Kanalzahl für Audio-I/O (CLAUDE.md 9) — Meilenstein abgeschlossen:**
 
+*Nachtrag — Aktive Kanal-Auswahl respektieren (Bugfix):*
+- **Problem:** Bei Teil-Auswahl im Audio-Setup (z. B. erste Kanäle deaktiviert) komprimiert der `AudioProcessorPlayer` die aktiven Kanäle (Port i = i-ter *aktiver* Kanal), aber `ChannelNames::getLabel` las stur den Namen an voller-Liste-Index i → es sah aus, als fielen immer die *hinteren* Ports weg, egal welche Kanäle deaktiviert wurden
+- **`ChannelNames`** kennt jetzt die Aktiv-Kanal-Masken und mappt Port-Index → echten Geräte-Kanal-Index (`toDeviceChannel`, i-tes gesetztes Bit). `getLabel`/`getUserLabel`/`setUserLabel`/`get/setImagePath` mappen am Rand; User-Labels sind am **physischen Kanal** verankert (stabil beim Ein-/Ausschalten früherer Kanäle). Leere Maske → identisch (rückwärtskompatibel). `AudioDeviceController` reicht `getActiveInputChannels()`/`getActiveOutputChannels()` durch
+- **Verifikation:** 140 Testfälle / 10184 Assertions grün (Debug + ASan). Neue Tests: Teil-Auswahl (Kanäle 1,3 → Port 0/1 = B/D), User-Label folgt physischem Kanal, Default-Fallback nutzt echte Kanalnummer, leere Maske identisch. **Live vom User bestätigt**
+
 *Schritt C — Connection-Pruning (Phantom-Connection-Schutz):*
 - **`EngineProcessor::pruneEndpointConnections(nodeId, asSource, validChannels)`**: entfernt beim Schrumpfen der Kanalzahl (kleineres Interface / Ausstecken) genau die Kabel, die einen jetzt verschwundenen I/O-Kanal referenzieren (Kanal ≥ validChannels). `audio_in` als Quelle (`sourceChannel`), `audio_out` als Ziel (`destChannel`). Rückwärts-Iteration, geräte-getrieben → **nicht undo-fähig** (verhindert Phantom-Connections beim Preset-Save, v1-Lektion 6). `syncHardwareIOChannels` ruft es nach dem Kanalzahl-Update; die Tree-Entfernung zieht Graph-Connection (GraphManager-Swap) und Kabel-Repaint (Canvas) nach
 - **Verifikation:** 139 Testfälle / 10175 Assertions grün (Debug + ASan). Neue Tests: Schrumpfen 8→2 kappt genau die out-of-range Kabel (gültige bleiben), gleiche Kanalzahl lässt alle stehen, Ausstecken (0/0) kappt alle I/O-Kabel, fremde Kabel (kein I/O-Endpunkt) unangetastet

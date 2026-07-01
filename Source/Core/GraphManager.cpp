@@ -11,6 +11,7 @@
 #include "Modules/LinkAudioSendModule.h"
 #include "Modules/ModuleFactory.h"
 #include "NodeUiRegistry.h"
+#include "SourceNameResolver.h"
 
 namespace conduit
 {
@@ -259,6 +260,78 @@ juce::ValueTree GraphManager::findConnectionTree (const juce::String& sourceUuid
 }
 
 //==============================================================================
+void GraphManager::snapshotAutoName (juce::ValueTree sendNodeTree, int destChannel)
+{
+    JUCE_ASSERT_MESSAGE_THREAD
+
+    const auto inputsTree = sendNodeTree.getChildWithName (id::inputs);
+
+    // Eingang finden, der destChannel enthält, und seinen Start-Kanal (offset)
+    int offset = 0;
+    juce::ValueTree inputTree;
+
+    for (int i = 0; i < inputsTree.getNumChildren(); ++i)
+    {
+        const auto in = inputsTree.getChild (i);
+        const int width = in.getProperty (id::inputMode).toString() == LinkAudioSendModule::modeStereo ? 2 : 1;
+
+        if (destChannel >= offset && destChannel < offset + width)
+        {
+            inputTree = in;
+            break;
+        }
+
+        offset += width;
+    }
+
+    if (! inputTree.isValid())
+        return;
+
+    // Snapshot nur, wenn weder userName noch autoName gesetzt sind.
+    if (inputTree.getProperty (id::inputUserName).toString().isNotEmpty()
+        || inputTree.getProperty (id::inputAutoName).toString().isNotEmpty())
+        return;
+
+    // Quell-Label vom repräsentativen (linken) Kanal des Eingangs.
+    const auto label = resolveSourceLabel (rootState,
+                                           sendNodeTree.getProperty (id::nodeId).toString(),
+                                           offset, channelNames);
+
+    if (label.isNotEmpty())
+        inputTree.setProperty (id::inputAutoName, label, nullptr);  // abgeleitet, non-undoable
+}
+
+bool GraphManager::refreshAutoNames (const juce::String& nodeUuid)
+{
+    JUCE_ASSERT_MESSAGE_THREAD
+
+    const auto nodeTree = rootState.getChildWithName (id::nodes)
+                              .getChildWithProperty (id::nodeId, nodeUuid);
+
+    if (! nodeTree.isValid() || factoryKeyOf (nodeTree) != LinkAudioSendModule::staticModuleId)
+        return false;
+
+    const auto inputsTree = nodeTree.getChildWithName (id::inputs);
+
+    undoManager.beginNewTransaction ("Auto-Namen aktualisieren");
+
+    int offset = 0;
+    for (int i = 0; i < inputsTree.getNumChildren(); ++i)
+    {
+        auto in = inputsTree.getChild (i);
+        const int width = in.getProperty (id::inputMode).toString() == LinkAudioSendModule::modeStereo ? 2 : 1;
+
+        // autoName aus der aktuellen Quelle neu ziehen (userName bleibt).
+        const auto label = resolveSourceLabel (rootState, nodeUuid, offset, channelNames);
+        in.setProperty (id::inputAutoName, label, &undoManager);
+
+        offset += width;
+    }
+
+    return true;
+}
+
+//==============================================================================
 void GraphManager::registerExternalEndpoint (const juce::String& moduleId,
                                              juce::AudioProcessorGraph::NodeID graphNodeId)
 {
@@ -290,6 +363,11 @@ void GraphManager::setLinkClock (LinkClock* clock) noexcept
 void GraphManager::setCaptureService (CaptureService* service) noexcept
 {
     captureService = service;
+}
+
+void GraphManager::setChannelNames (ChannelNames* names) noexcept
+{
+    channelNames = names;
 }
 
 //==============================================================================
@@ -342,6 +420,24 @@ void GraphManager::valueTreePropertyChanged (juce::ValueTree& tree, const juce::
         return;
     }
 
+    // Send-Eingangs-Name geändert (userName/autoName, 7.2): der effektive
+    // Kanal-Name folgt live zum Sink — KEIN Rebuild (fixe Kanalzahl).
+    if ((property == id::inputUserName || property == id::inputAutoName)
+        && tree.hasType (id::input))
+    {
+        const auto inputsTree = tree.getParent();
+        const auto nodeTree   = inputsTree.getParent();
+
+        if (nodeTree.hasType (id::node))
+            if (auto* sendClient = dynamic_cast<ISendConfigClient*> (
+                    getModuleFor (nodeTree.getProperty (id::nodeId).toString())))
+                sendClient->inputNameChanged (
+                    tree.getProperty (id::inputId).toString(),
+                    LinkAudioSendModule::effectiveInputName (tree, inputsTree.indexOf (tree)));
+
+        return;
+    }
+
     // Tree → Atomic: paramValue-Änderungen (UI-Slider, OSC-Nachzug, Undo,
     // Preset-Load) auf das Echtzeit-Target spiegeln — KEIN Rebuild.
     if (property == id::paramValue && tree.hasType (id::parameter))
@@ -383,6 +479,19 @@ void GraphManager::valueTreeChildAdded (juce::ValueTree& parent, juce::ValueTree
     // child:  ganzer Container ersetzt (Preset-Load via
     //         copyPropertiesAndChildrenFrom hängt Nodes[]/Connections[]
     //         als Subtree an den Root — parent ist dann der Root).
+    // Auto-Naming-Snapshot (7.2 Schritt 3): frisch gezogenes Kabel an einen
+    // Send-Eingang → Quell-Name EINMAL übernehmen (kein Live-Follow, damit
+    // Ableton-Routing stabil bleibt).
+    if (child.hasType (id::connection))
+    {
+        const auto destUuid = child.getProperty (id::destNodeId).toString();
+        const auto destNode = rootState.getChildWithName (id::nodes)
+                                  .getChildWithProperty (id::nodeId, destUuid);
+
+        if (destNode.isValid() && factoryKeyOf (destNode) == LinkAudioSendModule::staticModuleId)
+            snapshotAutoName (destNode, static_cast<int> (child.getProperty (id::destChannel)));
+    }
+
     if (isTopologyContainer (parent) || isTopologyContainer (child))
         markTopologyDirty();
 }

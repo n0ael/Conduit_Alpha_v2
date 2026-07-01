@@ -92,6 +92,19 @@ void LinkAudioSendModule::applyInputConfig (juce::ValueTree nodeTree,
     nodeTree.setProperty (id::numOutputChannels, 0,     nullptr);  // reiner Sender
 }
 
+juce::String LinkAudioSendModule::effectiveInputName (const juce::ValueTree& inputTree, int index)
+{
+    const auto userName = inputTree.getProperty (id::inputUserName).toString();
+    if (userName.isNotEmpty())
+        return userName;
+
+    const auto autoName = inputTree.getProperty (id::inputAutoName).toString();
+    if (autoName.isNotEmpty())
+        return autoName;
+
+    return "input" + juce::String (index + 1);
+}
+
 std::vector<SendInputConfig> LinkAudioSendModule::readInputConfig (const juce::ValueTree& nodeTree)
 {
     std::vector<SendInputConfig> result;
@@ -102,15 +115,10 @@ std::vector<SendInputConfig> LinkAudioSendModule::readInputConfig (const juce::V
         const auto in = inputsTree.getChild (i);
 
         SendInputConfig cfg;
-        cfg.inputId     = in.getProperty (id::inputId).toString();
-        cfg.width       = in.getProperty (id::inputMode).toString() == modeStereo ? 2 : 1;
-        cfg.gainParamId = in.getProperty (id::inputGainParamId).toString();
-
-        const auto userName = in.getProperty (id::inputUserName).toString();
-        const auto autoName = in.getProperty (id::inputAutoName).toString();
-        cfg.effectiveName   = userName.isNotEmpty() ? userName
-                            : (autoName.isNotEmpty() ? autoName
-                                                     : "input" + juce::String (i + 1));
+        cfg.inputId       = in.getProperty (id::inputId).toString();
+        cfg.width         = in.getProperty (id::inputMode).toString() == modeStereo ? 2 : 1;
+        cfg.gainParamId   = in.getProperty (id::inputGainParamId).toString();
+        cfg.effectiveName = effectiveInputName (in, i);
 
         result.push_back (std::move (cfg));
     }
@@ -169,6 +177,21 @@ void LinkAudioSendModule::moduleIdRenamed (const juce::String& newModuleId)
     for (auto& slot : slots)
         if (slot->sink != nullptr)
             slot->sink->setName (sinkNameFor (slot->effectiveName));
+}
+
+void LinkAudioSendModule::inputNameChanged (const juce::String& inputId,
+                                            const juce::String& effectiveName)
+{
+    JUCE_ASSERT_MESSAGE_THREAD
+
+    for (auto& slot : slots)
+        if (slot->inputId == inputId)
+        {
+            slot->effectiveName = effectiveName;
+            if (slot->sink != nullptr)
+                slot->sink->setName (sinkNameFor (effectiveName));  // live zu den Peers (7.2)
+            return;
+        }
 }
 
 void LinkAudioSendModule::setClockBus (const ClockBus* bus) noexcept

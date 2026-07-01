@@ -16,7 +16,16 @@
 
 ## Aktueller Meilenstein (Juli 2026 — in Arbeit)
 
-**Multi-Input Link Audio Send, Schritt A — Modul-Kernumbau (CLAUDE.md 7.2):**
+**Multi-Input Link Audio Send, Schritt B — Auto-Naming (CLAUDE.md 7.2 Schritt 3):**
+- **Reiner Resolver `resolveSourceLabel`** (`Source/Core/SourceNameResolver`): rückwärts dest→source über `<Connections>`; Quelle audio_input → ChannelNames-Label (Fallback „In N"), sonst Quell-`moduleId` (+ Kanal-Suffix `:{n}` bei Multi-Output). Rein funktional, ohne Link/Audio/Device unit-testbar
+- **Snapshot beim Verbinden** (`GraphManager::valueTreeChildAdded`): frisch gezogenes Kabel an einen Send-Eingang → Quell-Name EINMAL in `autoName` (nur wenn userName UND autoName leer; non-undoable, abgeleitet). Kein Live-Follow → Ableton-Routing bleibt stabil, wenn die Quelle umbenannt wird
+- **Refresh** (`GraphManager::refreshAutoNames`): zieht `autoName` für alle Eingänge aus der aktuellen Quelle neu (eine Undo-Transaktion); `userName` bleibt und überschreibt weiter
+- **Live-Sink-Rename:** `userName`/`autoName`-Änderung → `ISendConfigClient::inputNameChanged` → `sink.setName({moduleId}/{effektiverName})` ohne Rebuild; effektiver Name = userName ?: autoName ?: „input{n}"
+- **Verdrahtung:** GraphManager bekommt `setChannelNames` (Owner EngineProcessor)
+- **Verifikation:** 126 Testfälle / 10089 Assertions grün (Debug + ASan). Neue Tests: Resolver (keine Verbindung/audio_input/Modul+Suffix), Snapshot beim Verbinden, userName-Override, Snapshot bleibt bei Quell-Rename stabil, Refresh übernimmt neu
+- **Offen:** Schritt C — UI-Panel (Attenuator/Name/Status pro Zeile, Refresh-Knopf) + Anlege-Dialog (Mono/Stereo-Anzahl)
+
+**Davor: Multi-Input Link Audio Send, Schritt A — Modul-Kernumbau (CLAUDE.md 7.2):**
 - **Reiner Sender statt Stereo-Pass-Through:** `LinkAudioSendModule` hat KEINEN Output-Bus mehr (`numOutputChannels=0`, Sink-Endpunkt wie audio_output). Der Signalfluss zum eigentlichen Ziel läuft per **Fan-out** am Ausgang der Quelle (GraphManager::addConnection erlaubt beliebige Fan-outs). Through-Modus/Output-Frage damit erledigt
 - **Fixe, konfigurierbare Eingangszahl (kein dynamischer Bus):** pro Eingang mono/stereo, jeder ein eigener Link-Kanal + eigener Attenuator (Gain 0..1, SmoothedValue). Das Kanal-Layout wird via neuem Mixin `ISendConfigClient::applySendConfig` EINMAL vor prepareForGraph injiziert (`setChannelLayoutOfBus(discreteChannels(N))`, `isBusesLayoutSupported`); Eingangszahl beim Anlegen fix → keine Re-Materialisierung, kein Fade-Glitch, stabile Ableton-Kanäle. Mehr Kanäle = zweiter Send-Node
 - **Neues Schema `<Inputs>`** (inputId stabil/serialisiert, mode, userName, autoName, gainParamId) + flache `in{n}_gain`-Parameter (GraphManager-Sync/OSC unverändert). **Kanal-Name = `{moduleId}/{effektiverName}`** (Node-Präfix → eindeutig über mehrere Send-Nodes); effektiver Name = userName ?: autoName ?: "input{n}"

@@ -446,6 +446,68 @@ TEST_CASE ("LinkAudioSendModule: applyInputConfig + readInputConfig (Offsets/Nam
 }
 
 //==============================================================================
+TEST_CASE ("Auto-Naming: Snapshot beim Verbinden, userName-Override, Refresh (7.2)", "[linkaudio][autoname]")
+{
+    juce::ScopedJuceInitialiser_GUI juceRuntime;
+    auto root = makeRootTree();
+    juce::AudioProcessorGraph graph;
+    conduit::GraphFader fader;
+    conduit::ModuleFactory factory;
+    juce::UndoManager undoManager;
+    conduit::NodeUiRegistry uiRegistry;
+    conduit::GraphManager manager { root, graph, fader, factory, undoManager, uiRegistry };
+
+    conduit::registerDefaultModules (factory);
+
+    conduit::LinkClock clock (120.0, "ConduitTest");
+    clock.prepare (48000.0);
+    manager.setLinkClock (&clock);
+    conduit::ClockBus bus;
+    manager.setClockBus (&bus);
+    // channelNames bewusst nicht gesetzt: Modul-Quelle nutzt moduleId (kein ChannelNames)
+
+    const auto lfo  = manager.addModuleNode ("lfo", {});
+    const auto send = manager.addModuleNode (conduit::LinkAudioSendModule::staticModuleId, {});
+    manager.flushPendingTopologyUpdate();
+
+    const auto sendUuid     = uuidOf (send);
+    const auto sendModuleId = send.getProperty (conduit::id::moduleId).toString();
+    const auto lfoModuleId  = lfo.getProperty (conduit::id::moduleId).toString();
+
+    auto* module = dynamic_cast<conduit::LinkAudioSendModule*> (manager.getModuleFor (sendUuid));
+    REQUIRE (module != nullptr);
+    REQUIRE (module->getSinkNames() == juce::StringArray (sendModuleId + "/input1"));  // Default
+
+    auto input0 = send.getChildWithName (conduit::id::inputs).getChild (0);
+
+    //==========================================================================
+    // Kabel ziehen: Snapshot übernimmt den Quell-Namen EINMAL in autoName
+    REQUIRE (manager.addConnection (uuidOf (lfo), 0, sendUuid, 0));
+    REQUIRE (input0.getProperty (conduit::id::inputAutoName).toString() == lfoModuleId);
+    REQUIRE (module->getSinkNames() == juce::StringArray (sendModuleId + "/" + lfoModuleId));
+
+    //==========================================================================
+    // userName überschreibt den Auto-Namen dauerhaft (live auf den Sink)
+    input0.setProperty (conduit::id::inputUserName, "kick", nullptr);
+    REQUIRE (module->getSinkNames() == juce::StringArray (sendModuleId + "/kick"));
+
+    //==========================================================================
+    // Snapshot bleibt stabil, wenn die Quelle umbenannt wird (kein Live-Follow)
+    REQUIRE (manager.renameNode (uuidOf (lfo), "new_lfo_name"));
+    REQUIRE (input0.getProperty (conduit::id::inputAutoName).toString() == lfoModuleId);  // unverändert
+
+    //==========================================================================
+    // Refresh übernimmt die AKTUELLE Quelle neu in autoName; userName gewinnt weiter
+    REQUIRE (manager.refreshAutoNames (sendUuid));
+    REQUIRE (input0.getProperty (conduit::id::inputAutoName).toString() == "new_lfo_name");
+    REQUIRE (module->getSinkNames() == juce::StringArray (sendModuleId + "/kick"));
+
+    // userName löschen → effektiv der (aufgefrischte) autoName
+    input0.setProperty (conduit::id::inputUserName, juce::String(), nullptr);
+    REQUIRE (module->getSinkNames() == juce::StringArray (sendModuleId + "/new_lfo_name"));
+}
+
+//==============================================================================
 TEST_CASE ("LinkAudioSendModule: getParameterTarget mappt in{n}_gain auf getrennte Slots", "[linkaudio]")
 {
     juce::ScopedJuceInitialiser_GUI juceRuntime;

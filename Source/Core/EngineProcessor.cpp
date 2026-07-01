@@ -43,6 +43,10 @@ EngineProcessor::EngineProcessor()
     // moduleId bei der Materialisierung (Spurname == moduleId)
     graphManager.setCaptureService (&captureService);
 
+    // Kanal-Namen — Auto-Naming der Send-Kanäle (7.2): Quelle am audio_input
+    // liefert ihr ChannelNames-Label
+    graphManager.setChannelNames (&channelNames);
+
     // Globale Session-Skala (6.2): Defaults sicherstellen, Properties spiegeln
     ensureSessionScaleDefaults();
     rootState.addListener (this);

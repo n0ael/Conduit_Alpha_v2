@@ -91,6 +91,7 @@ set(CONDUIT_CPP_SOURCES
     Source/Core/LinkClock.cpp
     Source/Core/NodeUiRegistry.cpp
     Source/Core/OscController.cpp
+    Source/Core/SourceNameResolver.cpp
     Source/Core/Capture/BufferPool.cpp
     Source/Core/Capture/CaptureChannel.cpp
     Source/Core/Capture/CaptureService.cpp
@@ -128,6 +129,7 @@ target_sources(Conduit PRIVATE
     Source/Core/LinkClock.h
     Source/Core/NodeUiRegistry.h
     Source/Core/OscController.h
+    Source/Core/SourceNameResolver.h
     Source/Core/Capture/BufferPool.h
     Source/Core/Capture/CaptureChannel.h
     Source/Core/Capture/CaptureGate.h
@@ -262,6 +264,7 @@ if(CONDUIT_BUILD_TESTS)
         Tests/Core/PresetTests.cpp
         Tests/Core/ScopeModuleTests.cpp
         Tests/Core/SequencerTests.cpp
+        Tests/Core/SourceNameResolverTests.cpp
         Tests/Core/ThreadingStressTests.cpp
         Tests/UI/NodeCanvasTests.cpp
         Tests/UI/SequencerControlPanelTests.cpp
@@ -279,6 +282,7 @@ if(CONDUIT_BUILD_TESTS)
         Source/Core/LinkClock.cpp
         Source/Core/NodeUiRegistry.cpp
         Source/Core/OscController.cpp
+        Source/Core/SourceNameResolver.cpp
         Source/Core/Capture/BufferPool.cpp
         Source/Core/Capture/CaptureChannel.cpp
         Source/Core/Capture/CaptureService.cpp

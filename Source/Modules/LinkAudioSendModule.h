@@ -88,6 +88,10 @@ public:
         (effektiver Name = userName ?: autoName ?: "input{n}"). */
     [[nodiscard]] static std::vector<SendInputConfig> readInputConfig (const juce::ValueTree& nodeTree);
 
+    /** Effektiver Name eines Eingangs: userName ?: autoName ?: "input{index+1}".
+        index ist die Position in <Inputs>. */
+    [[nodiscard]] static juce::String effectiveInputName (const juce::ValueTree& inputTree, int index);
+
     /** Migration Alt→Neu (stateVersion < 2): fester Stereo-Send ohne <Inputs>
         → 1 Stereo-Eingang, autoName = alte moduleId, numOutputChannels = 0.
         Idempotent. */
@@ -96,8 +100,9 @@ public:
     static constexpr int stateVersion = 2;
 
     //==========================================================================
-    // ISendConfigClient [Message Thread, vor prepareForGraph]
+    // ISendConfigClient [Message Thread]
     void applySendConfig (const std::vector<SendInputConfig>& inputs) override;
+    void inputNameChanged (const juce::String& inputId, const juce::String& effectiveName) override;
 
     // ILinkAudioClient [Message Thread]
     void setLinkAudioContext (LinkClock* clock, const juce::String& initialModuleId) override;

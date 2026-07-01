@@ -14,6 +14,7 @@ namespace conduit
 {
 
 class CaptureService;
+class ChannelNames;
 class LinkClock;
 class ModuleFactory;
 class NodeUiRegistry;
@@ -152,6 +153,18 @@ public:
         Message Thread. */
     void setCaptureService (CaptureService* service) noexcept;
 
+    /** Kanal-Namen (App-Zustand) für das Auto-Naming der Send-Kanäle: die
+        Quelle eines Eingangs, die am audio_input-Endpunkt hängt, liefert ihr
+        ChannelNames-Label. nullptr → Fallback "In N" (Tests). Message Thread. */
+    void setChannelNames (ChannelNames* names) noexcept;
+
+    //==========================================================================
+    /** Auto-Naming (7.2 Schritt 3): übernimmt für ALLE Eingänge eines Send-
+        Nodes den aktuellen Quell-Namen als autoName (userName bleibt), in
+        einer Undo-Transaktion. false bei unbekanntem/fremdem Node.
+        Message Thread. */
+    bool refreshAutoNames (const juce::String& nodeUuid);
+
     //==========================================================================
     /** Live-Modul-Instanz zu einer Tree-nodeId — nullptr solange das Modul
         noch nicht materialisiert ist (5.2 Schritt 1–3) oder nodeError gesetzt
@@ -215,6 +228,11 @@ private:
     [[nodiscard]] juce::ValueTree findConnectionTree (const juce::String& sourceUuid, int sourceChannel,
                                                       const juce::String& destUuid, int destChannel) const;
 
+    /** Auto-Naming-Snapshot: setzt für den Eingang, der destChannel enthält,
+        autoName aus der Quelle — nur wenn userName UND autoName leer sind
+        (Snapshot, kein Live-Follow). Non-undoable (abgeleiteter Zustand). */
+    void snapshotAutoName (juce::ValueTree sendNodeTree, int destChannel);
+
     /** true für die Container Nodes[] und Connections[] (Schema 6.2). */
     [[nodiscard]] static bool isTopologyContainer (const juce::ValueTree& tree) noexcept;
 
@@ -267,6 +285,9 @@ private:
 
     // Capture-Kontext für ICaptureTapClients (Owner: EngineProcessor)
     CaptureService* captureService = nullptr;
+
+    // Kanal-Namen für Send-Auto-Naming (Owner: EngineProcessor)
+    ChannelNames* channelNames = nullptr;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (GraphManager)
 };

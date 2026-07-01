@@ -39,6 +39,12 @@ public:
     /** Setzt das Bus-Kanal-Layout (Summe der Breiten) und die Eingangs-
         Struktur. VOR prepareForGraph, Message Thread. */
     virtual void applySendConfig (const std::vector<SendInputConfig>& inputs) = 0;
+
+    /** Der effektive Name eines Eingangs hat sich geändert (userName/autoName,
+        z.B. Auto-Naming-Snapshot oder Refresh) — der Kanal-Name folgt live zu
+        den Peers (sink.setName, {moduleId}/{name}). Message Thread. */
+    virtual void inputNameChanged (const juce::String& inputId,
+                                   const juce::String& effectiveName) = 0;
 };
 
 } // namespace conduit

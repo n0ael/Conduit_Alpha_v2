@@ -83,6 +83,7 @@ juce_add_gui_app(Conduit
 
 set(CONDUIT_CPP_SOURCES
     Source/Core/Main.cpp
+    Source/Core/AudioDeviceController.cpp
     Source/Core/ChannelNames.cpp
     Source/Core/EngineProcessor.cpp
     Source/Core/EngineEditor.cpp
@@ -106,6 +107,7 @@ set(CONDUIT_CPP_SOURCES
     Source/Modules/LinkAudioSendModule.cpp
     Source/Modules/ScopeModule.cpp
     Source/Modules/StepSequencerModule.cpp
+    Source/UI/AudioSettingsComponent.cpp
     Source/UI/CaptureAllButton.cpp
     Source/UI/CapturePanel.cpp
     Source/UI/CaptureToast.cpp
@@ -123,6 +125,7 @@ set(CONDUIT_CPP_SOURCES
 
 target_sources(Conduit PRIVATE
     ${CONDUIT_CPP_SOURCES}
+    Source/Core/AudioDeviceController.h
     Source/Core/ChannelNames.h
     Source/Core/EngineProcessor.h
     Source/Core/EngineEditor.h
@@ -161,6 +164,7 @@ target_sources(Conduit PRIVATE
     Source/Modules/LinkAudioSendModule.h
     Source/Modules/ScopeModule.h
     Source/Modules/StepSequencerModule.h
+    Source/UI/AudioSettingsComponent.h
     Source/UI/CaptureAllButton.h
     Source/UI/CapturePanel.h
     Source/UI/CaptureToast.h
@@ -250,6 +254,7 @@ if(CONDUIT_BUILD_TESTS)
     juce_add_console_app(ConduitTests PRODUCT_NAME "ConduitTests")
 
     set(CONDUIT_TEST_CPP_SOURCES
+        Tests/Core/AudioDeviceControllerTests.cpp
         Tests/Core/CaptureBufferTests.cpp
         Tests/Core/CaptureGateTests.cpp
         Tests/Core/CaptureMeterTests.cpp
@@ -279,6 +284,7 @@ if(CONDUIT_BUILD_TESTS)
 
     target_sources(ConduitTests PRIVATE
         ${CONDUIT_TEST_CPP_SOURCES}
+        Source/Core/AudioDeviceController.cpp
         Source/Core/ChannelNames.cpp
         Source/Core/EngineEditor.cpp
         Source/Core/EngineProcessor.cpp
@@ -302,6 +308,7 @@ if(CONDUIT_BUILD_TESTS)
         Source/Modules/LinkAudioSendModule.cpp
         Source/Modules/ScopeModule.cpp
         Source/Modules/StepSequencerModule.cpp
+        Source/UI/AudioSettingsComponent.cpp
         Source/UI/CaptureAllButton.cpp
         Source/UI/CapturePanel.cpp
         Source/UI/CaptureToast.cpp
@@ -338,6 +345,7 @@ if(CONDUIT_BUILD_TESTS)
             Catch2::Catch2WithMain
             juce::juce_audio_formats
             juce::juce_audio_processors
+            juce::juce_audio_utils
             juce::juce_osc
             Ableton::Link
         PUBLIC

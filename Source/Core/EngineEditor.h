@@ -1,5 +1,6 @@
 #pragma once
 
+#include <juce_audio_devices/juce_audio_devices.h>
 #include <juce_audio_processors/juce_audio_processors.h>
 
 #include "LinkClock.h"
@@ -43,7 +44,11 @@ class EngineEditor final : public juce::AudioProcessorEditor,
                            private juce::Timer
 {
 public:
-    explicit EngineEditor (EngineProcessor& engineProcessor);
+    /** deviceManager ist nur im Standalone-Pfad gesetzt (Main.cpp). Im
+        Plugin-/Test-Pfad (EngineProcessor::createEditor) bleibt er nullptr —
+        dann wird der Audio-Settings-Button ausgeblendet. */
+    explicit EngineEditor (EngineProcessor& engineProcessor,
+                           juce::AudioDeviceManager* deviceManager = nullptr);
     ~EngineEditor() override;
 
     void paint (juce::Graphics& g) override;
@@ -62,6 +67,7 @@ private:
     juce::UndoManager& undoManager;
     GraphManager& graphManager;
     LinkClock& linkClock;
+    juce::AudioDeviceManager* deviceManager;  // nullptr im Plugin-/Test-Pfad
 
     juce::TextButton addButton      { juce::String::fromUTF8 ("\xef\xbc\x8b Atten") };
     juce::TextButton addLfoButton   { juce::String::fromUTF8 ("\xef\xbc\x8b LFO") };
@@ -73,6 +79,7 @@ private:
     juce::TextButton redoButton   { "Redo" };
     juce::TextButton saveButton   { "Save" };
     juce::TextButton loadButton   { "Load" };
+    juce::TextButton audioSettingsButton { "Audio" };
     juce::Slider tempoSlider      { juce::Slider::LinearBar, juce::Slider::TextBoxLeft };
     juce::ComboBox rootCombo;     // globale Session-Skala (Root-Tree-Properties)
     juce::ComboBox scaleCombo;

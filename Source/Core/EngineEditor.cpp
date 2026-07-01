@@ -7,19 +7,22 @@
 #include "Modules/LinkAudioSendModule.h"
 #include "Modules/ScopeModule.h"
 #include "Modules/StepSequencerModule.h"
+#include "UI/AudioSettingsComponent.h"
 #include "UI/LinkSendCreateDialog.h"
 #include "Util/ScaleQuantizer.h"
 
 namespace conduit
 {
 
-EngineEditor::EngineEditor (EngineProcessor& engineProcessor)
+EngineEditor::EngineEditor (EngineProcessor& engineProcessor,
+                            juce::AudioDeviceManager* deviceManagerToUse)
     : juce::AudioProcessorEditor (engineProcessor),
       engine (engineProcessor),
       rootState (engineProcessor.getRootState()),
       undoManager (engineProcessor.getUndoManager()),
       graphManager (engineProcessor.getGraphManager()),
       linkClock (engineProcessor.getLinkClock()),
+      deviceManager (deviceManagerToUse),
       capturePanel (engineProcessor.getCaptureSettings(), engineProcessor.getCaptureService(),
                     engineProcessor.getChannelNames()),
       canvas (rootState, engineProcessor.getGraphManager(), engineProcessor.getNodeUiRegistry(),
@@ -62,6 +65,24 @@ EngineEditor::EngineEditor (EngineProcessor& engineProcessor)
     redoButton.onClick = [this] { undoManager.redo(); };
     saveButton.onClick = [this] { launchPresetChooser (true); };
     loadButton.onClick = [this] { launchPresetChooser (false); };
+
+    // Audio-Einstellungen: non-modales DialogWindow mit dem Geräte-Selector
+    // (JUCE_MODAL_LOOPS_PERMITTED=0 → launchAsync). Nur im Standalone-Pfad,
+    // wo der DeviceManager existiert.
+    audioSettingsButton.onClick = [this]
+    {
+        if (deviceManager == nullptr)
+            return;
+
+        juce::DialogWindow::LaunchOptions options;
+        options.content.setOwned (new AudioSettingsComponent (*deviceManager));
+        options.dialogTitle                   = "Audio-Einstellungen";
+        options.dialogBackgroundColour        = juce::Colour (0xff24272c);
+        options.escapeKeyTriggersCloseButton  = true;
+        options.useNativeTitleBar             = true;
+        options.resizable                     = true;
+        options.launchAsync();
+    };
 
     // Link-Transport: Slider schreibt in die Session, der Timer pollt zurück
     tempoSlider.setRange (20.0, 300.0, 0.1);
@@ -133,11 +154,7 @@ EngineEditor::EngineEditor (EngineProcessor& engineProcessor)
 
     warningLabel.setColour (juce::Label::textColourId, juce::Colours::orange);
     warningLabel.setJustificationType (juce::Justification::centredRight);
-
-    const auto warning = rootState.getProperty (id::audioSetupWarning).toString();
-
-    if (warning.isNotEmpty())
-        warningLabel.setText ("Audio-Setup: " + warning, juce::dontSendNotification);
+    // Inhalt setzt der Timer (folgt Änderungen des Controllers live)
 
     addAndMakeVisible (addButton);
     addAndMakeVisible (addLfoButton);
@@ -149,6 +166,8 @@ EngineEditor::EngineEditor (EngineProcessor& engineProcessor)
     addAndMakeVisible (redoButton);
     addAndMakeVisible (saveButton);
     addAndMakeVisible (loadButton);
+    addChildComponent (audioSettingsButton);   // nur im Standalone-Pfad sichtbar
+    audioSettingsButton.setVisible (deviceManager != nullptr);
     addAndMakeVisible (tempoSlider);
     addAndMakeVisible (rootCombo);
     addAndMakeVisible (scaleCombo);
@@ -283,6 +302,16 @@ void EngineEditor::timerCallback()
     captureAllButton.setStatus (engine.getCaptureService().getUiStatus());
     if (capturePanel.isVisible())
         capturePanel.refresh();
+
+    // audioSetupWarning folgt dem Controller (setzt/löscht bei Gerätewechsel);
+    // billiger String-Vergleich, Repaint nur bei tatsächlicher Änderung
+    const auto warning = rootState.getProperty (id::audioSetupWarning).toString();
+    const auto warningText = warning.isNotEmpty() ? "Audio-Setup: " + warning : juce::String();
+    if (warningLabel.getText() != warningText)
+    {
+        warningLabel.setText (warningText, juce::dontSendNotification);
+        resized();  // rechten Anker der Warnung ein-/ausblenden
+    }
 }
 
 //==============================================================================
@@ -302,6 +331,20 @@ void EngineEditor::resized()
         toolbar.removeFromLeft (gapAfter);
     };
 
+    // audioSetupWarning nur dann rechts anankern, wenn sie tatsächlich Text
+    // trägt (Gerätewechsel/Abweichung). Ohne Warnung bleibt das Toolbar-Layout
+    // exakt wie zuvor — der Timer ruft resized() erneut, wenn sich der Text
+    // ändert. So bleibt die Warnung sichtbar, ohne im Normalfall Platz zu rauben.
+    if (warningLabel.getText().isNotEmpty())
+    {
+        warningLabel.setBounds (toolbar.removeFromRight (250));
+        toolbar.removeFromRight (12);
+    }
+    else
+    {
+        warningLabel.setBounds ({});
+    }
+
     place (addButton,       95);
     place (addLfoButton,    80);
     place (addScopeButton,  90);
@@ -312,6 +355,8 @@ void EngineEditor::resized()
     place (redoButton,      65, 16);
     place (saveButton,      65);
     place (loadButton,      65, 16);
+    if (audioSettingsButton.isVisible())
+        place (audioSettingsButton, 75, 16);
     place (tempoSlider,    130);
     place (captureAllButton, 60);            // neben dem Link-Transport
     place (capturePanelToggle, 85, 16);
@@ -319,7 +364,6 @@ void EngineEditor::resized()
     place (scaleCombo,     110, 16);
     place (peersLabel,     115);
     place (oscLabel,        80);
-    warningLabel.setBounds (toolbar);
 
     if (capturePanel.isVisible())
         capturePanel.setBounds (bounds.removeFromTop (CapturePanel::preferredHeight));

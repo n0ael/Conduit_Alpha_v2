@@ -1,5 +1,6 @@
 #include <juce_audio_utils/juce_audio_utils.h>
 
+#include "AudioDeviceController.h"
 #include "EngineEditor.h"
 #include "EngineProcessor.h"
 
@@ -10,7 +11,8 @@ namespace conduit
 class MainWindow final : public juce::DocumentWindow
 {
 public:
-    MainWindow (const juce::String& name, EngineProcessor& engine)
+    MainWindow (const juce::String& name, EngineProcessor& engine,
+                juce::AudioDeviceManager& deviceManager)
         : juce::DocumentWindow (name,
                                 juce::Desktop::getInstance().getDefaultLookAndFeel()
                                     .findColour (juce::ResizableWindow::backgroundColourId),
@@ -18,7 +20,7 @@ public:
     {
         setUsingNativeTitleBar (true);
         // Ownership geht an das DocumentWindow (JUCE-API verlangt raw new hier)
-        setContentOwned (new EngineEditor (engine), true);
+        setContentOwned (new EngineEditor (engine, &deviceManager), true);
         setResizable (true, true);
         centreWithSize (getWidth(), getHeight());
         setVisible (true);
@@ -46,82 +48,32 @@ public:
     void initialise (const juce::String&) override
     {
         engine = std::make_unique<EngineProcessor>();
-        initAudio();
+
+        // Plattformspezifisches Audio-Setup gehört in die App (CLAUDE.md 9);
+        // der Controller kapselt Device-Manager, Player, Persistenz und die
+        // Live-Anwendung von ChannelNames/audioSetupWarning.
+        audioController.initialise (*engine);
 
         // OSC-Empfang aktivieren (CLAUDE.md 7) — Status zeigt die Toolbar
         if (! engine->getOscController().connect (OscController::defaultPort))
             juce::Logger::writeToLog ("OSC: Port " + juce::String (OscController::defaultPort)
                                       + " belegt — Empfang deaktiviert");
 
-        mainWindow = std::make_unique<MainWindow> (getApplicationName(), *engine);
+        mainWindow = std::make_unique<MainWindow> (getApplicationName(), *engine,
+                                                   audioController.getDeviceManager());
     }
 
     void shutdown() override
     {
         mainWindow = nullptr;
-
-        deviceManager.removeAudioCallback (&player);
-        player.setProcessor (nullptr);
+        audioController.shutdown();
         engine = nullptr;
     }
 
     void systemRequestedQuit() override { quit(); }
 
 private:
-    //==========================================================================
-    // Plattformspezifisches Audio-Setup ist hier explizit erlaubt (CLAUDE.md 9).
-    // Latenz-Ziele: 48 kHz / 32 Samples, Fallback 44.1 kHz / 64 Samples (3.2).
-    void initAudio()
-    {
-        auto initError = deviceManager.initialiseWithDefaultDevices (2, 2);
-
-        // Schlägt der Input fehl (kein Mikrofon/Interface), scheitert das
-        // gesamte Device-Open — Output-only-Fallback: Conduit braucht primär
-        // Ausgänge (CV out), Eingänge (ES-6-Rückweg) sind optional (9.1).
-        if (deviceManager.getCurrentAudioDevice() == nullptr)
-            initError = deviceManager.initialiseWithDefaultDevices (0, 2);
-
-        auto setup = deviceManager.getAudioDeviceSetup();
-        setup.sampleRate = 48000.0;
-        setup.bufferSize = 32;
-        deviceManager.setAudioDeviceSetup (setup, true);
-
-        // Defensiv: Hardware kann abweichende Werte erzwingen — kein Crash,
-        // Abweichung in ValueTree-Property audioSetupWarning (CLAUDE.md 9.1).
-        if (auto* device = deviceManager.getCurrentAudioDevice())
-        {
-            // Kanal-Namen-Kontext: Device-Name als Key, gemeldete
-            // Kanalnamen als Default-Labels (ChannelNames-Doku)
-            engine->getChannelNames().setActiveDevice (device->getName(),
-                                                       device->getInputChannelNames(),
-                                                       device->getOutputChannelNames());
-
-            const auto actualRate   = device->getCurrentSampleRate();
-            const auto actualBuffer = device->getCurrentBufferSizeSamples();
-
-            const bool rateOk   = juce::approximatelyEqual (actualRate, 48000.0)
-                               || juce::approximatelyEqual (actualRate, 44100.0);
-            const bool bufferOk = actualBuffer <= 64;
-
-            if (! rateOk || ! bufferOk)
-                engine->getRootState().setProperty (id::audioSetupWarning,
-                    juce::String (actualRate, 0) + " Hz / "
-                        + juce::String (actualBuffer) + " Samples (Ziel: 48000 Hz / 32)",
-                    nullptr);
-        }
-        else
-        {
-            engine->getRootState().setProperty (id::audioSetupWarning,
-                initError.isNotEmpty() ? initError : juce::String ("Kein Audio-Device verfügbar"),
-                nullptr);
-        }
-
-        player.setProcessor (engine.get());
-        deviceManager.addAudioCallback (&player);
-    }
-
-    juce::AudioDeviceManager deviceManager;
-    juce::AudioProcessorPlayer player;
+    AudioDeviceController audioController;
 
     std::unique_ptr<EngineProcessor> engine;
     std::unique_ptr<MainWindow> mainWindow;

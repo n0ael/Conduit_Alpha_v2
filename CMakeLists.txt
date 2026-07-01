@@ -90,6 +90,7 @@ set(CONDUIT_CPP_SOURCES
     Source/Core/GraphFader.cpp
     Source/Core/GraphManager.cpp
     Source/Core/LinkClock.cpp
+    Source/Core/LinkSendTaps.cpp
     Source/Core/MeterSettings.cpp
     Source/Core/NodeUiRegistry.cpp
     Source/Core/OscController.cpp
@@ -137,6 +138,7 @@ target_sources(Conduit PRIVATE
     Source/Core/GraphFader.h
     Source/Core/GraphManager.h
     Source/Core/LinkClock.h
+    Source/Core/LinkSendTaps.h
     Source/Core/NodeUiRegistry.h
     Source/Core/OscController.h
     Source/Core/SourceNameResolver.h
@@ -275,6 +277,7 @@ if(CONDUIT_BUILD_TESTS)
         Tests/Core/GraphManagerTests.cpp
         Tests/Core/LevelMeterTests.cpp
         Tests/Core/LinkAudioSendTests.cpp
+        Tests/Core/LinkSendTapsTests.cpp
         Tests/Core/MeterSettingsTests.cpp
         Tests/Core/OscControllerTests.cpp
         Tests/Core/PatchingTests.cpp
@@ -300,6 +303,7 @@ if(CONDUIT_BUILD_TESTS)
         Source/Core/GraphFader.cpp
         Source/Core/GraphManager.cpp
         Source/Core/LinkClock.cpp
+        Source/Core/LinkSendTaps.cpp
         Source/Core/MeterSettings.cpp
         Source/Core/NodeUiRegistry.cpp
         Source/Core/OscController.cpp

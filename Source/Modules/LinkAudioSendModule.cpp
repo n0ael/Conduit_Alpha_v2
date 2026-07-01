@@ -14,17 +14,10 @@ LinkAudioSendModule::LinkAudioSendModule()
 
 LinkAudioSendModule::~LinkAudioSendModule()
 {
-    cancelPendingUpdate();
-
     // Der Destruktor läuft erst, wenn der Graph den Node und jede
-    // Render-Sequenz-Referenz freigegeben hat — processBlock kann nicht mehr
-    // laufen, die Sinks dürfen direkt destruieren.
-    for (auto& slot : slots)
-        slot->rtSink.store (nullptr);
-
-    retiredSinks.clear();
-    slots.clear();
-    disableAudioOnce();  // Preset-Load/Shutdown ohne Phase 1 (5.3)
+    // Render-Sequenz-Referenz freigegeben hat — der LinkSendTaps-Destruktor
+    // gibt Sinks + enableAudio-Refcount direkt frei (5.3, Preset-Load/
+    // Shutdown ohne Phase 1).
 }
 
 //==============================================================================
@@ -163,7 +156,7 @@ void LinkAudioSendModule::setLinkAudioContext (LinkClock* clock, const juce::Str
 {
     JUCE_ASSERT_MESSAGE_THREAD
 
-    linkClock = clock;
+    taps.setLinkClock (clock);
     currentModuleId = initialModuleId;
 }
 
@@ -175,8 +168,8 @@ void LinkAudioSendModule::moduleIdRenamed (const juce::String& newModuleId)
 
     // Präfix-Wechsel: alle Kanal-Namen folgen live zu den Peers (7.2).
     for (auto& slot : slots)
-        if (slot->sink != nullptr)
-            slot->sink->setName (sinkNameFor (slot->effectiveName));
+        if (slot->tap != nullptr)
+            slot->tap->setName (sinkNameFor (slot->effectiveName));
 }
 
 void LinkAudioSendModule::inputNameChanged (const juce::String& inputId,
@@ -188,8 +181,8 @@ void LinkAudioSendModule::inputNameChanged (const juce::String& inputId,
         if (slot->inputId == inputId)
         {
             slot->effectiveName = effectiveName;
-            if (slot->sink != nullptr)
-                slot->sink->setName (sinkNameFor (effectiveName));  // live zu den Peers (7.2)
+            if (slot->tap != nullptr)
+                slot->tap->setName (sinkNameFor (effectiveName));  // live zu den Peers (7.2)
             return;
         }
 }
@@ -216,57 +209,33 @@ void LinkAudioSendModule::prepareToPlay (double sampleRate, int samplesPerBlock)
 {
     const int block = juce::jmax (1, samplesPerBlock);
 
+    // Erst die Kapazitäten (wächst-nur bei Re-Prepare), dann ggf. Taps anlegen.
+    taps.prepare (block);
+
     // Slots einmalig aus der injizierten Config aufbauen (fixe Eingangszahl).
     if (slots.empty() && ! pendingConfig.empty())
     {
-        auto* clock = linkClock.get();
         int offset = 0;
-        int index  = 0;
-        bool anySink = false;
 
         for (const auto& cfg : pendingConfig)
         {
-            ++index;
             auto slot = std::make_unique<InputSlot>();
             slot->inputId       = cfg.inputId;
             slot->effectiveName = cfg.effectiveName;
             slot->width         = juce::jlimit (1, 2, cfg.width);
             slot->offset        = offset;
             slot->gainParamId   = cfg.gainParamId;
-            // eigener, verschiedener Dither-Seed pro Slot (deterministisch)
-            slot->ditherState   = 0x6c078965u + static_cast<std::uint32_t> (index) * 2654435761u;
             offset += slot->width;
 
-            if (clock != nullptr && slot->effectiveName.isNotEmpty())
-            {
-                slot->sink = clock->createSink (sinkNameFor (slot->effectiveName),
-                                                static_cast<std::size_t> (block)
-                                                    * static_cast<std::size_t> (slot->width));
-                slot->rtSink.store (slot->sink.get());
-                slot->status.store (static_cast<int> (SendStatus::announced), std::memory_order_relaxed);
-                anySink = true;
-            }
+            if (slot->effectiveName.isNotEmpty())
+                slot->tap = taps.createTap (sinkNameFor (slot->effectiveName),
+                                            slot->width);  // nullptr ohne Link-Kontext
 
             slots.push_back (std::move (slot));
         }
-
-        if (anySink && ! audioEnabled)
-        {
-            if (clock != nullptr)
-                clock->enableAudio (true);  // Refcount: erstes aktives Modul
-            audioEnabled = true;
-        }
-    }
-    else
-    {
-        // Re-Prepare (Graph re-prepariert): Kapazität nur anheben (Link-No-op sonst)
-        for (auto& slot : slots)
-            if (slot->sink != nullptr)
-                slot->sink->requestMaxNumSamples (static_cast<std::size_t> (block)
-                                                      * static_cast<std::size_t> (slot->width));
     }
 
-    // Attenuator-Ramp + Scratch/Interleave-Buffer (max stereo) vorallokieren
+    // Attenuator-Ramp + Gain-Scratch (max stereo) vorallokieren
     for (auto& slot : slots)
     {
         slot->smoothedGain.reset (sampleRate, 0.005);
@@ -275,7 +244,6 @@ void LinkAudioSendModule::prepareToPlay (double sampleRate, int samplesPerBlock)
 
     scratchLeft.assign  (static_cast<std::size_t> (block), 0.0f);
     scratchRight.assign (static_cast<std::size_t> (block), 0.0f);
-    interleavedBuffer.assign (static_cast<std::size_t> (block) * 2, 0);
 
     updateAggregateStatus();
 }
@@ -290,26 +258,23 @@ void LinkAudioSendModule::processBlock (juce::AudioBuffer<float>& buffer, juce::
 {
     juce::ScopedNoDenormals noDenormals;
 
-    // Epoch-Handshake: Inkrement VOR dem rtSink-Load (seq_cst)
-    blocksProcessed.fetch_add (1);
+    // Epoch-Handshake: Inkrement VOR den Tap-Commits (seq_cst)
+    taps.noteBlockBegin();
 
     const int numFrames          = buffer.getNumSamples();
     const int totalInputChannels = buffer.getNumChannels();
 
+    // Guard schützt auch die Gain-Scratch-Indizierung (Block größer als
+    // prepareToPlay — dann kein Commit, announced bleiben).
     const bool haveClock = (clockBus != nullptr && numFrames > 0
-                            && static_cast<std::size_t> (numFrames)
-                                   <= interleavedBuffer.size() / 2);
+                            && static_cast<std::size_t> (numFrames) <= scratchLeft.size());
 
     for (auto& slotPtr : slots)
     {
         auto& slot = *slotPtr;
-        auto* activeSink = slot.rtSink.load();
 
-        if (activeSink == nullptr)
-        {
-            slot.status.store (static_cast<int> (SendStatus::offline), std::memory_order_relaxed);
-            continue;
-        }
+        if (slot.tap == nullptr)
+            continue;  // ohne Link-Kontext angelegt: Status bleibt offline
 
         const int width = slot.width;
 
@@ -317,7 +282,7 @@ void LinkAudioSendModule::processBlock (juce::AudioBuffer<float>& buffer, juce::
         {
             // Ohne Takt-Bus (Tests) / fehlende Kanäle: announced bleiben,
             // kein Commit mit falscher Zeitbasis.
-            slot.status.store (static_cast<int> (SendStatus::announced), std::memory_order_relaxed);
+            slot.tap->noteIdle();
             continue;
         }
 
@@ -336,16 +301,7 @@ void LinkAudioSendModule::processBlock (juce::AudioBuffer<float>& buffer, juce::
         }
 
         const float* chans[2] = { scratchLeft.data(), scratchRight.data() };
-        convertToInt16Tpdf (chans, width, numFrames, interleavedBuffer.data(), slot.ditherState);
-
-        const auto result = activeSink->commitFromClockState (interleavedBuffer.data(),
-                                                              numFrames, width,
-                                                              clockBus->current);
-
-        slot.status.store (static_cast<int> (result == LinkClock::Sink::CommitResult::committed
-                                                 ? SendStatus::streaming
-                                                 : SendStatus::announced),
-                           std::memory_order_relaxed);
+        slot.tap->commit (chans, numFrames, clockBus->current);
     }
 
     updateAggregateStatus();
@@ -356,23 +312,9 @@ void LinkAudioSendModule::convertToInt16Tpdf (const float* const* channelData,
                                               std::int16_t* dest,
                                               std::uint32_t& ditherState) noexcept
 {
-    for (int frame = 0; frame < numFrames; ++frame)
-    {
-        for (int channel = 0; channel < numChannels; ++channel)
-        {
-            // TPDF = Differenz zweier Uniform-Werte aus dem LCG (3.1):
-            // Dreieck über ±1 LSB, Mittelwert 0 — kein rand(), kein Heap.
-            ditherState = ditherState * 1664525u + 1013904223u;
-            const auto r1 = static_cast<float> (ditherState >> 8) * (1.0f / 16777216.0f);
-            ditherState = ditherState * 1664525u + 1013904223u;
-            const auto r2 = static_cast<float> (ditherState >> 8) * (1.0f / 16777216.0f);
-
-            const auto dithered = channelData[channel][frame] * 32767.0f + (r1 - r2);
-
-            *dest++ = static_cast<std::int16_t> (
-                juce::roundToInt (juce::jlimit (-32768.0f, 32767.0f, dithered)));
-        }
-    }
+    // Delegiert an die extrahierte Send-Mechanik — Signatur unverändert,
+    // damit die Dither-Statistik-Tests (13.4) wörtlich weitergelten.
+    LinkSendTaps::convertToInt16Tpdf (channelData, numChannels, numFrames, dest, ditherState);
 }
 
 //==============================================================================
@@ -381,65 +323,19 @@ void LinkAudioSendModule::releaseSessionResources()
     JUCE_ASSERT_MESSAGE_THREAD
 
     // Phase 1 (5.3): alle Audio-Threads sofort von den Sinks trennen,
-    // Refcount freigeben — Destruktion folgt racefrei über den Handshake.
-    for (auto& slot : slots)
-    {
-        slot->rtSink.store (nullptr);
-        slot->status.store (static_cast<int> (SendStatus::offline), std::memory_order_relaxed);
-    }
+    // Refcount freigeben — Destruktion folgt racefrei über den Handshake
+    // (LinkSendTaps-Doku).
+    taps.retireAll();
 
     aggregateStatus.store (static_cast<int> (SendStatus::offline), std::memory_order_relaxed);
-    disableAudioOnce();
-
-    bool anyRetired = false;
-    for (auto& slot : slots)
-        if (slot->sink != nullptr)
-        {
-            retiredSinks.push_back (std::move (slot->sink));
-            anyRetired = true;
-        }
-
-    if (! anyRetired)
-        return;
-
-    retireEpoch = blocksProcessed.load();
-    retireDeadlineMs = juce::Time::getMillisecondCounter() + retireGraceMs;
-    triggerAsyncUpdate();
-}
-
-void LinkAudioSendModule::handleAsyncUpdate()
-{
-    if (retiredSinks.empty())
-        return;
-
-    // Self-Re-Dispatch (Muster 5.2 Schritt 3): warten, bis nach dem rtSink-
-    // Store ein neuer Audio-Block begonnen hat; sonst destruiert die Deadline.
-    if (blocksProcessed.load() == retireEpoch
-        && juce::Time::getMillisecondCounter() < retireDeadlineMs)
-    {
-        triggerAsyncUpdate();
-        return;
-    }
-
-    retiredSinks.clear();  // Kanäle verschwinden jetzt bei den Peers
-}
-
-void LinkAudioSendModule::disableAudioOnce()
-{
-    if (! audioEnabled)
-        return;
-
-    audioEnabled = false;
-
-    if (auto* clock = linkClock.get())
-        clock->enableAudio (false);  // Refcount: letztes Modul deaktiviert
 }
 
 void LinkAudioSendModule::updateAggregateStatus() noexcept
 {
     int agg = static_cast<int> (SendStatus::offline);
     for (auto& slot : slots)
-        agg = juce::jmax (agg, slot->status.load (std::memory_order_relaxed));
+        if (slot->tap != nullptr)
+            agg = juce::jmax (agg, static_cast<int> (slot->tap->getStatus()));
 
     aggregateStatus.store (agg, std::memory_order_relaxed);
 }
@@ -465,8 +361,9 @@ LinkAudioSendModule::SendStatus LinkAudioSendModule::getSlotStatusForUi (int slo
     if (slotIndex < 0 || slotIndex >= static_cast<int> (slots.size()))
         return SendStatus::offline;
 
-    return static_cast<SendStatus> (slots[static_cast<std::size_t> (slotIndex)]
-                                        ->status.load (std::memory_order_relaxed));
+    const auto* tap = slots[static_cast<std::size_t> (slotIndex)]->tap;
+    return tap != nullptr ? static_cast<SendStatus> (static_cast<int> (tap->getStatus()))
+                          : SendStatus::offline;
 }
 
 int LinkAudioSendModule::getNumSlots() const noexcept
@@ -480,21 +377,21 @@ juce::StringArray LinkAudioSendModule::getSinkNames() const
 
     juce::StringArray names;
     for (auto& slot : slots)
-        if (slot->sink != nullptr)
-            names.add (slot->sink->getName());
+        if (slot->tap != nullptr && slot->tap->isActive())
+            names.add (slot->tap->getSinkName());
 
     return names;
 }
 
 bool LinkAudioSendModule::isSinkRetirePending() const noexcept
 {
-    return ! retiredSinks.empty();
+    return taps.isRetirePending();
 }
 
 void LinkAudioSendModule::flushPendingSinkRetirement()
 {
     JUCE_ASSERT_MESSAGE_THREAD
-    handleUpdateNowIfNeeded();
+    taps.flushPendingRetirement();
 }
 
 } // namespace conduit

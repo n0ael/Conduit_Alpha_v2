@@ -6,6 +6,7 @@
 #include <vector>
 
 #include "Core/LinkClock.h"
+#include "Core/LinkSendTaps.h"
 #include "Interfaces/IClockSlave.h"
 #include "Interfaces/ILinkAudioClient.h"
 #include "Interfaces/ISendConfigClient.h"
@@ -29,30 +30,26 @@ namespace conduit
     GraphManager injiziert das Kanal-Layout via ISendConfigClient VOR
     prepareForGraph.
 
+    Die Sink-Mechanik (rtSink-Atomics, TPDF-Dither, Epoch-Retire-Handshake,
+    enableAudio-Refcount) lebt in Core/LinkSendTaps — pro Eingang ein Tap.
+    Das Modul behält Schema, Attenuator und Namens-Präfix:
+
     Sink-Lifecycle [Message Thread]:
-      - applySendConfig injiziert die Eingangs-Struktur + Bus-Layout; die Sinks
-        entstehen in prepareToPlay (Größe in SAMPLES: samplesPerBlock × Breite).
-      - moduleIdRenamed → alle Sink-Namen folgen live (Präfix-Wechsel).
-      - Delete Phase 1 (releaseSessionResources, 5.3): alle rtSinks sofort per
-        Atomic vom Audio-Thread getrennt, Refcount freigegeben; die Destruktion
-        aller Sinks folgt nach EINEM gemeinsamen Epoch-Handshake.
+      - applySendConfig injiziert die Eingangs-Struktur + Bus-Layout; die Taps
+        entstehen in prepareToPlay (Sink-Kapazität block × 2 SAMPLES).
+      - moduleIdRenamed → alle Kanal-Namen folgen live (Präfix-Wechsel).
+      - Delete Phase 1 (releaseSessionResources, 5.3): taps.retireAll() —
+        Audio-Thread sofort getrennt, Refcount freigegeben, Sink-Destruktion
+        nach dem Epoch-Handshake (Doku in LinkSendTaps).
 
-    Epoch-Handshake (Sink-Teardown vs. processBlock): identisch zum bisherigen
-    Einzel-Sink-Muster, nur über alle Sinks gebündelt — processBlock
-    inkrementiert blocksProcessed (seq_cst) vor dem rtSink-Load; Phase 1 stored
-    nullptr und liest die Epoche; die Destruktion wartet per AsyncUpdater-
-    Self-Re-Dispatch, bis ein neuer Block den nullptr gesehen hat (100-ms-
-    Deadline für gestopptes Audio).
-
-    Audio-Pfad [Audio Thread, 3.1]: allocation-/lock-frei; pro Slot Gain
-    (SmoothedValue) → TPDF-Dither (inline LCG) in vorallokierte Member-Buffer →
-    commit über Sink::commitFromClockState mit dem ClockState des Blocks.
+    Audio-Pfad [Audio Thread, 3.1]: allocation-/lock-frei; noteBlockBegin
+    einmal pro Callback, dann pro Slot Gain (SmoothedValue) in vorallokierte
+    Scratch-Buffer → Tap::commit mit dem ClockState des Blocks.
 */
 class LinkAudioSendModule final : public NetworkIOModule,
                                   public ILinkAudioClient,
                                   public ISendConfigClient,
-                                  public IClockSlave,
-                                  private juce::AsyncUpdater
+                                  public IClockSlave
 {
 public:
     LinkAudioSendModule();
@@ -141,21 +138,18 @@ public:
     void flushPendingSinkRetirement();                            // Handshake synchron abschließen
 
     //==========================================================================
-    /** Float → Int16 mit TPDF-Dither (CLAUDE.md 3.1/7.2): LCG-basiert,
-        deterministisch pro Seed, ±1 LSB Dreieck um 0. Static + pure für die
-        Dither-Statistik-Tests (13.4). */
+    /** Float → Int16 mit TPDF-Dither — delegiert an LinkSendTaps (Signatur
+        unverändert für die Dither-Statistik-Tests, 13.4). */
     static void convertToInt16Tpdf (const float* const* channelData,
                                     int numChannels, int numFrames,
                                     std::int16_t* dest,
                                     std::uint32_t& ditherState) noexcept;
 
 private:
-    void handleAsyncUpdate() override;
-    void disableAudioOnce();
     void updateAggregateStatus() noexcept;
 
     //==========================================================================
-    /** Ein Eingang: Kanal-Bereich am Bus, eigener Sink, Attenuator, Dither. */
+    /** Ein Eingang: Kanal-Bereich am Bus, eigener Tap (Link-Kanal), Attenuator. */
     struct InputSlot
     {
         juce::String inputId;
@@ -164,45 +158,36 @@ private:
         int width  = 1;               // 1 mono / 2 stereo
         juce::String gainParamId;
 
-        std::unique_ptr<LinkClock::Sink> sink;             // Message Thread owned
-        std::atomic<LinkClock::Sink*>    rtSink { nullptr }; // Audio Thread
-        std::atomic<float>               gainTarget { 1.0f }; // Ziel (Dual-State)
-        juce::SmoothedValue<float>       smoothedGain { 1.0f };
-        std::uint32_t                    ditherState = 0x6c078965u;
-        std::atomic<int>                 status { static_cast<int> (SendStatus::offline) };
+        // Nicht-besitzend: Pool-Eintrag in taps, Adresse stabil bis zur
+        // Modul-Destruktion (LinkSendTaps-Doku). nullptr ohne Link-Kontext.
+        LinkSendTaps::Tap* tap = nullptr;
+
+        std::atomic<float>         gainTarget { 1.0f };   // Ziel (Dual-State)
+        juce::SmoothedValue<float> smoothedGain { 1.0f };
     };
 
     [[nodiscard]] juce::String sinkNameFor (const juce::String& effectiveName) const;
 
     //==========================================================================
     // Message Thread
-    juce::WeakReference<LinkClock> linkClock;
     juce::String currentModuleId;
     std::vector<SendInputConfig> pendingConfig;   // aus applySendConfig, für prepareToPlay
-    bool audioEnabled = false;
+
+    // Sink-Mechanik (rtSink-Atomics, Dither, Retire-Handshake, Refcount)
+    LinkSendTaps taps;
 
     // Slots leben über die Modul-Lebensdauer (in prepareToPlay aufgebaut,
     // nie im Audio-Callback realloziert). unique_ptr, weil InputSlot atomics/
     // SmoothedValue hält (nicht kopier-/verschiebbar) und der Vektor stabile
-    // Adressen für gainTarget/rtSink braucht.
+    // Adressen für gainTarget braucht.
     std::vector<std::unique_ptr<InputSlot>> slots;
-
-    // Retire-Handshake (module-weit über alle Sinks)
-    std::vector<std::unique_ptr<LinkClock::Sink>> retiredSinks;
-    std::uint64_t retireEpoch = 0;
-    std::uint32_t retireDeadlineMs = 0;
-    static constexpr std::uint32_t retireGraceMs = 100;
 
     // Audio Thread liest; Injektion vor Graph-Aufnahme (4.2)
     const ClockBus* clockBus = nullptr;
 
-    // Handshake-Paar (seq_cst)
-    std::atomic<std::uint64_t> blocksProcessed { 0 };
-
     // Nur Audio Thread — vorallokiert in prepareToPlay
-    std::vector<float>        scratchLeft;     // Gain-Scratch, max width × block
-    std::vector<float>        scratchRight;
-    std::vector<std::int16_t> interleavedBuffer;
+    std::vector<float> scratchLeft;     // Gain-Scratch, block Samples
+    std::vector<float> scratchRight;
 
     std::atomic<int> aggregateStatus { static_cast<int> (SendStatus::offline) };
 

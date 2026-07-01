@@ -16,7 +16,15 @@
 
 ## Aktueller Meilenstein (Juli 2026 — in Arbeit)
 
-**Echte Hardware-Kanalzahl für Audio-I/O (CLAUDE.md 9) — Meilenstein abgeschlossen:**
+**Ableton-Style Pegelanzeigen für audio_in/audio_out (CLAUDE.md 10):**
+
+*Schritt 1 — Meter-DSP-Backend (verhaltensneutral):*
+- **`LevelMeter`** (`Source/Core/Capture/`): lock-free Sicht-Metering pro Kanal (getrennt vom capture-`InputMeter`) — RMS (~150 ms One-Pole), Peak (sofortiger Attack, ~1,5 s Release), Peak-Hold (~1,5 s halten, dann Abfall), Clip-Latch bei ≥ 0 dBFS mit `resetClip`. Feste Arrays bis `MAX_CAPTURE_CHANNELS`, atomics, allocation-free. Muster: `InputMeter`
+- **`EngineProcessor`**: zwei Instanzen `inputLevels`/`outputLevels`, `prepare()` in `prepareToPlay`; `processBlock` misst Input beim Tap (roher Hardware-Input) und Output nach `graphFader.process()` (beide im `rt::ScopedRealtimeSection`). Getter `getInputLevels()/getOutputLevels()`
+- **Verifikation:** 145 Testfälle / 10207 Assertions grün (Debug + ASan). Neue Tests (`LevelMeterTests`): Peak-Attack/Release-Ballistik, RMS-Konvergenz (Warm-Start), Peak-Hold hält über den Momentan-Peak, Clip-Latch + kanalweiser Reset, Out-of-range-Nullwerte. Verhaltensneutral → noch keine UI-Änderung
+- **Offen:** Schritt 2 (horizontale `LevelMeterBar` pro Kanal in verbreiterten I/O-Kacheln), Schritt 3 (Einstellungen-Menü mit konfigurierbarem Clip-Reset, bündelt Audio-/Capture-Einstellungen)
+
+**Davor: Echte Hardware-Kanalzahl für Audio-I/O (CLAUDE.md 9) — Meilenstein abgeschlossen:**
 
 *Nachtrag — Aktive Kanal-Auswahl respektieren (Bugfix):*
 - **Problem:** Bei Teil-Auswahl im Audio-Setup (z. B. erste Kanäle deaktiviert) komprimiert der `AudioProcessorPlayer` die aktiven Kanäle (Port i = i-ter *aktiver* Kanal), aber `ChannelNames::getLabel` las stur den Namen an voller-Liste-Index i → es sah aus, als fielen immer die *hinteren* Ports weg, egal welche Kanäle deaktiviert wurden

@@ -3,6 +3,7 @@
 #include <juce_audio_processors/juce_audio_processors.h>
 
 #include "Capture/CaptureService.h"
+#include "Capture/LevelMeter.h"
 #include "ChannelNames.h"
 #include "GraphFader.h"
 #include "GraphManager.h"
@@ -106,6 +107,12 @@ public:
     [[nodiscard]] CaptureSettings& getCaptureSettings() noexcept;
     [[nodiscard]] ChannelNames& getChannelNames() noexcept;
 
+    /** Sicht-Metering der Hardware-I/O (Ableton-Style, CLAUDE.md 10) — die
+        audio_in/audio_out-Kacheln lesen Peak/RMS/Clip pro Kanal. Owner:
+        EngineProcessor; Werte werden lock-free im processBlock publiziert. */
+    [[nodiscard]] const LevelMeter& getInputLevels() const noexcept;
+    [[nodiscard]] const LevelMeter& getOutputLevels() const noexcept;
+
 private:
     /** Legt die reservierten I/O-Tree-Nodes (audio_input/audio_output) an,
         falls sie fehlen — frischer Patch oder Preset ohne I/O. Idempotent. */
@@ -160,6 +167,11 @@ private:
     // rohen Hardware-Input. Nach den Settings deklariert (Konstruktor-Ref);
     // die Host-Verdrahtung für die Resize-Policy passiert im Konstruktor.
     CaptureService captureService { captureSettings };
+
+    // Sicht-Metering (Ableton-Style) für die audio_in/audio_out-Kacheln —
+    // getrennt vom capture-InputMeter; processBlock speist beide.
+    LevelMeter inputLevels;
+    LevelMeter outputLevels;
 
     juce::AudioProcessorGraph graph;
     juce::AudioProcessorGraph::Node::Ptr audioInputNode;

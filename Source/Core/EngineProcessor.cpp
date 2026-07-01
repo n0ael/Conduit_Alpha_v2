@@ -206,6 +206,8 @@ void EngineProcessor::prepareToPlay (double sampleRate, int samplesPerBlock)
     graphFader.prepare (sampleRate);
     linkClock.prepare (sampleRate);
     captureService.prepare (sampleRate, samplesPerBlock, getTotalNumInputChannels());
+    inputLevels.prepare  (sampleRate, getTotalNumInputChannels());
+    outputLevels.prepare (sampleRate, getTotalNumOutputChannels());
 }
 
 void EngineProcessor::releaseResources()
@@ -234,6 +236,7 @@ void EngineProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::Midi
         // dem Debugger sofort an (Util/RtAllocationGuard)
         const rt::ScopedRealtimeSection rtAudit;
         captureService.processInputTap (buffer, getTotalNumInputChannels());
+        inputLevels.process (buffer, getTotalNumInputChannels());  // Sicht-Metering In
     }
 
     // Pfad 1 des OSC-Dual-State (6.1): Queue VOR dem Graph vollständig
@@ -251,6 +254,13 @@ void EngineProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::Midi
 
     graph.processBlock (buffer, midiMessages);
     graphFader.process (buffer);  // Master-Fade hinter dem Graph (5.2)
+
+    // Sicht-Metering Out: der Buffer trägt jetzt das finale Signal an die
+    // Hardware (nach Fade). Allocation-free wie der Input-Tap.
+    {
+        const rt::ScopedRealtimeSection rtAudit;
+        outputLevels.process (buffer, getTotalNumOutputChannels());
+    }
 }
 
 bool EngineProcessor::isBusesLayoutSupported (const BusesLayout& layouts) const
@@ -365,5 +375,7 @@ const CaptureService& EngineProcessor::getCaptureService() const noexcept { retu
 CaptureService& EngineProcessor::getCaptureService() noexcept   { return captureService; }
 CaptureSettings& EngineProcessor::getCaptureSettings() noexcept { return captureSettings; }
 ChannelNames& EngineProcessor::getChannelNames() noexcept       { return channelNames; }
+const LevelMeter& EngineProcessor::getInputLevels() const noexcept  { return inputLevels; }
+const LevelMeter& EngineProcessor::getOutputLevels() const noexcept { return outputLevels; }
 
 } // namespace conduit

@@ -99,6 +99,7 @@ set(CONDUIT_CPP_SOURCES
     Source/Core/Capture/CaptureSettings.cpp
     Source/Core/Capture/CaptureWriter.cpp
     Source/Core/Capture/InputMeter.cpp
+    Source/Core/Capture/LevelMeter.cpp
     Source/Modules/ConduitModule.cpp
     Source/Modules/ModuleFactory.cpp
     Source/Modules/AttenuatorModule.cpp
@@ -268,6 +269,7 @@ if(CONDUIT_BUILD_TESTS)
         Tests/Core/GraphFaderTests.cpp
         Tests/Core/NamedIdTests.cpp
         Tests/Core/GraphManagerTests.cpp
+        Tests/Core/LevelMeterTests.cpp
         Tests/Core/LinkAudioSendTests.cpp
         Tests/Core/OscControllerTests.cpp
         Tests/Core/PatchingTests.cpp
@@ -301,6 +303,7 @@ if(CONDUIT_BUILD_TESTS)
         Source/Core/Capture/CaptureSettings.cpp
         Source/Core/Capture/CaptureWriter.cpp
         Source/Core/Capture/InputMeter.cpp
+        Source/Core/Capture/LevelMeter.cpp
         Source/Modules/ConduitModule.cpp
         Source/Modules/ModuleFactory.cpp
         Source/Modules/AttenuatorModule.cpp

@@ -73,9 +73,12 @@ NodeComponent::NodeComponent (juce::ValueTree nodeTreeToBind,
         refreshPortTooltips();
     }
 
-    // Sequencer-Kacheln haben eine eigene Kontrollleiste — kein generischer Slider
+    // Sequencer- und Send-Kacheln haben eine eigene Bedienleiste (Grid bzw.
+    // Attenuator-Zeilen) — kein generischer Slider
     if (const auto parameter = firstParameter();
-        parameter.isValid() && factoryKey != StepSequencerModule::staticModuleId)
+        parameter.isValid()
+        && factoryKey != StepSequencerModule::staticModuleId
+        && factoryKey != LinkAudioSendModule::staticModuleId)
     {
         parameterSlider.setRange ((double) parameter.getProperty (id::paramMin, 0.0),
                                   (double) parameter.getProperty (id::paramMax, 1.0), 0.0);
@@ -113,9 +116,12 @@ NodeComponent::NodeComponent (juce::ValueTree nodeTreeToBind,
     }
     else if (factoryKey == LinkAudioSendModule::staticModuleId)
     {
-        linkAudioBadge = std::make_unique<LinkAudioStatusBadge> (graphManager, nodeUuid);
-        addAndMakeVisible (*linkAudioBadge);
-        setSize (defaultWidth, defaultHeight);
+        sendPanel = std::make_unique<LinkAudioSendPanel> (nodeTree, graphManager);
+        addAndMakeVisible (*sendPanel);
+
+        // Höhe folgt der Eingangszahl (fixe Zahl, kein Live-Umbau)
+        const auto numInputs = juce::jmax (1, nodeTree.getChildWithName (id::inputs).getNumChildren());
+        setSize (280, touchTarget + LinkAudioSendPanel::heightForInputs (numInputs));
     }
     else
     {
@@ -162,8 +168,8 @@ void NodeComponent::beginTeardown()
     if (sequencerControls != nullptr)
         sequencerControls->setEnabled (false);
 
-    if (linkAudioBadge != nullptr)
-        linkAudioBadge->stopUpdates();
+    if (sendPanel != nullptr)
+        sendPanel->stopUpdates();
 
     repaint();
 
@@ -382,9 +388,8 @@ void NodeComponent::resized()
         stepGrid->setBounds (sequencerArea.withTrimmedBottom (6));
     }
 
-    if (linkAudioBadge != nullptr)
-        linkAudioBadge->setBounds (getLocalBounds().removeFromBottom (touchTarget)
-                                       .reduced (28, 8));  // Slider-Streifen — kein Slider ohne Parameter
+    if (sendPanel != nullptr)
+        sendPanel->setBounds (getLocalBounds().withTrimmedTop (touchTarget).reduced (22, 4));
 
     const auto placePorts = [this] (std::vector<std::unique_ptr<PortComponent>>& ports)
     {

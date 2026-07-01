@@ -109,7 +109,9 @@ set(CONDUIT_CPP_SOURCES
     Source/UI/CaptureAllButton.cpp
     Source/UI/CapturePanel.cpp
     Source/UI/CaptureToast.cpp
+    Source/UI/LinkAudioSendPanel.cpp
     Source/UI/LinkAudioStatusBadge.cpp
+    Source/UI/LinkSendCreateDialog.cpp
     Source/UI/NodeCanvas.cpp
     Source/UI/NodeComponent.cpp
     Source/UI/PortComponent.cpp
@@ -162,7 +164,9 @@ target_sources(Conduit PRIVATE
     Source/UI/CaptureAllButton.h
     Source/UI/CapturePanel.h
     Source/UI/CaptureToast.h
+    Source/UI/LinkAudioSendPanel.h
     Source/UI/LinkAudioStatusBadge.h
+    Source/UI/LinkSendCreateDialog.h
     Source/UI/NodeCanvas.h
     Source/UI/NodeComponent.h
     Source/UI/PortComponent.h
@@ -267,6 +271,7 @@ if(CONDUIT_BUILD_TESTS)
         Tests/Core/SourceNameResolverTests.cpp
         Tests/Core/ThreadingStressTests.cpp
         Tests/UI/NodeCanvasTests.cpp
+        Tests/UI/LinkAudioSendPanelTests.cpp
         Tests/UI/SequencerControlPanelTests.cpp
         Tests/Util/ScaleQuantizerTests.cpp
         Tests/Util/SpscQueueTests.cpp
@@ -300,7 +305,9 @@ if(CONDUIT_BUILD_TESTS)
         Source/UI/CaptureAllButton.cpp
         Source/UI/CapturePanel.cpp
         Source/UI/CaptureToast.cpp
+        Source/UI/LinkAudioSendPanel.cpp
         Source/UI/LinkAudioStatusBadge.cpp
+        Source/UI/LinkSendCreateDialog.cpp
         Source/UI/NodeCanvas.cpp
         Source/UI/NodeComponent.cpp
         Source/UI/PortComponent.cpp

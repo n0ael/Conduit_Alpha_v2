@@ -10,7 +10,7 @@
 #include "Core/ChannelNames.h"
 #include "Core/GraphManager.h"
 #include "Core/NodeUiRegistry.h"
-#include "UI/LinkAudioStatusBadge.h"
+#include "UI/LinkAudioSendPanel.h"
 #include "UI/PortComponent.h"
 #include "UI/ScopeDisplay.h"
 #include "UI/SequencerControlPanel.h"
@@ -127,8 +127,8 @@ private:
     std::unique_ptr<SequencerControlPanel> sequencerControls;
 
     // Nur bei Link-Audio-Send-Nodes (factoryId == "link_audio_send") —
-    // Status-LED „announced" vs. „streaming" (7.2)
-    std::unique_ptr<LinkAudioStatusBadge> linkAudioBadge;
+    // Bedien-Panel: pro Eingang Attenuator + Name + Status-LED (7.2)
+    std::unique_ptr<LinkAudioSendPanel> sendPanel;
 
     std::unique_ptr<juce::VBlankAttachment> teardownVBlank;
     bool tearingDown = false;

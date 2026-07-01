@@ -7,6 +7,7 @@
 #include "Modules/LinkAudioSendModule.h"
 #include "Modules/ScopeModule.h"
 #include "Modules/StepSequencerModule.h"
+#include "UI/LinkSendCreateDialog.h"
 #include "Util/ScaleQuantizer.h"
 
 namespace conduit
@@ -36,8 +37,26 @@ EngineEditor::EngineEditor (EngineProcessor& engineProcessor)
     addLfoButton.onClick   = [addModule] { addModule (LfoModule::staticModuleId); };
     addScopeButton.onClick = [addModule] { addModule (ScopeModule::staticModuleId); };
     addSeqButton.onClick   = [addModule] { addModule (StepSequencerModule::staticModuleId); };
-    addLinkSendButton.onClick = [addModule] { addModule (LinkAudioSendModule::staticModuleId); };
-    addTapButton.onClick      = [addModule] { addModule (CaptureTapModule::staticModuleId); };
+    addTapButton.onClick   = [addModule] { addModule (CaptureTapModule::staticModuleId); };
+
+    // Link-Send: Eingangszahl ist fix beim Anlegen (7.2) → kleiner Dialog
+    // (Mono-/Stereo-Anzahl), dann Node mit der gewählten Config materialisieren
+    addLinkSendButton.onClick = [this]
+    {
+        auto dialog = std::make_unique<LinkSendCreateDialog>();
+        dialog->onCreate = [this] (std::vector<LinkAudioSendModule::InputMode> modes)
+        {
+            const auto offset  = 24 * (canvas.getNumNodeComponents() % 8);
+            const auto created = graphManager.addModuleNode (
+                LinkAudioSendModule::staticModuleId, { 40 + offset, 40 + offset },
+                [capturedModes = std::move (modes)] (juce::ValueTree& tree)
+                { LinkAudioSendModule::applyInputConfig (tree, capturedModes); });
+            jassertquiet (created.isValid());
+        };
+
+        juce::CallOutBox::launchAsynchronously (std::move (dialog),
+                                                addLinkSendButton.getScreenBounds(), nullptr);
+    };
 
     undoButton.onClick = [this] { undoManager.undo(); };
     redoButton.onClick = [this] { undoManager.redo(); };

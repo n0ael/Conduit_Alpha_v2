@@ -16,7 +16,14 @@
 
 ## Aktueller Meilenstein (Juli 2026 — in Arbeit)
 
-**Multi-Input Link Audio Send, Schritt B — Auto-Naming (CLAUDE.md 7.2 Schritt 3):**
+**Multi-Input Link Audio Send, Schritt C — UI-Panel + Anlege-Dialog (CLAUDE.md 7.2 / 10):**
+- **`LinkAudioSendPanel`** (`Source/UI/`, Muster SequencerControlPanel): pro Eingang eine Zeile — Status-LED (offline/announced/streaming, per-Slot via `getSlotStatusForUi`, transiente Modul-Auflösung 10 Hz), Name-Editor (Doppelklick → `inputUserName`; leer = zurück zum Auto-Namen, dezenter dargestellt), Mono/Stereo-Badge (M/S), Attenuator-Slider (schreibt `in{n}_gain` in den Tree). Footer: **„Auto-Namen"**-Knopf → `refreshAutoNames`. Bindung nur an den Subtree (5.3), externe Änderungen (Snapshot/Undo/OSC) folgen über den ValueTree-Listener
+- **`LinkSendCreateDialog`** (`Source/UI/`): kompakter Anlege-Dialog (Mono-/Stereo-Anzahl per Stepper, „Erstellen"), per CallOutBox angezeigt (kein Modal-Loop 13.2); `buildModes` = Monos dann Stereos, garantiert ≥ 1 Eingang. Der „+ LinkSend"-Toolbar-Button öffnet ihn und legt den Node via `addModuleNode`-Konfigurator mit `applyInputConfig` an
+- **NodeComponent:** eigenes Panel statt generischem Slider für Send-Nodes; Kachelhöhe folgt der Eingangszahl; Teardown stoppt das Panel (5.3). Der alte `LinkAudioStatusBadge` wird für Send nicht mehr genutzt
+- **Verifikation:** 130 Testfälle / 10109 Assertions grün (Debug + ASan). Neue UI-Tests: eine Zeile pro Eingang + Attenuator→paramValue, Name-Editor→userName (+ live Sink-Rename, leer=Auto), Refresh-Knopf zieht autoName + Label folgt, Dialog-`buildModes`. Smoke: Dialog (1 Mono + 1 Stereo) → Node mit 3 Ports, 2 Zeilen (M/S + Attenuator + LED), Auto-Namen-Knopf; „Link: 4 Peers" nach Firewall-Fix
+- **Meilenstein Multi-Input Link Audio Send damit komplett** (Schritte A–C)
+
+**Davor: Multi-Input Link Audio Send, Schritt B — Auto-Naming (CLAUDE.md 7.2 Schritt 3):**
 - **Reiner Resolver `resolveSourceLabel`** (`Source/Core/SourceNameResolver`): rückwärts dest→source über `<Connections>`; Quelle audio_input → ChannelNames-Label (Fallback „In N"), sonst Quell-`moduleId` (+ Kanal-Suffix `:{n}` bei Multi-Output). Rein funktional, ohne Link/Audio/Device unit-testbar
 - **Snapshot beim Verbinden** (`GraphManager::valueTreeChildAdded`): frisch gezogenes Kabel an einen Send-Eingang → Quell-Name EINMAL in `autoName` (nur wenn userName UND autoName leer; non-undoable, abgeleitet). Kein Live-Follow → Ableton-Routing bleibt stabil, wenn die Quelle umbenannt wird
 - **Refresh** (`GraphManager::refreshAutoNames`): zieht `autoName` für alle Eingänge aus der aktuellen Quelle neu (eine Undo-Transaktion); `userName` bleibt und überschreibt weiter

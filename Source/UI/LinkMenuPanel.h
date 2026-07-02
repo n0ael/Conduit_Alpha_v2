@@ -23,18 +23,22 @@ class LinkClock;
 class LinkMenuPanel final : public juce::Component
 {
 public:
-    LinkMenuPanel (TransportSettings& settingsToUse, const LinkClock& linkClock);
+    /** metronomeTargets: Beschriftungen der Stereo-Paare (Kanäle 2n/2n+1)
+        für die Metronom-Ziel-Auswahl — leer = Auswahl ausgeblendet. */
+    LinkMenuPanel (TransportSettings& settingsToUse, const LinkClock& linkClock,
+                   const juce::StringArray& metronomeTargets = {});
 
     void resized() override;
     void paint (juce::Graphics& g) override;
 
     static constexpr int panelWidth  = 260;
-    static constexpr int panelHeight = 182;
+    static constexpr int panelHeight = 232;
 
     // Test-Zugriff
     [[nodiscard]] juce::ToggleButton& getSyncToggle() noexcept { return syncToggle; }
     [[nodiscard]] juce::Slider& getOffsetSlider() noexcept { return offsetSlider; }
     [[nodiscard]] juce::Slider& getTapCountSlider() noexcept { return tapCountSlider; }
+    [[nodiscard]] juce::ComboBox& getMetronomeTargetBox() noexcept { return metronomeTargetBox; }
 
 private:
     TransportSettings& settings;
@@ -45,6 +49,8 @@ private:
     juce::Slider offsetSlider { juce::Slider::LinearHorizontal, juce::Slider::TextBoxRight };
     juce::Label tapCaption;
     juce::Slider tapCountSlider { juce::Slider::LinearHorizontal, juce::Slider::TextBoxRight };
+    juce::Label metronomeCaption;
+    juce::ComboBox metronomeTargetBox;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (LinkMenuPanel)
 };

@@ -103,6 +103,7 @@ set(CONDUIT_CPP_SOURCES
     Source/Core/LinkClock.cpp
     Source/Core/LinkSendTaps.cpp
     Source/Core/MeterSettings.cpp
+    Source/Core/Metronome.cpp
     Source/Core/NodeUiRegistry.cpp
     Source/Core/OscController.cpp
     Source/Core/OscSendService.cpp
@@ -163,6 +164,7 @@ target_sources(Conduit PRIVATE
     Source/Core/InputLinkSend.h
     Source/Core/LinkClock.h
     Source/Core/LinkSendTaps.h
+    Source/Core/Metronome.h
     Source/Core/NodeUiRegistry.h
     Source/Core/OscAddress.h
     Source/Core/OscController.h
@@ -318,6 +320,7 @@ if(CONDUIT_BUILD_TESTS)
         Tests/Core/LinkAudioSendTests.cpp
         Tests/Core/LinkSendTapsTests.cpp
         Tests/Core/MeterSettingsTests.cpp
+        Tests/Core/MetronomeTests.cpp
         Tests/Core/OscControllerTests.cpp
         Tests/Core/OscSendServiceTests.cpp
         Tests/Core/PatchingTests.cpp
@@ -351,6 +354,7 @@ if(CONDUIT_BUILD_TESTS)
         Source/Core/LinkClock.cpp
         Source/Core/LinkSendTaps.cpp
         Source/Core/MeterSettings.cpp
+        Source/Core/Metronome.cpp
         Source/Core/NodeUiRegistry.cpp
         Source/Core/OscController.cpp
         Source/Core/OscSendService.cpp

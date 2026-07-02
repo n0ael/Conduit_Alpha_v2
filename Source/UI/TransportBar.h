@@ -58,6 +58,10 @@ public:
     /** Browser-Einträge (Module + Presets) — Anzeige-Reihenfolge = Liste. */
     void setBrowserItems (std::vector<ModuleBrowser::Item> items);
 
+    /** Beschriftungen der Metronom-Ziel-Paare (Kanäle 2n/2n+1) fürs
+        Link-Menü — der Editor liefert sie aus den ChannelNames. */
+    std::function<juce::StringArray()> metronomeTargetNames;
+
     //==========================================================================
     // Status — vom Editor-Timer gespeist [Message Thread]
 

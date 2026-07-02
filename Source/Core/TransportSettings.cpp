@@ -9,7 +9,9 @@ namespace
     constexpr const char* clockOffsetKey   = "clockOffsetMs";
     constexpr const char* automateKey      = "automate";
     constexpr const char* fixedLengthKey   = "fixedLength";
-    constexpr const char* tapCountKey      = "tapCount";
+    constexpr const char* tapCountKey        = "tapCount";
+    constexpr const char* metronomeKey       = "metronome";
+    constexpr const char* metronomeAnchorKey = "metronomeAnchor";
 }
 
 //==============================================================================
@@ -47,6 +49,8 @@ void TransportSettings::loadFromFile()
         automate      = file->getBoolValue (automateKey, false);
         fixedLength   = file->getBoolValue (fixedLengthKey, false);
         tapCount      = juce::jlimit (2, 8, file->getIntValue (tapCountKey, 4));
+        metronome       = file->getBoolValue (metronomeKey, false);
+        metronomeAnchor = juce::jlimit (0, 31, file->getIntValue (metronomeAnchorKey, 0));
     }
 }
 
@@ -109,6 +113,26 @@ void TransportSettings::setTapCount (int taps)
 
     tapCount = clamped;
     writeValue (tapCountKey, clamped);
+}
+
+void TransportSettings::setMetronomeEnabled (bool enabled)
+{
+    if (metronome == enabled)
+        return;
+
+    metronome = enabled;
+    writeValue (metronomeKey, enabled);
+}
+
+void TransportSettings::setMetronomeAnchor (int pairIndex)
+{
+    const auto clamped = juce::jlimit (0, 31, pairIndex);
+
+    if (metronomeAnchor == clamped)
+        return;
+
+    metronomeAnchor = clamped;
+    writeValue (metronomeAnchorKey, clamped);
 }
 
 } // namespace conduit

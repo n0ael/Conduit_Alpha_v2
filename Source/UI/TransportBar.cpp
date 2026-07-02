@@ -34,8 +34,11 @@ TransportBar::TransportBar (juce::ValueTree rootTree, LinkClock& linkClockToUse,
 
     tapeTile.setEnabled (false);
     tapeTile.setTooltip (juce::String::fromUTF8 ("Looper-Page — eigener Meilenstein"));
-    metronomeTile.setEnabled (false);
-    metronomeTile.setTooltip (juce::String::fromUTF8 ("Metronom — folgt in Schritt 5"));
+
+    // Metronom: Link-synchroner Click auf die Anker-Kanäle (Ziel im Link-Menü)
+    metronomeTile.setTooltip (juce::String::fromUTF8 ("Metronom — Ziel-Kanäle im Link-Menü"));
+    metronomeTile.onClick = [this]
+    { transportSettings.setMetronomeEnabled (! transportSettings.isMetronomeEnabled()); };
 
     // Vorbereitete Looper-Toggles (Endless-Meilenstein) — Zustand persistiert
     // bereits in den TransportSettings, die LED folgt über refresh()
@@ -202,7 +205,10 @@ void TransportBar::openBrowser()
 
 void TransportBar::openLinkMenu()
 {
-    auto panel = std::make_unique<LinkMenuPanel> (transportSettings, linkClock);
+    auto panel = std::make_unique<LinkMenuPanel> (
+        transportSettings, linkClock,
+        metronomeTargetNames != nullptr ? metronomeTargetNames() : juce::StringArray());
+
     juce::CallOutBox::launchAsynchronously (std::move (panel),
                                             linkTile.getScreenBounds(), nullptr);
 }
@@ -235,10 +241,11 @@ void TransportBar::refresh()
     linkTile.setActive (numPeers > 0);
 
     // Play-LED folgt der Session (auch wenn Ableton startet/stoppt);
-    // Looper-Toggles folgen den Settings (Repaint nur bei Änderung)
+    // Looper-/Metronom-Toggles folgen den Settings (Repaint nur bei Änderung)
     playTile.setActive (linkClock.isPlaying());
     fixedLengthTile.setActive (transportSettings.isFixedLengthEnabled());
     automateTile.setActive (transportSettings.isAutomateEnabled());
+    metronomeTile.setActive (transportSettings.isMetronomeEnabled());
 }
 
 void TransportBar::setCaptureStatus (bool recording, bool held, bool exporting)

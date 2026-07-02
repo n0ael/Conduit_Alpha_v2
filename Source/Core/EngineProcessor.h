@@ -5,6 +5,7 @@
 #include "Capture/CaptureService.h"
 #include "Capture/LevelMeter.h"
 #include "ChannelNames.h"
+#include "Metronome.h"
 #include "GraphFader.h"
 #include "GraphManager.h"
 #include "InputLinkSend.h"
@@ -227,8 +228,12 @@ private:
     MeterSettings meterSettings;
 
     // Transport-/Link-Einstellungen des Push-Headers (App-Zustand); der
-    // ChangeListener speist die LinkClock (Start/Stop-Sync, Clock-Offset)
+    // ChangeListener speist LinkClock (Start/Stop-Sync, Clock-Offset) und
+    // Metronom (Enable, Ziel-Anker)
     TransportSettings transportSettings;
+
+    // Link-synchroner Click — läuft nach dem GraphFader auf die Anker-Kanäle
+    Metronome metronome;
 
     juce::AudioProcessorGraph graph;
     juce::AudioProcessorGraph::Node::Ptr audioInputNode;

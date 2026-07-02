@@ -126,6 +126,8 @@ void EngineProcessor::applyTransportSettings()
 {
     linkClock.setStartStopSyncEnabled (transportSettings.isStartStopSyncEnabled());
     linkClock.setClockOffsetMs (transportSettings.getClockOffsetMs());
+    metronome.setEnabled (transportSettings.isMetronomeEnabled());
+    metronome.setAnchor (transportSettings.getMetronomeAnchor());
 }
 
 void EngineProcessor::rebuildInputSends()
@@ -299,6 +301,7 @@ void EngineProcessor::prepareToPlay (double sampleRate, int samplesPerBlock)
     graph.prepareToPlay (sampleRate, samplesPerBlock);
     graphFader.prepare (sampleRate);
     linkClock.prepare (sampleRate);
+    metronome.prepare (sampleRate);
     captureService.prepare (sampleRate, samplesPerBlock, getTotalNumInputChannels());
     inputLevels.prepare  (sampleRate, getTotalNumInputChannels());
     outputLevels.prepare (sampleRate, getTotalNumOutputChannels());
@@ -368,6 +371,13 @@ void EngineProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::Midi
 
     graph.processBlock (buffer, midiMessages);
     graphFader.process (buffer);  // Master-Fade hinter dem Graph (5.2)
+
+    // Metronom NACH dem Fader (Click faded bei Graph-Swaps nicht mit) und
+    // VOR dem Sicht-Metering — der Capture-Tap am Blockanfang bleibt sauber
+    {
+        const rt::ScopedRealtimeSection rtAudit;
+        metronome.process (buffer, getTotalNumOutputChannels(), clockBus.current);
+    }
 
     // Sicht-Metering Out: der Buffer trägt jetzt das finale Signal an die
     // Hardware (nach Fade). Allocation-free wie der Input-Tap.

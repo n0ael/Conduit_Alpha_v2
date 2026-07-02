@@ -51,6 +51,14 @@ public:
     [[nodiscard]] int getTapCount() const noexcept { return tapCount; }
     void setTapCount (int taps);
 
+    /** Metronom (Link-synchroner Click): an/aus + Stereo-Anker der
+        Ziel-Kanäle (Paar n = Kanäle 2n/2n+1, z. B. 1 = Headphones). */
+    [[nodiscard]] bool isMetronomeEnabled() const noexcept { return metronome; }
+    void setMetronomeEnabled (bool enabled);
+
+    [[nodiscard]] int getMetronomeAnchor() const noexcept { return metronomeAnchor; }
+    void setMetronomeAnchor (int pairIndex);  // Clamp 0..31
+
 private:
     void loadFromFile();
     void writeValue (const char* key, const juce::var& value);
@@ -62,6 +70,8 @@ private:
     bool   automate      = false;
     bool   fixedLength   = false;
     int    tapCount      = 4;
+    bool   metronome        = false;
+    int    metronomeAnchor  = 0;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (TransportSettings)
 };

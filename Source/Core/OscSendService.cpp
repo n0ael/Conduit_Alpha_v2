@@ -168,7 +168,7 @@ void OscSendService::sendDiff (bool force, const juce::String& onlyNodeUuid)
             {
                 const auto it = lastSent.find (key);
 
-                if (it != lastSent.end() && it->second == value)
+                if (it != lastSent.end() && juce::exactlyEqual (it->second, value))
                     continue;
             }
 

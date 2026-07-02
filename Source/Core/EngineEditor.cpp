@@ -9,7 +9,6 @@
 #include "Modules/StepSequencerModule.h"
 #include "UI/LinkSendCreateDialog.h"
 #include "UI/SettingsWindow.h"
-#include "Util/ScaleQuantizer.h"
 
 namespace conduit
 {
@@ -23,11 +22,100 @@ EngineEditor::EngineEditor (EngineProcessor& engineProcessor,
       graphManager (engineProcessor.getGraphManager()),
       linkClock (engineProcessor.getLinkClock()),
       deviceManager (deviceManagerToUse),
+      transportBar (engineProcessor.getRootState(), engineProcessor.getLinkClock()),
       capturePanel (engineProcessor.getCaptureService(), engineProcessor.getChannelNames()),
       canvas (rootState, engineProcessor.getGraphManager(), engineProcessor.getNodeUiRegistry(),
               &engineProcessor.getChannelNames(),
               &engineProcessor.getInputLevels(), &engineProcessor.getOutputLevels(),
               &engineProcessor.getInputLinkSend())
+{
+    // Push-3-Design app-weit: Jost + dunkle Kacheln auch in PopupMenus,
+    // Dialogen und dem Settings-Fenster (CLAUDE.md 10)
+    juce::LookAndFeel::setDefaultLookAndFeel (&lookAndFeel);
+
+    // -- TransportBar-Hooks ---------------------------------------------------
+    transportBar.onUndo = [this] { undoManager.undo(); };
+    transportBar.onRedo = [this] { undoManager.redo(); };
+    transportBar.onSave = [this] { launchPresetChooser (true); };
+
+    transportBar.onSettings = [this]
+    {
+        // Non-modal (JUCE_MODAL_LOOPS_PERMITTED=0); Audio-Geräte-Tab nur im
+        // Standalone-Pfad mit DeviceManager
+        juce::DialogWindow::LaunchOptions options;
+        options.content.setOwned (new SettingsWindow (deviceManager, engine.getMeterSettings(),
+                                                      engine.getCaptureSettings(),
+                                                      engine.getCaptureService(),
+                                                      engine.getOscSendSettings(),
+                                                      engine.getOscController()));
+        options.dialogTitle                   = "Einstellungen";
+        options.dialogBackgroundColour        = push::colours::panel;
+        options.escapeKeyTriggersCloseButton  = true;
+        options.useNativeTitleBar             = true;
+        options.resizable                     = true;
+        options.launchAsync();
+    };
+
+    transportBar.onCaptureAll = [this]
+    {
+        const auto numTracks = engine.getCaptureService().exportAll();
+        if (numTracks == 0)
+            captureToast.show ("Keine aktive Aufnahme");
+    };
+
+    transportBar.onToggleCapturePanel = [this]
+    {
+        capturePanel.setVisible (! capturePanel.isVisible());
+        resized();
+    };
+
+    transportBar.onPageSelected = [this] (int pageIndex)
+    {
+        // Pages-Gerüst folgt in Schritt 6 — bis dahin bleibt die Canvas
+        // (Device) aktiv und die anderen Icons melden sich per Toast
+        if (pageIndex != TransportBar::pageDevice)
+        {
+            const char* names[] = { "Grid", "Mixer", "Clip", "Device" };
+            captureToast.show (juce::String (names[pageIndex]) + "-Page folgt");
+            transportBar.setSelectedPage (TransportBar::pageDevice);
+        }
+    };
+
+    transportBar.setBrowserItems (buildBrowserItems());
+
+    // -- Capture-Panel + Toast ------------------------------------------------
+    capturePanel.setVisible (false);
+    capturePanel.onToast = [this] (const juce::String& message)
+    { captureToast.show (message); };
+
+    engine.getCaptureService().onExportFinished =
+        [this] (const CaptureWriter::Report& report) { handleExportReport (report); };
+
+    addAndMakeVisible (transportBar);
+    addChildComponent (capturePanel);    // eingeklappt bis zum Shift-Klick
+    addAndMakeVisible (canvas);
+    addChildComponent (captureToast);    // Overlay, zeigt sich selbst
+
+    setWantsKeyboardFocus (true);
+    setResizable (true, true);
+    setSize (1480, 720);
+
+    timerCallback();      // Status sofort befüllen, nicht erst nach 66ms
+    startTimerHz (15);    // EIN Editor-Timer — lock-freie Reads, Repaint bei Änderung
+}
+
+EngineEditor::~EngineEditor()
+{
+    // Der Service überlebt den Editor — Callback lösen, sonst zeigte ein
+    // späterer Export-Report ins Leere
+    engine.getCaptureService().onExportFinished = nullptr;
+
+    // Default-LookAndFeel VOR der Member-Destruktion zurücksetzen
+    juce::LookAndFeel::setDefaultLookAndFeel (nullptr);
+}
+
+//==============================================================================
+std::vector<ModuleBrowser::Item> EngineEditor::buildBrowserItems()
 {
     const auto addModule = [this] (const char* moduleId)
     {
@@ -37,15 +125,17 @@ EngineEditor::EngineEditor (EngineProcessor& engineProcessor,
         jassertquiet (created.isValid());
     };
 
-    addButton.onClick      = [addModule] { addModule (AttenuatorModule::staticModuleId); };
-    addLfoButton.onClick   = [addModule] { addModule (LfoModule::staticModuleId); };
-    addScopeButton.onClick = [addModule] { addModule (ScopeModule::staticModuleId); };
-    addSeqButton.onClick   = [addModule] { addModule (StepSequencerModule::staticModuleId); };
-    addTapButton.onClick   = [addModule] { addModule (CaptureTapModule::staticModuleId); };
+    std::vector<ModuleBrowser::Item> items;
+
+    items.push_back ({ "Attenuator",  [addModule] { addModule (AttenuatorModule::staticModuleId); }, false });
+    items.push_back ({ "LFO",         [addModule] { addModule (LfoModule::staticModuleId); }, false });
+    items.push_back ({ "Scope",       [addModule] { addModule (ScopeModule::staticModuleId); }, false });
+    items.push_back ({ "Sequencer",   [addModule] { addModule (StepSequencerModule::staticModuleId); }, false });
+    items.push_back ({ "Capture Tap", [addModule] { addModule (CaptureTapModule::staticModuleId); }, false });
 
     // Link-Send: Eingangszahl ist fix beim Anlegen (7.2) → kleiner Dialog
     // (Mono-/Stereo-Anzahl), dann Node mit der gewählten Config materialisieren
-    addLinkSendButton.onClick = [this]
+    items.push_back ({ "Link Send", [this]
     {
         auto dialog = std::make_unique<LinkSendCreateDialog>();
         dialog->onCreate = [this] (std::vector<LinkAudioSendModule::InputMode> modes)
@@ -59,144 +149,16 @@ EngineEditor::EngineEditor (EngineProcessor& engineProcessor,
         };
 
         juce::CallOutBox::launchAsynchronously (std::move (dialog),
-                                                addLinkSendButton.getScreenBounds(), nullptr);
-    };
+                                                transportBar.getPlusTile().getScreenBounds(),
+                                                nullptr);
+    }, false });
 
-    undoButton.onClick = [this] { undoManager.undo(); };
-    redoButton.onClick = [this] { undoManager.redo(); };
-    saveButton.onClick = [this] { launchPresetChooser (true); };
-    loadButton.onClick = [this] { launchPresetChooser (false); };
+    items.push_back ({ juce::String::fromUTF8 ("Preset laden…"),
+                       [this] { launchPresetChooser (false); }, true });
+    items.push_back ({ juce::String::fromUTF8 ("Preset speichern…"),
+                       [this] { launchPresetChooser (true); }, false });
 
-    // Einstellungen: non-modales DialogWindow mit Tabs (Audio-Gerät nur im
-    // Standalone-Pfad mit DeviceManager, Metering immer). launchAsync wegen
-    // JUCE_MODAL_LOOPS_PERMITTED=0.
-    settingsButton.onClick = [this]
-    {
-        juce::DialogWindow::LaunchOptions options;
-        options.content.setOwned (new SettingsWindow (deviceManager, engine.getMeterSettings(),
-                                                      engine.getCaptureSettings(),
-                                                      engine.getCaptureService(),
-                                                      engine.getOscSendSettings(),
-                                                      engine.getOscController()));
-        options.dialogTitle                   = "Einstellungen";
-        options.dialogBackgroundColour        = juce::Colour (0xff24272c);
-        options.escapeKeyTriggersCloseButton  = true;
-        options.useNativeTitleBar             = true;
-        options.resizable                     = true;
-        options.launchAsync();
-    };
-
-    // Link-Transport: Slider schreibt in die Session, der Timer pollt zurück
-    tempoSlider.setRange (20.0, 300.0, 0.1);
-    tempoSlider.setTextValueSuffix (" BPM");
-    tempoSlider.setValue (linkClock.getTempo(), juce::dontSendNotification);
-    tempoSlider.onValueChange = [this] { linkClock.setTempo (tempoSlider.getValue()); };
-
-    peersLabel.setColour (juce::Label::textColourId, juce::Colours::white.withAlpha (0.7f));
-    peersLabel.setJustificationType (juce::Justification::centredLeft);
-
-    // Globale Session-Skala (Schema 6.2): schreibt die Root-Properties —
-    // bewusst ohne UndoManager (Session-Setting wie Parameter-Sweeps);
-    // preset-persistent ist sie über den Tree trotzdem
-    {
-        const char* noteNames[] = { "C", "C#", "D", "D#", "E", "F",
-                                    "F#", "G", "G#", "A", "A#", "B" };
-
-        for (int note = 0; note < 12; ++note)
-            rootCombo.addItem (noteNames[note], note + 1);
-
-        for (const auto type : { ScaleType::chromatic, ScaleType::major,
-                                 ScaleType::minor, ScaleType::pentatonic })
-            scaleCombo.addItem (toString (type), static_cast<int> (type) + 1);
-
-        rootCombo.setSelectedId (juce::jlimit (0, 11,
-            (int) rootState.getProperty (id::scaleRoot, 0)) + 1, juce::dontSendNotification);
-        scaleCombo.setSelectedId (static_cast<int> (scaleTypeFromString (
-            rootState.getProperty (id::scaleType).toString())) + 1, juce::dontSendNotification);
-
-        rootCombo.onChange = [this]
-        { rootState.setProperty (id::scaleRoot, rootCombo.getSelectedId() - 1, nullptr); };
-        scaleCombo.onChange = [this]
-        {
-            rootState.setProperty (id::scaleType,
-                toString (static_cast<ScaleType> (scaleCombo.getSelectedId() - 1)), nullptr);
-        };
-    }
-
-    // -- Capture-UI (Baustein 6) -----------------------------------------------
-    captureAllButton.onClick = [this]
-    {
-        const auto numTracks = engine.getCaptureService().exportAll();
-        if (numTracks == 0)
-            captureToast.show ("Keine aktive Aufnahme");
-    };
-
-    capturePanelToggle.setClickingTogglesState (true);
-    capturePanelToggle.onClick = [this]
-    {
-        capturePanel.setVisible (capturePanelToggle.getToggleState());
-        resized();
-    };
-    capturePanel.setVisible (false);
-    capturePanel.onToast = [this] (const juce::String& message)
-    { captureToast.show (message); };
-
-    engine.getCaptureService().onExportFinished =
-        [this] (const CaptureWriter::Report& report) { handleExportReport (report); };
-
-    // OSC-Status (verbunden in Main::initialise)
-    const auto oscPort = engine.getOscController().getConnectedPort();
-    oscLabel.setText (oscPort > 0 ? "OSC :" + juce::String (oscPort)
-                                  : juce::String ("OSC: aus"),
-                      juce::dontSendNotification);
-    oscLabel.setColour (juce::Label::textColourId,
-                        oscPort > 0 ? juce::Colours::white.withAlpha (0.7f)
-                                    : juce::Colours::orange);
-    oscLabel.setJustificationType (juce::Justification::centredLeft);
-
-    warningLabel.setColour (juce::Label::textColourId, juce::Colours::orange);
-    warningLabel.setJustificationType (juce::Justification::centredRight);
-    // Inhalt setzt der Timer (folgt Änderungen des Controllers live)
-
-    addAndMakeVisible (addButton);
-    addAndMakeVisible (addLfoButton);
-    addAndMakeVisible (addScopeButton);
-    addAndMakeVisible (addSeqButton);
-    addAndMakeVisible (addLinkSendButton);
-    addAndMakeVisible (addTapButton);
-    addAndMakeVisible (undoButton);
-    addAndMakeVisible (redoButton);
-    addAndMakeVisible (saveButton);
-    addAndMakeVisible (loadButton);
-    addAndMakeVisible (settingsButton);
-    addAndMakeVisible (tempoSlider);
-    addAndMakeVisible (rootCombo);
-    addAndMakeVisible (scaleCombo);
-    addAndMakeVisible (peersLabel);
-    addAndMakeVisible (oscLabel);
-    addAndMakeVisible (warningLabel);
-    addAndMakeVisible (captureAllButton);
-    addAndMakeVisible (capturePanelToggle);
-    addChildComponent (capturePanel);    // eingeklappt bis zum Toggle
-    addAndMakeVisible (canvas);
-    addChildComponent (captureToast);    // Overlay, zeigt sich selbst
-
-    setWantsKeyboardFocus (true);
-    setResizable (true, true);
-    setSize (1480, 720);
-
-    timerCallback();      // Peer-Label sofort befüllen, nicht erst nach 66ms
-    // EIN Editor-Timer mit 15 Hz statt 4 Hz + Capture-Extra-Timer: alle
-    // gepollten Getter sind lock-freie Atomics, Repaints nur bei Änderung —
-    // die Capture-Statusanzeige braucht ~15 Hz, Link-Polling verträgt das
-    startTimerHz (15);
-}
-
-EngineEditor::~EngineEditor()
-{
-    // Der Service überlebt den Editor — Callback lösen, sonst zeigte ein
-    // späterer Export-Report ins Leere
-    engine.getCaptureService().onExportFinished = nullptr;
+    return items;
 }
 
 //==============================================================================
@@ -285,85 +247,31 @@ void EngineEditor::handleExportReport (const CaptureWriter::Report& report)
 //==============================================================================
 void EngineEditor::timerCallback()
 {
-    // Kein Kampf mit dem User: während des Drags gewinnt der Slider
-    if (! tempoSlider.isMouseButtonDown())
-        tempoSlider.setValue (linkClock.getTempo(), juce::dontSendNotification);
+    transportBar.refresh();  // Tempo + Peer-Zahl (Repaint nur bei Änderung)
 
-    const auto numPeers = linkClock.getNumPeers();
-    const auto text = numPeers == 0
-                          ? juce::String ("Link: keine Peers")
-                          : "Link: " + juce::String (numPeers)
-                                + (numPeers == 1 ? " Peer" : " Peers");
+    // Capture-LED an der ⛶-Kachel; Panel-Zeilen nur wenn aufgeklappt
+    const auto status = engine.getCaptureService().getUiStatus();
+    transportBar.setCaptureStatus (status.anyRecording, status.anyHeld, status.exporting);
 
-    if (peersLabel.getText() != text)
-        peersLabel.setText (text, juce::dontSendNotification);
-
-    // Capture-Status: Button-Ring immer, Panel nur wenn aufgeklappt —
-    // beides repaintet nur bei sichtbarer Änderung
-    captureAllButton.setStatus (engine.getCaptureService().getUiStatus());
     if (capturePanel.isVisible())
         capturePanel.refresh();
 
-    // audioSetupWarning folgt dem Controller (setzt/löscht bei Gerätewechsel);
-    // billiger String-Vergleich, Repaint nur bei tatsächlicher Änderung
+    // audioSetupWarning folgt dem Controller (setzt/löscht bei Gerätewechsel)
     const auto warning = rootState.getProperty (id::audioSetupWarning).toString();
-    const auto warningText = warning.isNotEmpty() ? "Audio-Setup: " + warning : juce::String();
-    if (warningLabel.getText() != warningText)
-    {
-        warningLabel.setText (warningText, juce::dontSendNotification);
-        resized();  // rechten Anker der Warnung ein-/ausblenden
-    }
+    transportBar.setWarningText (warning.isNotEmpty() ? "Audio-Setup: " + warning
+                                                      : juce::String());
 }
 
 //==============================================================================
 void EngineEditor::paint (juce::Graphics& g)
 {
-    g.fillAll (juce::Colour (0xff24272c));  // Toolbar-Hintergrund
+    g.fillAll (push::colours::background);
 }
 
 void EngineEditor::resized()
 {
     auto bounds = getLocalBounds();
-    auto toolbar = bounds.removeFromTop (toolbarHeight).reduced (8, 6);  // Buttons ≥ 44px hoch
-
-    const auto place = [&toolbar] (juce::Component& component, int width, int gapAfter = 8)
-    {
-        component.setBounds (toolbar.removeFromLeft (width));
-        toolbar.removeFromLeft (gapAfter);
-    };
-
-    // audioSetupWarning nur dann rechts anankern, wenn sie tatsächlich Text
-    // trägt (Gerätewechsel/Abweichung). Ohne Warnung bleibt das Toolbar-Layout
-    // exakt wie zuvor — der Timer ruft resized() erneut, wenn sich der Text
-    // ändert. So bleibt die Warnung sichtbar, ohne im Normalfall Platz zu rauben.
-    if (warningLabel.getText().isNotEmpty())
-    {
-        warningLabel.setBounds (toolbar.removeFromRight (250));
-        toolbar.removeFromRight (12);
-    }
-    else
-    {
-        warningLabel.setBounds ({});
-    }
-
-    place (addButton,       95);
-    place (addLfoButton,    80);
-    place (addScopeButton,  90);
-    place (addSeqButton,    80);
-    place (addLinkSendButton, 110);
-    place (addTapButton,    70);
-    place (undoButton,      65);
-    place (redoButton,      65, 16);
-    place (saveButton,      65);
-    place (loadButton,      65, 16);
-    place (settingsButton, 95, 16);
-    place (tempoSlider,    130);
-    place (captureAllButton, 60);            // neben dem Link-Transport
-    place (capturePanelToggle, 85, 16);
-    place (rootCombo,       60);
-    place (scaleCombo,     110, 16);
-    place (peersLabel,     115);
-    place (oscLabel,        80);
+    transportBar.setBounds (bounds.removeFromTop (TransportBar::preferredHeight));
 
     if (capturePanel.isVisible())
         capturePanel.setBounds (bounds.removeFromTop (CapturePanel::preferredHeight));

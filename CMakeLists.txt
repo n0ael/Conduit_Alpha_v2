@@ -134,13 +134,16 @@ set(CONDUIT_CPP_SOURCES
     Source/UI/LinkAudioSendPanel.cpp
     Source/UI/LinkAudioStatusBadge.cpp
     Source/UI/LinkSendCreateDialog.cpp
+    Source/UI/ModuleBrowser.cpp
     Source/UI/NodeCanvas.cpp
     Source/UI/NodeComponent.cpp
     Source/UI/OscSettingsComponent.cpp
     Source/UI/PortComponent.cpp
     Source/UI/PushIcons.cpp
     Source/UI/PushLookAndFeel.cpp
+    Source/UI/PushTiles.cpp
     Source/UI/ScopeDisplay.cpp
+    Source/UI/TransportBar.cpp
     Source/UI/SequencerControlPanel.cpp
     Source/UI/SettingsWindow.cpp
     Source/UI/StepGridDisplay.cpp
@@ -204,11 +207,14 @@ target_sources(Conduit PRIVATE
     Source/UI/LinkSendCreateDialog.h
     Source/UI/NodeCanvas.h
     Source/UI/NodeComponent.h
+    Source/UI/ModuleBrowser.h
     Source/UI/OscSettingsComponent.h
     Source/UI/PortComponent.h
     Source/UI/PushIcons.h
     Source/UI/PushLookAndFeel.h
+    Source/UI/PushTiles.h
     Source/UI/ScopeDisplay.h
+    Source/UI/TransportBar.h
     Source/UI/SequencerControlPanel.h
     Source/UI/StepGridDisplay.h
     Source/Util/RtAllocationGuard.h
@@ -323,6 +329,7 @@ if(CONDUIT_BUILD_TESTS)
         Tests/UI/OscSettingsComponentTests.cpp
         Tests/UI/PushDesignTests.cpp
         Tests/UI/SequencerControlPanelTests.cpp
+        Tests/UI/TransportBarTests.cpp
         Tests/Util/ScaleQuantizerTests.cpp
         Tests/Util/SpscQueueTests.cpp
     )
@@ -372,11 +379,14 @@ if(CONDUIT_BUILD_TESTS)
         Source/UI/LinkSendCreateDialog.cpp
         Source/UI/NodeCanvas.cpp
         Source/UI/NodeComponent.cpp
+        Source/UI/ModuleBrowser.cpp
         Source/UI/OscSettingsComponent.cpp
         Source/UI/PortComponent.cpp
         Source/UI/PushIcons.cpp
         Source/UI/PushLookAndFeel.cpp
+        Source/UI/PushTiles.cpp
         Source/UI/ScopeDisplay.cpp
+        Source/UI/TransportBar.cpp
         Source/UI/SequencerControlPanel.cpp
         Source/UI/SettingsWindow.cpp
         Source/UI/StepGridDisplay.cpp

@@ -5,10 +5,11 @@
 
 #include "LinkClock.h"
 #include "Capture/CaptureWriter.h"
-#include "UI/CaptureAllButton.h"
 #include "UI/CapturePanel.h"
 #include "UI/CaptureToast.h"
 #include "UI/NodeCanvas.h"
+#include "UI/PushLookAndFeel.h"
+#include "UI/TransportBar.h"
 
 namespace conduit
 {
@@ -20,25 +21,20 @@ class EngineProcessor;
     Haupt-Editor der App — read/listen-only gegenüber dem Datenmodell
     (CLAUDE.md 6); Patch-Aktionen laufen über GraphManager/UndoManager.
 
-    Layout: Toolbar (Add/Undo/Redo + Link-Transport, Touch-Targets ≥ 44px)
-    über dem NodeCanvas; die audioSetupWarning (9.1) erscheint rechts.
+    Layout: TransportBar im Push-3-Stil (ersetzt die alte Modul-Button-
+    Toolbar; Module kommen über den „+"-Browser) über dem NodeCanvas.
+    Der PushLookAndFeel (Jost, dunkle Kacheln) ist Default-LookAndFeel der
+    App — damit rendern auch PopupMenus, Dialoge und Settings im selben Look.
 
-    Link-Transport: Tempo und Peer-Zahl kommen aus der Link-Session — NICHT
-    aus dem ValueTree (Session-Zustand, kein Patch-Zustand). Der Editor-Timer
-    pollt die thread-sicheren LinkClock-Getter, damit Peer-Änderungen aus
-    dem Netz in der UI ankommen; der Slider schreibt via setTempo() zurück.
+    Verdrahtung: die Bar besitzt nur UI-Zustand; alle Aktionen laufen über
+    ihre Hooks (Undo/Redo, Save, Einstellungen, Capture, Browser-Einträge).
+    Der EINE Editor-Timer (15 Hz) speist Status zurück (Tempo/Peers via
+    refresh(), Capture-LED, audioSetupWarning) — alle gepollten Quellen sind
+    lock-freie Reads, Repaints nur bei sichtbarer Änderung.
 
-    Capture-UI (Baustein 6): CaptureAllButton neben dem Link-Transport,
-    einklappbares CapturePanel unter der Toolbar, nicht-modaler Toast für
-    Export-Ergebnisse. Der EINE Editor-Timer läuft mit 15 Hz statt eines
-    zweiten Capture-Timers: alle gepollten Quellen (LinkClock, Capture-
-    Status-Atomics) sind lock-freie Reads im Nanosekundenbereich, Repaints
-    passieren nur bei sichtbarer Änderung — ein zweiter Timer wäre reine
-    Verdrahtungs-Komplexität ohne messbare Ersparnis.
-
-    "Nach Export freigeben": auf User-Wunsch wird der RAM-Puffer NIE ohne
-    Rückfrage geleert — handleExportReport() zeigt immer erst einen
-    Ok/Cancel-Dialog, bevor gehaltene Kanäle freigegeben werden.
+    Capture: ⛶-Kachel = Export aller aktiven Aufnahmen, Shift-Klick klappt
+    das CapturePanel (Kanal-Zeilen) unter der Bar auf. "Nach Export
+    freigeben" fragt IMMER erst nach (User-Vorgabe) — handleExportReport().
 */
 class EngineEditor final : public juce::AudioProcessorEditor,
                            private juce::Timer
@@ -46,7 +42,7 @@ class EngineEditor final : public juce::AudioProcessorEditor,
 public:
     /** deviceManager ist nur im Standalone-Pfad gesetzt (Main.cpp). Im
         Plugin-/Test-Pfad (EngineProcessor::createEditor) bleibt er nullptr —
-        dann wird der Audio-Settings-Button ausgeblendet. */
+        dann öffnen die Einstellungen ohne Audio-Geräte-Tab. */
     explicit EngineEditor (EngineProcessor& engineProcessor,
                            juce::AudioDeviceManager* deviceManager = nullptr);
     ~EngineEditor() override;
@@ -59,8 +55,7 @@ private:
     void timerCallback() override;
     void launchPresetChooser (bool saving);
     void handleExportReport (const CaptureWriter::Report& report);
-
-    static constexpr int toolbarHeight = 56;
+    [[nodiscard]] std::vector<ModuleBrowser::Item> buildBrowserItems();
 
     EngineProcessor& engine;
     juce::ValueTree rootState;  // ref-counted Handle, read/listen-only
@@ -69,30 +64,16 @@ private:
     LinkClock& linkClock;
     juce::AudioDeviceManager* deviceManager;  // nullptr im Plugin-/Test-Pfad
 
-    juce::TextButton addButton      { juce::String::fromUTF8 ("\xef\xbc\x8b Atten") };
-    juce::TextButton addLfoButton   { juce::String::fromUTF8 ("\xef\xbc\x8b LFO") };
-    juce::TextButton addScopeButton { juce::String::fromUTF8 ("\xef\xbc\x8b Scope") };
-    juce::TextButton addSeqButton   { juce::String::fromUTF8 ("\xef\xbc\x8b Seq") };
-    juce::TextButton addLinkSendButton { juce::String::fromUTF8 ("\xef\xbc\x8b LinkSend") };
-    juce::TextButton addTapButton { juce::String::fromUTF8 ("\xef\xbc\x8b Tap") };
-    juce::TextButton undoButton   { "Undo" };
-    juce::TextButton redoButton   { "Redo" };
-    juce::TextButton saveButton   { "Save" };
-    juce::TextButton loadButton   { "Load" };
-    juce::TextButton settingsButton { "Einstellungen" };
-    juce::Slider tempoSlider      { juce::Slider::LinearBar, juce::Slider::TextBoxLeft };
-    juce::ComboBox rootCombo;     // globale Session-Skala (Root-Tree-Properties)
-    juce::ComboBox scaleCombo;
-    juce::Label peersLabel;
-    juce::Label oscLabel;
-    juce::Label warningLabel;
+    // Vor der Bar deklariert — Default-LookAndFeel wird im ctor gesetzt,
+    // im dtor zurückgesetzt (Komponenten sterben danach)
+    push::PushLookAndFeel lookAndFeel;
+
+    TransportBar transportBar;
 
     // Muss den async Callback überleben (JUCE_MODAL_LOOPS_PERMITTED=0)
     std::unique_ptr<juce::FileChooser> presetChooser;
 
-    // Capture-UI (Baustein 6)
-    CaptureAllButton captureAllButton;
-    juce::TextButton capturePanelToggle { "Capture" };
+    // Capture-UI: Panel klappt unter der Bar auf (Shift-Klick auf ⛶)
     CapturePanel capturePanel;
     CaptureToast captureToast;
 

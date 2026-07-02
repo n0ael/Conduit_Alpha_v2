@@ -141,6 +141,7 @@ set(CONDUIT_CPP_SOURCES
     Source/UI/NodeCanvas.cpp
     Source/UI/NodeComponent.cpp
     Source/UI/OscSettingsComponent.cpp
+    Source/UI/PageHost.cpp
     Source/UI/PortComponent.cpp
     Source/UI/PushIcons.cpp
     Source/UI/PushLookAndFeel.cpp
@@ -215,6 +216,7 @@ target_sources(Conduit PRIVATE
     Source/UI/NodeComponent.h
     Source/UI/ModuleBrowser.h
     Source/UI/OscSettingsComponent.h
+    Source/UI/PageHost.h
     Source/UI/PortComponent.h
     Source/UI/PushIcons.h
     Source/UI/PushLookAndFeel.h
@@ -335,6 +337,7 @@ if(CONDUIT_BUILD_TESTS)
         Tests/UI/LevelMeterBarTests.cpp
         Tests/UI/LinkAudioSendPanelTests.cpp
         Tests/UI/OscSettingsComponentTests.cpp
+        Tests/UI/PageHostTests.cpp
         Tests/UI/PushDesignTests.cpp
         Tests/UI/SequencerControlPanelTests.cpp
         Tests/UI/TransportBarTests.cpp
@@ -392,6 +395,7 @@ if(CONDUIT_BUILD_TESTS)
         Source/UI/NodeComponent.cpp
         Source/UI/ModuleBrowser.cpp
         Source/UI/OscSettingsComponent.cpp
+        Source/UI/PageHost.cpp
         Source/UI/PortComponent.cpp
         Source/UI/PushIcons.cpp
         Source/UI/PushLookAndFeel.cpp

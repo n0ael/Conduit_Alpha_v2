@@ -71,16 +71,7 @@ EngineEditor::EngineEditor (EngineProcessor& engineProcessor,
     };
 
     transportBar.onPageSelected = [this] (int pageIndex)
-    {
-        // Pages-Gerüst folgt in Schritt 6 — bis dahin bleibt die Canvas
-        // (Device) aktiv und die anderen Icons melden sich per Toast
-        if (pageIndex != TransportBar::pageDevice)
-        {
-            const char* names[] = { "Grid", "Mixer", "Clip", "Device" };
-            captureToast.show (juce::String (names[pageIndex]) + "-Page folgt");
-            transportBar.setSelectedPage (TransportBar::pageDevice);
-        }
-    };
+    { pageHost.setPage (pageIndex); };
 
     transportBar.setBrowserItems (buildBrowserItems());
 
@@ -119,7 +110,7 @@ EngineEditor::EngineEditor (EngineProcessor& engineProcessor,
 
     addAndMakeVisible (transportBar);
     addChildComponent (capturePanel);    // eingeklappt bis zum Shift-Klick
-    addAndMakeVisible (canvas);
+    addAndMakeVisible (pageHost);        // Device (Canvas) + Platzhalter-Pages
     addChildComponent (captureToast);    // Overlay, zeigt sich selbst
 
     setWantsKeyboardFocus (true);
@@ -302,7 +293,7 @@ void EngineEditor::resized()
     if (capturePanel.isVisible())
         capturePanel.setBounds (bounds.removeFromTop (CapturePanel::preferredHeight));
 
-    canvas.setBounds (bounds);
+    pageHost.setBounds (bounds);
 
     // Toast: unten mittig über dem Canvas
     captureToast.setBounds (getLocalBounds()

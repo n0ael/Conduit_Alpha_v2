@@ -288,6 +288,9 @@ Dadurch gehen keine OSC-Werte beim Speichern verloren.
 RootTree
   ├── scaleRoot / scaleType   (globale Session-Skala: 0–11 + chromatic/major/minor/pentatonic;
   │                            reist pro Block im ClockState zu den Modulen)
+  ├── globalSwing             (globaler Session-Swing 0..0.75, Header-Regler; reist im
+  │                            ClockState — IClockSlaves mit lokalem Swing 0 folgen ihm,
+  │                            lokaler Swing > 0 überschreibt pro Modul, 4.5)
   └── Nodes[]
        ├── nodeId         (juce::Uuid)
        ├── type           (ModuleType enum als String)
@@ -535,6 +538,35 @@ Plattform-spezifisches Setup in `initAudio()` und CMake ist explizit erlaubt.
 
 ## 10. UI & Input
 
+### 10.0 Push-3-Design-System (Stand Juli 2026)
+
+- **PushLookAndFeel** (`Source/UI/PushLookAndFeel`) ist Default-LookAndFeel
+  der App (gesetzt im EngineEditor): Jost als App-Font (BinaryData,
+  `Assets/Fonts/`, OFL), dunkle Kacheln (#262626 auf #121212/#1a1a1a),
+  LED-Akzente (grün Play, rot Automate/Looper, cyan Link, orange Capture).
+- **PushIcons** (`Source/UI/PushIcons`): ALLE Symbole als `juce::Path` aus
+  einem normierten 0..1-Quadrat in die Ziel-Bounds skaliert — vektorbasiert,
+  beliebig auflösungs-/DPI-fähig, keine Bitmaps. Bausteine: IconTile/
+  TextTile/ValueTile (`PushTiles`).
+- **TransportBar** ersetzt die Modul-Button-Toolbar komplett: Play (Link
+  Start/Stop-Sync), Tape (oo — künftige Looper-Page), Capture ⛶
+  (Shift-Klick = Kanal-Panel), Fixed Length/Automate (persistierte
+  Looper-Toggles), Tap-and-Commit-Tempo + Nudge ±, Metronom ○●,
+  Tempo/Position/Swing-Kacheln, Link ▾ (Menü: Start/Stop-Sync, Clock-Offset,
+  Taps-bis-Commit, Metronom-Ausgang), Page-Icons, „+"-Browser (Module +
+  Presets), Undo (Shift-Klick = Redo), Save, ⚙, Skala.
+- **Pages** (`Source/UI/PageHost`): Grid (Ω, AbletonOSC-Remote) · Mixer (∥∥)
+  · Clip (▷▭, Fugue-Machine-Sequencer) · Device (|||, Patch-Canvas). Nur
+  Device ist implementiert — die anderen sind gestylte Platzhalter, je ein
+  eigener Meilenstein (Roadmap 11).
+- **Transport-/Link-Zustand** in `TransportSettings` (App-Zustand, Muster
+  MeterSettings); der EngineProcessor speist LinkClock (Start/Stop-Sync,
+  Clock-Offset ±100 ms als Beat-Lese-Versatz) und Metronom (Enable, Anker).
+- **Metronom** (`Source/Core/Metronome`): allocation-free Click NACH dem
+  GraphFader auf ein wählbares Stereo-Paar; Beat-Grenzen sample-genau
+  (floor-Überquerung, Muster 4.5), Downbeat oktavhöher, Disable lässt den
+  Tail ausklingen. Bewusst kein isPlaying-Gate (Conduit läuft frei).
+
 - Touch-first Design: `setAcceptsTouchEvents(true)`
 - Minimale Touch-Target-Größe: 44px
 - Vollständig Mouse/Keyboard-kompatibel — kein Touch-only Code
@@ -573,6 +605,12 @@ Plattform-spezifisches Setup in `initAudio()` und CMake ist explizit erlaubt.
 | Max-Testdevice ConduitLFO | v2.0 | Tools/Max/ConduitLFO, kein Audio im Device |
 | Expert-Sleepers-Encoder (ES-5/ES-4(0)/8CV/8GT) | v2.x | v1-Port vorhanden (EncoderEngines.hpp, MIT/VCV) — HardwareIOModule-Grundstein |
 | Euclid-/Turing-Module | v2.x | v1-Engines als Referenz (Launch-Quant, parametrischer Swing, Scale-Quantize) |
+| Push-3-Transport-Header (TransportBar, Metronom, globaler Swing) | v2.0 | erledigt 07/2026 — 10.0 |
+| Looper-Page (Rückwärts-Looper, Endless-Stil) | v2.x | Tape-Kachel + Automate/Fixed Length + Capture-Audio als Grundstein |
+| Mixer-Page | v2.x | ∥∥-Icon, Channel-Strips (Capture-Buttons wandern dorthin) |
+| Grid-Page (AbletonOSC-Remote) | v2.x | Ω-Icon, Remote-Steuerung von Live |
+| Clip-Page (Fugue-Machine-Sequencer) | v2.x | ▷▭-Icon, immer aktiv, CV- UND MIDI-Ziele |
+| Capture-Netzwerk-Share (Exports für entferntes Ableton) | v2.x | HTTP-Bereitstellung der Capture-Dateien |
 
 ---
 

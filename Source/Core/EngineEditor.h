@@ -8,6 +8,7 @@
 #include "UI/CapturePanel.h"
 #include "UI/CaptureToast.h"
 #include "UI/NodeCanvas.h"
+#include "UI/PageHost.h"
 #include "UI/PushLookAndFeel.h"
 #include "UI/TransportBar.h"
 
@@ -78,6 +79,10 @@ private:
     CaptureToast captureToast;
 
     NodeCanvas canvas;
+
+    // Nach der Canvas deklariert (hält eine Referenz darauf): die vier Pages
+    // hinter den Push-Icons — Device = Canvas, Rest Platzhalter
+    PageHost pageHost { canvas };
 
     // Port-Tooltips der I/O-Endpunkte (ChannelNames-Labels, Maus-Hover)
     juce::TooltipWindow tooltipWindow { this };

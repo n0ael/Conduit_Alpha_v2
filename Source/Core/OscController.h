@@ -45,9 +45,12 @@ struct ParameterUpdate
     Tragen mehrere Nodes dieselbe moduleId, gewinnt der erste — eindeutige,
     user-vergebbare named_ids folgen mit der Node-UI.
 
-    Lebensdauer der target-Pointer: Deregistrierung in Phase 1 stoppt neue
-    Messages; die Queue wird jeden Block vollständig dräniert, Phase 2
-    (Objekt-Zerstörung) liegt ≥ 1 Frame später. Bei gestopptem Audio leert
+    Lebensdauer der target-Pointer (harte Invariante, kein Timing-Argument):
+    der Queue-Push erfolgt unter registryLock. Da die Deregistrierung
+    (rebuildEndpoints — Registry-Swap, Phase 1 des Deletes) denselben Lock
+    nimmt, kann nach abgeschlossener Deregistrierung kein stale target mehr
+    in die Queue gelangen. Per-Block-Drain plus Phase-2-Zerstörung ≥ 1 Frame
+    später schließen das Fenster vollständig. Bei gestopptem Audio leert
     EngineProcessor::releaseResources() die Queue.
 
     Thread-Ownership:

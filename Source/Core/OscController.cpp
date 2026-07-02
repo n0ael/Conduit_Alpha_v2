@@ -84,29 +84,38 @@ void OscController::oscMessageReceived (const juce::OSCMessage& message)
     else
         return;  // unbekannter Argument-Typ — ignorieren, kein Crash
 
-    Endpoint endpoint;
+    juce::String nodeUuid;
+    juce::String parameterId;
+    float clamped = 0.0f;
 
     {
+        // Lookup UND Push im selben Lock-Scope: rebuildEndpoints() swappt die
+        // Registry unter demselben registryLock — ein Push kann daher nie
+        // einen bereits deregistrierten Endpoint (Phase 1, 5.3) übergeben.
+        // push() ist wait-free, der Audio Thread nimmt diesen Lock nie
+        // (3.1 bleibt gewahrt).
         const juce::ScopedLock lock (registryLock);
         const auto it = endpoints.find (message.getAddressPattern().toString());
 
         if (it == endpoints.end())
             return;  // unregistrierte Adresse — ignorieren
 
-        endpoint = it->second;
+        const auto& endpoint = it->second;
+        clamped = juce::jlimit (endpoint.minValue, endpoint.maxValue, rawValue);
+
+        // Pfad 1: sofort in den Audio Thread (lock-free, < 1ms). Volle Queue →
+        // Update verworfen; der Tree-Pfad unten trägt den Wert trotzdem nach.
+        if (endpoint.target != nullptr)
+            audioQueue.push ({ endpoint.target, clamped });
+
+        nodeUuid    = endpoint.nodeUuid;
+        parameterId = endpoint.parameterId;
     }
-
-    const auto clamped = juce::jlimit (endpoint.minValue, endpoint.maxValue, rawValue);
-
-    // Pfad 1: sofort in den Audio Thread (lock-free, < 1ms). Volle Queue →
-    // Update verworfen; der Tree-Pfad unten trägt den Wert trotzdem nach.
-    if (endpoint.target != nullptr)
-        audioQueue.push ({ endpoint.target, clamped });
 
     // Pfad 2: async in den ValueTree — UI + Serialisierung folgen nach (6.1)
     {
         const juce::ScopedLock lock (treeUpdateLock);
-        pendingTreeUpdates.push_back ({ endpoint.nodeUuid, endpoint.parameterId, clamped });
+        pendingTreeUpdates.push_back ({ std::move (nodeUuid), std::move (parameterId), clamped });
     }
 
     stateDirty.store (true, std::memory_order_release);  // Serialisierung muss warten

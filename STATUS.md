@@ -16,7 +16,14 @@
 
 ## Aktueller Meilenstein (Juli 2026 — in Arbeit)
 
-**Canvas-UX: Node-Drag-Fix + Kanten-Ausrichtung + Kopfzeilen-Griff (CLAUDE.md 10) — User-Feedback „Module verschieben ist merkwürdig":**
+**OscController-Threading-Fix: audioQueue.push unter registryLock (Audit-Befund):**
+
+- **Befund (Threading-Audit):** `oscMessageReceived` kopierte den Endpoint (inkl. `target`-Pointer auf das `std::atomic<float>` im Zielmodul) unter `registryLock`, gab den Lock frei und pushte ERST DANACH in die Audio-Queue — die Lebensdauer-Garantie im Header war ein Timing-Argument, kein Mechanismus. Wird der Netzwerk-Thread zwischen Registry-Read und Push lange genug präemptiert, landet ein stale target nach der Phase-1-Deregistrierung in der Queue → Use-after-free auf dem Audio Thread
+- **Fix (`OscController`):** Endpoint-Lookup, Clamp und `audioQueue.push` im SELBEN `registryLock`-Scope (Push direkt aus dem Iterator, die Endpoint-Kopie entfällt). Da `rebuildEndpoints()` die Registry unter demselben Lock swappt, kann nach abgeschlossener Deregistrierung kein stale target mehr in die Queue gelangen — harte Invariante statt Timing. `push()` ist wait-free, der Audio Thread nimmt den Lock nie (3.1 gewahrt); der `treeUpdateLock`-Pfad (Pfad 2) blieb separat. Header-Doku auf die neue Invariante umgeschrieben
+- **`EngineProcessor::releaseResources`-Guard:** neues `audioCallbackActive`-Atomic (Eintritt/Austritt in `processBlock`); vor dem Drain der `oscToAudioQueue` jetzt `JUCE_ASSERT_MESSAGE_THREAD` + `jassert (!audioCallbackActive)` — der SPSC-Consumer-Wechsel auf den Message Thread ist nur bei gestopptem Callback zulässig, die Annahme „Audio steht" ist damit explizit statt implizit
+- **Verifikation:** 168 Testfälle / 10439 Assertions grün (Debug + ASan). Neuer Test: Registry-Rebuild mit entferntem Node → Message an die alte Adresse erzeugt keinen Queue-Push (`getNumReady() == 0`); der `[osc][threading]`-Stresstest baut die Registry jetzt nebenläufig zum Netzwerk-Dauerfeuer neu auf (deckt den neuen Lock-Scope, TSan-Ziel via CI). Smoke: App-Start, OSC-UDP-Paket live an :9000 (App stabil), sauberer Shutdown per WM_CLOSE mit verbundenem Link-Peer (osclock_smoke.png)
+
+**Davor: Canvas-UX: Node-Drag-Fix + Kanten-Ausrichtung + Kopfzeilen-Griff (CLAUDE.md 10) — User-Feedback „Module verschieben ist merkwürdig":**
 
 - **Echter Bug gefunden (erklärt das „sinnlose Raster"):** `mouseDrag` schrieb `positionX` in den Tree; der synchrone Listener (`applyTreePosition`) setzte die Component dabei aufs noch alte Tree-Y zurück, der folgende `positionY`-Write las genau dieses `getY()` — **vertikales Verschieben ging komplett verloren**. Da die Platzierungs-Kaskade Nodes auf 24px-Stufen anlegt, saßen alle Kacheln auf festen 24px-Zeilen. Fix: Zielposition einmal berechnen, beide Properties aus dem lokalen Wert schreiben
 - **Kopfzeile ist jetzt Grifffläche:** das Titel-Label schluckte alle Drags (Header war komplett tot) — `titleLabel.addMouseListener` leitet an die Kachel weiter (`getEventRelativeTo` rechnet um), Doppelklick-Rename unverändert; gegriffene Kachel hebt sich per `toFront` über Nachbarn

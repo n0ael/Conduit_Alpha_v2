@@ -162,6 +162,26 @@ TEST_CASE ("OscController: Phase-1-Delete deregistriert sofort (5.3 / 7.1)", "[o
 }
 
 //==============================================================================
+TEST_CASE ("OscController: nach Registry-Rebuild ohne den Node erfolgt kein Queue-Push", "[osc]")
+{
+    OscTestRig rig;
+    const auto node = rig.addModuleNodeWithState (conduit::AttenuatorModule::staticModuleId);
+    rig.flushAll();
+    REQUIRE (rig.osc.getRegisteredAddresses().size() == 1);
+
+    // Node komplett aus dem Tree entfernen → rebuildEndpoints() swappt die
+    // Registry unter registryLock. Da der Push denselben Lock nimmt, darf
+    // danach kein Update mehr für die alte Adresse in der Audio-Queue landen.
+    rig.nodes().removeChild (node, nullptr);
+    rig.flushAll();
+    REQUIRE (rig.osc.getRegisteredAddresses().isEmpty());
+
+    rig.osc.oscMessageReceived (juce::OSCMessage { gainAddress, 0.5f });
+    REQUIRE (rig.audioQueue.getNumReady() == 0);
+    REQUIRE_FALSE (rig.osc.isStateDirty());
+}
+
+//==============================================================================
 TEST_CASE ("OscController: unbekannte Adressen und falsche Argument-Typen werden ignoriert", "[osc]")
 {
     OscTestRig rig;
@@ -227,9 +247,19 @@ TEST_CASE ("OscController: Empfang nebenläufig zu Audio-Drain und Tree-Flush",
         }
     });
 
-    // Message Thread (dieser Thread): Tree-Updates im UI-Takt anwenden
+    // Message Thread (dieser Thread): Tree-Updates im UI-Takt anwenden UND
+    // die Registry nebenläufig neu aufbauen — deckt den Lock-Scope
+    // "Push unter registryLock" gegen den Registry-Swap in rebuildEndpoints()
+    // ab (Sanitizer-Ziel: Netzwerk-Push konkurrierend zur Deregistrierung)
+    auto mutableNode = node;
+    int rebuildToggle = 0;
+
     while (! networkDone.load (std::memory_order_acquire))
     {
+        mutableNode.setProperty (conduit::id::nodeError,
+                                 (++rebuildToggle & 1) != 0 ? juce::String ("x")
+                                                            : juce::String(),
+                                 nullptr);  // nodeError-Change → markRegistryDirty
         rig.osc.flushPendingUpdates();
         std::this_thread::yield();
     }

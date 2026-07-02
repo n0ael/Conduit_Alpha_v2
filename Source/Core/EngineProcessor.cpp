@@ -266,6 +266,12 @@ void EngineProcessor::releaseResources()
     graphFader.reset();  // unprepared Fader → GraphManager swappt ohne Fade
     graph.releaseResources();
 
+    // SPSC-Consumer-Wechsel ist nur bei gestopptem Callback zulässig: der
+    // Message Thread springt gleich als Consumer der oscToAudioQueue ein —
+    // die Annahme "Audio steht" wird hier explizit geprüft statt angenommen.
+    JUCE_ASSERT_MESSAGE_THREAD
+    jassert (! audioCallbackActive.load (std::memory_order_acquire));
+
     // Audio steht — der Message Thread darf als Consumer einspringen und
     // verwirft liegengebliebene OSC-Updates. Schließt das Lebensdauer-Fenster
     // der target-Pointer, falls Module bei gestopptem Audio zerstört werden.
@@ -276,6 +282,10 @@ void EngineProcessor::releaseResources()
 void EngineProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::MidiBuffer& midiMessages)
 {
     juce::ScopedNoDenormals noDenormals;
+
+    // Callback-aktiv-Marker für den Consumer-Wechsel-Guard in
+    // releaseResources() — Eintritt hier, Austritt am Ende des Blocks
+    audioCallbackActive.store (true, std::memory_order_release);
 
     // Capture-Input-Tap als ERSTE Operation: hier liegt noch der rohe
     // Hardware-Input im Buffer — der Graph überschreibt ihn gleich mit
@@ -320,6 +330,8 @@ void EngineProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::Midi
         const rt::ScopedRealtimeSection rtAudit;
         outputLevels.process (buffer, getTotalNumOutputChannels());
     }
+
+    audioCallbackActive.store (false, std::memory_order_release);
 }
 
 bool EngineProcessor::isBusesLayoutSupported (const BusesLayout& layouts) const

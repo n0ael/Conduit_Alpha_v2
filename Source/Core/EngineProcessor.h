@@ -163,6 +163,11 @@ private:
     std::atomic<int> scaleRootAtomic { 0 };
     std::atomic<int> scaleTypeAtomic { 0 };
 
+    // true, solange processBlock() gerade läuft (Eintritt/Austritt) — Guard
+    // für releaseResources(): der SPSC-Consumer-Wechsel der oscToAudioQueue
+    // auf den Message Thread ist nur bei gestopptem Callback zulässig.
+    std::atomic<bool> audioCallbackActive { false };
+
     // Clock-Master (Ableton-Link-Session) + Takt-Verteiler (4.2):
     // clockBus wird einmal pro Block auf dem Audio Thread gefüllt,
     // IClockSlaves lesen im selben Callback.

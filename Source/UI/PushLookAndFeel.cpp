@@ -23,7 +23,7 @@ PushLookAndFeel::PushLookAndFeel()
 
     setColour (juce::ComboBox::backgroundColourId, colours::tile);
     setColour (juce::ComboBox::textColourId,       colours::text);
-    setColour (juce::ComboBox::outlineColourId,    colours::outline);
+    setColour (juce::ComboBox::outlineColourId,    juce::Colours::transparentBlack);
     setColour (juce::ComboBox::arrowColourId,      colours::textDim);
 
     setColour (juce::PopupMenu::backgroundColourId,            colours::panel);
@@ -69,9 +69,6 @@ void PushLookAndFeel::drawButtonBackground (juce::Graphics& g, juce::Button& but
 
     g.setColour (fill);
     g.fillRoundedRectangle (bounds, cornerRadius);
-
-    g.setColour (colours::outline);
-    g.drawRoundedRectangle (bounds, cornerRadius, 1.0f);
 }
 
 juce::Font PushLookAndFeel::getJost (float height, bool medium) const

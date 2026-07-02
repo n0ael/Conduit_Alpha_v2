@@ -20,9 +20,6 @@ void paintTileBackground (juce::Graphics& g, const juce::Rectangle<float>& bound
 
     g.setColour (fill);
     g.fillRoundedRectangle (bounds, cornerRadius);
-
-    g.setColour (colours::outline);
-    g.drawRoundedRectangle (bounds, cornerRadius, 1.0f);
 }
 
 juce::Font jostFont (const juce::Component& component, float height)

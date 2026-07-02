@@ -3,6 +3,7 @@
 #include <algorithm>
 
 #include "Modules/AttenuatorModule.h"
+#include "PushLookAndFeel.h"
 
 namespace conduit
 {
@@ -238,7 +239,7 @@ juce::Path NodeCanvas::makeCablePath (juce::Point<float> start, juce::Point<floa
 //==============================================================================
 void NodeCanvas::paint (juce::Graphics& g)
 {
-    g.fillAll (juce::Colour (0xff1a1d21));
+    g.fillAll (push::colours::background);
 
     // Kabel aus Connections[] (Schema 6.2) — unter den Node-Kacheln
     const juce::PathStrokeType cableStroke (3.0f, juce::PathStrokeType::curved,

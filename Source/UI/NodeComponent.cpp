@@ -6,6 +6,7 @@
 #include "Modules/LinkAudioSendModule.h"
 #include "Modules/ScopeModule.h"
 #include "Modules/StepSequencerModule.h"
+#include "PushLookAndFeel.h"
 
 namespace conduit
 {
@@ -596,7 +597,7 @@ void NodeComponent::paint (juce::Graphics& g)
     const auto bounds = getLocalBounds().toFloat().reduced (1.0f);
     const auto error  = nodeTree.getProperty (id::nodeError).toString();
 
-    auto fill = juce::Colour (0xff2d3138);
+    auto fill = push::colours::tile;
 
     if (tearingDown)
         fill = fill.withAlpha (0.4f);
@@ -616,9 +617,13 @@ void NodeComponent::paint (juce::Graphics& g)
                           .reduced (6.0f, 0.0f));
     }
 
-    g.setColour (error.isNotEmpty() ? juce::Colours::orangered
-                                    : juce::Colour (0xff4a5160));
-    g.drawRoundedRectangle (bounds, 8.0f, error.isNotEmpty() ? 2.0f : 1.0f);
+    // Kontur nur im Fehlerfall — Push-Minimalismus verzichtet sonst auf
+    // sichtbare Umrandungen (Kachel-Fläche selbst grenzt gegen den Canvas ab)
+    if (error.isNotEmpty())
+    {
+        g.setColour (juce::Colours::orangered);
+        g.drawRoundedRectangle (bounds, 8.0f, 2.0f);
+    }
 
     if (error.isNotEmpty())
     {

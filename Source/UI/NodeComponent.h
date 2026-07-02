@@ -36,7 +36,11 @@ namespace conduit
       - dtor: NodeUiRegistry::release() — gibt Phase 2 frei
 
     Touch-first (CLAUDE.md 10): Delete-Button 44×44px, Slider-Höhe 44px,
-    1-Finger-Drag verschiebt den Node (x/y im Tree, ohne Undo-Spam).
+    1-Finger-Drag verschiebt den Node (x/y im Tree, ohne Undo-Spam). Griff
+    ist die gesamte Kachelfläche inkl. Kopfzeile (das Titel-Label leitet
+    seine Drags weiter, Doppelklick-Rename bleibt); die Bewegung ist
+    pixelgenau, nur nahe den Kanten anderer Kacheln rastet sie zur
+    Ausrichtung ein (snapToSiblings).
 
     Kanal-Labels (nur I/O-Endpunkte audio_input/audio_output): die Ports
     zeigen das effektive ChannelNames-Label — gemalt neben dem Port
@@ -65,6 +69,7 @@ public:
     static constexpr int defaultWidth  = 168;
     static constexpr int defaultHeight = 104;
     static constexpr int touchTarget   = 44;   // minimale Touch-Target-Größe (10)
+    static constexpr int siblingSnapRange = 10;  // Fangbereich der Kanten-Ausrichtung (px)
 
     [[nodiscard]] const juce::String& getNodeUuid() const noexcept { return nodeUuid; }
     [[nodiscard]] bool isTearingDown() const noexcept              { return tearingDown; }
@@ -132,6 +137,12 @@ private:
 
     void beginTeardown();
     void applyTreePosition();
+
+    /** Rastet die Position an den Kanten der Geschwister-Kacheln ein:
+        Oberkanten (gleiche Höhe) und linke Kanten (bündig untereinander),
+        je Achse unabhängig innerhalb von siblingSnapRange — außerhalb des
+        Fangbereichs bleibt die Bewegung pixelgenau. */
+    [[nodiscard]] juce::Point<int> snapToSiblings (juce::Point<int> position) const;
     [[nodiscard]] juce::ValueTree firstParameter() const;
 
     /** (Neu-)Baut die Port-Components aus numInputChannels/numOutputChannels

@@ -240,16 +240,6 @@ void NodeCanvas::paint (juce::Graphics& g)
 {
     g.fillAll (juce::Colour (0xff1a1d21));
 
-    // Dezentes Patch-Grid
-    g.setColour (juce::Colours::white.withAlpha (0.04f));
-    constexpr int gridSize = 24;
-
-    for (int x = gridSize; x < getWidth(); x += gridSize)
-        g.drawVerticalLine (x, 0.0f, static_cast<float> (getHeight()));
-
-    for (int y = gridSize; y < getHeight(); y += gridSize)
-        g.drawHorizontalLine (y, 0.0f, static_cast<float> (getWidth()));
-
     // Kabel aus Connections[] (Schema 6.2) — unter den Node-Kacheln
     const juce::PathStrokeType cableStroke (3.0f, juce::PathStrokeType::curved,
                                             juce::PathStrokeType::rounded);

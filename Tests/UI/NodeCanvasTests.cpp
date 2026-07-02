@@ -285,6 +285,77 @@ TEST_CASE ("NodeComponent: normale Module haben keine Pegelanzeigen", "[ui][io]"
 }
 
 //==============================================================================
+namespace
+{
+    juce::MouseEvent makeDragEvent (juce::Component& eventComponent,
+                                    juce::Point<float> position,
+                                    juce::Point<float> mouseDownPosition,
+                                    bool wasDragged)
+    {
+        const auto now = juce::Time::getCurrentTime();
+        return { juce::Desktop::getInstance().getMainMouseSource(), position,
+                 juce::ModifierKeys::leftButtonModifier, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f,
+                 &eventComponent, &eventComponent, now, mouseDownPosition, now, 1, wasDragged };
+    }
+}
+
+TEST_CASE ("NodeComponent: Drag ist pixelgenau und rastet an Geschwister-Kanten ein", "[ui]")
+{
+    UiTestRig rig;
+    const auto node = rig.manager.addModuleNode (attenuatorId, { 48, 48 });
+    auto* component = rig.canvas.findNodeComponent (UiTestRig::uuidOf (node));
+    REQUIRE (component != nullptr);
+
+    SECTION ("Kachel-Drag bewegt beide Achsen pixelgenau, der Tree zieht nach")
+    {
+        component->mouseDown (makeDragEvent (*component, { 10.0f, 10.0f }, { 10.0f, 10.0f }, false));
+        component->mouseDrag (makeDragEvent (*component, { 41.0f, 30.0f }, { 10.0f, 10.0f }, true));
+
+        // +31/+20 px ohne Raster — der Y-Anteil ging vor dem Positions-Write-
+        // Fix verloren (X-Write setzte die Component aufs alte Tree-Y zurück)
+        REQUIRE (component->getPosition() == juce::Point<int> (79, 68));
+        REQUIRE ((int) node.getProperty (conduit::id::positionX) == 79);
+        REQUIRE ((int) node.getProperty (conduit::id::positionY) == 68);
+    }
+
+    SECTION ("Kopfzeilen-Drag: Label-relative Events bewegen die Kachel korrekt")
+    {
+        // Das Titel-Label leitet als MouseListener an die Kachel weiter — hier
+        // wird der weitergeleitete Pfad direkt gefüttert (Label-Koordinaten),
+        // getEventRelativeTo muss auf die Kachel umrechnen
+        juce::Label* title = nullptr;
+        for (auto* child : component->getChildren())
+            if ((title = dynamic_cast<juce::Label*> (child)) != nullptr)
+                break;
+        REQUIRE (title != nullptr);
+
+        component->mouseDown (makeDragEvent (*title, { 5.0f, 5.0f }, { 5.0f, 5.0f }, false));
+        component->mouseDrag (makeDragEvent (*title, { 29.0f, 29.0f }, { 5.0f, 5.0f }, true));
+
+        REQUIRE (component->getPosition() == juce::Point<int> (72, 72));
+    }
+
+    SECTION ("Nahe Geschwister-Kanten rasten X und Y unabhängig ein")
+    {
+        const auto other = rig.manager.addModuleNode (attenuatorId, { 300, 100 });
+        REQUIRE (other.isValid());
+
+        // Drag endet ungesnappt bei (79, 93): Y liegt 7px unter der Oberkante
+        // des Nachbarn (100) → rastet auf gleiche Höhe; X (Abstand 221) nicht
+        component->mouseDown (makeDragEvent (*component, { 10.0f, 10.0f }, { 10.0f, 10.0f }, false));
+        component->mouseDrag (makeDragEvent (*component, { 41.0f, 55.0f }, { 10.0f, 10.0f }, true));
+
+        REQUIRE (component->getPosition() == juce::Point<int> (79, 100));
+
+        // Weiter zu (305, 145): X liegt 5px neben der linken Kante des
+        // Nachbarn → bündig untereinander; Y (Abstand 45) bleibt frei
+        component->mouseDrag (makeDragEvent (*component, { 236.0f, 55.0f }, { 10.0f, 10.0f }, true));
+
+        REQUIRE (component->getPosition() == juce::Point<int> (300, 145));
+    }
+}
+
+//==============================================================================
 TEST_CASE ("GraphManager: Parameter-Sync Tree → Atomic (UI/Preset/Undo-Pfad)", "[ui]")
 {
     UiTestRig rig;

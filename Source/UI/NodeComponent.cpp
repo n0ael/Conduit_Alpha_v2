@@ -1,5 +1,7 @@
 #include "NodeComponent.h"
 
+#include <cstdlib>
+
 #include "Modules/ConduitModule.h"
 #include "Modules/LinkAudioSendModule.h"
 #include "Modules/ScopeModule.h"
@@ -72,6 +74,11 @@ NodeComponent::NodeComponent (juce::ValueTree nodeTreeToBind,
         // Bei Erfolg zieht der Property-Listener den sanitierten Namen nach
     };
     addAndMakeVisible (titleLabel);
+
+    // Kopfzeile ist Grifffläche: das Label schluckt sonst alle Drags —
+    // weitergeleitete Events landen in mouseDown/mouseDrag (getEventRelativeTo
+    // rechnet um), Doppelklick-Rename bleibt unberührt
+    titleLabel.addMouseListener (this, false);
 
     // Ports aus den persistierten Kanalzahlen (Schema 6.2); Kanal-Labels der
     // I/O-Endpunkte zieht rebuildPorts() gleich mit nach
@@ -271,6 +278,37 @@ void NodeComponent::applyTreePosition()
 {
     setTopLeftPosition ((int) nodeTree.getProperty (id::positionX, 0),
                         (int) nodeTree.getProperty (id::positionY, 0));
+}
+
+juce::Point<int> NodeComponent::snapToSiblings (juce::Point<int> position) const
+{
+    auto* parent = getParentComponent();
+    if (parent == nullptr)
+        return position;
+
+    // Je Achse zur nächstgelegenen Geschwister-Kante innerhalb des
+    // Fangbereichs — X und Y rasten unabhängig (Kachel kann gleichzeitig
+    // auf Höhe von A und bündig unter B liegen)
+    auto bestDx = siblingSnapRange + 1;
+    auto bestDy = siblingSnapRange + 1;
+
+    for (auto* child : parent->getChildren())
+    {
+        const auto* other = dynamic_cast<NodeComponent*> (child);
+        if (other == nullptr || other == this)
+            continue;
+
+        const auto dx = other->getX() - position.x;
+        const auto dy = other->getY() - position.y;
+
+        if (std::abs (dx) < std::abs (bestDx))
+            bestDx = dx;
+        if (std::abs (dy) < std::abs (bestDy))
+            bestDy = dy;
+    }
+
+    return { std::abs (bestDx) <= siblingSnapRange ? position.x + bestDx : position.x,
+             std::abs (bestDy) <= siblingSnapRange ? position.y + bestDy : position.y };
 }
 
 juce::ValueTree NodeComponent::firstParameter() const
@@ -695,6 +733,7 @@ void NodeComponent::resized()
 
 void NodeComponent::mouseDown (const juce::MouseEvent& event)
 {
+    toFront (false);  // gegriffene Kachel über überlappende Nachbarn heben
     dragger.startDraggingComponent (this, event);
 }
 
@@ -703,8 +742,15 @@ void NodeComponent::mouseDrag (const juce::MouseEvent& event)
     // ≤ 1-Frame-Feedback: Component bewegt sich sofort, der Tree zieht nach.
     // Ohne UndoManager — ein Drag erzeugt sonst hunderte Undo-Schritte.
     dragger.dragComponent (this, event, nullptr);
-    nodeTree.setProperty (id::positionX, getX(), nullptr);
-    nodeTree.setProperty (id::positionY, getY(), nullptr);
+
+    // Beide Properties aus dem lokalen Wert schreiben: der X-Write ruft
+    // synchron applyTreePosition auf und setzt die Component auf das noch
+    // alte Tree-Y zurück — getY() danach wäre der alte Wert (Drag war
+    // dadurch auf horizontal beschränkt)
+    const auto snapped = snapToSiblings (getPosition());
+    setTopLeftPosition (snapped);
+    nodeTree.setProperty (id::positionX, snapped.x, nullptr);
+    nodeTree.setProperty (id::positionY, snapped.y, nullptr);
 }
 
 } // namespace conduit

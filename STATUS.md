@@ -1,6 +1,6 @@
 # Conduit Alpha — Projektstatus
 
-> Letzte Aktualisierung: 2026-07-01 | wird nach jedem Meilenstein gepflegt
+> Letzte Aktualisierung: 2026-07-02 | wird nach jedem Meilenstein gepflegt
 > Architektur-Referenz: [CLAUDE.md](CLAUDE.md) | Repo: n0ael/Conduit_Alpha_v2
 
 ## Fundament (steht komplett)
@@ -16,7 +16,14 @@
 
 ## Aktueller Meilenstein (Juli 2026 — in Arbeit)
 
-**Eingebettete Link-Audio-Send-Taps + Stereo-Pairing am Audio-Eingang (CLAUDE.md 7.2) — Schritt 4 von 4:**
+**Canvas-UX: Node-Drag-Fix + Kanten-Ausrichtung + Kopfzeilen-Griff (CLAUDE.md 10) — User-Feedback „Module verschieben ist merkwürdig":**
+
+- **Echter Bug gefunden (erklärt das „sinnlose Raster"):** `mouseDrag` schrieb `positionX` in den Tree; der synchrone Listener (`applyTreePosition`) setzte die Component dabei aufs noch alte Tree-Y zurück, der folgende `positionY`-Write las genau dieses `getY()` — **vertikales Verschieben ging komplett verloren**. Da die Platzierungs-Kaskade Nodes auf 24px-Stufen anlegt, saßen alle Kacheln auf festen 24px-Zeilen. Fix: Zielposition einmal berechnen, beide Properties aus dem lokalen Wert schreiben
+- **Kopfzeile ist jetzt Grifffläche:** das Titel-Label schluckte alle Drags (Header war komplett tot) — `titleLabel.addMouseListener` leitet an die Kachel weiter (`getEventRelativeTo` rechnet um), Doppelklick-Rename unverändert; gegriffene Kachel hebt sich per `toFront` über Nachbarn
+- **Kanten-Ausrichtung statt Grid (User-Entscheidung, revidiert nach Touch-Test):** Snap-to-Grid stotterte auf Touch → verworfen, dekoratives 24px-Hintergrund-Gitter entfernt. Stattdessen `snapToSiblings`: Bewegung ist pixelgenau, nur innerhalb von 10px rasten Oberkanten (gleiche Höhe) und linke Kanten (bündig untereinander) an den Geschwister-Kacheln ein — X/Y unabhängig, Endpunkt-Kacheln zählen als Referenz. Preset-/Tree-Positionen laden weiterhin exakt (kein Snap in `applyTreePosition`)
+- **Verifikation:** 167 Testfälle / 10434 Assertions grün (Debug + ASan). Neue Tests: Kachel-Drag end-to-end mit synthetischen MouseEvents (beide Achsen pixelgenau + Tree-Sync — deckte den Vertikal-Bug auf), Kopfzeilen-Drag mit Label-relativen Koordinaten, X/Y-unabhängiges Kanten-Einrasten. Smoke: zwei Attenuatoren per Doppelklick, einer am Kopfzeilen-Label gezogen — rastet 5px neben der Nachbar-Kante bündig ein, Canvas ohne Gitter (`dragsnap_smoke_before/after.png`)
+
+**Davor: Eingebettete Link-Audio-Send-Taps + Stereo-Pairing am Audio-Eingang (CLAUDE.md 7.2) — Schritt 4 von 4:**
 
 *Shutdown-Fix — abort() beim Beenden mit aktiver Link-Verbindung (User-Fund im Live-Smoke):*
 - **Symptom:** „abort() has been called" beim Schließen von Conduit, NUR wenn ein Link-Peer verbunden war. **Diagnose per SIGABRT-Stacktrace** (temporäre Instrumentierung): `std::bad_function_call` → `terminate` auf dem Link-IO-Thread, im UdpMessenger-Bye-Pfad, ausgelöst durch die Konstruktor-Lambda von `BasicLinkAudio`

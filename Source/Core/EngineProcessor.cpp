@@ -162,6 +162,9 @@ void EngineProcessor::ensureSessionScaleDefaults()
     if (! rootState.hasProperty (id::scaleType))
         rootState.setProperty (id::scaleType, toString (ScaleType::chromatic), nullptr);
 
+    if (! rootState.hasProperty (id::globalSwing))
+        rootState.setProperty (id::globalSwing, 0.0, nullptr);
+
     refreshScaleAtomics();
 }
 
@@ -172,11 +175,15 @@ void EngineProcessor::refreshScaleAtomics()
     scaleTypeAtomic.store (static_cast<int> (scaleTypeFromString (
                                rootState.getProperty (id::scaleType).toString())),
                            std::memory_order_relaxed);
+    globalSwingAtomic.store (juce::jlimit (0.0, 0.75,
+                                 (double) rootState.getProperty (id::globalSwing, 0.0)),
+                             std::memory_order_relaxed);
 }
 
 void EngineProcessor::valueTreePropertyChanged (juce::ValueTree& tree, const juce::Identifier& property)
 {
-    if (tree == rootState && (property == id::scaleRoot || property == id::scaleType))
+    if (tree == rootState && (property == id::scaleRoot || property == id::scaleType
+                              || property == id::globalSwing))
         refreshScaleAtomics();
 }
 
@@ -349,6 +356,7 @@ void EngineProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::Midi
     clockBus.current = linkClock.captureClockState (buffer.getNumSamples());
     clockBus.current.scaleRootNote  = scaleRootAtomic.load (std::memory_order_relaxed);
     clockBus.current.scaleTypeIndex = scaleTypeAtomic.load (std::memory_order_relaxed);
+    clockBus.current.globalSwing    = globalSwingAtomic.load (std::memory_order_relaxed);
 
     // Eingebetteter Input-Link-Send (7.2): NACH captureClockState (der Commit
     // braucht den SessionState-Stash dieses Blocks) und VOR dem Graph (der

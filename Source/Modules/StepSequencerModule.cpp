@@ -107,7 +107,7 @@ void StepSequencerModule::processBlock (juce::AudioBuffer<float>& buffer, juce::
 
     const auto rate        = static_cast<double> (rateTarget.load (std::memory_order_relaxed));
     const auto gateLength  = gateTarget.load (std::memory_order_relaxed);
-    const auto swing       = juce::jlimit (0.0, 0.75,
+    auto swing             = juce::jlimit (0.0, 0.75,
                                  static_cast<double> (swingTarget.load (std::memory_order_relaxed)));
     const auto direction   = juce::jlimit (0, 3, juce::roundToInt (directionTarget.load (std::memory_order_relaxed)));
     const auto mode        = juce::jlimit (0, 2, juce::roundToInt (modeTarget.load (std::memory_order_relaxed)));
@@ -127,6 +127,11 @@ void StepSequencerModule::processBlock (juce::AudioBuffer<float>& buffer, juce::
         positionPerSample  = session.beatsPerSample() * rate;
         scaleRootNote      = session.scaleRootNote;
         scaleTypeIndex     = session.scaleTypeIndex;
+
+        // Globaler Session-Swing (4.5): lokal 0 folgt dem Header-Regler,
+        // lokal > 0 überschreibt für dieses Modul
+        if (swing <= 0.0)
+            swing = juce::jlimit (0.0, 0.75, session.globalSwing);
     }
     else
     {

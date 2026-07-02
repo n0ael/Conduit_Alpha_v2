@@ -5,6 +5,7 @@
 
 #include <juce_data_structures/juce_data_structures.h>
 
+#include "Core/TapTempo.h"
 #include "Core/TransportSettings.h"
 #include "ModuleBrowser.h"
 #include "PushTiles.h"
@@ -66,8 +67,9 @@ public:
     void setCaptureStatus (bool recording, bool held, bool exporting);
     void setWarningText (const juce::String& warning);
 
-    /** Positions-/Swing-Anzeige (Schritt 4 verdrahtet die Quellen). */
-    void setPositionText (const juce::String& text);
+    /** Ableton-artige Positions-Anzeige „Takt. Beat. Sechzehntel" aus dem
+        Session-Beat (Quantum 4) — public static für Tests. */
+    [[nodiscard]] static juce::String formatPosition (double beatPosition);
 
     //==========================================================================
     static constexpr int preferredHeight = 56;
@@ -89,14 +91,23 @@ public:
     [[nodiscard]] push::TextTile& getUndoTile()     noexcept { return undoTile; }
     [[nodiscard]] push::TextTile& getLinkTile()     noexcept { return linkTile; }
     [[nodiscard]] push::ValueTile& getTempoTile()   noexcept { return tempoTile; }
+    [[nodiscard]] push::ValueTile& getSwingTile()   noexcept { return swingTile; }
     [[nodiscard]] push::TextTile& getAutomateTile()    noexcept { return automateTile; }
     [[nodiscard]] push::TextTile& getFixedLengthTile() noexcept { return fixedLengthTile; }
     [[nodiscard]] push::IconTile& getPageTile (int pageIndex) noexcept { return *pageTiles[(size_t) pageIndex]; }
+
+    /** Test-Seam: Tap mit injizierter Zeitbasis (Sekunden) — die Tap-Kachel
+        ruft dieselbe Logik mit der echten Uhr. */
+    void tapWithTime (double timeSeconds);
 
 private:
     void openBrowser();
     void openLinkMenu();
     void applyTempoText (const juce::String& entered);
+    void applySwingText (const juce::String& entered);
+    void setGlobalSwing (double swing);
+    [[nodiscard]] double getGlobalSwing() const;
+    void handleNudge (push::IconTile& tile, bool& wasDown, double factor);
 
     juce::ValueTree rootState;   // ref-counted Handle (Skala-Properties)
     LinkClock& linkClock;
@@ -133,6 +144,13 @@ private:
     std::vector<ModuleBrowser::Item> browserItems;
     int selectedPage = pageDevice;
     double tempoAtDragStart = 120.0;
+    double swingAtDragStart = 0.0;
+
+    // Tap-and-Commit + Nudge (Schritt 4)
+    TapTempo tapTempo;
+    bool tapPreviewShowing = false;
+    bool nudgeUpWasDown = false, nudgeDownWasDown = false;
+    double tempoBeforeNudge = 0.0;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (TransportBar)
 };

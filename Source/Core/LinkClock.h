@@ -76,6 +76,10 @@ public:
     void requestIsPlaying (bool shouldPlay);
     [[nodiscard]] bool isPlaying() const;
 
+    /** Session-Beat JETZT (inkl. Clock-Offset) — für die Positions-Anzeige
+        des Headers. Message Thread (die Audio-Seite nutzt captureClockState). */
+    [[nodiscard]] double getBeatPosition() const;
+
     //==========================================================================
     // Clock-Offset (User-Wunsch 2026-07-02, Muster Latenz-Trim 8.3)
 

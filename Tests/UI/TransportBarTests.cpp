@@ -39,6 +39,24 @@ struct TransportBarRig
     conduit::TransportBar bar { root, clock, settings };
 };
 
+/** Link merged Commits asynchron in die Session — direkt aufeinanderfolgende
+    setTempo-Commits können kurz vom Merge-Echo des vorigen überdeckt werden
+    (CI-Fund 02.07.). Deshalb poll-basiert statt sofort zu lesen. */
+bool waitForTempo (const conduit::LinkClock& clock, double expectedBpm)
+{
+    const auto deadline = juce::Time::getMillisecondCounterHiRes() + 2000.0;
+
+    while (juce::Time::getMillisecondCounterHiRes() < deadline)
+    {
+        if (std::abs (clock.getTempo() - expectedBpm) < 0.01)
+            return true;
+
+        juce::Thread::sleep (5);
+    }
+
+    return false;
+}
+
 } // namespace
 
 //==============================================================================
@@ -47,18 +65,18 @@ TEST_CASE ("TransportBar: Tempo-Edit committet in die Link-Session", "[transport
     TransportBarRig rig;
 
     rig.bar.getTempoTile().onCommitText ("140");
-    REQUIRE (rig.clock.getTempo() == Catch::Approx (140.0));
+    REQUIRE (waitForTempo (rig.clock, 140.0));
 
     // Komma-Eingabe und Clamping auf [20, 300]
     rig.bar.getTempoTile().onCommitText ("97,5");
-    REQUIRE (rig.clock.getTempo() == Catch::Approx (97.5));
+    REQUIRE (waitForTempo (rig.clock, 97.5));
 
     rig.bar.getTempoTile().onCommitText ("9999");
-    REQUIRE (rig.clock.getTempo() == Catch::Approx (300.0));
+    REQUIRE (waitForTempo (rig.clock, 300.0));
 
     // Unsinn ändert nichts
     rig.bar.getTempoTile().onCommitText ("abc");
-    REQUIRE (rig.clock.getTempo() == Catch::Approx (300.0));
+    REQUIRE (waitForTempo (rig.clock, 300.0));
 }
 
 TEST_CASE ("TransportBar: refresh() zieht Tempo und Peer-Status nach", "[transport][ui]")
@@ -66,6 +84,7 @@ TEST_CASE ("TransportBar: refresh() zieht Tempo und Peer-Status nach", "[transpo
     TransportBarRig rig;
 
     rig.clock.setTempo (87.25);
+    REQUIRE (waitForTempo (rig.clock, 87.25));
     rig.bar.refresh();
     REQUIRE (rig.bar.getTempoTile().getText() == "87.25");
 
@@ -133,6 +152,52 @@ TEST_CASE ("TransportBar: Skala-Combos schreiben die Root-Properties", "[transpo
     REQUIRE (rig.bar.getPlayTile().isEnabled());
     REQUIRE (rig.bar.getCaptureTile().isEnabled());
     REQUIRE (rig.bar.getPlusTile().isEnabled());
+}
+
+TEST_CASE ("TransportBar: formatPosition — Ableton-Zählweise Takt. Beat. Sechzehntel",
+           "[transport][ui]")
+{
+    using conduit::TransportBar;
+
+    REQUIRE (TransportBar::formatPosition (0.0)   == "1. 1. 1");
+    REQUIRE (TransportBar::formatPosition (1.0)   == "1. 2. 1");
+    REQUIRE (TransportBar::formatPosition (2.75)  == "1. 3. 4");
+    REQUIRE (TransportBar::formatPosition (10.5)  == "3. 3. 3");
+    REQUIRE (TransportBar::formatPosition (-3.0)  == "1. 1. 1");  // vor Session-Start
+}
+
+TEST_CASE ("TransportBar: Tap-and-Commit — Preview cyan, Commit-Tap setzt die Session",
+           "[transport][ui]")
+{
+    TransportBarRig rig;
+    rig.settings.setTapCount (2);  // kompakter Test: 2 Taps erfassen, Tap 3 committet
+
+    // Erfassung: 100 BPM (0,6 s Abstand) — Session bleibt bei 120
+    rig.bar.tapWithTime (100.0);
+    rig.bar.tapWithTime (100.6);
+    REQUIRE (rig.bar.getTempoTile().getText() == "100.00");
+    REQUIRE (waitForTempo (rig.clock, 120.0));
+
+    rig.bar.tapWithTime (101.2);   // Tap 3 = Commit
+    REQUIRE (waitForTempo (rig.clock, 100.0));
+}
+
+TEST_CASE ("TransportBar: Swing-Kachel schreibt die globale Root-Property", "[transport][ui]")
+{
+    TransportBarRig rig;
+
+    // Text-Commit in Prozent → Root-Property 0..0.75
+    rig.bar.getSwingTile().onCommitText ("25");
+    REQUIRE ((double) rig.root.getProperty (conduit::id::globalSwing, 0.0)
+             == Catch::Approx (0.25));
+
+    // Clamping auf 75 %
+    rig.bar.getSwingTile().onCommitText ("150");
+    REQUIRE ((double) rig.root.getProperty (conduit::id::globalSwing, 0.0)
+             == Catch::Approx (0.75));
+
+    rig.bar.refresh();
+    REQUIRE (rig.bar.getSwingTile().getText() == "75 %");
 }
 
 TEST_CASE ("TransportBar: Looper-Toggles schreiben die TransportSettings", "[transport][ui]")

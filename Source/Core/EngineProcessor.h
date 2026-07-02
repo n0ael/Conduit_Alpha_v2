@@ -174,9 +174,11 @@ private:
     juce::ValueTree rootState;
     juce::UndoManager undoManager;
 
-    // Globale Skala: Message Thread schreibt, Audio Thread liest (→ ClockBus)
-    std::atomic<int> scaleRootAtomic { 0 };
-    std::atomic<int> scaleTypeAtomic { 0 };
+    // Globale Skala + Session-Swing: Message Thread schreibt, Audio Thread
+    // liest (→ ClockBus)
+    std::atomic<int>    scaleRootAtomic { 0 };
+    std::atomic<int>    scaleTypeAtomic { 0 };
+    std::atomic<double> globalSwingAtomic { 0.0 };
 
     // true, solange processBlock() gerade läuft (Eintritt/Austritt) — Guard
     // für releaseResources(): der SPSC-Consumer-Wechsel der oscToAudioQueue

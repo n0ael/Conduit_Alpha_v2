@@ -166,6 +166,36 @@ TEST_CASE ("Sequencer-Swing verschiebt ungerade Steps sample-genau", "[sequencer
 }
 
 //==============================================================================
+TEST_CASE ("Globaler Session-Swing: lokal 0 folgt dem ClockState, lokal > 0 überschreibt (4.5)",
+           "[sequencer]")
+{
+    conduit::StepSequencerModule sequencer;
+    REQUIRE (sequencer.prepareForGraph (testSampleRate, 64).wasOk());
+
+    auto bus = makeBus (0.0);
+    bus.current.globalSwing = 0.5;  // Header-Regler der TransportBar
+    sequencer.setClockBus (&bus);
+    setParam (sequencer, "rate", 1.0f);
+    setParam (sequencer, "a1", 0.1f);
+    setParam (sequencer, "a2", 0.9f);
+
+    juce::AudioBuffer<float> buffer (8, 64);
+    juce::MidiBuffer midi;
+
+    // Lokaler Swing 0 → globaler Wert wirkt exakt wie lokaler Swing 0.5
+    sequencer.processBlock (buffer, midi);
+    REQUIRE (buffer.getSample (0, 23) == Approx (0.1f));
+    REQUIRE (buffer.getSample (0, 24) == Approx (0.9f));
+
+    // Lokaler Swing 0.25 überschreibt: a2 startet bei Sample 20 (16 × 1.25)
+    setParam (sequencer, "swing", 0.25f);
+    bus.current.beatAtBlockStart = 0.0;
+    sequencer.processBlock (buffer, midi);
+    REQUIRE (buffer.getSample (0, 19) == Approx (0.1f));
+    REQUIRE (buffer.getSample (0, 20) == Approx (0.9f));
+}
+
+//==============================================================================
 TEST_CASE ("Sequencer-Probability: deterministisch je Seed (IStochastic)", "[sequencer]")
 {
     const auto renderGates = [] (std::uint64_t seed)

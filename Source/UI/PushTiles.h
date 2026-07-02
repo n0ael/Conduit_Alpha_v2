@@ -79,7 +79,8 @@ private:
     (der Besitzer rechnet daraus den Wert), Doppelklick öffnet einen
     Inline-Editor, Enter/Fokusverlust committet den Text.
 */
-class ValueTile : public juce::Component
+class ValueTile : public juce::Component,
+                  public juce::SettableTooltipClient
 {
 public:
     explicit ValueTile (const juce::String& componentName);

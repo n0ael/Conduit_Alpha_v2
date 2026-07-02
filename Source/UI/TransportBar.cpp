@@ -61,12 +61,18 @@ TransportBar::TransportBar (juce::ValueTree rootTree, LinkClock& linkClockToUse,
         }
     };
 
-    tapTile.setEnabled (false);
-    tapTile.setTooltip (juce::String::fromUTF8 ("Tap-and-Commit-Tempo — folgt in Schritt 4"));
-    nudgeDownTile.setEnabled (false);
-    nudgeUpTile.setEnabled (false);
-    nudgeDownTile.setTooltip (juce::String::fromUTF8 ("Tempo-Nudge — folgt in Schritt 4"));
-    nudgeUpTile.setTooltip (juce::String::fromUTF8 ("Tempo-Nudge — folgt in Schritt 4"));
+    // Tap-and-Commit (User-Entwurf): n Taps erfassen, der (n+1)-te committet
+    // zur Link-Session; n steht im Link-Menü. Preview cyan in der Tempo-Kachel.
+    tapTile.setTooltip (juce::String::fromUTF8 ("Tap-Tempo: n Taps erfassen, der nächste committet (n im Link-Menü)"));
+    tapTile.onClick = [this]
+    { tapWithTime (juce::Time::getMillisecondCounterHiRes() * 0.001); };
+
+    // Nudge (DJ-Angleichen): solange gehalten läuft die Session ±2 % —
+    // Loslassen stellt das Tempo wieder her, der Phasen-Versatz bleibt
+    nudgeDownTile.setTooltip (juce::String::fromUTF8 ("Nudge: Tempo −2 % solange gehalten"));
+    nudgeUpTile.setTooltip (juce::String::fromUTF8 ("Nudge: Tempo +2 % solange gehalten"));
+    nudgeDownTile.onStateChange = [this] { handleNudge (nudgeDownTile, nudgeDownWasDown, 0.98); };
+    nudgeUpTile.onStateChange   = [this] { handleNudge (nudgeUpTile,   nudgeUpWasDown,   1.02); };
 
     // -- Tempo/Position/Swing/Link -------------------------------------------
     tempoTile.setCaption ("BPM");
@@ -81,12 +87,16 @@ TransportBar::TransportBar (juce::ValueTree rootTree, LinkClock& linkClockToUse,
     tempoTile.onCommitText = [this] (const juce::String& entered) { applyTempoText (entered); };
 
     positionTile.setCaption ("POS");
-    positionTile.setText ("1. 1. 1");
-    positionTile.setEnabled (false);  // Quelle folgt in Schritt 4
+    positionTile.setText ("1. 1. 1");  // Anzeige folgt über refresh()
 
+    // Globaler Session-Swing (4.5): Root-Property, ohne Undo (Session-Setting
+    // wie die Skala) — Sequencer mit lokalem Swing 0 folgen dem Wert
     swingTile.setCaption ("SWING");
-    swingTile.setText ("0 %");
-    swingTile.setEnabled (false);     // globaler Swing folgt in Schritt 4
+    swingTile.setTooltip (juce::String::fromUTF8 ("Globaler Swing — lokaler Sequencer-Swing > 0 überschreibt"));
+    swingTile.onDragStart = [this] { swingAtDragStart = getGlobalSwing(); };
+    swingTile.onDrag = [this] (float totalDeltaY)
+    { setGlobalSwing (swingAtDragStart + (double) totalDeltaY * 0.0025); };
+    swingTile.onCommitText = [this] (const juce::String& entered) { applySwingText (entered); };
 
     linkTile.setTooltip (juce::String::fromUTF8 ("Link-Menü: Start/Stop-Sync, Clock-Offset"));
     linkTile.onClick = [this] { openLinkMenu(); };
@@ -200,9 +210,24 @@ void TransportBar::openLinkMenu()
 //==============================================================================
 void TransportBar::refresh()
 {
-    // Kein Kampf mit dem User: während eines Tempo-Drags gewinnt die Kachel
-    if (! tempoTile.isMouseButtonDown (true))
+    const auto now = juce::Time::getMillisecondCounterHiRes() * 0.001;
+
+    // Tap-Preview verlischt nach dem Timeout — danach folgt die Kachel
+    // wieder der Session
+    if (tapPreviewShowing && ! tapTempo.isActive (now))
+    {
+        tapPreviewShowing = false;
+        tempoTile.setAccentColour (push::colours::text);
+        tapTempo.reset();
+    }
+
+    // Kein Kampf mit dem User: während Tempo-Drag oder Tap-Preview gewinnt
+    // die Kachel
+    if (! tempoTile.isMouseButtonDown (true) && ! tapPreviewShowing)
         tempoTile.setText (formatTempo (linkClock.getTempo()));
+
+    positionTile.setText (formatPosition (linkClock.getBeatPosition()));
+    swingTile.setText (juce::String (juce::roundToInt (getGlobalSwing() * 100.0)) + " %");
 
     const auto numPeers = linkClock.getNumPeers();
     linkTile.setText (numPeers == 0 ? juce::String ("Link")
@@ -233,9 +258,87 @@ void TransportBar::setWarningText (const juce::String& warning)
     resized();
 }
 
-void TransportBar::setPositionText (const juce::String& text)
+juce::String TransportBar::formatPosition (double beatPosition)
 {
-    positionTile.setText (text);
+    // Quantum 4 (4/4, wie die LinkClock): Takt. Beat. Sechzehntel — 1-basiert
+    const auto beat      = juce::jmax (0.0, beatPosition);
+    const auto bar       = (int) (beat / 4.0);
+    const auto beatInBar = (int) (beat - bar * 4.0);
+    const auto sixteenth = (int) ((beat - bar * 4.0 - beatInBar) * 4.0);
+
+    return juce::String (bar + 1) + ". " + juce::String (beatInBar + 1)
+           + ". " + juce::String (sixteenth + 1);
+}
+
+void TransportBar::tapWithTime (double timeSeconds)
+{
+    tapTempo.setRequiredTaps (transportSettings.getTapCount());
+    const auto result = tapTempo.tap (timeSeconds);
+
+    if (! result.hasPreview)
+        return;
+
+    const auto previewBpm = juce::jlimit (minTempo, maxTempo, result.previewBpm);
+
+    if (result.committed)
+    {
+        // Commit-Tap: Tempo in die Link-Session, Kachel zurück in Normalfarbe
+        linkClock.setTempo (previewBpm);
+        tempoTile.setAccentColour (push::colours::text);
+        tempoTile.setText (formatTempo (linkClock.getTempo()));
+        tapPreviewShowing = false;
+    }
+    else
+    {
+        // Erfassungs-Phase: Preview cyan, Session bleibt unberührt
+        tempoTile.setAccentColour (push::colours::ledCyan);
+        tempoTile.setText (formatTempo (previewBpm));
+        tapPreviewShowing = true;
+    }
+}
+
+void TransportBar::handleNudge (push::IconTile& tile, bool& wasDown, double factor)
+{
+    const auto down = tile.isDown();
+
+    if (down == wasDown)
+        return;  // onStateChange feuert auch für Hover — nur Down-Flanken zählen
+
+    wasDown = down;
+
+    if (down)
+    {
+        tempoBeforeNudge = linkClock.getTempo();
+        linkClock.setTempo (juce::jlimit (minTempo, maxTempo, tempoBeforeNudge * factor));
+        tile.setActive (true);
+    }
+    else
+    {
+        // Loslassen: Rate zurück — der aufgelaufene Phasen-Versatz bleibt
+        // (genau das Angleichen wie am Turntable)
+        linkClock.setTempo (tempoBeforeNudge);
+        tile.setActive (false);
+    }
+}
+
+void TransportBar::setGlobalSwing (double swing)
+{
+    rootState.setProperty (id::globalSwing, juce::jlimit (0.0, 0.75, swing), nullptr);
+    swingTile.setText (juce::String (juce::roundToInt (getGlobalSwing() * 100.0)) + " %");
+}
+
+double TransportBar::getGlobalSwing() const
+{
+    return juce::jlimit (0.0, 0.75, (double) rootState.getProperty (id::globalSwing, 0.0));
+}
+
+void TransportBar::applySwingText (const juce::String& entered)
+{
+    const auto percent = entered.retainCharacters ("0123456789.,")
+                                .replaceCharacter (',', '.')
+                                .getDoubleValue();
+
+    setGlobalSwing (percent / 100.0);
 }
 
 void TransportBar::setSelectedPage (int pageIndex)

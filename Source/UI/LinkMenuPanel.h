@@ -29,11 +29,12 @@ public:
     void paint (juce::Graphics& g) override;
 
     static constexpr int panelWidth  = 260;
-    static constexpr int panelHeight = 132;
+    static constexpr int panelHeight = 182;
 
     // Test-Zugriff
     [[nodiscard]] juce::ToggleButton& getSyncToggle() noexcept { return syncToggle; }
     [[nodiscard]] juce::Slider& getOffsetSlider() noexcept { return offsetSlider; }
+    [[nodiscard]] juce::Slider& getTapCountSlider() noexcept { return tapCountSlider; }
 
 private:
     TransportSettings& settings;
@@ -42,6 +43,8 @@ private:
     juce::ToggleButton syncToggle { "Start/Stop-Sync" };
     juce::Label offsetCaption;
     juce::Slider offsetSlider { juce::Slider::LinearHorizontal, juce::Slider::TextBoxRight };
+    juce::Label tapCaption;
+    juce::Slider tapCountSlider { juce::Slider::LinearHorizontal, juce::Slider::TextBoxRight };
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (LinkMenuPanel)
 };

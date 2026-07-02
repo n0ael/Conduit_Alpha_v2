@@ -178,6 +178,15 @@ bool LinkClock::isPlaying() const
     return impl->link.captureAppSessionState().isPlaying();
 }
 
+double LinkClock::getBeatPosition() const
+{
+    const auto sessionState = impl->link.captureAppSessionState();
+    const auto offset = std::chrono::microseconds (
+        (std::int64_t) clockOffsetMicros.load (std::memory_order_relaxed));
+
+    return sessionState.beatAtTime (impl->link.clock().micros() + offset, quantum);
+}
+
 //==============================================================================
 void LinkClock::setClockOffsetMs (double offsetMs)
 {

@@ -46,6 +46,11 @@ public:
     [[nodiscard]] bool isFixedLengthEnabled() const noexcept { return fixedLength; }
     void setFixedLengthEnabled (bool enabled);
 
+    /** Taps, die das Tempo erfassen — der (n+1)-te Tap committet zur Session
+        (Tap-and-Commit, User-Entwurf 2026-07-02). Clamp 2..8, Default 4. */
+    [[nodiscard]] int getTapCount() const noexcept { return tapCount; }
+    void setTapCount (int taps);
+
 private:
     void loadFromFile();
     void writeValue (const char* key, const juce::var& value);
@@ -56,6 +61,7 @@ private:
     double clockOffsetMs = 0.0;
     bool   automate      = false;
     bool   fixedLength   = false;
+    int    tapCount      = 4;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (TransportSettings)
 };

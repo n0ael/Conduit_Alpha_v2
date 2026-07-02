@@ -18,6 +18,11 @@ struct ClockState
     int scaleRootNote  = 0;             // 0–11, C = 0 — globale Session-Tonalität
     int scaleTypeIndex = 0;             // conduit::ScaleType als int (0 = chromatic)
 
+    /** Globaler Session-Swing 0..0.75 (Root-Property, Header-Regler):
+        IClockSlaves mit lokalem Swing 0 folgen diesem Wert, lokaler
+        Swing > 0 überschreibt pro Modul (4.5, User-Entscheidung 2026-07-02). */
+    double globalSwing = 0.0;
+
     /** Beat-Fortschritt pro Sample — für sample-genaue Phasen in processBlock(). */
     [[nodiscard]] double beatsPerSample() const noexcept
     {

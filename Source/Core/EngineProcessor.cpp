@@ -55,6 +55,11 @@ EngineProcessor::EngineProcessor()
     meterSettings.addChangeListener (this);
     applyMeterSettings();
 
+    // Transport-Settings in die LinkClock spiegeln (Start/Stop-Sync,
+    // Clock-Offset) — Start + bei jeder Änderung aus dem Link-Menü
+    transportSettings.addChangeListener (this);
+    applyTransportSettings();
+
     // Eingebetteter Input-Link-Send (7.2): Zustand lebt in channelNames —
     // jeder Broadcast (Enable-Toggle, Pairing, Label-Rename, Device-Wechsel
     // via setActiveDevice) zieht den Diff nach
@@ -102,6 +107,7 @@ EngineProcessor::~EngineProcessor()
 {
     channelNames.removeChangeListener (this);
     meterSettings.removeChangeListener (this);
+    transportSettings.removeChangeListener (this);
     rootState.removeListener (this);
 }
 
@@ -110,8 +116,16 @@ void EngineProcessor::changeListenerCallback (juce::ChangeBroadcaster* source)
 {
     if (source == &meterSettings)
         applyMeterSettings();
+    else if (source == &transportSettings)
+        applyTransportSettings();
     else if (source == &channelNames)
         rebuildInputSends();
+}
+
+void EngineProcessor::applyTransportSettings()
+{
+    linkClock.setStartStopSyncEnabled (transportSettings.isStartStopSyncEnabled());
+    linkClock.setClockOffsetMs (transportSettings.getClockOffsetMs());
 }
 
 void EngineProcessor::rebuildInputSends()
@@ -473,6 +487,7 @@ LevelMeter& EngineProcessor::getInputLevels() noexcept  { return inputLevels; }
 LevelMeter& EngineProcessor::getOutputLevels() noexcept { return outputLevels; }
 MeterSettings& EngineProcessor::getMeterSettings() noexcept { return meterSettings; }
 InputLinkSend& EngineProcessor::getInputLinkSend() noexcept { return inputLinkSend; }
+TransportSettings& EngineProcessor::getTransportSettings() noexcept { return transportSettings; }
 OscSendSettings& EngineProcessor::getOscSendSettings() noexcept { return oscSendSettings; }
 OscSendService& EngineProcessor::getOscSendService() noexcept   { return oscSendService; }
 

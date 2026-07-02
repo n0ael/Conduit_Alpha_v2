@@ -5,6 +5,7 @@
 
 #include <juce_data_structures/juce_data_structures.h>
 
+#include "Core/TransportSettings.h"
 #include "ModuleBrowser.h"
 #include "PushTiles.h"
 
@@ -44,7 +45,8 @@ class LinkClock;
 class TransportBar final : public juce::Component
 {
 public:
-    TransportBar (juce::ValueTree rootTree, LinkClock& linkClockToUse);
+    TransportBar (juce::ValueTree rootTree, LinkClock& linkClockToUse,
+                  TransportSettings& transportSettingsToUse);
 
     //==========================================================================
     // Hooks — vom EngineEditor verdrahtet [Message Thread]
@@ -87,19 +89,25 @@ public:
     [[nodiscard]] push::TextTile& getUndoTile()     noexcept { return undoTile; }
     [[nodiscard]] push::TextTile& getLinkTile()     noexcept { return linkTile; }
     [[nodiscard]] push::ValueTile& getTempoTile()   noexcept { return tempoTile; }
+    [[nodiscard]] push::TextTile& getAutomateTile()    noexcept { return automateTile; }
+    [[nodiscard]] push::TextTile& getFixedLengthTile() noexcept { return fixedLengthTile; }
     [[nodiscard]] push::IconTile& getPageTile (int pageIndex) noexcept { return *pageTiles[(size_t) pageIndex]; }
 
 private:
     void openBrowser();
+    void openLinkMenu();
     void applyTempoText (const juce::String& entered);
 
     juce::ValueTree rootState;   // ref-counted Handle (Skala-Properties)
     LinkClock& linkClock;
+    TransportSettings& transportSettings;
 
     // Transport links
     push::IconTile playTile     { push::Icon::play,         "play",     push::colours::ledGreen };
     push::IconTile tapeTile     { push::Icon::tapeLoop,     "tape",     push::colours::ledRed };
     push::IconTile captureTile  { push::Icon::captureFrame, "capture",  push::colours::ledOrange };
+    push::TextTile fixedLengthTile { "Fixed Length" };
+    push::TextTile automateTile    { "Automate", push::colours::ledRed };
     push::TextTile tapTile      { "Tap" };
     push::IconTile nudgeDownTile { push::Icon::nudgeLeft,   "nudgeDown" };
     push::IconTile nudgeUpTile   { push::Icon::nudgeRight,  "nudgeUp" };

@@ -109,6 +109,7 @@ set(CONDUIT_CPP_SOURCES
     Source/Core/OscSendSettings.cpp
     Source/Core/RemoteModuleBinder.cpp
     Source/Core/SourceNameResolver.cpp
+    Source/Core/TransportSettings.cpp
     Source/Core/Capture/BufferPool.cpp
     Source/Core/Capture/CaptureChannel.cpp
     Source/Core/Capture/CaptureService.cpp
@@ -133,6 +134,7 @@ set(CONDUIT_CPP_SOURCES
     Source/UI/LevelMeterBar.cpp
     Source/UI/LinkAudioSendPanel.cpp
     Source/UI/LinkAudioStatusBadge.cpp
+    Source/UI/LinkMenuPanel.cpp
     Source/UI/LinkSendCreateDialog.cpp
     Source/UI/ModuleBrowser.cpp
     Source/UI/NodeCanvas.cpp
@@ -168,6 +170,7 @@ target_sources(Conduit PRIVATE
     Source/Core/OscSendSettings.h
     Source/Core/RemoteModuleBinder.h
     Source/Core/SourceNameResolver.h
+    Source/Core/TransportSettings.h
     Source/Core/Capture/BufferPool.h
     Source/Core/Capture/CaptureChannel.h
     Source/Core/Capture/CaptureGate.h
@@ -204,6 +207,7 @@ target_sources(Conduit PRIVATE
     Source/UI/InputSendButton.h
     Source/UI/LinkAudioSendPanel.h
     Source/UI/LinkAudioStatusBadge.h
+    Source/UI/LinkMenuPanel.h
     Source/UI/LinkSendCreateDialog.h
     Source/UI/NodeCanvas.h
     Source/UI/NodeComponent.h
@@ -323,6 +327,7 @@ if(CONDUIT_BUILD_TESTS)
         Tests/Core/SequencerTests.cpp
         Tests/Core/SourceNameResolverTests.cpp
         Tests/Core/ThreadingStressTests.cpp
+        Tests/Core/TransportLinkTests.cpp
         Tests/UI/NodeCanvasTests.cpp
         Tests/UI/LevelMeterBarTests.cpp
         Tests/UI/LinkAudioSendPanelTests.cpp
@@ -352,6 +357,7 @@ if(CONDUIT_BUILD_TESTS)
         Source/Core/OscSendSettings.cpp
         Source/Core/RemoteModuleBinder.cpp
         Source/Core/SourceNameResolver.cpp
+        Source/Core/TransportSettings.cpp
         Source/Core/Capture/BufferPool.cpp
         Source/Core/Capture/CaptureChannel.cpp
         Source/Core/Capture/CaptureService.cpp
@@ -376,6 +382,7 @@ if(CONDUIT_BUILD_TESTS)
         Source/UI/LevelMeterBar.cpp
         Source/UI/LinkAudioSendPanel.cpp
         Source/UI/LinkAudioStatusBadge.cpp
+        Source/UI/LinkMenuPanel.cpp
         Source/UI/LinkSendCreateDialog.cpp
         Source/UI/NodeCanvas.cpp
         Source/UI/NodeComponent.cpp

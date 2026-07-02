@@ -1,6 +1,7 @@
 #include "TransportBar.h"
 
 #include "Core/LinkClock.h"
+#include "LinkMenuPanel.h"
 #include "Modules/ConduitModule.h"
 #include "Util/ScaleQuantizer.h"
 
@@ -20,18 +21,31 @@ juce::String formatTempo (double bpm)
 } // namespace
 
 //==============================================================================
-TransportBar::TransportBar (juce::ValueTree rootTree, LinkClock& linkClockToUse)
-    : rootState (std::move (rootTree)), linkClock (linkClockToUse)
+TransportBar::TransportBar (juce::ValueTree rootTree, LinkClock& linkClockToUse,
+                            TransportSettings& transportSettingsToUse)
+    : rootState (std::move (rootTree)), linkClock (linkClockToUse),
+      transportSettings (transportSettingsToUse)
 {
     // -- Transport links ------------------------------------------------------
-    // Play/Tape/Metronom bekommen ihre Funktion in Schritt 3/5 — sichtbar,
-    // aber disabled, damit das Layout von Anfang an komplett steht
-    playTile.setEnabled (false);
-    playTile.setTooltip (juce::String::fromUTF8 ("Link Start/Stop — folgt in Schritt 3"));
+    // Play = Link-Transport: mit Start/Stop-Sync starten/stoppen alle Peers
+    // (inkl. Ableton); die LED folgt dem Session-Zustand über refresh()
+    playTile.setTooltip ("Link Start/Stop");
+    playTile.onClick = [this] { linkClock.requestIsPlaying (! linkClock.isPlaying()); };
+
     tapeTile.setEnabled (false);
     tapeTile.setTooltip (juce::String::fromUTF8 ("Looper-Page — eigener Meilenstein"));
     metronomeTile.setEnabled (false);
     metronomeTile.setTooltip (juce::String::fromUTF8 ("Metronom — folgt in Schritt 5"));
+
+    // Vorbereitete Looper-Toggles (Endless-Meilenstein) — Zustand persistiert
+    // bereits in den TransportSettings, die LED folgt über refresh()
+    fixedLengthTile.setTooltip (juce::String::fromUTF8 ("Fixed Length — Looper-Länge (Endless-Meilenstein)"));
+    fixedLengthTile.onClick = [this]
+    { transportSettings.setFixedLengthEnabled (! transportSettings.isFixedLengthEnabled()); };
+
+    automateTile.setTooltip (juce::String::fromUTF8 ("Automate — Looper-Automation (Endless-Meilenstein)"));
+    automateTile.onClick = [this]
+    { transportSettings.setAutomateEnabled (! transportSettings.isAutomateEnabled()); };
 
     captureTile.setTooltip ("Capture: alle Aufnahmen exportieren\nShift-Klick: Kanal-Panel");
     captureTile.onClick = [this]
@@ -74,8 +88,8 @@ TransportBar::TransportBar (juce::ValueTree rootTree, LinkClock& linkClockToUse)
     swingTile.setText ("0 %");
     swingTile.setEnabled (false);     // globaler Swing folgt in Schritt 4
 
-    linkTile.setEnabled (false);      // Dropdown-Menü folgt in Schritt 3
-    linkTile.setTooltip (juce::String::fromUTF8 ("Link-Menü (Start/Stop-Sync, Clock-Offset) — folgt in Schritt 3"));
+    linkTile.setTooltip (juce::String::fromUTF8 ("Link-Menü: Start/Stop-Sync, Clock-Offset"));
+    linkTile.onClick = [this] { openLinkMenu(); };
 
     // -- Pages (Reihenfolge wie auf dem Push-Controller) ----------------------
     const push::Icon pageIcons[] = { push::Icon::pageGrid, push::Icon::pageMixer,
@@ -150,11 +164,14 @@ TransportBar::TransportBar (juce::ValueTree rootTree, LinkClock& linkClockToUse)
     warningLabel.setJustificationType (juce::Justification::centredRight);
 
     for (auto* component : std::initializer_list<juce::Component*> {
-             &playTile, &tapeTile, &captureTile, &tapTile, &nudgeDownTile, &nudgeUpTile,
+             &playTile, &tapeTile, &captureTile, &fixedLengthTile, &automateTile,
+             &tapTile, &nudgeDownTile, &nudgeUpTile,
              &metronomeTile, &tempoTile, &positionTile, &swingTile, &linkTile,
              &plusTile, &undoTile, &saveTile, &gearTile, &rootCombo, &scaleCombo,
              &warningLabel })
         addAndMakeVisible (component);
+
+    refresh();  // LED-Zustände sofort (Play/Looper-Toggles aus Settings)
 }
 
 //==============================================================================
@@ -173,6 +190,13 @@ void TransportBar::openBrowser()
                                             plusTile.getScreenBounds(), nullptr);
 }
 
+void TransportBar::openLinkMenu()
+{
+    auto panel = std::make_unique<LinkMenuPanel> (transportSettings, linkClock);
+    juce::CallOutBox::launchAsynchronously (std::move (panel),
+                                            linkTile.getScreenBounds(), nullptr);
+}
+
 //==============================================================================
 void TransportBar::refresh()
 {
@@ -184,6 +208,12 @@ void TransportBar::refresh()
     linkTile.setText (numPeers == 0 ? juce::String ("Link")
                                     : "Link " + juce::String ((int) numPeers));
     linkTile.setActive (numPeers > 0);
+
+    // Play-LED folgt der Session (auch wenn Ableton startet/stoppt);
+    // Looper-Toggles folgen den Settings (Repaint nur bei Änderung)
+    playTile.setActive (linkClock.isPlaying());
+    fixedLengthTile.setActive (transportSettings.isFixedLengthEnabled());
+    automateTile.setActive (transportSettings.isAutomateEnabled());
 }
 
 void TransportBar::setCaptureStatus (bool recording, bool held, bool exporting)
@@ -255,6 +285,9 @@ void TransportBar::resized()
     placeLeft (playTile,    tile);
     placeLeft (tapeTile,    tile);
     placeLeft (captureTile, tile, 14);
+
+    placeLeft (fixedLengthTile, 92);
+    placeLeft (automateTile,    76, 14);
 
     placeLeft (tapTile,       52);
     placeLeft (nudgeDownTile, 30);

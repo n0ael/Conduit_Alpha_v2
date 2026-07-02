@@ -14,6 +14,7 @@
 #include "OscController.h"
 #include "OscSendService.h"
 #include "OscSendSettings.h"
+#include "TransportSettings.h"
 #include "RemoteModuleBinder.h"
 #include "Interfaces/IClockSource.h"
 #include "Modules/ConduitModule.h"
@@ -128,6 +129,11 @@ public:
         an den audio_in-Kanal-Zeilen liest den Status daraus. */
     [[nodiscard]] InputLinkSend& getInputLinkSend() noexcept;
 
+    /** Transport-/Link-Einstellungen des Push-Headers (Start/Stop-Sync,
+        Clock-Offset, Looper-Toggles) — App-Zustand; der EngineProcessor
+        lauscht und speist die LinkClock (applyTransportSettings). */
+    [[nodiscard]] TransportSettings& getTransportSettings() noexcept;
+
     /** OSC-Send-Pfad (7.3): Ziel-Host/Port/Enable (App-Zustand, Settings-UI)
         und der Snapshot-Diff-Sender selbst. */
     [[nodiscard]] OscSendSettings& getOscSendSettings() noexcept;
@@ -157,6 +163,7 @@ private:
     // ChannelNames → Input-Link-Sends (Enable/Pairing/Labels)
     void changeListenerCallback (juce::ChangeBroadcaster* source) override;
     void applyMeterSettings();
+    void applyTransportSettings();  // TransportSettings → LinkClock
 
     /** Zieht die Input-Link-Sends diff-basiert aus dem ChannelNames-Zustand
         nach (Enable-Flags, Pairing, Labels) — bei jedem ChannelNames-
@@ -216,6 +223,10 @@ private:
 
     // Clip-Reset-Modus der Pegelanzeigen (App-Zustand); speist die LevelMeter
     MeterSettings meterSettings;
+
+    // Transport-/Link-Einstellungen des Push-Headers (App-Zustand); der
+    // ChangeListener speist die LinkClock (Start/Stop-Sync, Clock-Offset)
+    TransportSettings transportSettings;
 
     juce::AudioProcessorGraph graph;
     juce::AudioProcessorGraph::Node::Ptr audioInputNode;

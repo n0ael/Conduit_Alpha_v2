@@ -2,6 +2,7 @@
 #include <catch2/catch_test_macros.hpp>
 
 #include "Core/LinkClock.h"
+#include "Core/TransportSettings.h"
 #include "Modules/ConduitModule.h"
 #include "UI/TransportBar.h"
 
@@ -16,12 +17,26 @@ juce::ValueTree makeRootTree()
     return root;
 }
 
+juce::PropertiesFile::Options tempSettingsOptions (const juce::File& folder)
+{
+    juce::PropertiesFile::Options options;
+    options.applicationName = "ConduitTransportBarTests";
+    options.filenameSuffix  = ".settings";
+    options.folderName      = folder.getFullPathName();  // absoluter Pfad
+    return options;
+}
+
 struct TransportBarRig
 {
+    ~TransportBarRig() { folder.deleteRecursively(); }
+
     juce::ScopedJuceInitialiser_GUI juceRuntime;
+    juce::File folder = juce::File::getSpecialLocation (juce::File::tempDirectory)
+                            .getChildFile ("ConduitTransportBarTests");
     juce::ValueTree root = makeRootTree();
     conduit::LinkClock clock { 120.0, "ConduitTest" };
-    conduit::TransportBar bar { root, clock };
+    conduit::TransportSettings settings { tempSettingsOptions (folder) };
+    conduit::TransportBar bar { root, clock, settings };
 };
 
 } // namespace
@@ -114,10 +129,27 @@ TEST_CASE ("TransportBar: Skala-Combos schreiben die Root-Properties", "[transpo
 
     rig.bar.setBounds (0, 0, 1480, 56);  // Layout einmal durchlaufen
 
-    // Platzhalter-Kacheln sind sichtbar, aber disabled (Schritt 3–5)
-    REQUIRE_FALSE (rig.bar.getPlayTile().isEnabled());
+    // Play/Capture/Plus sind funktional; Metronom folgt in Schritt 5
+    REQUIRE (rig.bar.getPlayTile().isEnabled());
     REQUIRE (rig.bar.getCaptureTile().isEnabled());
     REQUIRE (rig.bar.getPlusTile().isEnabled());
+}
+
+TEST_CASE ("TransportBar: Looper-Toggles schreiben die TransportSettings", "[transport][ui]")
+{
+    TransportBarRig rig;
+
+    REQUIRE_FALSE (rig.settings.isAutomateEnabled());
+    rig.bar.getAutomateTile().onClick();
+    REQUIRE (rig.settings.isAutomateEnabled());
+
+    rig.bar.getFixedLengthTile().onClick();
+    REQUIRE (rig.settings.isFixedLengthEnabled());
+
+    // refresh() zieht die LED-Zustände aus den Settings nach
+    rig.bar.refresh();
+    REQUIRE (rig.bar.getAutomateTile().isActive());
+    REQUIRE (rig.bar.getFixedLengthTile().isActive());
 }
 
 //==============================================================================

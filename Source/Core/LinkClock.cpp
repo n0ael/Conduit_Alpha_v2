@@ -5,6 +5,7 @@
 #include <ableton/LinkAudio.hpp>
 
 #include <algorithm>
+#include <chrono>
 #include <optional>
 
 #include "LinkClock.h"
@@ -152,6 +153,41 @@ double LinkClock::getTempo() const
 std::size_t LinkClock::getNumPeers() const
 {
     return impl->link.numPeers();
+}
+
+//==============================================================================
+void LinkClock::setStartStopSyncEnabled (bool enabled)
+{
+    impl->link.enableStartStopSync (enabled);
+}
+
+bool LinkClock::isStartStopSyncEnabled() const
+{
+    return impl->link.isStartStopSyncEnabled();
+}
+
+void LinkClock::requestIsPlaying (bool shouldPlay)
+{
+    auto sessionState = impl->link.captureAppSessionState();
+    sessionState.setIsPlaying (shouldPlay, impl->link.clock().micros());
+    impl->link.commitAppSessionState (sessionState);
+}
+
+bool LinkClock::isPlaying() const
+{
+    return impl->link.captureAppSessionState().isPlaying();
+}
+
+//==============================================================================
+void LinkClock::setClockOffsetMs (double offsetMs)
+{
+    clockOffsetMicros.store (juce::jlimit (-100.0, 100.0, offsetMs) * 1000.0,
+                             std::memory_order_relaxed);
+}
+
+double LinkClock::getClockOffsetMs() const noexcept
+{
+    return clockOffsetMicros.load (std::memory_order_relaxed) / 1000.0;
 }
 
 //==============================================================================
@@ -326,9 +362,15 @@ ClockState LinkClock::captureClockState (int) noexcept
     // optional mit Inline-Storage, die Zuweisung allokiert nicht.
     impl->blockSessionState = sessionState;
 
+    // Clock-Offset: Beat-Ablesung auf verschobener Zeitbasis (Latenz-Angleich
+    // gegen andere Peers, Muster 8.3) — reine Lese-Verschiebung, der
+    // SessionState selbst bleibt unberührt
+    const auto offset = std::chrono::microseconds (
+        (std::int64_t) clockOffsetMicros.load (std::memory_order_relaxed));
+
     ClockState state;
     state.bpm              = sessionState.tempo();
-    state.beatAtBlockStart = sessionState.beatAtTime (now, quantum);
+    state.beatAtBlockStart = sessionState.beatAtTime (now + offset, quantum);
     state.sampleRate       = currentSampleRate.load (std::memory_order_relaxed);
     state.isPlaying        = sessionState.isPlaying();
     return state;

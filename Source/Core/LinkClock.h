@@ -64,6 +64,29 @@ public:
     [[nodiscard]] std::size_t getNumPeers() const;
 
     //==========================================================================
+    // Link-Transport (Start/Stop-Sync) — Message Thread
+
+    /** Start/Stop-Sync der Session (Konstruktor-Default: an). Aus = Play
+        wirkt nur lokal, Peers bleiben unberührt. */
+    void setStartStopSyncEnabled (bool enabled);
+    [[nodiscard]] bool isStartStopSyncEnabled() const;
+
+    /** Committet den Transport-Wunsch in die Session — mit aktivem
+        Start/Stop-Sync starten/stoppen alle Peers (inkl. Ableton). */
+    void requestIsPlaying (bool shouldPlay);
+    [[nodiscard]] bool isPlaying() const;
+
+    //==========================================================================
+    // Clock-Offset (User-Wunsch 2026-07-02, Muster Latenz-Trim 8.3)
+
+    /** Versatz der Beat-Ablesung in Millisekunden (±100, geclamped) —
+        gleicht Interface-/Peer-Latenz gegen andere Link-Peers an.
+        Message Thread; der Audio-Thread liest das Atomic pro Block in
+        captureClockState() (beatAtTime auf der verschobenen Zeitbasis). */
+    void setClockOffsetMs (double offsetMs);
+    [[nodiscard]] double getClockOffsetMs() const noexcept;
+
+    //==========================================================================
     // Link Audio (CLAUDE.md 7.2) — Message Thread
 
     /** Refcount-Semantik: jedes aktive Send-Modul ruft enableAudio(true) bei
@@ -273,6 +296,7 @@ private:
     std::unique_ptr<Impl> impl;
 
     std::atomic<double> currentSampleRate { 48000.0 };
+    std::atomic<double> clockOffsetMicros { 0.0 };  // Message schreibt, Audio liest
     int audioRefCount = 0;  // nur Message Thread (enableAudio)
 
     JUCE_DECLARE_WEAK_REFERENCEABLE (LinkClock)

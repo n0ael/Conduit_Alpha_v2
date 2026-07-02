@@ -237,13 +237,18 @@ void OscController::oscMessageReceived (const juce::OSCMessage& message)
     {
         if (message.size() >= 4
             && message[0].isString() && message[1].isString()
-            && message[2].isString() && message[3].isInt32())
+            && message[2].isString()
+            && (message[3].isInt32() || message[3].isFloat32()))
         {
             osc::AnnounceInfo info;
             info.remoteId   = message[0].getString();
             info.factoryKey = message[1].getString();
             info.trackName  = message[2].getString();
-            info.tintArgb   = message[3].getInt32();
+            // Max/js garantiert die Int-Kodierung von Zahlen nicht — Float
+            // tolerieren (Track-Farbe ist ein 24-Bit-Wert, verlustfrei)
+            info.tintArgb   = message[3].isInt32()
+                                ? message[3].getInt32()
+                                : static_cast<int> (message[3].getFloat32());
 
             if (osc::isValidRemoteId (info.remoteId) && info.factoryKey.isNotEmpty())
             {

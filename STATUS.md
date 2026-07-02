@@ -16,7 +16,32 @@
 
 ## Aktueller Meilenstein (Juli 2026 — in Arbeit)
 
-**OscController-Threading-Fix: audioQueue.push unter registryLock (Audit-Befund):**
+**OSC-Send + Max4Live-Announce-Protokoll (CLAUDE.md 7.3/7.4) — Schritte 1–5 implementiert, Live-Smoke ausstehend:**
+
+*Schritt 1 — Send-Fundament:*
+- **`OscAddress.h`**: gemeinsamer Adressbau für Receive-Registry und Send-Pfad (`parameterAddress`/`remoteAliasAddress` + `syncAddress`/`announceAddress`); `rebuildEndpoints()` nutzt ihn, Adress-Äquivalenz per Test gesichert
+- **`OscSendSettings`** (Muster `MeterSettings`): Host/Port/Enabled in `Conduit/OscSend.settings`, Default 127.0.0.1:**9001** (Loopback-Schutz), Enabled default aus
+- **`OscSendService`**: 30-Hz-Snapshot-Diff-Timer [Message Thread], `lastSent`-Cache mit Key `(nodeUuid, paramId)` (rename-sicher), ein `OSCBundle` pro Tick + Chunking >50, Cache-Pruning, Deleting-Nodes übersprungen, `IOscSink`-Seam für Tests; Aktivierung leert den Cache → impliziter Voll-Sync. Float-Diff beidseitig über `float` (`juce::exactlyEqual`) — `var` speichert double, sonst Dauersende-Schleife
+- **Echo-Suppression**: `OscController::onRemoteValueApplied` (Callback-Seam statt Direktkopplung — Controller bleibt receive-only) → `noteRemoteValue()` impft den Cache VOR dem nächsten Tick; `EngineProcessor` verdrahtet, Service VOR Controller deklariert
+
+*Schritt 2 — /conduit/sync + Settings-Tab „OSC":*
+- **`OscController`**: sync-Erkennung VOR dem Endpoint-Lookup [Netzwerk-Thread], atomic Flag + AsyncUpdater → `onSyncRequested` [Message Thread, NACH `applyTreeUpdates`] → `sendFullDump()`
+- **`OscSettingsComponent`** (Muster `CaptureSettingsComponent`): Empfangs-Status, Ziel-Host/-Port, Enable-Toggle; vierter Tab im `SettingsWindow`, Controls public für headless Tests
+
+*Schritt 3 — Auto-Learn der Absender-IP:*
+- **Learn-Probe** (`beginIpLearn`/`cancelIpLearn`): `juce::OSCReceiver` verwirft die Absender-IP → Receiver kurz trennen, eigener `DatagramSocket` bindet den Empfangsport (Bind-Retry gegen das Rebind-Fenster), `read()` liefert die IP des ersten Pakets; Ergebnis via Atomic + AsyncUpdater, Receiver wird bei Ergebnis/Timeout/Cancel/Destruktor restauriert. UI-Button mit SafePointer (Fenster darf während der Probe schließen)
+
+*Schritt 4 — Announce + remoteId + Kachel-Tint:*
+- **`/conduit/announce`** (`s:remoteId s:factoryKey s:trackName i:trackColour`, Float-Farbe toleriert): Netzwerk-Thread validiert + sammelt (eigener Lock), `onAnnounce` [Message Thread] → **`RemoteModuleBinder`** (find-or-create über remoteId: existiert → idempotent, nur Tint; neu → Whitelist + `addModuleNode` mit configure + `renameNode`, Kollision → Auto-Name)
+- **Alias-Adressen** `/conduit/remote/{remoteId}/{paramId}` (receive-only, rename-fest) zusätzlich in der Registry; Send bleibt kanonisch. `id::remoteId`/`id::tintColour` im Schema 6.2 (dokumentierte Ausnahme zur Laufzeit-ID-Regel 6 — beidseitig persistent). `NodeComponent` zeigt den Tint als Streifen unter der Kopfzeile, folgt Re-Announces live
+
+*Schritt 5 — Max-Testdevice + Doku:*
+- **`Tools/Max/ConduitLFO/`**: `.maxpat` + `conduit_announce.js` + README — `live.thisdevice` (nicht loadbang) → Announce + 30-s-Heartbeat, persistente remoteId in hidden `live.numbox` („Stored Only"), Rate/Depth-Dials → Alias-Adressen, `udpsend` mit `host <ip>`-Umkonfiguration. **Kein Audio im Device** — der LFO läuft nativ in Conduit
+- **CLAUDE.md**: neue Abschnitte 7.3/7.4, Schema-6.2-Erweiterung, Roadmap (OSC-Send/M4L-Announce/Max-Testdevice → v2.0)
+
+- **Verifikation (Remote-Session, Build nur via CI — Egress-Policy blockt FetchContent lokal):** CI (Ubuntu, `tsan` + `asan-linux`, jetzt auch auf `claude/**`-Branches) grün pro Schritt — neue Suiten `OscSendServiceTests`, `OscSettingsComponentTests`, `RemoteModuleBinderTests` (inkl. `[announce][osc][threading]`-Dauerfeuer-Stresstest) plus IP-Learn-Tests (Loopback-Tests hidden `[osc][network][.]`, lokal via Tag). **Ausstehend (User, Windows):** Debug-Build + ConduitTests-Zahlen, App-Smoke (OSC-Tab, TouchOSC-Follow + /conduit/sync + IP-Learn), Live-12-Smoke (Max-Device → LFO-Kachel mit Track-Name/-Farbe, Dial moduliert, Re-Announce nach Neustart)
+
+**Davor: OscController-Threading-Fix: audioQueue.push unter registryLock (Audit-Befund):**
 
 - **Befund (Threading-Audit):** `oscMessageReceived` kopierte den Endpoint (inkl. `target`-Pointer auf das `std::atomic<float>` im Zielmodul) unter `registryLock`, gab den Lock frei und pushte ERST DANACH in die Audio-Queue — die Lebensdauer-Garantie im Header war ein Timing-Argument, kein Mechanismus. Wird der Netzwerk-Thread zwischen Registry-Read und Push lange genug präemptiert, landet ein stale target nach der Phase-1-Deregistrierung in der Queue → Use-after-free auf dem Audio Thread
 - **Fix (`OscController`):** Endpoint-Lookup, Clamp und `audioQueue.push` im SELBEN `registryLock`-Scope (Push direkt aus dem Iterator, die Endpoint-Kopie entfällt). Da `rebuildEndpoints()` die Registry unter demselben Lock swappt, kann nach abgeschlossener Deregistrierung kein stale target mehr in die Queue gelangen — harte Invariante statt Timing. `push()` ist wait-free, der Audio Thread nimmt den Lock nie (3.1 gewahrt); der `treeUpdateLock`-Pfad (Pfad 2) blieb separat. Header-Doku auf die neue Invariante umgeschrieben

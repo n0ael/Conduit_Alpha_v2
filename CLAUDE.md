@@ -298,6 +298,10 @@ RootTree
        ├── nodeError      (String, leer wenn kein Fehler)
        ├── position       (x, y für UI)
        ├── numInputChannels / numOutputChannels   (int, für die Port-UI)
+       ├── remoteId       (optional: Announce-Bindung 7.4 — persistente
+       │                   Gegenstelle im Live-Set, dokumentierte Ausnahme
+       │                   zur Laufzeit-ID-Regel oben)
+       ├── tintColour     (optional: Track-Farbe 0x00RRGGBB, folgt Re-Announce)
        └── Parameters[]
             ├── id, value, min, max, default
   └── Connections[]
@@ -368,6 +372,70 @@ RootTree
 - **Kanal-Name = moduleId**, Rename via `sink.setName()` live propagiert.
 - **Empfangen (Phase 2):** Buffer-Alignment über `BufferHandle::Info::
   beginBeats(sessionState, quantum)` — nie naiv FIFO'en (v1-Drift-Lektion).
+
+### 7.3 OSC-Send (Parameter-Feedback an Clients)
+
+- **Snapshot-Diff statt Listener:** ein `paramValue`-Listener kann
+  OSC-Empfang, UI, Undo und Preset-Load nicht unterscheiden. Der
+  `OscSendService` läuft deshalb als `juce::Timer` @ 30 Hz auf dem Message
+  Thread: Tree-Walk über Nodes[], Diff gegen den `lastSent`-Cache mit Key
+  **`(nodeUuid, paramId)`** (nicht Adresse — rename-sicher). Deleting-Nodes
+  werden wie in der Receive-Registry übersprungen, Cache-Einträge
+  verschwundener Nodes gepruned. Der Audio Thread ist NIE beteiligt (3.1).
+- **Echo-Suppression:** `OscController::applyTreeUpdates()` meldet jeden in
+  den Tree übernommenen Empfangswert via `onRemoteValueApplied` →
+  `OscSendService::noteRemoteValue()` impft den Cache VOR dem nächsten
+  Tick — der eigene Empfang wird nie zurückgesendet. UI/Undo/Preset-Load-
+  Writes diffen dagegen und gehen raus (gewollt).
+- **Float-Diff-Falle:** `var` speichert double, der Cache float — beidseitig
+  über `float` vergleichen (`juce::exactlyEqual`), sonst Dauersende-Schleife.
+- **Transport:** ein `OSCBundle` pro Tick, Chunking bei >50 Messages
+  (UDP-Paketgrenze); `IOscSink`-Seam für Tests, `juce::OSCSender` in der App.
+- **`OscSendSettings`** (App-Zustand, Muster `MeterSettings`): Host / Port /
+  Enabled in `Conduit/OscSend.settings`. **Default-Port 9001, NICHT 9000**
+  (Loopback-Schutz gegen den eigenen Empfang), Enabled default aus.
+  Aktivierung leert den Cache → erster Tick ist ein impliziter Voll-Sync.
+- **`/conduit/sync`:** Client fordert den Voll-Dump an — Erkennung VOR dem
+  Endpoint-Lookup [Netzwerk-Thread], Ausführung via atomic Flag +
+  AsyncUpdater auf dem Message Thread (`sendFullDump()`).
+- **IP-Learn (Learn-Probe):** `juce::OSCReceiver` verwirft die Absender-IP
+  (`socket->read(...)` ohne senderAddress, `OSCInputStream` nicht
+  wiederverwendbar) — deshalb `OscController::beginIpLearn()`: Receiver
+  kurz trennen, eigener `DatagramSocket` bindet den Empfangsport
+  (Bind-Retry gegen das Rebind-Fenster, v.a. Windows), `read()` liefert die
+  IP des ersten UDP-Pakets, Receiver wird restauriert (auch bei
+  Timeout/Cancel/Destruktor). Kein OSC-Parsing nötig.
+
+### 7.4 Max4Live-Announce (Remote-Module)
+
+- **Format:** `/conduit/announce s:remoteId s:factoryKey s:trackName
+  i:trackColour` (Farbe 0x00RRGGBB aus der Live API; Float32 wird toleriert
+  — Max/js garantiert die Int-Kodierung nicht).
+- **remoteId — dokumentierte Ausnahme zur Regel 6:** die ID ist in BEIDEN
+  Welten persistent (Live-Set speichert sie als Device-Parameter „Stored
+  Only", der Conduit-Patch als Node-Property `remoteId`) — keine
+  Laufzeit-ID. Hartes Format statt Sanitizing: `[A-Za-z0-9_-]`, max. 64
+  (wird Teil von OSC-Adressen; eine umgeschriebene ID fände ihr Live-
+  Gegenstück nie wieder).
+- **Verarbeitung:** Netzwerk-Thread validiert und sammelt (`pendingAnnounces`,
+  eigener Lock) + `triggerAsyncUpdate` → Message Thread: `onAnnounce` →
+  `RemoteModuleBinder::handleAnnounce()` (find-or-create). Existiert →
+  idempotent (nur `tintColour` nachziehen; Name/Position sind nach der
+  Erst-Anlage User-Hoheit). Neu → `ModuleFactory::isRegistered`-Whitelist,
+  `addModuleNode(factoryKey, pos, configure)` (configure setzt
+  remoteId+Tint VOR dem Einhängen), dann `renameNode` auf den Track-Namen
+  (Kollision → Auto-Name bleibt).
+- **Alias-Adressen (receive-only):** `rebuildEndpoints()` registriert für
+  remoteId-Nodes ZUSÄTZLICH `/conduit/remote/{remoteId}/{paramId}` auf
+  denselben Endpoint — das Device adressiert nur über seine remoteId,
+  User-Renames und Kollisions-Suffixe sind ihm egal. Der Send-Pfad bleibt
+  kanonisch (`/conduit/{type}/{moduleId}/{paramId}`, Helper `OscAddress.h`).
+- **Kein Auth** (LAN-Annahme wie der übrige Empfang) — Whitelist +
+  Zeichen-Limits + Idempotenz decken Garbage ab. Node in Conduit gelöscht,
+  Device lebt → der 30-s-Re-Announce legt neu an (gleiche remoteId).
+- **UI:** `NodeComponent` zeigt `tintColour` als Streifen unter der
+  Kopfzeile, folgt Re-Announces live. Referenz-Device:
+  `Tools/Max/ConduitLFO/` (kein Audio im Device — der LFO läuft nativ).
 
 ---
 
@@ -500,6 +568,9 @@ Plattform-spezifisches Setup in `initAudio()` und CMake ist explizit erlaubt.
 | Cardinal/VCV Integration | v3.0+ | Touch-native Modular UI |
 | Link Audio Send (LinkAudioSendModule) | v2.0 | NetworkIOModule, Sink = moduleId |
 | Link Audio Receive | v2.x | beginBeats()-Alignment, Monitoring-Latenz dokumentieren |
+| OSC-Send (Snapshot-Diff, /conduit/sync, IP-Learn) | v2.0 | OscSendService, 7.3 |
+| M4L-Announce (remoteId, Alias-Adressen, Tint) | v2.0 | RemoteModuleBinder, 7.4 |
+| Max-Testdevice ConduitLFO | v2.0 | Tools/Max/ConduitLFO, kein Audio im Device |
 | Expert-Sleepers-Encoder (ES-5/ES-4(0)/8CV/8GT) | v2.x | v1-Port vorhanden (EncoderEngines.hpp, MIT/VCV) — HardwareIOModule-Grundstein |
 | Euclid-/Turing-Module | v2.x | v1-Engines als Referenz (Launch-Quant, parametrischer Swing, Scale-Quantize) |
 

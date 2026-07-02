@@ -29,3 +29,6 @@ Thumbs.db
 
 # Claude Code (lokal)
 .claude/
+
+# Airwindows-Quelle (read-only Referenz, Source/DSP/Airwindows/PORTING_NOTES.md)
+Third-Party/airwindows/

@@ -1,5 +1,7 @@
 #pragma once
 
+#include <optional>
+
 #include "ConduitModule.h"
 
 namespace conduit
@@ -107,6 +109,34 @@ struct ChassisSchema
         return juce::jlimit (rangeMin, rangeMax,
                              base + cvMagnitude * amount * (rangeMax - rangeMin));
     }
+
+    //==========================================================================
+    /** Fader-Response-Kurve (Dev-Modus 4.6): kubische Bezier von (0,0) nach
+        (1,1) mit zwei Kontrollpunkten — Parameter-Property `curve` als
+        "x1 y1 x2 y2". REINES UI-Mapping: der Fader mappt seine Position über
+        die Kurve in den User-Bereich, im Tree steht IMMER der echte Wert —
+        DSP, OSC, CV und Serialisierung sind von der Kurve unberührt.
+
+        Kontrollwerte sind auf [0,1] geclamped — damit sind x(t) UND y(t)
+        monoton (CSS-Easing-Eigenschaft), das Mapping ist eindeutig
+        invertierbar (kein mehrdeutiges Fader-Verhalten). */
+    struct BezierCurve
+    {
+        float x1 = 0.25f, y1 = 0.25f, x2 = 0.75f, y2 = 0.75f;
+    };
+
+    /** "x1 y1 x2 y2" → Kurve (Werte geclamped auf [0,1]); nullopt bei
+        leerem/unlesbarem String (= linear). */
+    [[nodiscard]] static std::optional<BezierCurve> parseCurve (const juce::String& text);
+
+    [[nodiscard]] static juce::String curveToString (const BezierCurve& curve);
+
+    /** Fader-Position (0..1) → normierter Wert (0..1): löst x(t) = position
+        per Bisektion (monoton), liefert y(t). Message Thread (UI-Mapping). */
+    [[nodiscard]] static float evaluateCurve (const BezierCurve& curve, float position) noexcept;
+
+    /** Inverse: normierter Wert → Fader-Position (y monoton, s.o.). */
+    [[nodiscard]] static float curvePositionForValue (const BezierCurve& curve, float normValue) noexcept;
 
     //==========================================================================
     /** Migration eines Processor-Nodes auf das Chassis-Schema (idempotent,

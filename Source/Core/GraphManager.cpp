@@ -8,6 +8,7 @@
 #include "Interfaces/ILinkAudioClient.h"
 #include "Interfaces/ISendConfigClient.h"
 #include "Interfaces/IStochastic.h"
+#include "ModuleUiDefaults.h"
 #include "Modules/ChassisSchema.h"
 #include "Modules/LinkAudioSendModule.h"
 #include "Modules/ModuleFactory.h"
@@ -89,6 +90,11 @@ juce::ValueTree GraphManager::addModuleNode (const juce::String& factoryKey, juc
 
     nodeTree.setProperty (id::positionX, position.x, nullptr);
     nodeTree.setProperty (id::positionY, position.y, nullptr);
+
+    // Modul-Typ-Defaults (Dev-Modus 4.6): Overlay NUR bei Neu-Anlage —
+    // Presets/Patches bleiben unberührt (dort steht der Zustand im Tree)
+    if (uiDefaults != nullptr)
+        uiDefaults->applyTo (nodeTree);
 
     // Eindeutige named_id (OSC-Pfad, 7) — vor dem Einhängen, ohne Listener
     nodeTree.setProperty (id::moduleId, makeUniqueModuleName (factoryKey), nullptr);
@@ -199,6 +205,33 @@ bool GraphManager::setParameterHidden (const juce::String& nodeUuid, const juce:
                 connections.removeChild (i, &undoManager);
         }
     }
+
+    return true;
+}
+
+bool GraphManager::setParameterCurve (const juce::String& nodeUuid, const juce::String& paramId,
+                                      const juce::String& curveText)
+{
+    JUCE_ASSERT_MESSAGE_THREAD
+
+    auto nodeTree = rootState.getChildWithName (id::nodes)
+                        .getChildWithProperty (id::nodeId, nodeUuid);
+    auto param = nodeTree.getChildWithName (id::parameters)
+                     .getChildWithProperty (id::paramId, paramId);
+
+    // Nur dsp-Parameter tragen Fader-Kurven; nicht-leere Strings müssen
+    // parsen (Monotonie-Garantie via parseCurve-Clamping)
+    if (! param.isValid()
+        || ChassisSchema::roleOf (param) != juce::String (ChassisSchema::roleDsp)
+        || (curveText.isNotEmpty() && ! ChassisSchema::parseCurve (curveText).has_value()))
+        return false;
+
+    undoManager.beginNewTransaction ("Fader-Kurve ändern");
+
+    if (curveText.isEmpty())
+        param.removeProperty (id::paramCurve, &undoManager);   // linear
+    else
+        param.setProperty (id::paramCurve, curveText, &undoManager);
 
     return true;
 }
@@ -536,6 +569,25 @@ void GraphManager::setCaptureService (CaptureService* service) noexcept
 void GraphManager::setChannelNames (ChannelNames* names) noexcept
 {
     channelNames = names;
+}
+
+void GraphManager::setModuleUiDefaults (ModuleUiDefaults* defaults) noexcept
+{
+    uiDefaults = defaults;
+}
+
+bool GraphManager::captureModuleUiDefaults (const juce::String& nodeUuid)
+{
+    JUCE_ASSERT_MESSAGE_THREAD
+
+    const auto nodeTree = rootState.getChildWithName (id::nodes)
+                              .getChildWithProperty (id::nodeId, nodeUuid);
+
+    if (uiDefaults == nullptr || ! nodeTree.isValid())
+        return false;
+
+    uiDefaults->captureFromNode (nodeTree);
+    return true;
 }
 
 //==============================================================================

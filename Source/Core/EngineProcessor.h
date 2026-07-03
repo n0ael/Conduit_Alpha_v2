@@ -11,6 +11,7 @@
 #include "InputLinkSend.h"
 #include "LinkClock.h"
 #include "MeterSettings.h"
+#include "ModuleUiDefaults.h"
 #include "NodeUiRegistry.h"
 #include "OscController.h"
 #include "OscSendService.h"
@@ -226,6 +227,10 @@ private:
 
     // Clip-Reset-Modus der Pegelanzeigen (App-Zustand); speist die LevelMeter
     MeterSettings meterSettings;
+
+    // Modul-Typ-Defaults des Dev-Modus (4.6, App-Zustand) — der GraphManager
+    // wendet sie bei Neu-Anlagen als Overlay an
+    ModuleUiDefaults moduleUiDefaults;
 
     // Transport-/Link-Einstellungen des Push-Headers (App-Zustand); der
     // ChangeListener speist LinkClock (Start/Stop-Sync, Clock-Offset) und

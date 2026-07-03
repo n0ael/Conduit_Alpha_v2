@@ -104,6 +104,7 @@ set(CONDUIT_CPP_SOURCES
     Source/Core/LinkSendTaps.cpp
     Source/Core/MeterSettings.cpp
     Source/Core/Metronome.cpp
+    Source/Core/ModuleUiDefaults.cpp
     Source/Core/NodeUiRegistry.cpp
     Source/Core/OscController.cpp
     Source/Core/OscSendService.cpp
@@ -137,6 +138,7 @@ set(CONDUIT_CPP_SOURCES
     Source/UI/CapturePanel.cpp
     Source/UI/CaptureSettingsComponent.cpp
     Source/UI/CaptureToast.cpp
+    Source/UI/CurveEditor.cpp
     Source/UI/FxModulePanel.cpp
     Source/UI/GainFaderMeter.cpp
     Source/UI/InputSendButton.cpp
@@ -176,6 +178,7 @@ target_sources(Conduit PRIVATE
     Source/Core/LinkClock.h
     Source/Core/LinkSendTaps.h
     Source/Core/Metronome.h
+    Source/Core/ModuleUiDefaults.h
     Source/Core/NodeUiRegistry.h
     Source/Core/OscAddress.h
     Source/Core/OscController.h
@@ -223,6 +226,8 @@ target_sources(Conduit PRIVATE
     Source/UI/CaptureAllButton.h
     Source/UI/CapturePanel.h
     Source/UI/CaptureToast.h
+    Source/UI/CurveEditor.h
+    Source/UI/CurvedSlider.h
     Source/UI/FxModulePanel.h
     Source/UI/GainFaderMeter.h
     Source/UI/InputSendButton.h
@@ -381,6 +386,7 @@ if(CONDUIT_BUILD_TESTS)
         Source/Core/LinkSendTaps.cpp
         Source/Core/MeterSettings.cpp
         Source/Core/Metronome.cpp
+        Source/Core/ModuleUiDefaults.cpp
         Source/Core/NodeUiRegistry.cpp
         Source/Core/OscController.cpp
         Source/Core/OscSendService.cpp
@@ -414,6 +420,7 @@ if(CONDUIT_BUILD_TESTS)
         Source/UI/CapturePanel.cpp
         Source/UI/CaptureSettingsComponent.cpp
         Source/UI/CaptureToast.cpp
+        Source/UI/CurveEditor.cpp
         Source/UI/FxModulePanel.cpp
         Source/UI/GainFaderMeter.cpp
         Source/UI/InputSendButton.cpp

@@ -47,6 +47,9 @@ EngineProcessor::EngineProcessor()
     // liefert ihr ChannelNames-Label
     graphManager.setChannelNames (&channelNames);
 
+    // Modul-Typ-Defaults des Dev-Modus (4.6) — Overlay bei Neu-Anlagen
+    graphManager.setModuleUiDefaults (&moduleUiDefaults);
+
     // Globale Session-Skala (6.2): Defaults sicherstellen, Properties spiegeln
     ensureSessionScaleDefaults();
     rootState.addListener (this);

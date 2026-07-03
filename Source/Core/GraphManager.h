@@ -17,6 +17,7 @@ class CaptureService;
 class ChannelNames;
 class LinkClock;
 class ModuleFactory;
+class ModuleUiDefaults;
 class NodeUiRegistry;
 class ProcessorModule;
 
@@ -121,6 +122,19 @@ public:
     bool setParameterHidden (const juce::String& nodeUuid, const juce::String& paramId,
                              bool hidden);
 
+    /** Patch-Aktion (Dev-Modus 4.6): Fader-Response-Kurve eines dsp-
+        Parameters — "x1 y1 x2 y2" (Bezier, ChassisSchema) oder leer für
+        linear (Property entfernt). Undo-fähig; reines UI-Mapping, DSP/OSC
+        unberührt. false bei unbekanntem/nicht-dsp-Parameter oder
+        unlesbarem Kurven-String. Message Thread. */
+    bool setParameterCurve (const juce::String& nodeUuid, const juce::String& paramId,
+                            const juce::String& curveText);
+
+    /** Dev-Modus 4.6: aktuelle dsp-Overrides des Nodes (userMin/userMax/
+        uiHidden/curve) als Modul-Typ-Defaults sichern — greift bei künftigen
+        Neu-Anlagen dieses factoryIds. false ohne ModuleUiDefaults/Node. */
+    bool captureModuleUiDefaults (const juce::String& nodeUuid);
+
     /** Phase 1 des zweiphasigen Deletes (5.3): setzt nodeState → Deleting.
         false, wenn kein Node mit dieser nodeId existiert oder der Node ein
         externer Endpunkt ist (I/O-Nodes sind nicht löschbar). Message Thread. */
@@ -194,6 +208,11 @@ public:
         Quelle eines Eingangs, die am audio_input-Endpunkt hängt, liefert ihr
         ChannelNames-Label. nullptr → Fallback "In N" (Tests). Message Thread. */
     void setChannelNames (ChannelNames* names) noexcept;
+
+    /** Modul-Typ-Defaults (Dev-Modus 4.6, Owner: EngineProcessor) —
+        addModuleNode wendet sie bei Neu-Anlagen als Overlay an.
+        nullptr → keine Defaults (Tests). Message Thread. */
+    void setModuleUiDefaults (ModuleUiDefaults* defaults) noexcept;
 
     //==========================================================================
     /** Auto-Naming (7.2 Schritt 3): übernimmt für ALLE Eingänge eines Send-
@@ -341,6 +360,9 @@ private:
 
     // Kanal-Namen für Send-Auto-Naming (Owner: EngineProcessor)
     ChannelNames* channelNames = nullptr;
+
+    // Modul-Typ-Defaults des Dev-Modus (Owner: EngineProcessor)
+    ModuleUiDefaults* uiDefaults = nullptr;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (GraphManager)
 };

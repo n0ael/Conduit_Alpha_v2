@@ -691,6 +691,161 @@ TEST_CASE ("ChassisSchema::cvChannelForParam ignoriert uiHidden (festes Layout)"
 }
 
 //==============================================================================
+TEST_CASE ("ChassisSchema: Bezier-Kurven parsen, evaluieren und invertieren", "[chassis][curve]")
+{
+    using S = conduit::ChassisSchema;
+
+    SECTION ("parseCurve: Roundtrip, Clamping, ungültige Strings")
+    {
+        const auto curve = S::parseCurve ("0.1 0.9 0.8 0.2");
+        REQUIRE (curve.has_value());
+        REQUIRE (curve->x1 == Approx (0.1f));
+        REQUIRE (curve->y2 == Approx (0.2f));
+
+        const auto roundtrip = S::parseCurve (S::curveToString (*curve));
+        REQUIRE (roundtrip.has_value());
+        REQUIRE (roundtrip->y1 == Approx (0.9f).margin (0.001));
+
+        // Clamping auf [0,1] erzwingt Monotonie
+        const auto clamped = S::parseCurve ("-1 2 0.5 0.5");
+        REQUIRE (clamped.has_value());
+        REQUIRE (clamped->x1 == Approx (0.0f));
+        REQUIRE (clamped->y1 == Approx (1.0f));
+
+        REQUIRE_FALSE (S::parseCurve ("").has_value());
+        REQUIRE_FALSE (S::parseCurve ("0.1 0.2").has_value());
+        REQUIRE_FALSE (S::parseCurve ("linear").has_value());   // 1 Token
+    }
+
+    SECTION ("evaluateCurve: Endpunkte fest, Diagonale = Identität")
+    {
+        const S::BezierCurve diagonal { 0.25f, 0.25f, 0.75f, 0.75f };
+
+        REQUIRE (S::evaluateCurve (diagonal, 0.0f) == Approx (0.0f).margin (0.001));
+        REQUIRE (S::evaluateCurve (diagonal, 1.0f) == Approx (1.0f).margin (0.001));
+        REQUIRE (S::evaluateCurve (diagonal, 0.5f) == Approx (0.5f).margin (0.001));
+        REQUIRE (S::evaluateCurve (diagonal, 0.3f) == Approx (0.3f).margin (0.001));
+    }
+
+    SECTION ("Monotonie + Invertierbarkeit (Fader-Mapping eindeutig)")
+    {
+        const S::BezierCurve expo { 0.9f, 0.1f, 0.9f, 0.4f };   // stark gebogene Kurve
+        float previous = -1.0f;
+
+        for (int i = 0; i <= 20; ++i)
+        {
+            const auto p = static_cast<float> (i) / 20.0f;
+            const auto y = S::evaluateCurve (expo, p);
+
+            REQUIRE (y >= previous);   // monoton steigend
+            previous = y;
+
+            // Inverse: Position → Wert → Position kommt zurück
+            REQUIRE (S::curvePositionForValue (expo, y) == Approx (p).margin (0.002));
+        }
+    }
+}
+
+TEST_CASE ("Dev-Modus: setParameterCurve validiert und ist undo-faehig", "[chassis][curve]")
+{
+    LinkSendRig rig;
+    auto density = rig.node.getChildWithName (conduit::id::parameters)
+                       .getChildWithProperty (conduit::id::paramId, "density");
+
+    REQUIRE (rig.manager.setParameterCurve (rig.uuid(), "density", "0.9 0.1 0.9 0.4"));
+    REQUIRE (density.getProperty (conduit::id::paramCurve).toString() == "0.9 0.1 0.9 0.4");
+
+    // Leerer String = linear (Property entfernt), undo-fähig
+    REQUIRE (rig.manager.setParameterCurve (rig.uuid(), "density", ""));
+    REQUIRE_FALSE (density.hasProperty (conduit::id::paramCurve));
+    REQUIRE (rig.undoManager.undo());
+    REQUIRE (density.hasProperty (conduit::id::paramCurve));
+
+    // Ungültig: unlesbarer String, nicht-dsp-Parameter
+    REQUIRE_FALSE (rig.manager.setParameterCurve (rig.uuid(), "density", "kaputt"));
+    REQUIRE_FALSE (rig.manager.setParameterCurve (rig.uuid(), "input_gain", "0.5 0.5 0.5 0.5"));
+}
+
+//==============================================================================
+TEST_CASE ("ModuleUiDefaults: Capture → Overlay bei Neu-Anlage, Presets unberuehrt", "[chassis][defaults]")
+{
+    juce::ScopedJuceInitialiser_GUI juceRuntime;
+
+    // Temp-Verzeichnis, damit der Test die echten App-Settings nicht anfasst
+    juce::TemporaryFile tempMarker;
+    auto options = conduit::ModuleUiDefaults::defaultOptions();
+    options.applicationName = "ModuleUiDefaultsTest_"
+                            + tempMarker.getFile().getFileNameWithoutExtension();
+    conduit::ModuleUiDefaults defaults { options };
+
+    // Quelle: Node mit Overrides auf zwei Parametern
+    conduit::AirwindowsDensityModule source;
+    auto sourceNode = source.createState();
+    auto params = sourceNode.getChildWithName (conduit::id::parameters);
+    params.getChildWithProperty (conduit::id::paramId, "density")
+          .setProperty (conduit::id::paramUserMin, 0.2, nullptr);
+    params.getChildWithProperty (conduit::id::paramId, "density")
+          .setProperty (conduit::id::paramUserMax, 0.6, nullptr);
+    params.getChildWithProperty (conduit::id::paramId, "highpass")
+          .setProperty (conduit::id::paramUiHidden, true, nullptr);
+    params.getChildWithProperty (conduit::id::paramId, "dry_wet")
+          .setProperty (conduit::id::paramCurve, "0.9 0.1 0.9 0.4", nullptr);
+
+    defaults.captureFromNode (sourceNode);
+    REQUIRE (defaults.hasDefaultsFor ("airwindows_density"));
+
+    // Overlay auf einen frischen Node desselben Typs
+    conduit::AirwindowsDensityModule freshModule;
+    auto fresh = freshModule.createState();
+    defaults.applyTo (fresh);
+
+    auto freshParams = fresh.getChildWithName (conduit::id::parameters);
+    REQUIRE ((double) freshParams.getChildWithProperty (conduit::id::paramId, "density")
+                 .getProperty (conduit::id::paramUserMin) == Approx (0.2));
+    REQUIRE ((bool) freshParams.getChildWithProperty (conduit::id::paramId, "highpass")
+                 .getProperty (conduit::id::paramUiHidden));
+    REQUIRE (freshParams.getChildWithProperty (conduit::id::paramId, "dry_wet")
+                 .getProperty (conduit::id::paramCurve).toString() == "0.9 0.1 0.9 0.4");
+
+    // Anderer Modul-Typ: kein Overlay
+    REQUIRE_FALSE (defaults.hasDefaultsFor ("airwindows_spiral"));
+
+    // Capture OHNE Overrides = Reset (Eintrag gelöscht)
+    conduit::AirwindowsDensityModule plainModule;
+    auto plain = plainModule.createState();
+    defaults.captureFromNode (plain);
+    REQUIRE_FALSE (defaults.hasDefaultsFor ("airwindows_density"));
+
+    // Aufräumen: Test-Settings-Datei löschen
+    juce::PropertiesFile (options).getFile().deleteFile();
+}
+
+TEST_CASE ("GraphManager: addModuleNode wendet Modul-Typ-Defaults als Overlay an", "[chassis][defaults]")
+{
+    LinkSendRig rig;
+
+    juce::TemporaryFile tempMarker;
+    auto options = conduit::ModuleUiDefaults::defaultOptions();
+    options.applicationName = "ModuleUiDefaultsTest_"
+                            + tempMarker.getFile().getFileNameWithoutExtension();
+    conduit::ModuleUiDefaults defaults { options };
+    rig.manager.setModuleUiDefaults (&defaults);
+
+    // Ist-Zustand der ersten Kachel als Standard sichern
+    REQUIRE (rig.manager.setParameterUserRange (rig.uuid(), "density", 0.2, 0.6));
+    REQUIRE (rig.manager.captureModuleUiDefaults (rig.uuid()));
+
+    // Neu-Anlage erbt den Standard
+    const auto second = rig.manager.addModuleNode (conduit::AirwindowsDensityModule::staticModuleId, {});
+    const auto density = second.getChildWithName (conduit::id::parameters)
+                             .getChildWithProperty (conduit::id::paramId, "density");
+    REQUIRE ((double) density.getProperty (conduit::id::paramUserMin) == Approx (0.2));
+    REQUIRE ((double) density.getProperty (conduit::id::paramUserMax) == Approx (0.6));
+
+    juce::PropertiesFile (options).getFile().deleteFile();
+}
+
+//==============================================================================
 TEST_CASE ("ChassisSchema::migrate hebt einen v1-Node aufs Chassis-Schema", "[chassis]")
 {
     auto node = makeLegacyDensityNode();

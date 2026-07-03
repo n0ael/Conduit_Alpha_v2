@@ -2,6 +2,7 @@
 
 #include "Modules/ChassisSchema.h"
 #include "Modules/ProcessorModule.h"
+#include "UI/CurveEditor.h"
 #include "UI/PushLookAndFeel.h"
 
 namespace conduit
@@ -40,6 +41,16 @@ FxModulePanel::FxModulePanel (juce::ValueTree nodeTreeToBind, GraphManager& grap
     addAndMakeVisible (linkSendButton);
     refreshSendButtonState();
 
+    // Dev-Modus: Ist-Zustand (Range/Hidden/Kurve) als Modul-Typ-Default
+    // sichern — greift bei künftigen Neu-Anlagen (4.6)
+    saveDefaultsButton.setTooltip (juce::String::fromUTF8 (
+        "Regelbereiche, Sichtbarkeit und Kurven als Standard für diesen Modul-Typ speichern"));
+    saveDefaultsButton.onClick = [this]
+    {
+        graphManager.captureModuleUiDefaults (nodeTree.getProperty (id::nodeId).toString());
+    };
+    addChildComponent (saveDefaultsButton);   // sichtbar nur im Dev-Modus
+
     buildColumns();
     startTimerHz (10);  // LED-Statuswechsel sind selten (Muster StatusBadge)
 }
@@ -58,14 +69,14 @@ void FxModulePanel::stopUpdates()
     inputFader->stopUpdates();
     outputFader->stopUpdates();
     linkSendButton.setEnabled (false);
+    saveDefaultsButton.setEnabled (false);
 
     for (auto& column : columns)
     {
         column->slider.setEnabled (false);
         column->cvKnob.setEnabled (false);
-        column->minEdit.setEnabled (false);
-        column->maxEdit.setEnabled (false);
         column->hideButton.setEnabled (false);
+        column->curveButton.setEnabled (false);
     }
 }
 
@@ -89,10 +100,13 @@ void FxModulePanel::applyUserRangeToColumn (ParameterColumn& column, const juce:
                                                      param.getProperty (id::paramMax, 1.0));
 
     column.slider.setRange (userMin, userMax, 0.0);
+
+    // Bezier-Response-Kurve: reines UI-Mapping — der Wert bleibt echt (4.6)
+    column.slider.setResponseCurve (ChassisSchema::parseCurve (
+        param.getProperty (id::paramCurve).toString()));
+
     column.slider.setValue ((double) param.getProperty (id::paramValue, 0.0),
                             juce::dontSendNotification);
-    column.minEdit.setText (juce::String (userMin, 3), juce::dontSendNotification);
-    column.maxEdit.setText (juce::String (userMax, 3), juce::dontSendNotification);
 }
 
 void FxModulePanel::buildColumns()
@@ -171,40 +185,11 @@ void FxModulePanel::buildColumns()
             addAndMakeVisible (*column->cvPort);
         }
 
-        // Dev-Modus-Controls: Min/Max-Editierfelder (User-Regelbereich,
-        // undo-fähig über den GraphManager) + Ausblenden-Toggle
+        // Dev-Modus-Controls: Ausblenden-Toggle + Kurven-/Range-Editor —
+        // Min/Max leben IM Kurven-Popup (User-Wunsch 03.07.)
         if (devMode)
         {
             const auto uuid = nodeTree.getProperty (id::nodeId).toString();
-
-            for (auto* edit : { &column->minEdit, &column->maxEdit })
-            {
-                edit->setFont (juce::Font (juce::FontOptions (10.0f)));
-                edit->setColour (juce::Label::textColourId,
-                                 juce::Colours::white.withAlpha (0.7f));
-                edit->setJustificationType (juce::Justification::centred);
-                edit->setEditable (true, true, false);
-                addAndMakeVisible (*edit);
-            }
-
-            const auto commitRange = [this, uuid, paramId = column->paramId,
-                                      minEdit = &column->minEdit, maxEdit = &column->maxEdit]
-            {
-                const auto ok = graphManager.setParameterUserRange (
-                    uuid, paramId,
-                    minEdit->getText().getDoubleValue(),
-                    maxEdit->getText().getDoubleValue());
-
-                // Abgelehnt (außerhalb Hard-Range / min >= max) → Texte
-                // aus dem Tree restaurieren
-                if (! ok)
-                    if (auto p = paramTreeFor (paramId); p.isValid())
-                        for (auto& c : columns)
-                            if (c->paramId == paramId)
-                                applyUserRangeToColumn (*c, p);
-            };
-            column->minEdit.onTextChange = commitRange;
-            column->maxEdit.onTextChange = commitRange;
 
             column->hideButton.setButtonText (hidden ? "ein" : "aus");
             column->hideButton.setTooltip (hidden
@@ -215,6 +200,37 @@ void FxModulePanel::buildColumns()
                 graphManager.setParameterHidden (uuid, paramId, ! hidden);
             };
             addAndMakeVisible (column->hideButton);
+
+            // Parameter-Setup als CallOutBox über der Spalte: Bezier-Kurve
+            // PLUS Min/Max des User-Regelbereichs — Änderungen committen
+            // live und undo-fähig via GraphManager
+            column->curveButton.setButtonText ("~");
+            column->curveButton.setTooltip (
+                juce::String::fromUTF8 ("Fader-Kurve + Regelbereich editieren"));
+            column->curveButton.onClick = [this, uuid, paramId = column->paramId,
+                                           button = &column->curveButton]
+            {
+                const auto param = paramTreeFor (paramId);
+                auto editor = std::make_unique<CurveEditor> (
+                    param.getProperty (id::paramCurve).toString(),
+                    (double) param.getProperty (id::paramUserMin,
+                                                param.getProperty (id::paramMin, 0.0)),
+                    (double) param.getProperty (id::paramUserMax,
+                                                param.getProperty (id::paramMax, 1.0)));
+
+                editor->onCurveChanged = [this, uuid, paramId] (const juce::String& curveText)
+                {
+                    graphManager.setParameterCurve (uuid, paramId, curveText);
+                };
+                editor->onRangeChanged = [this, uuid, paramId] (double newMin, double newMax)
+                {
+                    return graphManager.setParameterUserRange (uuid, paramId, newMin, newMax);
+                };
+
+                juce::CallOutBox::launchAsynchronously (std::move (editor),
+                                                        button->getScreenBounds(), nullptr);
+            };
+            addAndMakeVisible (column->curveButton);
 
             // Ausgeblendete Spalten gedimmt zeigen (Dev-Sichtbarkeit)
             if (hidden)
@@ -241,9 +257,8 @@ void FxModulePanel::rebuildColumns()
         for (auto* child : { static_cast<juce::Component*> (&column->titleLabel),
                              static_cast<juce::Component*> (&column->slider),
                              static_cast<juce::Component*> (&column->cvKnob),
-                             static_cast<juce::Component*> (&column->minEdit),
-                             static_cast<juce::Component*> (&column->maxEdit),
                              static_cast<juce::Component*> (&column->hideButton),
+                             static_cast<juce::Component*> (&column->curveButton),
                              static_cast<juce::Component*> (column->cvPort.get()) })
             if (child != nullptr)
                 removeChildComponent (child);
@@ -292,6 +307,7 @@ void FxModulePanel::setDevMode (bool shouldBeInDevMode)
         return;
 
     devMode = shouldBeInDevMode;
+    saveDefaultsButton.setVisible (devMode);
     rebuildColumns();
 }
 
@@ -382,7 +398,8 @@ void FxModulePanel::valueTreePropertyChanged (juce::ValueTree& tree, const juce:
             return;
         }
 
-        if (property == id::paramUserMin || property == id::paramUserMax)
+        if (property == id::paramUserMin || property == id::paramUserMax
+            || property == id::paramCurve)
         {
             const auto changedId = tree.getProperty (id::paramId).toString();
 
@@ -427,7 +444,13 @@ void FxModulePanel::resized()
 {
     auto bounds = getLocalBounds();
 
-    inputFader->setBounds (bounds.removeFromLeft (GainFaderMeter::preferredWidth));
+    // Linke Spalte: In-Zug; im Dev-Modus darunter der Defaults-Button
+    auto left = bounds.removeFromLeft (GainFaderMeter::preferredWidth);
+
+    if (devMode)
+        saveDefaultsButton.setBounds (left.removeFromBottom (sendRowHeight).reduced (0, 2));
+
+    inputFader->setBounds (left);
 
     // Rechte Spalte: Out-Zug oben, darunter LED + LINK-Button (4.6)
     auto right = bounds.removeFromRight (GainFaderMeter::preferredWidth);
@@ -444,16 +467,14 @@ void FxModulePanel::resized()
         auto columnBounds = bounds.removeFromLeft (columnWidth);
         column->titleLabel.setBounds (columnBounds.removeFromTop (titleHeight));
 
-        // Dev-Modus: Min/Max-Editierfelder unter dem Titel, Ausblenden-
-        // Toggle ganz unten — der Fader schrumpft entsprechend
+        // Dev-Modus: Ausblenden-Toggle + Kurven-/Range-Button ganz unten —
+        // der Fader schrumpft entsprechend
         if (devMode)
         {
-            auto devRow = columnBounds.removeFromTop (devRowHeight);
-            column->minEdit.setBounds (devRow.removeFromLeft (columnWidth / 2));
-            column->maxEdit.setBounds (devRow);
-
             auto hideRow = columnBounds.removeFromBottom (hideRowHeight);
-            column->hideButton.setBounds (hideRow.reduced (6, 1));
+            column->curveButton.setBounds (hideRow.removeFromRight (hideRow.getWidth() / 3)
+                                               .reduced (1));
+            column->hideButton.setBounds (hideRow.reduced (2, 1));
         }
 
         // Unten: CV-Port, darüber der Attenuverter — Rest ist der lange Fader

@@ -8,6 +8,7 @@
 #include "Modules/AirwindowsSpiralModule.h"
 #include "Modules/ChassisSchema.h"
 #include "Modules/ModuleFactory.h"
+#include "UI/CurveEditor.h"
 #include "UI/FxModulePanel.h"
 #include "UI/NodeComponent.h"
 
@@ -301,7 +302,7 @@ TEST_CASE ("FxModulePanel Dev-Modus: uiHidden-Spalten verschwinden nur im Normal
     REQUIRE (layoutChanges == 2);   // uiHidden-Listener → rebuild
 }
 
-TEST_CASE ("FxModulePanel Dev-Modus: User-Range steuert den Fader, Editierfelder committen", "[ui][chassis][devmode]")
+TEST_CASE ("FxModulePanel Dev-Modus: User-Range steuert den Fader (extern gesetzt)", "[ui][chassis][devmode]")
 {
     ChassisRig rig;
     const auto uuid = rig.node.getProperty (conduit::id::nodeId).toString();
@@ -309,23 +310,42 @@ TEST_CASE ("FxModulePanel Dev-Modus: User-Range steuert den Fader, Editierfelder
     conduit::FxModulePanel panel { rig.node, rig.manager };
     panel.setDevMode (true);
 
-    // Range-Änderung von außen (Undo/Preset/zweites Panel) zieht nach
+    // Range-Änderung von außen (Undo/Preset/Kurven-Popup) zieht nach
     REQUIRE (rig.manager.setParameterUserRange (uuid, "density", 0.25, 0.75));
     REQUIRE (panel.columns[0]->slider.getMinimum() == Approx (0.25));
     REQUIRE (panel.columns[0]->slider.getMaximum() == Approx (0.75));
-    REQUIRE (panel.columns[0]->minEdit.getText().getDoubleValue() == Approx (0.25));
 
-    // Editierfeld committet über den GraphManager (undo-fähig)
-    panel.columns[0]->maxEdit.setText ("0.5", juce::sendNotification);
-    auto density = rig.node.getChildWithName (conduit::id::parameters)
-                       .getChildWithProperty (conduit::id::paramId, "density");
-    REQUIRE ((double) density.getProperty (conduit::id::paramUserMax) == Approx (0.5));
-    REQUIRE (panel.columns[0]->slider.getMaximum() == Approx (0.5));
+    // Kurven-Button existiert im Dev-Modus (öffnet CurveEditor mit Range)
+    REQUIRE (panel.columns[0]->curveButton.isVisible());
+}
 
-    // Ungültige Eingabe wird abgelehnt und aus dem Tree restauriert
-    panel.columns[0]->maxEdit.setText ("0.1", juce::sendNotification);   // < userMin
-    REQUIRE ((double) density.getProperty (conduit::id::paramUserMax) == Approx (0.5));
-    REQUIRE (panel.columns[0]->maxEdit.getText().getDoubleValue() == Approx (0.5));
+TEST_CASE ("CurveEditor: Min/Max-Felder committen ueber onRangeChanged, ungueltig restauriert", "[ui][chassis][devmode]")
+{
+    juce::ScopedJuceInitialiser_GUI juceRuntime;
+
+    conduit::CurveEditor editor { juce::String(), 0.25, 0.75 };
+
+    double committedMin = -1.0, committedMax = -1.0;
+    bool acceptNext = true;
+    editor.onRangeChanged = [&] (double newMin, double newMax)
+    {
+        committedMin = newMin;
+        committedMax = newMax;
+        return acceptNext;
+    };
+
+    REQUIRE (editor.minEdit.getText().getDoubleValue() == Approx (0.25));
+
+    // Gültiger Commit: Callback bekommt beide Werte, Felder behalten sie
+    editor.maxEdit.setText ("0.5", juce::sendNotification);
+    REQUIRE (committedMax == Approx (0.5));
+    REQUIRE (committedMin == Approx (0.25));
+    REQUIRE (editor.maxEdit.getText().getDoubleValue() == Approx (0.5));
+
+    // Abgelehnter Commit (GraphManager sagt nein) → Feld restauriert
+    acceptNext = false;
+    editor.maxEdit.setText ("0.1", juce::sendNotification);
+    REQUIRE (editor.maxEdit.getText().getDoubleValue() == Approx (0.5));
 }
 
 TEST_CASE ("NodeComponent: DEV-Toggle schaltet das Panel, Breite folgt den Spalten", "[ui][chassis][devmode]")
@@ -346,6 +366,52 @@ TEST_CASE ("NodeComponent: DEV-Toggle schaltet das Panel, Breite folgt den Spalt
     REQUIRE (nodeUi.getWidth() == conduit::FxModulePanel::widthForColumns (4) + 56);
 
     nodeUi.completeTeardownNow();
+}
+
+TEST_CASE ("CurvedSlider: Bezier-Kurve mappt Position, der Wert bleibt echt", "[ui][chassis][curve]")
+{
+    juce::ScopedJuceInitialiser_GUI juceRuntime;
+
+    conduit::CurvedSlider slider { juce::Slider::LinearVertical, juce::Slider::NoTextBox };
+    slider.setRange (0.0, 1.0, 0.0);
+
+    // Linear (keine Kurve): Identität
+    REQUIRE (slider.valueToProportionOfLength (0.3) == Approx (0.3));
+
+    const auto curve = conduit::ChassisSchema::parseCurve ("0.9 0.1 0.9 0.4");
+    REQUIRE (curve.has_value());
+    slider.setResponseCurve (curve);
+    REQUIRE (slider.hasResponseCurve());
+
+    // Wert ↔ Position: Roundtrip über die Kurve, Endpunkte bleiben fest
+    for (const double value : { 0.0, 0.25, 0.5, 0.75, 1.0 })
+    {
+        const auto proportion = slider.valueToProportionOfLength (value);
+        REQUIRE (slider.proportionOfLengthToValue (proportion) == Approx (value).margin (0.003));
+    }
+
+    // Die Kurve VERBIEGT das Mapping tatsächlich (nicht mehr linear)
+    REQUIRE (slider.valueToProportionOfLength (0.2) != Approx (0.2).margin (0.05));
+
+    // setValue bleibt der ECHTE Wert (UI-only Mapping)
+    slider.setValue (0.3, juce::dontSendNotification);
+    REQUIRE (slider.getValue() == Approx (0.3));
+}
+
+TEST_CASE ("FxModulePanel: curve-Property erreicht den Spalten-Fader live", "[ui][chassis][curve]")
+{
+    ChassisRig rig;
+    const auto uuid = rig.node.getProperty (conduit::id::nodeId).toString();
+    conduit::FxModulePanel panel { rig.node, rig.manager };
+
+    REQUIRE_FALSE (panel.columns[0]->slider.hasResponseCurve());
+
+    REQUIRE (rig.manager.setParameterCurve (uuid, "density", "0.9 0.1 0.9 0.4"));
+    REQUIRE (panel.columns[0]->slider.hasResponseCurve());
+
+    // Reset auf linear (Undo-Pfad identisch: Property weg → Kurve weg)
+    REQUIRE (rig.manager.setParameterCurve (uuid, "density", ""));
+    REQUIRE_FALSE (panel.columns[0]->slider.hasResponseCurve());
 }
 
 TEST_CASE ("FxModulePanel: widthForColumns ist die zentrale Breitenformel", "[ui][chassis]")

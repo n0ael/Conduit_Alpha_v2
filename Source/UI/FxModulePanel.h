@@ -7,6 +7,7 @@
 
 #include "Core/GraphManager.h"
 #include "Core/LinkSendTaps.h"
+#include "UI/CurvedSlider.h"
 #include "UI/GainFaderMeter.h"
 #include "UI/PortComponent.h"
 
@@ -64,8 +65,7 @@ public:
     static constexpr int titleHeight  = 18;
     static constexpr int knobHeight   = 28;
     static constexpr int portRowHeight = 26;
-    static constexpr int devRowHeight  = 16;   // Min/Max-Editierfelder (Dev-Modus)
-    static constexpr int hideRowHeight = 16;   // Ausblenden-Toggle (Dev-Modus)
+    static constexpr int hideRowHeight = 16;   // Ausblenden-/Kurven-Zeile (Dev-Modus)
     static constexpr int panelHeight  = 248;
 
     /** Erster CV-Eingangs-Kanal des Chassis (Audio 0..1, CV 2..N — 4.6). */
@@ -99,14 +99,15 @@ public:
         int cvChannel = -1;        // festes Layout: numAudioIns + dsp-Index (4.6)
         bool hidden = false;       // uiHidden-Snapshot beim Build
         juce::Label  titleLabel;
-        juce::Slider slider { juce::Slider::LinearVertical, juce::Slider::NoTextBox };
+        CurvedSlider slider { juce::Slider::LinearVertical, juce::Slider::NoTextBox };
         juce::Slider cvKnob { juce::Slider::RotaryHorizontalVerticalDrag,
                               juce::Slider::NoTextBox };
         std::unique_ptr<PortComponent> cvPort;   // fehlt bei uiHidden (Kabel getrennt)
 
-        // Dev-Modus-Controls (nur im Dev-Modus erzeugt)
-        juce::Label minEdit, maxEdit;
+        // Dev-Modus-Controls (nur im Dev-Modus erzeugt). Min/Max des
+        // User-Regelbereichs leben IM Kurven-Editor (CallOutBox, ~-Button)
         juce::TextButton hideButton;
+        juce::TextButton curveButton;   // öffnet Kurve + Range (CurveEditor)
     };
 
     std::vector<std::unique_ptr<ParameterColumn>> columns;
@@ -125,6 +126,11 @@ public:
     // daneben zeigt offline/announced/streaming (Status pro Tick transient
     // aus dem Modul — Muster LinkAudioStatusBadge)
     juce::TextButton linkSendButton { "LINK" };
+
+    // Dev-Modus: sichert die aktuellen dsp-Overrides (Range/Hidden/Kurve)
+    // als Modul-Typ-Defaults (ModuleUiDefaults, 4.6) — künftige Neu-Anlagen
+    // dieses factoryIds erben sie
+    juce::TextButton saveDefaultsButton { "als Standard" };
 
     /** LED-Status jetzt aus dem Modul ziehen — public für headless Tests. */
     void refreshSendStatusNow();

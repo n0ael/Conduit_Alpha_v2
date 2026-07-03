@@ -16,7 +16,7 @@
 
 ## Aktueller Meilenstein (Juli 2026 — in Arbeit)
 
-**FX-Chassis-Standard für alle Audio-FX-Module (Plan: 7 Meilensteine M1–M7) — M1–M5 abgeschlossen:**
+**FX-Chassis-Standard für alle Audio-FX-Module (Plan: 7 Meilensteine M1–M7) — M1–M6 abgeschlossen:**
 
 Ziel des Gesamtvorhabens (User-Plan 03.07.): jedes FX-Modul bekommt einheitlich
 Ableton-artige I/O-Gain-Fader mit Meter, einen Link-Audio-Send-Button am Output,
@@ -56,7 +56,12 @@ Bezier-Fader-Kurven, Modul-Typ-Defaults). Wird als CLAUDE.md 4.6 verbindlich.
   - Friedhof-Muster im FxModulePanel: Spalten-Rebuild aus dem eigenen hideButton-Callback zerstört deferred (kein Use-after-free, Muster TransportBar)
   - `ChassisSchema::cvChannelForParam`: feste CV-Kanal-Zuordnung, uiHidden verschiebt nie Kanäle
   - Verifikation: 272 Testfälle / 11170 Assertions grün (Debug + ASan). Neu: Richtungs-Modell-Sektionen (Betrag, Richtung, User-Range-Skalierung/-Clamp, Rechteck-Gleichrichtung), setParameterUserRange/-Hidden inkl. Ein-Undo-Semantik, Live+Materialisierungs-Sync der Range, Panel-Dev-Modus (uiHidden nur im Normalmodus weg, Editierfelder committen, ungültige Eingaben restauriert), NodeComponent-DEV-Toggle mit Breiten-Nachzug
-- **Als Nächstes:** M6 Bezier-Fader-Kurven + Modul-Typ-Defaults · M7 CLAUDE.md 4.6
+- **M6 — Bezier-Fader-Kurven + Modul-Typ-Defaults (fertig):**
+  - **Fader-Kurven:** Parameter-Property `curve` ("x1 y1 x2 y2", kubische Bezier (0,0)→(1,1)); Kontrollpunkte via `parseCurve` auf [0,1] geclamped → x(t) UND y(t) monoton (CSS-Easing-Eigenschaft), Mapping eindeutig invertierbar. `CurvedSlider` (überschreibt `proportionOfLengthToValue`/`valueToProportionOfLength`) — REINES UI-Mapping, im Tree/OSC/CV/Preset steht immer der echte Wert. Bisektions-Löser in `ChassisSchema` (pure, testbar)
+  - **CurveEditor** (CallOutBox am ~-Button jeder Spalte, Dev-Modus): zwei draggbare Kontrollpunkte, „linear"-Reset, UND die Min/Max-Felder des User-Regelbereichs integriert (User-Wunsch 03.07. — die kleinen Spalten-Editierfelder entfielen dafür); abgelehnte Range-Commits restauriert der Editor. Commits laufen undo-fähig über `GraphManager::setParameterCurve`/`setParameterUserRange`
+  - **Modul-Typ-Defaults:** `ModuleUiDefaults` (App-Zustand, `Conduit/ModuleUiDefaults.settings`, Muster MeterSettings) — „als Standard"-Button im Dev-Modus sichert die dsp-Overrides (userMin/userMax/uiHidden/curve) pro factoryId; `GraphManager::addModuleNode` wendet sie bei NEU-Anlagen als Overlay an (Presets/Patches gewinnen immer); Capture ohne Overrides = Reset des Eintrags. EngineProcessor besitzt die Instanz
+  - Verifikation: 279 Testfälle / 11261 Assertions grün (Debug + ASan). Neu: Bezier parse/eval/Invertierbarkeit/Monotonie, setParameterCurve undo-fähig + Validierung, CurvedSlider-Roundtrip, Panel-Kurve live, ModuleUiDefaults Capture→Overlay→Reset, addModuleNode-Overlay, CurveEditor-Range-Commit/Restaurierung
+- **Als Nächstes:** M6b Control-Linking (modulintern, als interne Modulation — User-Entscheidungen 03.07.) · M7 CLAUDE.md 4.6
 
 **Davor: Tap-Tempo-Umbau: Monitor + Set-Commit (inspiriert vom M4L-Device „TAP and CHANGE Tempo BPM"):**
 

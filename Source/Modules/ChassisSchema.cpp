@@ -36,6 +36,73 @@ namespace
 } // namespace
 
 //==============================================================================
+namespace
+{
+    /** Kubische Bezier-Komponente mit Endpunkten 0 und 1: B(t) für eine
+        Achse mit Kontrollwerten c1, c2. */
+    [[nodiscard]] float bezierComponent (float t, float c1, float c2) noexcept
+    {
+        const float u = 1.0f - t;
+        return 3.0f * u * u * t * c1 + 3.0f * u * t * t * c2 + t * t * t;
+    }
+
+    /** Löst component(t) == target per Bisektion — beide Achsen sind bei
+        Kontrollwerten in [0,1] monoton (ChassisSchema-Doku). */
+    [[nodiscard]] float solveBezier (float target, float c1, float c2) noexcept
+    {
+        float lo = 0.0f, hi = 1.0f;
+
+        for (int i = 0; i < 32; ++i)
+        {
+            const float mid = 0.5f * (lo + hi);
+
+            if (bezierComponent (mid, c1, c2) < target)
+                lo = mid;
+            else
+                hi = mid;
+        }
+
+        return 0.5f * (lo + hi);
+    }
+} // namespace
+
+std::optional<ChassisSchema::BezierCurve> ChassisSchema::parseCurve (const juce::String& text)
+{
+    auto tokens = juce::StringArray::fromTokens (text, " ", {});
+    tokens.removeEmptyStrings();
+
+    if (tokens.size() != 4)
+        return std::nullopt;
+
+    const auto clamped = [&tokens] (int index)
+    {
+        return juce::jlimit (0.0f, 1.0f, tokens[index].getFloatValue());
+    };
+
+    return BezierCurve { clamped (0), clamped (1), clamped (2), clamped (3) };
+}
+
+juce::String ChassisSchema::curveToString (const BezierCurve& curve)
+{
+    return juce::String (curve.x1, 3) + " " + juce::String (curve.y1, 3) + " "
+         + juce::String (curve.x2, 3) + " " + juce::String (curve.y2, 3);
+}
+
+float ChassisSchema::evaluateCurve (const BezierCurve& curve, float position) noexcept
+{
+    const auto p = juce::jlimit (0.0f, 1.0f, position);
+    const auto t = solveBezier (p, curve.x1, curve.x2);
+    return juce::jlimit (0.0f, 1.0f, bezierComponent (t, curve.y1, curve.y2));
+}
+
+float ChassisSchema::curvePositionForValue (const BezierCurve& curve, float normValue) noexcept
+{
+    const auto y = juce::jlimit (0.0f, 1.0f, normValue);
+    const auto t = solveBezier (y, curve.y1, curve.y2);
+    return juce::jlimit (0.0f, 1.0f, bezierComponent (t, curve.x1, curve.x2));
+}
+
+//==============================================================================
 void ChassisSchema::migrate (juce::ValueTree nodeTree, int numAudioIns)
 {
     if (! nodeTree.hasType (id::node))

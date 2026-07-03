@@ -650,6 +650,11 @@ Plattform-spezifisches Setup in `initAudio()` und CMake ist explizit erlaubt.
 - Touch-first Design: `setAcceptsTouchEvents(true)`
 - Minimale Touch-Target-Größe: 44px
 - Vollständig Mouse/Keyboard-kompatibel — kein Touch-only Code
+- **Schrift wird NIE horizontal gestaucht (User-Regel 07/2026):** bei
+  Platzmangel die Schriftgröße reduzieren oder den Text kürzen — niemals
+  quetschen. Konkret: `drawFittedText`/`drawLabel` immer mit
+  minimumHorizontalScale = 1.0 (PushLookAndFeel::drawLabel erzwingt das
+  app-weit), `Label::setMinimumHorizontalScale (< 1.0f)` ist verboten.
 - Jedes UI-Element mit Touch-State reagiert in ≤ 1 Frame visuell
 - Keine blockierenden Operationen im `paint()`-Callback
 - Animationen via `juce::VBlankAttachment` (JUCE 7.0.3+)

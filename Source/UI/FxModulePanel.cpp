@@ -187,7 +187,6 @@ void FxModulePanel::buildColumns()
         column->titleLabel.setColour (juce::Label::textColourId,
                                       juce::Colours::white.withAlpha (0.6f));
         column->titleLabel.setJustificationType (juce::Justification::centred);
-        column->titleLabel.setMinimumHorizontalScale (0.7f);
         addAndMakeVisible (column->titleLabel);
 
         column->slider.setDoubleClickReturnValue (true, (double) param.getProperty (id::paramDefault, 0.0));
@@ -223,7 +222,6 @@ void FxModulePanel::buildColumns()
                 button->setText (preset.name, juce::dontSendNotification);
                 button->setFont (juce::Font (juce::FontOptions (11.0f)));
                 button->setJustificationType (juce::Justification::centred);
-                button->setMinimumHorizontalScale (0.7f);
                 button->storedValue = preset.value;
                 button->active = juce::exactlyEqual (static_cast<float> (preset.value),
                                                      static_cast<float> (currentValue));

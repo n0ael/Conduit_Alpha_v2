@@ -108,6 +108,37 @@ juce::Path chevron (bool pointsRight)
     return p;
 }
 
+juce::Path nudgeBars (bool leanRight)
+{
+    // Live-Phase-Nudge-Optik (User 03.07.): drei geneigte Striche —
+    // die Neigung zeigt die Richtung (vor/zurück)
+    juce::Path p;
+    const auto slant = leanRight ? 0.18f : -0.18f;
+
+    for (const auto x : { 0.30f, 0.50f, 0.70f })
+    {
+        p.startNewSubPath (x - slant * 0.5f, 0.84f);
+        p.lineTo (x + slant * 0.5f, 0.16f);
+    }
+    return p;
+}
+
+juce::Path browserPanelOutline()
+{
+    // Browser-Toggle wie im Live-Header, GESPIEGELT (Panel rechts —
+    // Conduits Browser klappt rechts auf, User 03.07.)
+    juce::Path p;
+    p.addRoundedRectangle (0.08f, 0.20f, 0.84f, 0.60f, 0.08f);
+    return p;
+}
+
+juce::Path browserPanelFill()
+{
+    juce::Path p;
+    p.addRoundedRectangle (0.60f, 0.26f, 0.26f, 0.48f, 0.04f);
+    return p;
+}
+
 juce::Path chevronDownSmall()
 {
     juce::Path p;
@@ -117,17 +148,16 @@ juce::Path chevronDownSmall()
 
 juce::Path mixerBars()
 {
-    // Fader-Optik: vier vertikale Bahnen, Ticks auf verschiedenen Höhen
+    // Live-Header-Optik (User 03.07.): Säulen unterschiedlicher Höhe von
+    // der Grundlinie — wie ein stehendes Level-Meter „ılıl"
     juce::Path p;
-    const float xs[]    = { 0.16f, 0.39f, 0.61f, 0.84f };
-    const float ticks[] = { 0.36f, 0.62f, 0.28f, 0.52f };
+    const float xs[]   = { 0.20f, 0.40f, 0.60f, 0.80f };
+    const float tops[] = { 0.48f, 0.16f, 0.36f, 0.24f };
 
     for (int i = 0; i < 4; ++i)
     {
-        p.startNewSubPath (xs[i], 0.10f);
-        p.lineTo (xs[i], 0.90f);
-        p.startNewSubPath (xs[i] - 0.09f, ticks[i]);
-        p.lineTo (xs[i] + 0.09f, ticks[i]);
+        p.startNewSubPath (xs[i], 0.88f);
+        p.lineTo (xs[i], tops[i]);
     }
     return p;
 }
@@ -141,8 +171,9 @@ juce::Path clipBoxOutline()
 
 juce::Path clipBoxTriangle()
 {
+    // zentriert und größer (Live-Header-Optik, User 03.07.)
     juce::Path p;
-    p.addTriangle (0.40f, 0.36f, 0.40f, 0.64f, 0.66f, 0.50f);
+    p.addTriangle (0.40f, 0.32f, 0.40f, 0.68f, 0.70f, 0.50f);
     return p;
 }
 
@@ -238,16 +269,12 @@ juce::Path sharpSign()
 
 juce::Path gridLoop()
 {
-    // Ω-Schleife: großer Bogen mit zwei Füßchen
+    // Offener Ring wie im Live-Header (User 03.07.): Bogen mit Öffnung
+    // unten, ohne Füßchen
     juce::Path p;
-    p.startNewSubPath (0.12f, 0.84f);
-    p.lineTo (0.32f, 0.84f);
-    p.addCentredArc (0.50f, 0.46f, 0.30f, 0.30f,
-                     0.0f,
-                     juce::MathConstants<float>::pi * 1.30f,
-                     juce::MathConstants<float>::pi * 2.70f);
-    p.lineTo (0.68f, 0.84f);
-    p.lineTo (0.88f, 0.84f);
+    p.addCentredArc (0.50f, 0.50f, 0.36f, 0.36f, 0.0f,
+                     juce::MathConstants<float>::pi * 1.22f,
+                     juce::MathConstants<float>::pi * 2.78f, true);
     return p;
 }
 
@@ -271,8 +298,8 @@ juce::Path strokeGeometry (Icon icon)
         case Icon::metronome:    return metronomeOutline();
         case Icon::plus:         return plusSign();
         case Icon::gear:         return gearSun();
-        case Icon::nudgeLeft:    return chevron (false);
-        case Icon::nudgeRight:   return chevron (true);
+        case Icon::nudgeLeft:    return nudgeBars (false);
+        case Icon::nudgeRight:   return nudgeBars (true);
         case Icon::chevronDown:  return chevronDownSmall();
         case Icon::pageMixer:    return mixerBars();
         case Icon::pageClip:     return clipBoxOutline();
@@ -285,6 +312,7 @@ juce::Path strokeGeometry (Icon icon)
         case Icon::fader:        return faderTrack();
         case Icon::curve:        return curveSweep();
         case Icon::sharp:        return sharpSign();
+        case Icon::browserPanel: return browserPanelOutline();
     }
 
     jassertfalse;
@@ -300,6 +328,7 @@ juce::Path fillGeometry (Icon icon)
         case Icon::pageClip:    return clipBoxTriangle();
         case Icon::chevronDown: return chevronDownSmall();
         case Icon::fader:       return faderThumb();
+        case Icon::browserPanel: return browserPanelFill();
 
         // reine Stroke-Icons — explizit statt default (Clang -Wswitch-enum)
         case Icon::play:

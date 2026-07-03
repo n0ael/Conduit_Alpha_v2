@@ -100,6 +100,12 @@ public:
     juce::Font getTextButtonFont (juce::TextButton& button, int buttonHeight) override;
     juce::Font getPopupMenuFont() override;
 
+    /** Anti-Stauch-Regel (10, User 07/2026): Schrift wird NIE horizontal
+        gequetscht — drawFittedText läuft hart mit Scale 1.0 (verkleinert
+        bei Platzmangel stattdessen die Schriftgröße). V4-Zeichnung sonst
+        unverändert. */
+    void drawLabel (juce::Graphics& g, juce::Label& label) override;
+
     /** ComboBoxen im Kachel-Stil (Header-Skala, CurveEditor): Schrift wie
         die TextTiles (Jost 13 × fontScale) statt der größeren V4-Font. */
     juce::Font getComboBoxFont (juce::ComboBox& box) override;

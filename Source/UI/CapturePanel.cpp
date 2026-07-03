@@ -87,7 +87,6 @@ CapturePanel::ChannelRow::ChannelRow (int captureIndexToUse, juce::String nameTo
     nameLabel.setFont (juce::FontOptions { 13.0f });
     nameLabel.setColour (juce::Label::textColourId, juce::Colours::white.withAlpha (0.7f));
     nameLabel.setBorderSize ({ 0, 0, 0, 0 });
-    nameLabel.setMinimumHorizontalScale (0.7f);
 
     if (onRenameToUse)
     {

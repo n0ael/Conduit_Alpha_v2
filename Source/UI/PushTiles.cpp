@@ -76,7 +76,10 @@ void IconTile::paintButton (juce::Graphics& g, bool isHighlighted, bool isDown)
     if (! isEnabled())
         colour = colours::textDim.withAlpha (0.5f);
 
-    draw (g, icon, bounds.reduced (bounds.getHeight() * 0.26f), colour);
+    // Inset an der KLEINEREN Seite bemessen — bei schmalen Kacheln
+    // (♯-Skala-Toggle, Dev-Zeile) fraß der Höhen-Inset das Icon fast auf
+    draw (g, icon, bounds.reduced (juce::jmin (bounds.getWidth(),
+                                               bounds.getHeight()) * 0.26f), colour);
 }
 
 //==============================================================================

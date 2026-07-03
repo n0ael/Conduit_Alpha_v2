@@ -49,7 +49,8 @@ enum class Icon
     fader,          // ⊦  vertikaler Fader mit Griff: zurück zum Fader
     curve,          // ~  Bezier-Kurve/Range-Editor
 
-    sharp           // ♯  Session-Skala an/aus (Header, Ableton-Scale-Toggle)
+    sharp,          // ♯  Session-Skala an/aus (Header, Ableton-Scale-Toggle)
+    browserPanel    // ▯▮ Browser-Panel rechts (Live-Icon gespiegelt)
 };
 
 /** Zeichnet das Icon in die Bounds (Stroke-Breite skaliert mit der Größe). */

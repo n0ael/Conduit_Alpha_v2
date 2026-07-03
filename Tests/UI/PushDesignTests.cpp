@@ -30,6 +30,7 @@ constexpr conduit::push::Icon allIcons[] = {
     conduit::push::Icon::fader,
     conduit::push::Icon::curve,
     conduit::push::Icon::sharp,
+    conduit::push::Icon::browserPanel,
 };
 
 } // namespace

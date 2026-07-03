@@ -237,6 +237,37 @@ juce::Font PushLookAndFeel::getPopupMenuFont()
     return base.withHeight (base.getHeight() * getFontScale());
 }
 
+void PushLookAndFeel::drawLabel (juce::Graphics& g, juce::Label& label)
+{
+    // V4-Zeichnung, aber drawFittedText mit Scale 1.0 — Anti-Stauch-Regel
+    // (10): lieber kleinere Schrift als gequetschte Glyphen
+    g.fillAll (label.findColour (juce::Label::backgroundColourId));
+
+    if (! label.isBeingEdited())
+    {
+        const auto alpha = label.isEnabled() ? 1.0f : 0.5f;
+        const auto font = getLabelFont (label);
+
+        g.setColour (label.findColour (juce::Label::textColourId).withMultipliedAlpha (alpha));
+        g.setFont (font);
+
+        const auto textArea = getLabelBorderSize (label)
+                                  .subtractedFrom (label.getLocalBounds());
+
+        g.drawFittedText (label.getText(), textArea, label.getJustificationType(),
+                          juce::jmax (1, (int) ((float) textArea.getHeight() / font.getHeight())),
+                          1.0f);
+
+        g.setColour (label.findColour (juce::Label::outlineColourId).withMultipliedAlpha (alpha));
+    }
+    else if (label.isEnabled())
+    {
+        g.setColour (label.findColour (juce::Label::outlineColourId));
+    }
+
+    g.drawRect (label.getLocalBounds());
+}
+
 void PushLookAndFeel::drawToggleButton (juce::Graphics& g, juce::ToggleButton& button,
                                         bool shouldDrawButtonAsHighlighted,
                                         bool shouldDrawButtonAsDown)

@@ -181,6 +181,11 @@ TransportBar::TransportBar (juce::ValueTree rootTree, LinkClock& linkClockToUse,
     devTile.onClick = [this] { if (onToggleDevPanel != nullptr) onToggleDevPanel(); };
     addChildComponent (devTile);   // Sichtbarkeit setzt der Editor
 
+    // Browser-Panel-Toggle: Platzhalter bis zum Browser-Meilenstein
+    browserPanelTile.setTooltip (juce::String::fromUTF8 (
+        "Browser-Panel — kommt als eigener Meilenstein"));
+    browserPanelTile.setEnabled (false);
+
     // -- Globale Session-Skala (Schema 6.2) — Ableton-Look: [♯][Root][Skala] --
     {
         const char* noteNames[] = { "C", "C#", "D", "D#", "E", "F",
@@ -246,7 +251,7 @@ TransportBar::TransportBar (juce::ValueTree rootTree, LinkClock& linkClockToUse,
              &tapTile, &setTile, &nudgeDownTile, &nudgeUpTile,
              &metronomeTile, &tempoTile, &positionTile, &swingTile, &linkTile,
              &plusTile, &undoTile, &saveTile, &gearTile,
-             &scaleToggleTile, &rootCombo, &scaleCombo,
+             &scaleToggleTile, &rootCombo, &scaleCombo, &browserPanelTile,
              &warningLabel })
         addAndMakeVisible (component);
 
@@ -508,8 +513,10 @@ void TransportBar::resized()
     placeLeft (swingTile,    62);
     placeLeft (linkTile,     78, 14);
 
-    // Rechts von außen nach innen: Skala-Gruppe (Ableton-Look: [♯][Root]
-    // [Skala] bündig mit 2px-Fugen), Aktionen, Pages
+    // Rechts von außen nach innen: Browser-Panel-Toggle (äußerstes Element),
+    // Skala-Gruppe (Ableton-Look: [♯][Root][Skala] bündig mit 2px-Fugen),
+    // Aktionen, Pages
+    placeRight (browserPanelTile, tile);
     placeRight (scaleCombo, 88, 2);
     placeRight (rootCombo,  46, 2);
     placeRight (scaleToggleTile, 28, 14);

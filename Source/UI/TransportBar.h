@@ -173,6 +173,12 @@ private:
     juce::ComboBox scaleCombo;
     ScaleType lastNonChromaticScale = ScaleType::minor;   // transient (Session-Sitzung)
 
+    // Browser-Panel-Toggle (Live-Icon gespiegelt, äußerstes Element rechts) —
+    // Platzhalter: das rechts aufklappende Browser-Panel ist der nächste
+    // Meilenstein (User 03.07.)
+    push::IconTile browserPanelTile { push::Icon::browserPanel, "browserPanel",
+                                      push::colours::ledOrange };
+
     juce::Label warningLabel;
 
     std::vector<ModuleBrowser::Item> browserItems;

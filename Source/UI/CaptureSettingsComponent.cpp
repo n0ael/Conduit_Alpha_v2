@@ -112,7 +112,6 @@ CaptureSettingsComponent::CaptureSettingsComponent (CaptureSettings& settingsToU
 
     directoryLabel.setColour (juce::Label::textColourId, juce::Colours::white.withAlpha (0.6f));
     directoryLabel.setJustificationType (juce::Justification::centredLeft);
-    directoryLabel.setMinimumHorizontalScale (0.7f);
 
     releaseAfterExportToggle.onClick = [this]
     { settings.setReleaseAfterExport (releaseAfterExportToggle.getToggleState()); };

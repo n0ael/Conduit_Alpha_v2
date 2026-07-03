@@ -210,15 +210,17 @@ void FxModulePanel::buildColumns()
             column->curveButton.onClick = [this, uuid, paramId = column->paramId,
                                            button = &column->curveButton]
             {
-                const auto param = paramTreeFor (paramId);
+                // Bewusst andere Namen als die äußeren Locals der Rebuild-
+                // Schleife (param/parameters/i) — Clang -Wshadow-uncaptured-local
+                const auto editedParam = paramTreeFor (paramId);
 
                 // Link-Quellen: alle ANDEREN dsp-Parameter dieses Moduls
                 juce::StringArray linkSources;
-                const auto parameters = parametersTree();
+                const auto allParameters = parametersTree();
 
-                for (int i = 0; i < parameters.getNumChildren(); ++i)
+                for (int candidateIndex = 0; candidateIndex < allParameters.getNumChildren(); ++candidateIndex)
                 {
-                    const auto candidate = parameters.getChild (i);
+                    const auto candidate = allParameters.getChild (candidateIndex);
                     const auto candidateId = candidate.getProperty (id::paramId).toString();
 
                     if (candidateId != paramId
@@ -227,17 +229,17 @@ void FxModulePanel::buildColumns()
                 }
 
                 auto editor = std::make_unique<CurveEditor> (
-                    param.getProperty (id::paramCurve).toString(),
-                    (double) param.getProperty (id::paramUserMin,
-                                                param.getProperty (id::paramMin, 0.0)),
-                    (double) param.getProperty (id::paramUserMax,
-                                                param.getProperty (id::paramMax, 1.0)),
-                    (double) param.getProperty (id::paramMin, 0.0),
-                    (double) param.getProperty (id::paramMax, 1.0),
+                    editedParam.getProperty (id::paramCurve).toString(),
+                    (double) editedParam.getProperty (id::paramUserMin,
+                                                      editedParam.getProperty (id::paramMin, 0.0)),
+                    (double) editedParam.getProperty (id::paramUserMax,
+                                                      editedParam.getProperty (id::paramMax, 1.0)),
+                    (double) editedParam.getProperty (id::paramMin, 0.0),
+                    (double) editedParam.getProperty (id::paramMax, 1.0),
                     linkSources,
-                    param.getProperty (id::paramLinkSource).toString(),
-                    (double) param.getProperty (id::paramLinkAmount, 0.0),
-                    param.getProperty (id::paramLinkCurve).toString());
+                    editedParam.getProperty (id::paramLinkSource).toString(),
+                    (double) editedParam.getProperty (id::paramLinkAmount, 0.0),
+                    editedParam.getProperty (id::paramLinkCurve).toString());
 
                 editor->onCurveChanged = [this, uuid, paramId] (const juce::String& curveText)
                 {

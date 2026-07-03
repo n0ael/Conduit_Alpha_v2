@@ -1,5 +1,7 @@
 #include "LinkAudioStatusBadge.h"
 
+#include "UI/PushLookAndFeel.h"
+
 namespace conduit
 {
 
@@ -58,7 +60,7 @@ void LinkAudioStatusBadge::paint (juce::Graphics& g)
     // Kein "Link:"-Präfix — die Kachel heißt ohnehin nach dem Modul, und der
     // schmale Slider-Streifen (168er-Kachel) schneidet längere Texte ab
     g.setColour (juce::Colours::white.withAlpha (0.85f));
-    g.setFont (juce::Font (juce::FontOptions (13.0f)));
+    g.setFont (push::scaledFont (13.0f));
     g.drawText (text, bounds, juce::Justification::centredLeft);
 }
 

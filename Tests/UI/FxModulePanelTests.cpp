@@ -680,6 +680,63 @@ TEST_CASE ("FxModulePanel Dev: Button-Rename via GraphManager erreicht das Label
     REQUIRE_FALSE (panel.columns[0]->valueButtons[0]->isEditableOnDoubleClick());
 }
 
+TEST_CASE ("NodeComponent: app-weiter Dev Mode gatet den DEV-Toggle", "[ui][chassis][devmode][uisettings]")
+{
+    ChassisRig rig;
+
+    // Temp-UiSettings (Muster TempMeterSettings — echte Datei bleibt unberührt)
+    const auto folder = juce::File::getSpecialLocation (juce::File::tempDirectory)
+                            .getChildFile ("ConduitDevGatingTests")
+                            .getChildFile (juce::Uuid().toString());
+    folder.createDirectory();
+    juce::PropertiesFile::Options options;
+    options.applicationName = "ConduitDevGatingTests";
+    options.filenameSuffix  = ".settings";
+    options.folderName      = folder.getFullPathName();
+
+    {
+        conduit::UiSettings settings (options);
+        REQUIRE_FALSE (settings.isDevModeEnabled());
+
+        // Dev Mode aus → DEV-Button unsichtbar (mit UiSettings injiziert)
+        conduit::NodeComponent nodeUi { rig.node, rig.manager, rig.uiRegistry,
+                                        nullptr, nullptr, nullptr, nullptr, &settings };
+        REQUIRE_FALSE (nodeUi.devButton.isVisible());
+
+        // Aktivieren → sichtbar (Broadcast synchron zustellen)
+        settings.setDevModeEnabled (true);
+        settings.dispatchPendingMessages();
+        REQUIRE (nodeUi.devButton.isVisible());
+
+        // Kachel-Dev-Modus aktivieren, dann global deaktivieren →
+        // Button unsichtbar UND Panel-Dev-Modus zurückgesetzt
+        nodeUi.devButton.onClick();
+        REQUIRE (nodeUi.getFxPanel()->isDevMode());
+
+        settings.setDevModeEnabled (false);
+        settings.dispatchPendingMessages();
+        REQUIRE_FALSE (nodeUi.devButton.isVisible());
+        REQUIRE_FALSE (nodeUi.getFxPanel()->isDevMode());
+
+        // Neuer Node erbt den aktuellen Zustand im ctor
+        settings.setDevModeEnabled (true);
+        settings.dispatchPendingMessages();
+        conduit::NodeComponent fresh { rig.node, rig.manager, rig.uiRegistry,
+                                       nullptr, nullptr, nullptr, nullptr, &settings };
+        REQUIRE (fresh.devButton.isVisible());
+
+        fresh.completeTeardownNow();
+        nodeUi.completeTeardownNow();
+    }
+
+    // Ohne UiSettings (Alt-Tests, nullptr): Button sichtbar wie bisher
+    conduit::NodeComponent legacy { rig.node, rig.manager, rig.uiRegistry };
+    REQUIRE (legacy.devButton.isVisible());
+    legacy.completeTeardownNow();
+
+    folder.deleteRecursively();
+}
+
 TEST_CASE ("FxModulePanel: columnWidthFor + getPreferredWidth (variable Spaltenbreiten)", "[ui][chassis][buttons]")
 {
     using Panel = conduit::FxModulePanel;

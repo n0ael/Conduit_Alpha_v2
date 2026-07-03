@@ -32,7 +32,8 @@ NodeComponent::NodeComponent (juce::ValueTree nodeTreeToBind,
                               ChannelNames* channelNamesToUse,
                               LevelMeter* inputLevelsToUse,
                               LevelMeter* outputLevelsToUse,
-                              InputLinkSend* inputSendToUse)
+                              InputLinkSend* inputSendToUse,
+                              UiSettings* uiSettingsToUse)
     : nodeTree (std::move (nodeTreeToBind)),
       graphManager (graphManagerToUse),
       uiRegistry (uiRegistryToUse),
@@ -40,6 +41,7 @@ NodeComponent::NodeComponent (juce::ValueTree nodeTreeToBind,
       inputLevels (inputLevelsToUse),
       outputLevels (outputLevelsToUse),
       inputSend (inputSendToUse),
+      uiSettings (uiSettingsToUse),
       nodeUuid (nodeTree.getProperty (id::nodeId).toString())
 {
     uiRegistry.acquire (nodeUuid);
@@ -118,6 +120,13 @@ NodeComponent::NodeComponent (juce::ValueTree nodeTreeToBind,
         };
         devButton.setColour (juce::TextButton::textColourOffId, push::colours::textDim);
         addAndMakeVisible (devButton);
+
+        // App-weiter Dev Mode (UiSettings) gatet die Sichtbarkeit — ohne
+        // UiSettings (Tests) bleibt der Button sichtbar wie bisher
+        devButton.setVisible (uiSettings == nullptr || uiSettings->isDevModeEnabled());
+
+        if (uiSettings != nullptr)
+            uiSettings->addChangeListener (this);
     }
     else if (factoryKey != StepSequencerModule::staticModuleId
              && factoryKey != LinkAudioSendModule::staticModuleId
@@ -181,6 +190,9 @@ NodeComponent::NodeComponent (juce::ValueTree nodeTreeToBind,
 
 NodeComponent::~NodeComponent()
 {
+    if (uiSettings != nullptr)
+        uiSettings->removeChangeListener (this);
+
     if (channelNames != nullptr)
         channelNames->removeChangeListener (this);
 
@@ -199,6 +211,9 @@ void NodeComponent::beginTeardown()
     // letzten Render-Zyklus.
     tearingDown = true;
     nodeTree.removeListener (this);
+
+    if (uiSettings != nullptr)
+        uiSettings->removeChangeListener (this);
 
     if (channelNames != nullptr)
         channelNames->removeChangeListener (this);
@@ -557,8 +572,27 @@ void NodeComponent::refreshPortTooltips()
     }
 }
 
-void NodeComponent::changeListenerCallback (juce::ChangeBroadcaster*)
+void NodeComponent::changeListenerCallback (juce::ChangeBroadcaster* source)
 {
+    // App-weiter Dev Mode (UiSettings): DEV-Toggle zeigen/verstecken; beim
+    // Deaktivieren auch einen AKTIVEN Kachel-Dev-Modus zurücksetzen (Rebuild
+    // + updateChassisSize kommen über setDevMode → onLayoutChanged)
+    if (uiSettings != nullptr && source == uiSettings)
+    {
+        const auto enabled = uiSettings->isDevModeEnabled();
+        devButton.setVisible (enabled);
+
+        if (! enabled && fxPanel != nullptr && fxPanel->isDevMode())
+        {
+            fxPanel->setDevMode (false);
+            devButton.setColour (juce::TextButton::textColourOffId, push::colours::textDim);
+        }
+
+        resized();   // Header-Platz des Buttons kommt/geht
+        repaint();
+        return;
+    }
+
     // ChannelNames-Änderung: Labels ODER Stereo-Pairing — Ports neu bauen
     // (Paare verschmelzen/lösen sich), Kabel-Anker verschieben sich
     rebuildPorts();
@@ -702,7 +736,7 @@ void NodeComponent::paint (juce::Graphics& g)
     if (error.isNotEmpty())
     {
         g.setColour (juce::Colours::orangered);
-        g.setFont (juce::Font (juce::FontOptions (12.0f)));
+        g.setFont (push::scaledFont (12.0f));
         g.drawText (error, getLocalBounds().reduced (8).removeFromBottom (16),
                     juce::Justification::centredLeft);
     }
@@ -718,7 +752,7 @@ void NodeComponent::paint (juce::Graphics& g)
         const auto numPorts = isInputEndpoint ? outputChannelCount : inputChannelCount;
 
         g.setColour (juce::Colours::white.withAlpha (0.55f));
-        g.setFont (juce::Font (juce::FontOptions (11.0f)));
+        g.setFont (push::scaledFont (11.0f));
 
         for (int channel = 0; channel < numPorts; ++channel)
         {
@@ -757,7 +791,9 @@ void NodeComponent::resized()
     auto header = bounds.removeFromTop (touchTarget);
     deleteButton.setBounds (header.removeFromRight (touchTarget));
 
-    if (isChassisNode)
+    // Header-Platz nur reservieren, wenn der DEV-Toggle sichtbar ist
+    // (app-weiter Dev Mode, UiSettings) — sonst bliebe eine Lücke
+    if (isChassisNode && devButton.isVisible())
         devButton.setBounds (header.removeFromRight (touchTarget).reduced (2, 8));
 
     titleLabel.setBounds (header.withTrimmedLeft (8));

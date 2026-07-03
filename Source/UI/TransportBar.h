@@ -52,6 +52,7 @@ public:
     //==========================================================================
     // Hooks — vom EngineEditor verdrahtet [Message Thread]
     std::function<void()> onUndo, onRedo, onSave, onSettings;
+    std::function<void()> onToggleDevPanel;   // Dev-Tile (nur im Dev Mode sichtbar)
     std::function<void()> onCaptureAll, onToggleCapturePanel;
     std::function<void (int pageIndex)> onPageSelected;   // Reihenfolge: pages[]
 
@@ -112,6 +113,17 @@ public:
 
     [[nodiscard]] push::TextTile& getSetTile() noexcept { return setTile; }
 
+    //==========================================================================
+    /** Dev-Tile-Sichtbarkeit (app-weiter Dev Mode) — die Bar bleibt passiv,
+        der EngineEditor setzt sie initial und in seinem UiSettings-Listener
+        (Muster „Status kommt vom Editor"). */
+    void setDevTileVisible (bool shouldBeVisible);
+
+    /** LED des Dev-Tiles = Dev-Panel offen. */
+    void setDevPanelOpen (bool isOpen);
+
+    [[nodiscard]] push::TextTile& getDevTile() noexcept { return devTile; }
+
 private:
     void openBrowser();
     void openLinkMenu();
@@ -150,6 +162,7 @@ private:
     push::TextTile undoTile { "Undo" };
     push::TextTile saveTile { "Save" };
     push::IconTile gearTile { push::Icon::gear, "settings" };
+    push::TextTile devTile  { "Dev", push::colours::ledOrange };  // nur im Dev Mode
     juce::ComboBox rootCombo;
     juce::ComboBox scaleCombo;
 

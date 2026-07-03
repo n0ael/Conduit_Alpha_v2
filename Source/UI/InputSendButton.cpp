@@ -1,5 +1,7 @@
 #include "InputSendButton.h"
 
+#include "UI/PushLookAndFeel.h"
+
 namespace conduit
 {
 
@@ -64,7 +66,7 @@ void InputSendButton::paint (juce::Graphics& g)
         g.setColour (juce::Colours::white.withAlpha (0.5f));
     }
 
-    g.setFont (juce::Font (juce::FontOptions (11.0f, juce::Font::bold)));
+    g.setFont (push::scaledFont (11.0f, true));
     g.drawText ("S", getLocalBounds(), juce::Justification::centred);
 }
 

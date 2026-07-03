@@ -166,12 +166,84 @@ void PushLookAndFeel::drawRotarySlider (juce::Graphics& g, int x, int y, int wid
 
 juce::Font PushLookAndFeel::getJost (float height, bool medium) const
 {
+    const auto scaledHeight = height * getFontScale();
     const auto& typeface = medium ? jostMedium : jostRegular;
 
     if (typeface != nullptr)
-        return juce::Font (juce::FontOptions { typeface }).withHeight (height);
+        return juce::Font (juce::FontOptions { typeface }).withHeight (scaledHeight);
 
-    return juce::Font (juce::FontOptions {}.withHeight (height));
+    return juce::Font (juce::FontOptions {}.withHeight (scaledHeight));
+}
+
+//==============================================================================
+namespace
+{
+    // Message-Thread-only (Setter läuft ausschließlich im EngineEditor-
+    // ChangeListener bzw. Test-Teardown) — kein Atomic nötig
+    float globalFontScale = 1.0f;
+}
+
+float getFontScale() noexcept              { return globalFontScale; }
+void setFontScale (float newScale) noexcept { globalFontScale = newScale; }
+
+juce::Font scaledFont (float height, bool medium)
+{
+    // Typeface kommt beim Zeichnen über den Default-LookAndFeel
+    // (getTypefaceForFont: bold → Jost Medium) — Muster jostFont/PushTiles
+    auto font = juce::Font (juce::FontOptions {}.withHeight (height * getFontScale()));
+    return medium ? font.boldened() : font;
+}
+
+//==============================================================================
+juce::Font PushLookAndFeel::getLabelFont (juce::Label& label)
+{
+    const auto base = juce::LookAndFeel_V4::getLabelFont (label);
+    return base.withHeight (base.getHeight() * getFontScale());
+}
+
+juce::Font PushLookAndFeel::getTextButtonFont (juce::TextButton& button, int buttonHeight)
+{
+    const auto base = juce::LookAndFeel_V4::getTextButtonFont (button, buttonHeight);
+    return base.withHeight (base.getHeight() * getFontScale());
+}
+
+juce::Font PushLookAndFeel::getComboBoxFont (juce::ComboBox& box)
+{
+    const auto base = juce::LookAndFeel_V4::getComboBoxFont (box);
+    return base.withHeight (base.getHeight() * getFontScale());
+}
+
+juce::Font PushLookAndFeel::getPopupMenuFont()
+{
+    const auto base = juce::LookAndFeel_V4::getPopupMenuFont();
+    return base.withHeight (base.getHeight() * getFontScale());
+}
+
+void PushLookAndFeel::drawToggleButton (juce::Graphics& g, juce::ToggleButton& button,
+                                        bool shouldDrawButtonAsHighlighted,
+                                        bool shouldDrawButtonAsDown)
+{
+    // V4-Zeichnung mit skalierter Font — das Original hat keinen Font-Hook
+    const auto fontSize = juce::jmin (15.0f, (float) button.getHeight() * 0.75f)
+                              * getFontScale();
+    const auto tickWidth = fontSize * 1.1f;
+
+    drawTickBox (g, button, 4.0f, ((float) button.getHeight() - tickWidth) * 0.5f,
+                 tickWidth, tickWidth,
+                 button.getToggleState(), button.isEnabled(),
+                 shouldDrawButtonAsHighlighted, shouldDrawButtonAsDown);
+
+    g.setColour (button.findColour (juce::ToggleButton::textColourId));
+    g.setFont (fontSize);
+
+    if (! button.isEnabled())
+        g.setOpacity (0.5f);
+
+    g.drawFittedText (button.getButtonText(),
+                      button.getLocalBounds()
+                          .withTrimmedLeft (juce::roundToInt (tickWidth) + 10)
+                          .withTrimmedRight (2),
+                      juce::Justification::centredLeft, 10);
 }
 
 } // namespace conduit::push

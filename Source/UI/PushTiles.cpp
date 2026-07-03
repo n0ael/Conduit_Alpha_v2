@@ -25,9 +25,10 @@ void paintTileBackground (juce::Graphics& g, const juce::Rectangle<float>& bound
 juce::Font jostFont (const juce::Component& component, float height)
 {
     // Läuft über den Default-LookAndFeel (PushLookAndFeel → Jost); der
-    // Fallback ist der System-Sans — Komponente bleibt LnF-unabhängig nutzbar
+    // Fallback ist der System-Sans — Komponente bleibt LnF-unabhängig
+    // nutzbar. Skaliert mit dem globalen fontScale (Dev-Panel).
     juce::ignoreUnused (component);
-    return juce::Font (juce::FontOptions {}.withHeight (height));
+    return push::scaledFont (height);
 }
 
 } // namespace

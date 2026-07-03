@@ -2,6 +2,8 @@
 
 #include <algorithm>
 
+#include "UI/PushLookAndFeel.h"
+
 namespace conduit
 {
 
@@ -316,7 +318,7 @@ void CapturePanel::paint (juce::Graphics& g)
     if (channelRows.empty())
     {
         g.setColour (juce::Colours::white.withAlpha (0.4f));
-        g.setFont (juce::FontOptions { 13.0f });
+        g.setFont (push::scaledFont (13.0f));
         g.drawText (juce::String::fromUTF8 ("keine Eing\xc3\xa4nge"), channelArea,
                     juce::Justification::centred);
     }

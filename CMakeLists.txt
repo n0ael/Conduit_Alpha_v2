@@ -112,6 +112,7 @@ set(CONDUIT_CPP_SOURCES
     Source/Core/RemoteModuleBinder.cpp
     Source/Core/SourceNameResolver.cpp
     Source/Core/TransportSettings.cpp
+    Source/Core/UiSettings.cpp
     Source/Core/Capture/BufferPool.cpp
     Source/Core/Capture/CaptureChannel.cpp
     Source/Core/Capture/CaptureService.cpp
@@ -214,9 +215,11 @@ set(CONDUIT_CPP_SOURCES
     Source/UI/ScopeDisplay.cpp
     Source/UI/TapMenuPanel.cpp
     Source/UI/TransportBar.cpp
+    Source/UI/DevPanel.cpp
     Source/UI/SequencerControlPanel.cpp
     Source/UI/SettingsWindow.cpp
     Source/UI/StepGridDisplay.cpp
+    Source/UI/UiSettingsComponent.cpp
     Source/Util/RtAllocationGuard.cpp
 )
 
@@ -468,6 +471,7 @@ if(CONDUIT_BUILD_TESTS)
         Tests/Core/SourceNameResolverTests.cpp
         Tests/Core/ThreadingStressTests.cpp
         Tests/Core/TransportLinkTests.cpp
+        Tests/Core/UiSettingsTests.cpp
         Tests/UI/FxModulePanelTests.cpp
         Tests/UI/NodeCanvasTests.cpp
         Tests/UI/LevelMeterBarTests.cpp
@@ -502,6 +506,7 @@ if(CONDUIT_BUILD_TESTS)
         Source/Core/RemoteModuleBinder.cpp
         Source/Core/SourceNameResolver.cpp
         Source/Core/TransportSettings.cpp
+        Source/Core/UiSettings.cpp
         Source/Core/Capture/BufferPool.cpp
         Source/Core/Capture/CaptureChannel.cpp
         Source/Core/Capture/CaptureService.cpp
@@ -604,9 +609,11 @@ if(CONDUIT_BUILD_TESTS)
         Source/UI/ScopeDisplay.cpp
         Source/UI/TapMenuPanel.cpp
         Source/UI/TransportBar.cpp
+        Source/UI/DevPanel.cpp
         Source/UI/SequencerControlPanel.cpp
         Source/UI/SettingsWindow.cpp
         Source/UI/StepGridDisplay.cpp
+        Source/UI/UiSettingsComponent.cpp
         Source/Util/RtAllocationGuard.cpp
     )
 

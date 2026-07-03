@@ -52,12 +52,12 @@ void PageHost::Placeholder::paint (juce::Graphics& g)
                 push::colours::textDim);
 
     g.setColour (push::colours::text);
-    g.setFont (juce::Font (juce::FontOptions {}.withHeight (26.0f)));
+    g.setFont (push::scaledFont (26.0f));
     g.drawText (title, area.withTop (centre.y + 16.0f).withHeight (34.0f),
                 juce::Justification::centredTop);
 
     g.setColour (push::colours::textDim);
-    g.setFont (juce::Font (juce::FontOptions {}.withHeight (15.0f)));
+    g.setFont (push::scaledFont (15.0f));
     g.drawText ("kommt als eigener Meilenstein",
                 area.withTop (centre.y + 52.0f).withHeight (24.0f),
                 juce::Justification::centredTop);

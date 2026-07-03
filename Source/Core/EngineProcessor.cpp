@@ -511,5 +511,6 @@ InputLinkSend& EngineProcessor::getInputLinkSend() noexcept { return inputLinkSe
 TransportSettings& EngineProcessor::getTransportSettings() noexcept { return transportSettings; }
 OscSendSettings& EngineProcessor::getOscSendSettings() noexcept { return oscSendSettings; }
 OscSendService& EngineProcessor::getOscSendService() noexcept   { return oscSendService; }
+UiSettings& EngineProcessor::getUiSettings() noexcept           { return uiSettings; }
 
 } // namespace conduit

@@ -1,7 +1,10 @@
+#include <catch2/catch_approx.hpp>
 #include <catch2/catch_test_macros.hpp>
 
 #include "UI/PushIcons.h"
 #include "UI/PushLookAndFeel.h"
+
+using Catch::Approx;
 
 namespace
 {
@@ -96,6 +99,36 @@ TEST_CASE ("PushLookAndFeel: Jost lädt aus den BinaryData-Assets", "[push][ui]"
         juce::Font (juce::FontOptions {}.withHeight (14.0f).withStyle ("Bold")));
     REQUIRE (boldTypeface != nullptr);
     REQUIRE (boldTypeface->getName().startsWith ("Jost"));
+}
+
+TEST_CASE ("PushLookAndFeel: fontScale skaliert scaledFont, getJost und die LnF-Fonts", "[push][ui][fontscale]")
+{
+    juce::ScopedJuceInitialiser_GUI juceRuntime;
+    conduit::push::PushLookAndFeel lookAndFeel;
+
+    // RAII-Guard: globaler Zustand MUSS auf 1.0 zurück (Test-Ordnung!)
+    struct ScaleGuard
+    {
+        ~ScaleGuard() { conduit::push::setFontScale (1.0f); }
+    } guard;
+
+    REQUIRE (conduit::push::getFontScale() == Approx (1.0f));
+    REQUIRE (conduit::push::scaledFont (12.0f).getHeight() == Approx (12.0f));
+
+    conduit::push::setFontScale (1.25f);
+    REQUIRE (conduit::push::scaledFont (12.0f).getHeight() == Approx (15.0f));
+    REQUIRE (lookAndFeel.getJost (16.0f).getHeight() == Approx (20.0f));
+
+    // Labels werden beim ZEICHNEN skaliert — die Basisgröße im Label bleibt
+    juce::Label label;
+    label.setFont (juce::Font (juce::FontOptions {}.withHeight (10.0f)));
+    REQUIRE (label.getFont().getHeight() == Approx (10.0f));
+    REQUIRE (lookAndFeel.getLabelFont (label).getHeight() == Approx (12.5f));
+
+    juce::TextButton button;
+    const auto unscaled = juce::LookAndFeel_V4().getTextButtonFont (button, 24).getHeight();
+    REQUIRE (lookAndFeel.getTextButtonFont (button, 24).getHeight()
+             == Approx (unscaled * 1.25f));
 }
 
 TEST_CASE ("PushLookAndFeel: Text rendert mit Jost ohne Crash", "[push][ui]")

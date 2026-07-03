@@ -134,6 +134,46 @@
   mit Undo, Defaults-Roundtrip, 5 UI-Fälle (Ersetzen/Stapel-Layout/
   Dev-Speichern/Stepper/Aktiv-Markierung).
 
+**UI-Skalierung + App-weiter Dev Mode + Dev-Panel — FERTIG (03.07.2026):**
+
+- **UiSettings** (Source/Core, Muster MeterSettings: ChangeBroadcaster +
+  PropertiesFile `Conduit/Ui.settings`): uiScale 0.5–2.0, fontScale 0.8–1.4,
+  devModeEnabled — die Klasse SPEICHERT nur; die Anwendung machen Main.cpp
+  (Start, vor der Fenster-Erzeugung) und der EngineEditor (live als
+  ChangeListener). Kein Test setzt je globalen Desktop-Zustand.
+- **Globale UI-Skalierung wie Ableton:** `Desktop::setGlobalScaleFactor`
+  (skaliert ALLE Fenster inkl. Dialoge; multipliziert sich aufs OS-DPI).
+  Settings-Tab „Oberfläche" (UiSettingsComponent): Slider 50–200 % in
+  10er-Rastern, Commit am Drag-Ende (das Fenster skaliert unter dem Slider
+  weg — kontinuierlich wäre eine Feedback-Schleife) bzw. bei Bahn-Klick/
+  Pfeilen/TextBox sofort.
+- **Separater Schriftgrößen-Faktor** (80–140 %, 5er-Raster): zentraler
+  Helper `push::scaledFont(height, medium)` + `get/setFontScale`
+  (PushLookAndFeel) — alle direkten paint()-Textausgaben umgestellt.
+  Kern-Trick: `getLabelFont`/`getTextButtonFont`/`getComboBoxFont`/
+  `getPopupMenuFont`-Overrides skalieren beim ZEICHNEN — Labels behalten
+  ihre unskalierte Basisgröße (setFont-Stellen blieben unangetastet, keine
+  Doppel-Skalierung, kein applyFonts-Boilerplate). Live-Refresh: EngineEditor
+  feuert `sendLookAndFeelChange()` über alle Desktop-Fenster (nur bei echtem
+  Font-Delta — Full-Repaint).
+- **Dev Mode als Einstellung:** Toggle im „Oberfläche"-Tab. NodeComponent/
+  NodeCanvas bekamen einen 8. ctor-Parameter `UiSettings*` (Default nullptr —
+  Alt-Tests unverändert; nullptr → DEV-Button sichtbar wie bisher). DEV-
+  Toggle im Modul-Header ist nur noch im Dev Mode sichtbar; Deaktivieren
+  setzt aktive Kachel-Dev-Modi zurück (setDevMode(false) + Farb-Reset),
+  resized() reserviert den Header-Platz nur bei sichtbarem Button.
+- **Schwebendes Dev-Panel** (Source/UI/DevPanel): DocumentWindow always-on-
+  top, Inhalt = dieselbe UiSettingsComponent wie der Settings-Tab (derselbe
+  Broadcaster → automatisch synchron). Zugang über das neue Dev-Tile der
+  TransportBar (nur im Dev Mode sichtbar, LED = Panel offen, Muster „Status
+  kommt vom Editor"); Close async via SafePointer, Dev Mode aus schließt
+  das Panel automatisch.
+- **Verifikation:** ConduitTests 305 Fälle / 12026 Assertions grün (Debug;
+  ASan-Lauf siehe Commit), neue Tests: UiSettings (Defaults/Clamps/
+  Roundtrip/Broadcast/defekte Datei), fontScale-Skalierung (scaledFont/
+  getJost/LnF-Fonts, RAII-Reset), Dev-Mode-Gating (Sichtbarkeit, Reset,
+  ctor-Erben, nullptr-Fallback).
+
 **FX-Chassis-Standard für alle Audio-FX-Module (Plan: 7 Meilensteine M1–M7) — M1–M6 abgeschlossen:**
 
 Ziel des Gesamtvorhabens (User-Plan 03.07.): jedes FX-Modul bekommt einheitlich

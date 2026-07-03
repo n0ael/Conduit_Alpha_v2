@@ -4,6 +4,7 @@
 
 #include "Modules/ProcessorModule.h"
 #include "UI/LevelMeterBar.h"   // normFromLinear (dBFS-Mapping)
+#include "UI/PushLookAndFeel.h"
 
 namespace conduit
 {
@@ -155,7 +156,7 @@ void GainFaderMeter::paint (juce::Graphics& g)
     const auto scaleX = (float) sliderColumn;
     const auto area   = meterArea();
 
-    g.setFont (juce::Font (juce::FontOptions (9.0f)));
+    g.setFont (push::scaledFont (9.0f));
     g.setColour (juce::Colours::white.withAlpha (0.45f));
 
     for (const auto db : scaleMarksDb)

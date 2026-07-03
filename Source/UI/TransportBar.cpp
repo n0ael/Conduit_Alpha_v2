@@ -174,6 +174,13 @@ TransportBar::TransportBar (juce::ValueTree rootTree, LinkClock& linkClockToUse,
     gearTile.setTooltip ("Einstellungen");
     gearTile.onClick = [this] { if (onSettings != nullptr) onSettings(); };
 
+    // Dev-Tile (app-weiter Dev Mode): öffnet/schließt das schwebende
+    // Dev-Panel — unsichtbar bis der Editor den Dev Mode meldet
+    devTile.setTooltip (juce::String::fromUTF8 (
+        "Dev-Panel öffnen (UI-Größe/Schriftgröße live justieren)"));
+    devTile.onClick = [this] { if (onToggleDevPanel != nullptr) onToggleDevPanel(); };
+    addChildComponent (devTile);   // Sichtbarkeit setzt der Editor
+
     // -- Globale Session-Skala (Schema 6.2) — Code aus der alten Toolbar ------
     {
         const char* noteNames[] = { "C", "C#", "D", "D#", "E", "F",
@@ -215,6 +222,20 @@ TransportBar::TransportBar (juce::ValueTree rootTree, LinkClock& linkClockToUse,
 }
 
 //==============================================================================
+void TransportBar::setDevTileVisible (bool shouldBeVisible)
+{
+    if (devTile.isVisible() == shouldBeVisible)
+        return;
+
+    devTile.setVisible (shouldBeVisible);
+    resized();   // Platz neben dem ⚙ kommt/geht
+}
+
+void TransportBar::setDevPanelOpen (bool isOpen)
+{
+    devTile.setActive (isOpen);
+}
+
 void TransportBar::setBrowserItems (std::vector<ModuleBrowser::Item> items)
 {
     browserItems = std::move (items);
@@ -460,6 +481,10 @@ void TransportBar::resized()
     placeRight (rootCombo,   56, 14);
 
     placeRight (gearTile, tile);
+
+    if (devTile.isVisible())
+        placeRight (devTile, 48);
+
     placeRight (saveTile,  56);
     placeRight (undoTile,  56);
     placeRight (plusTile, tile, 14);

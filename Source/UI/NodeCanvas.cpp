@@ -14,14 +14,16 @@ NodeCanvas::NodeCanvas (juce::ValueTree rootTree,
                         ChannelNames* channelNamesToUse,
                         LevelMeter* inputLevelsToUse,
                         LevelMeter* outputLevelsToUse,
-                        InputLinkSend* inputSendToUse)
+                        InputLinkSend* inputSendToUse,
+                        UiSettings* uiSettingsToUse)
     : rootState (std::move (rootTree)),
       graphManager (graphManagerToUse),
       uiRegistry (uiRegistryToUse),
       channelNames (channelNamesToUse),
       inputLevels (inputLevelsToUse),
       outputLevels (outputLevelsToUse),
-      inputSend (inputSendToUse)
+      inputSend (inputSendToUse),
+      uiSettings (uiSettingsToUse)
 {
     rootState.addListener (this);
     rebuildAll();  // Tree kann schon Nodes tragen (Session-Restore)
@@ -73,7 +75,7 @@ void NodeCanvas::addComponentFor (juce::ValueTree nodeTree)
 
     auto component = std::make_unique<NodeComponent> (nodeTree, graphManager, uiRegistry,
                                                       channelNames, inputLevels, outputLevels,
-                                                      inputSend);
+                                                      inputSend, uiSettings);
 
     component->onTeardownFinished = [this] (NodeComponent& finished)
     {

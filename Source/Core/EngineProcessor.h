@@ -12,6 +12,7 @@
 #include "LinkClock.h"
 #include "MeterSettings.h"
 #include "ModuleUiDefaults.h"
+#include "UiSettings.h"
 #include "NodeUiRegistry.h"
 #include "OscController.h"
 #include "OscSendService.h"
@@ -141,6 +142,11 @@ public:
     [[nodiscard]] OscSendSettings& getOscSendSettings() noexcept;
     [[nodiscard]] OscSendService& getOscSendService() noexcept;
 
+    /** Oberflächen-Einstellungen (UI-Skalierung, Schriftgröße, Dev Mode) —
+        App-Zustand; der Processor lauscht NICHT darauf, die Anwendung
+        übernehmen Main.cpp und der EngineEditor. */
+    [[nodiscard]] UiSettings& getUiSettings() noexcept;
+
 private:
     /** Legt die reservierten I/O-Tree-Nodes (audio_input/audio_output) an,
         falls sie fehlen — frischer Patch oder Preset ohne I/O. Idempotent. */
@@ -227,6 +233,9 @@ private:
 
     // Clip-Reset-Modus der Pegelanzeigen (App-Zustand); speist die LevelMeter
     MeterSettings meterSettings;
+
+    // Oberflächen-Einstellungen (App-Zustand) — reines UI-Anliegen
+    UiSettings uiSettings;
 
     // Modul-Typ-Defaults des Dev-Modus (4.6, App-Zustand) — der GraphManager
     // wendet sie bei Neu-Anlagen als Overlay an

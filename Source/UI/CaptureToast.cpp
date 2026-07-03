@@ -1,5 +1,7 @@
 #include "CaptureToast.h"
 
+#include "UI/PushLookAndFeel.h"
+
 namespace conduit
 {
 
@@ -51,7 +53,7 @@ void CaptureToast::paint (juce::Graphics& g)
     g.drawRoundedRectangle (bounds, 8.0f, 1.0f);
 
     g.setColour (juce::Colours::white);
-    g.setFont (juce::FontOptions { 15.0f });
+    g.setFont (push::scaledFont (15.0f));
     g.drawText (text, bounds.reduced (12.0f, 0.0f), juce::Justification::centred);
 }
 

@@ -49,7 +49,8 @@ public:
                 ChannelNames* channelNamesToUse = nullptr,
                 LevelMeter* inputLevelsToUse = nullptr,
                 LevelMeter* outputLevelsToUse = nullptr,
-                InputLinkSend* inputSendToUse = nullptr);
+                InputLinkSend* inputSendToUse = nullptr,
+                UiSettings* uiSettingsToUse = nullptr);
     ~NodeCanvas() override;
 
     [[nodiscard]] int getNumNodeComponents() const noexcept;
@@ -94,6 +95,7 @@ private:
     LevelMeter* inputLevels;     // Sicht-Metering audio_in (nullptr in Tests)
     LevelMeter* outputLevels;    // Sicht-Metering audio_out (nullptr in Tests)
     InputLinkSend* inputSend;    // Send-LED-Status audio_in (nullptr in Tests)
+    UiSettings* uiSettings;      // gatet die DEV-Toggles (nullptr in Tests)
 
     std::vector<std::unique_ptr<NodeComponent>> nodeComponents;
 

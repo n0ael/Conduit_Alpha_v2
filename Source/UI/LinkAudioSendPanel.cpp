@@ -1,6 +1,7 @@
 #include "LinkAudioSendPanel.h"
 
 #include "Modules/ConduitModule.h"
+#include "UI/PushLookAndFeel.h"
 
 namespace conduit
 {
@@ -228,7 +229,7 @@ void LinkAudioSendPanel::paint (juce::Graphics& g)
         const auto stereo = inputs.getChild (i).getProperty (id::inputMode).toString()
                             == LinkAudioSendModule::modeStereo;
         g.setColour (juce::Colours::white.withAlpha (0.45f));
-        g.setFont (juce::Font (juce::FontOptions (11.0f)));
+        g.setFont (push::scaledFont (11.0f));
         g.drawText (stereo ? "S" : "M",
                     juce::Rectangle<int> (94, area.getY(), 18, area.getHeight()),
                     juce::Justification::centred);

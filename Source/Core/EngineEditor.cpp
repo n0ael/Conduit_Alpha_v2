@@ -85,7 +85,7 @@ EngineEditor::EngineEditor (EngineProcessor& engineProcessor,
       canvas (rootState, engineProcessor.getGraphManager(), engineProcessor.getNodeUiRegistry(),
               &engineProcessor.getChannelNames(),
               &engineProcessor.getInputLevels(), &engineProcessor.getOutputLevels(),
-              &engineProcessor.getInputLinkSend())
+              &engineProcessor.getInputLinkSend(), &engineProcessor.getUiSettings())
 {
     // Push-3-Design app-weit: Jost + dunkle Kacheln auch in PopupMenus,
     // Dialogen und dem Settings-Fenster (CLAUDE.md 10)
@@ -105,7 +105,8 @@ EngineEditor::EngineEditor (EngineProcessor& engineProcessor,
                                                       engine.getCaptureSettings(),
                                                       engine.getCaptureService(),
                                                       engine.getOscSendSettings(),
-                                                      engine.getOscController()));
+                                                      engine.getOscController(),
+                                                      engine.getUiSettings()));
         options.dialogTitle                   = "Einstellungen";
         options.dialogBackgroundColour        = push::colours::panel;
         options.escapeKeyTriggersCloseButton  = true;
@@ -174,18 +175,104 @@ EngineEditor::EngineEditor (EngineProcessor& engineProcessor,
     setResizable (true, true);
     setSize (1480, 720);
 
+    // Oberflächen-Einstellungen: Startwerte hat Main.cpp bereits angewendet
+    // (bzw. im Test-Pfad bewusst niemand) — hier nur den Ist-Stand merken
+    // und auf Live-Änderungen lauschen
+    appliedUiScale   = engine.getUiSettings().getUiScale();
+    appliedFontScale = engine.getUiSettings().getFontScale();
+    engine.getUiSettings().addChangeListener (this);
+
+    // Dev-Tile + Dev-Panel (nur im Dev Mode)
+    transportBar.onToggleDevPanel = [this] { toggleDevPanel(); };
+    transportBar.setDevTileVisible (engine.getUiSettings().isDevModeEnabled());
+
     timerCallback();      // Status sofort befüllen, nicht erst nach 66ms
     startTimerHz (15);    // EIN Editor-Timer — lock-freie Reads, Repaint bei Änderung
 }
 
 EngineEditor::~EngineEditor()
 {
+    engine.getUiSettings().removeChangeListener (this);
+
     // Der Service überlebt den Editor — Callback lösen, sonst zeigte ein
     // späterer Export-Report ins Leere
     engine.getCaptureService().onExportFinished = nullptr;
 
     // Default-LookAndFeel VOR der Member-Destruktion zurücksetzen
     juce::LookAndFeel::setDefaultLookAndFeel (nullptr);
+}
+
+//==============================================================================
+void EngineEditor::changeListenerCallback (juce::ChangeBroadcaster* source)
+{
+    if (source != &engine.getUiSettings())
+        return;
+
+    auto& uiSettings = engine.getUiSettings();
+
+    // Globale Skalierung (Ableton-Verhalten: trifft ALLE Fenster inkl.
+    // offener Dialoge; multipliziert sich auf das OS-Display-Scaling)
+    if (! juce::exactlyEqual (appliedUiScale, uiSettings.getUiScale()))
+    {
+        appliedUiScale = uiSettings.getUiScale();
+        juce::Desktop::getInstance().setGlobalScaleFactor (appliedUiScale);
+    }
+
+    // Schriftgröße: Faktor setzen + LnF-Kaskade über alle Desktop-Fenster
+    // (MainWindow, Settings-Dialog, DevPanel, CallOutBoxen). Die Kaskade
+    // ist ein Full-Repaint — nur bei echtem Font-Delta feuern.
+    if (! juce::exactlyEqual (appliedFontScale, uiSettings.getFontScale()))
+    {
+        appliedFontScale = uiSettings.getFontScale();
+        push::setFontScale (appliedFontScale);
+
+        auto& desktop = juce::Desktop::getInstance();
+
+        for (int i = desktop.getNumComponents(); --i >= 0;)
+            if (auto* component = desktop.getComponent (i))
+                component->sendLookAndFeelChange();
+    }
+
+    // Dev Mode: Tile-Sichtbarkeit folgt; Deaktivieren schließt das Panel
+    transportBar.setDevTileVisible (uiSettings.isDevModeEnabled());
+
+    if (! uiSettings.isDevModeEnabled() && devPanel != nullptr)
+    {
+        devPanel.reset();
+        transportBar.setDevPanelOpen (false);
+    }
+}
+
+void EngineEditor::toggleDevPanel()
+{
+    if (devPanel != nullptr)
+    {
+        devPanel.reset();
+    }
+    else
+    {
+        devPanel = std::make_unique<DevPanel> (engine.getUiSettings());
+        devPanel->onClose = [this] { closeDevPanelAsync(); };
+        devPanel->centreAroundComponent (this, devPanel->getWidth(), devPanel->getHeight());
+    }
+
+    transportBar.setDevPanelOpen (devPanel != nullptr);
+}
+
+void EngineEditor::closeDevPanelAsync()
+{
+    // Das Fenster darf sich nicht aus dem eigenen Close-Callback heraus
+    // destruieren — async über SafePointer (Muster Friedhof/TransportBar)
+    juce::Component::SafePointer<EngineEditor> self (this);
+
+    juce::MessageManager::callAsync ([self]
+    {
+        if (self != nullptr)
+        {
+            self->devPanel.reset();
+            self->transportBar.setDevPanelOpen (false);
+        }
+    });
 }
 
 //==============================================================================

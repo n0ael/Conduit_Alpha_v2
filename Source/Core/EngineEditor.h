@@ -7,6 +7,7 @@
 #include "Capture/CaptureWriter.h"
 #include "UI/CapturePanel.h"
 #include "UI/CaptureToast.h"
+#include "UI/DevPanel.h"
 #include "UI/NodeCanvas.h"
 #include "UI/PageHost.h"
 #include "UI/PushLookAndFeel.h"
@@ -38,7 +39,8 @@ class EngineProcessor;
     freigeben" fragt IMMER erst nach (User-Vorgabe) — handleExportReport().
 */
 class EngineEditor final : public juce::AudioProcessorEditor,
-                           private juce::Timer
+                           private juce::Timer,
+                           private juce::ChangeListener
 {
 public:
     /** deviceManager ist nur im Standalone-Pfad gesetzt (Main.cpp). Im
@@ -54,8 +56,16 @@ public:
 
 private:
     void timerCallback() override;
+
+    // UiSettings → Anwendung (Skalierung/FontScale live) — die Settings-
+    // Klasse speichert nur, HIER wird angewendet (headless Tests bleiben
+    // frei von globalem Desktop-Zustand)
+    void changeListenerCallback (juce::ChangeBroadcaster* source) override;
+
     void launchPresetChooser (bool saving);
     void handleExportReport (const CaptureWriter::Report& report);
+    void toggleDevPanel();
+    void closeDevPanelAsync();
     [[nodiscard]] std::vector<ModuleBrowser::Item> buildBrowserItems();
 
     EngineProcessor& engine;
@@ -86,6 +96,16 @@ private:
 
     // Port-Tooltips der I/O-Endpunkte (ChannelNames-Labels, Maus-Hover)
     juce::TooltipWindow tooltipWindow { this };
+
+    // Zuletzt ANGEWENDETE Oberflächen-Werte — der UiSettings-Broadcast
+    // meldet jede Änderung (auch devMode); nur echte Scale-/Font-Deltas
+    // lösen setGlobalScaleFactor bzw. die teure LnF-Kaskade aus
+    float appliedUiScale   = 1.0f;
+    float appliedFontScale = 1.0f;
+
+    // Schwebendes Dev-Panel (nur im Dev Mode) — Toggle über das Dev-Tile
+    // der Bar; Dev Mode aus schließt es automatisch
+    std::unique_ptr<DevPanel> devPanel;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (EngineEditor)
 };

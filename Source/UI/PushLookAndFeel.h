@@ -32,6 +32,26 @@ namespace colours
 
 //==============================================================================
 /**
+    Globaler Schriftgrößen-Faktor (UiSettings, Dev-Panel) — Message Thread.
+
+    setFontScale setzt NUR die Variable; die Anwendung (sendLookAndFeelChange-
+    Kaskade über alle Desktop-Fenster) übernimmt der EngineEditor. Wirkung:
+      - scaledFont(): direkte paint()-Textausgaben der Custom-Komponenten
+      - PushLookAndFeel::getLabelFont/getTextButtonFont/getComboBoxFont/
+        getPopupMenuFont: alle Standard-Widgets — Labels behalten ihre
+        UNSKALIERTE Basisgröße (setFont), skaliert wird zentral beim Zeichnen.
+        Deshalb nie eine bereits skalierte Font in ein Label setzen
+        (Doppel-Skalierung).
+*/
+[[nodiscard]] float getFontScale() noexcept;
+void setFontScale (float newScale) noexcept;
+
+/** Jost in height*fontScale — zentraler Helper für paint()-Textausgaben.
+    medium = Jost Medium (ersetzt "bold", via getTypefaceForFont). */
+[[nodiscard]] juce::Font scaledFont (float height, bool medium = false);
+
+//==============================================================================
+/**
     Look-and-Feel im Push-3-Stil: Jost als App-Font (BinaryData, OFL-Lizenz
     in Assets/Fonts/OFL.txt), dunkle Kacheln mit 4-px-Radius, dezente
     Konturen, PopupMenus/ComboBoxen im selben Ton.
@@ -68,8 +88,24 @@ public:
                            float sliderPosProportional, float rotaryStartAngle,
                            float rotaryEndAngle, juce::Slider& slider) override;
 
-    /** Jost in gegebener Höhe — zentraler Helper für Custom-Komponenten. */
+    /** Jost in gegebener Höhe — zentraler Helper für Custom-Komponenten.
+        Multipliziert mit dem globalen fontScale. */
     [[nodiscard]] juce::Font getJost (float height, bool medium = false) const;
+
+    //==========================================================================
+    // Schriftgrößen folgen dem globalen fontScale (Dev-Panel) — Labels werden
+    // beim ZEICHNEN skaliert (Basisgröße bleibt im Label), Standard-Widgets
+    // über ihre LnF-Fonts. Alle Overrides skalieren das V4-Ergebnis.
+    juce::Font getLabelFont (juce::Label& label) override;
+    juce::Font getTextButtonFont (juce::TextButton& button, int buttonHeight) override;
+    juce::Font getComboBoxFont (juce::ComboBox& box) override;
+    juce::Font getPopupMenuFont() override;
+
+    /** ToggleButtons haben in LookAndFeel_V4 eine HARTKODIERTE Schriftgröße
+        (kein Font-Hook) — V4-Zeichnung nachgebaut, Font × fontScale. */
+    void drawToggleButton (juce::Graphics& g, juce::ToggleButton& button,
+                           bool shouldDrawButtonAsHighlighted,
+                           bool shouldDrawButtonAsDown) override;
 
 private:
     juce::Typeface::Ptr jostRegular;

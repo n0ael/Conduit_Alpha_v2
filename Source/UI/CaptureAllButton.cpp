@@ -1,5 +1,7 @@
 #include "CaptureAllButton.h"
 
+#include "UI/PushLookAndFeel.h"
+
 namespace conduit
 {
 
@@ -85,7 +87,7 @@ void CaptureAllButton::paintButton (juce::Graphics& g, bool shouldDrawButtonAsHi
     g.fillEllipse (centre);
 
     g.setColour (juce::Colours::white.withAlpha (0.85f));
-    g.setFont (juce::FontOptions { 13.0f, juce::Font::bold });
+    g.setFont (push::scaledFont (13.0f, true));
     g.drawText ("CAP", square, juce::Justification::centred);
 }
 

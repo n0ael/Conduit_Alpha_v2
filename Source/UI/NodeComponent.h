@@ -11,6 +11,7 @@
 #include "Core/GraphManager.h"
 #include "Core/InputLinkSend.h"
 #include "Core/NodeUiRegistry.h"
+#include "Core/UiSettings.h"
 #include "UI/FxModulePanel.h"
 #include "UI/InputSendButton.h"
 #include "UI/LevelMeterBar.h"
@@ -58,14 +59,17 @@ public:
         inputLevels/outputLevels darf nullptr sein (Tests) — dann keine Meter;
         die I/O-Endpunkte lesen daraus Peak/RMS/Clip pro Kanal (Ableton-Style).
         inputSendToUse (nullptr in Tests): Status-Quelle der Send-LEDs an den
-        audio_in-Zeilen — die Buttons existieren mit ChannelNames auch ohne. */
+        audio_in-Zeilen — die Buttons existieren mit ChannelNames auch ohne.
+        uiSettingsToUse (nullptr in Tests → DEV-Button sichtbar wie bisher):
+        gatet die Sichtbarkeit des DEV-Toggles app-weit (Einstellungen). */
     NodeComponent (juce::ValueTree nodeTreeToBind,
                    GraphManager& graphManagerToUse,
                    NodeUiRegistry& uiRegistryToUse,
                    ChannelNames* channelNamesToUse = nullptr,
                    LevelMeter* inputLevelsToUse = nullptr,
                    LevelMeter* outputLevelsToUse = nullptr,
-                   InputLinkSend* inputSendToUse = nullptr);
+                   InputLinkSend* inputSendToUse = nullptr,
+                   UiSettings* uiSettingsToUse = nullptr);
     ~NodeComponent() override;
 
     static constexpr int defaultWidth  = 168;
@@ -193,6 +197,7 @@ private:
     LevelMeter* inputLevels;     // Sicht-Metering audio_in (nullptr in Tests)
     LevelMeter* outputLevels;    // Sicht-Metering audio_out (nullptr in Tests)
     InputLinkSend* inputSend;    // Status-Quelle der Send-LEDs (nullptr in Tests)
+    UiSettings* uiSettings;      // gatet den DEV-Toggle (nullptr in Tests → sichtbar)
     const juce::String nodeUuid;
 
     juce::Label titleLabel;  // named_id — Doppelklick benennt um (renameNode)

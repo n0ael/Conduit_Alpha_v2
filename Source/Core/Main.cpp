@@ -3,6 +3,7 @@
 #include "AudioDeviceController.h"
 #include "EngineEditor.h"
 #include "EngineProcessor.h"
+#include "UI/PushLookAndFeel.h"
 
 namespace conduit
 {
@@ -48,6 +49,14 @@ public:
     void initialise (const juce::String&) override
     {
         engine = std::make_unique<EngineProcessor>();
+
+        // Persistierte Oberflächen-Skalierung VOR der Fenster-Erzeugung
+        // anwenden (Ableton-Verhalten: skaliert die gesamte App; Faktor
+        // multipliziert sich auf das OS-Display-Scaling). Schriftgröße
+        // ebenso — die LnF-Fonts lesen den Faktor beim Zeichnen.
+        juce::Desktop::getInstance().setGlobalScaleFactor (
+            engine->getUiSettings().getUiScale());
+        push::setFontScale (engine->getUiSettings().getFontScale());
 
         // Plattformspezifisches Audio-Setup gehört in die App (CLAUDE.md 9);
         // der Controller kapselt Device-Manager, Player, Persistenz und die

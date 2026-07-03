@@ -100,6 +100,24 @@ NodeComponent::NodeComponent (juce::ValueTree nodeTreeToBind,
     {
         fxPanel = std::make_unique<FxModulePanel> (nodeTree, graphManager);
         addAndMakeVisible (*fxPanel);
+
+        // Layout-Änderungen (Dev-Toggle, uiHidden) ziehen die Kachelgröße
+        // nach — Kabel-Anker verschieben sich, der Canvas repaintet mit
+        fxPanel->onLayoutChanged = [this] { updateChassisSize(); };
+
+        // Dev-Modus-Toggle im Header (4.6): transient pro Kachel
+        devButton.setTooltip (juce::String::fromUTF8 (
+            "Development-Modus: Regelbereiche editieren, Parameter ein-/ausblenden"));
+        devButton.onClick = [this]
+        {
+            const auto enable = ! fxPanel->isDevMode();
+            fxPanel->setDevMode (enable);
+            devButton.setColour (juce::TextButton::textColourOffId,
+                                 enable ? push::colours::ledOrange
+                                        : push::colours::textDim);
+        };
+        devButton.setColour (juce::TextButton::textColourOffId, push::colours::textDim);
+        addAndMakeVisible (devButton);
     }
     else if (factoryKey != StepSequencerModule::staticModuleId
              && factoryKey != LinkAudioSendModule::staticModuleId
@@ -140,11 +158,7 @@ NodeComponent::NodeComponent (juce::ValueTree nodeTreeToBind,
     }
     else if (fxPanel != nullptr)
     {
-        // Chassis-Kachel: Panel-Breite + 28px Rand je Seite für die
-        // Port-Hit-Zonen (Audio links, CV-Ports ziehen in M3 unter die Fader)
-        setSize (juce::jmax (defaultWidth,
-                             FxModulePanel::widthForColumns (fxPanel->getNumColumns()) + 56),
-                 touchTarget + FxModulePanel::panelHeight + 8);
+        updateChassisSize();
     }
     else if (parameterPanel != nullptr)
     {
@@ -209,6 +223,8 @@ void NodeComponent::beginTeardown()
 
     if (fxPanel != nullptr)
         fxPanel->stopUpdates();
+
+    devButton.setEnabled (false);
 
     for (auto& toggle : pairToggles)
         toggle->setEnabled (false);
@@ -287,6 +303,22 @@ void NodeComponent::valueTreePropertyChanged (juce::ValueTree& tree, const juce:
 
     // Parameter-Sync (OSC-Nachzug 6.1, Undo, Preset-Load) übernimmt der
     // ParameterPanel selbst — er hört als eigener Listener auf denselben Tree.
+}
+
+void NodeComponent::updateChassisSize()
+{
+    if (fxPanel == nullptr)
+        return;
+
+    // Panel-Breite folgt den SICHTBAREN Spalten + 28px Rand je Seite für
+    // die Port-Hit-Zonen der Audio-Kanäle
+    setSize (juce::jmax (defaultWidth,
+                         FxModulePanel::widthForColumns (fxPanel->getNumColumns()) + 56),
+             touchTarget + FxModulePanel::panelHeight + 8);
+    resized();
+
+    if (auto* parent = getParentComponent())
+        parent->repaint();  // Kabel-Anker der CV-Ports sind gewandert
 }
 
 void NodeComponent::applyTreePosition()
@@ -724,6 +756,10 @@ void NodeComponent::resized()
 
     auto header = bounds.removeFromTop (touchTarget);
     deleteButton.setBounds (header.removeFromRight (touchTarget));
+
+    if (isChassisNode)
+        devButton.setBounds (header.removeFromRight (touchTarget).reduced (2, 8));
+
     titleLabel.setBounds (header.withTrimmedLeft (8));
 
     // Eingerückt, damit die Slider nicht unter den Port-Hit-Zonen liegen

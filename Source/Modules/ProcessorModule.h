@@ -41,8 +41,10 @@ struct ChassisParamDesc
         Node-Property linkSendEnabled = Patch-Zustand).
       - Pro DSP-Parameter einen CV-Eingang: Kanal-Layout FEST Audio 0..1,
         CV 2..N (Kanal von Parameter i = numAudioIns + i). CV blockkonstant
-        als Blockmittel, Attenuverter {param}_cv_amt bipolar −1..+1:
-        effective = clamp(base + cv·amt·(hardMax−hardMin), hardMin, hardMax).
+        als Blockmittel des BETRAGS; Attenuverter {param}_cv_amt −1..+1 im
+        Richtungs-Modell (ChassisSchema::computeEffective): amt > 0
+        moduliert vom Fader-Wert nach oben, amt < 0 nach unten — strikt
+        begrenzt auf den User-Bereich (Dev-Modus, setParameterUserRange).
 
     Subklassen implementieren NUR prepareCore()/processCore() (reine
     Audio-Sicht, Kanäle 0..1) und lesen ihre Parameter über
@@ -139,6 +141,17 @@ public:
         return numAudioIns + dspIndex;
     }
 
+    /** [Message Thread] User-Regelbereich eines DSP-Parameters (Dev-Modus
+        4.6): Fader-Bereich UND Wirkbereich der CV-Modulation. Der
+        GraphManager speist ihn bei der Materialisierung und bei jeder
+        userMin/userMax-Änderung (auch Undo/Preset-Load). Werte werden auf
+        die Hard-Range geclamped; unbekannte Parameter-Ids sind ein No-op. */
+    void setParameterUserRange (const juce::String& dspParamId,
+                                float userMin, float userMax) noexcept;
+
+    /** Aktueller Wirkbereich (Diagnose/Tests); leerer Range bei unbekannter Id. */
+    [[nodiscard]] juce::Range<float> getParameterUserRange (const juce::String& dspParamId) const noexcept;
+
 protected:
     //==========================================================================
     // Chassis-Hooks — die gesamte Modul-DSP lebt hier
@@ -171,6 +184,11 @@ private:
     // Dual-State-Ziele (6.1) — Adressen stabil über die Modul-Lebensdauer
     std::array<std::atomic<float>, maxDspParameters> dspBase {};
     std::array<std::atomic<float>, maxDspParameters> cvAmount {};
+
+    // User-Regelbereich (Dev-Modus 4.6) — Message Thread schreibt (Graph-
+    // Manager), Audio Thread liest; Default = Hard-Range der Descs
+    std::array<std::atomic<float>, maxDspParameters> userRangeMin {};
+    std::array<std::atomic<float>, maxDspParameters> userRangeMax {};
     std::atomic<float> inputGainDb  { static_cast<float> (ChassisSchema::gainDefaultDb) };
     std::atomic<float> outputGainDb { static_cast<float> (ChassisSchema::gainDefaultDb) };
 

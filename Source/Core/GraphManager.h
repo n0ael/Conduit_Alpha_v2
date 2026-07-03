@@ -18,6 +18,7 @@ class ChannelNames;
 class LinkClock;
 class ModuleFactory;
 class NodeUiRegistry;
+class ProcessorModule;
 
 //==============================================================================
 /**
@@ -104,6 +105,21 @@ public:
         weiter (create/retire ohne Rebuild). false bei unbekanntem Node.
         Message Thread. */
     bool setLinkSendEnabled (const juce::String& nodeUuid, bool enabled);
+
+    /** Patch-Aktion (Dev-Modus 4.6): User-Regelbereich eines Parameters —
+        Fader nutzt [userMin, userMax], der DSP clamped weiter auf die
+        Hard-Range. Validiert userMin < userMax innerhalb der Hard-Range;
+        der aktuelle Wert wird in derselben Undo-Transaktion in den neuen
+        Bereich geclamped. Message Thread. */
+    bool setParameterUserRange (const juce::String& nodeUuid, const juce::String& paramId,
+                                double userMin, double userMax);
+
+    /** Patch-Aktion (Dev-Modus 4.6): blendet einen dsp-Parameter aus/ein.
+        Ausblenden trennt bestehende CV-Kabel des Parameters in DERSELBEN
+        Undo-Transaktion (keine Phantom-Modulation); das Bus-Layout /
+        numInputChannels bleibt IMMER unverändert. Message Thread. */
+    bool setParameterHidden (const juce::String& nodeUuid, const juce::String& paramId,
+                             bool hidden);
 
     /** Phase 1 des zweiphasigen Deletes (5.3): setzt nodeState → Deleting.
         false, wenn kein Node mit dieser nodeId existiert oder der Node ein
@@ -242,6 +258,12 @@ private:
         das Echtzeit-Target des live-Moduls — bedient UI-Slider, Preset-Load
         und Undo. Kein Rebuild, nur ein atomic store. */
     void syncParameterValue (juce::ValueTree parameterTree);
+
+    /** Tree → Atomic (Dev-Modus 4.6): spiegelt den effektiven User-
+        Regelbereich (userMin/userMax, Fallback Hard-Range) ins Chassis —
+        Wirkbereich der CV-Modulation. Kein Rebuild. */
+    static void syncParameterUserRange (const juce::ValueTree& parameterTree,
+                                        ProcessorModule& processor);
 
     [[nodiscard]] bool isManagedGraphNode (juce::AudioProcessorGraph::NodeID nodeId) const;
     [[nodiscard]] bool isExternalGraphNode (juce::AudioProcessorGraph::NodeID nodeId) const;

@@ -68,6 +68,8 @@ ProcessorModule::ProcessorModule (std::vector<ChassisParamDesc> dspParameterDesc
     for (size_t i = 0; i < dspParams.size(); ++i)
     {
         dspBase[i].store (dspParams[i].defaultValue, std::memory_order_relaxed);
+        userRangeMin[i].store (dspParams[i].hardMin, std::memory_order_relaxed);
+        userRangeMax[i].store (dspParams[i].hardMax, std::memory_order_relaxed);
         effective[i] = dspParams[i].defaultValue;
     }
 }
@@ -113,6 +115,32 @@ void ProcessorModule::appendParametersTo (juce::ValueTree& parameters)
                                     S::cvAmountMin, S::cvAmountMax, S::cvAmountDefault),
                      S::roleCvAmount);
     }
+}
+
+void ProcessorModule::setParameterUserRange (const juce::String& dspParamId,
+                                             float userMin, float userMax) noexcept
+{
+    for (size_t i = 0; i < dspParams.size(); ++i)
+    {
+        if (dspParamId != dspParams[i].id)
+            continue;
+
+        const auto lo = juce::jlimit (dspParams[i].hardMin, dspParams[i].hardMax, userMin);
+        const auto hi = juce::jlimit (dspParams[i].hardMin, dspParams[i].hardMax, userMax);
+        userRangeMin[i].store (juce::jmin (lo, hi), std::memory_order_relaxed);
+        userRangeMax[i].store (juce::jmax (lo, hi), std::memory_order_relaxed);
+        return;
+    }
+}
+
+juce::Range<float> ProcessorModule::getParameterUserRange (const juce::String& dspParamId) const noexcept
+{
+    for (size_t i = 0; i < dspParams.size(); ++i)
+        if (dspParamId == dspParams[i].id)
+            return { userRangeMin[i].load (std::memory_order_relaxed),
+                     userRangeMax[i].load (std::memory_order_relaxed) };
+
+    return {};
 }
 
 std::atomic<float>* ProcessorModule::getParameterTarget (const juce::String& parameterId) noexcept
@@ -199,13 +227,16 @@ void ProcessorModule::processBlock (juce::AudioBuffer<float>& buffer, juce::Midi
         return;
     }
 
-    // 1) CV-Blockmittel → blockkonstante Effektivwerte (4.6). Unverbundene
-    //    CV-Kanäle sind vom Graph genullt → keine Modulation.
+    // 1) CV-Blockmittel des BETRAGS → blockkonstante Effektivwerte im
+    //    Richtungs-Modell (4.6): die Gleichrichtung VOR der Mittelung macht
+    //    bipolare Quellen (LFO-Sinus) zur Modulations-Hüllkurve, die
+    //    Richtung bestimmt allein der Attenuverter. Unverbundene CV-Kanäle
+    //    sind vom Graph genullt → keine Modulation.
     for (int i = 0; i < getNumDspParameters(); ++i)
     {
         const auto index    = static_cast<size_t> (i);
         const int cvChannel = getCvChannelFor (i);
-        float cv = 0.0f;
+        float cvMagnitude = 0.0f;
 
         if (cvChannel < numChannels)
         {
@@ -213,15 +244,16 @@ void ProcessorModule::processBlock (juce::AudioBuffer<float>& buffer, juce::Midi
             float sum = 0.0f;
 
             for (int frame = 0; frame < numFrames; ++frame)
-                sum += data[frame];
+                sum += std::abs (data[frame]);
 
-            cv = sum / static_cast<float> (numFrames);
+            cvMagnitude = sum / static_cast<float> (numFrames);
         }
 
         effective[index] = ChassisSchema::computeEffective (
-            dspBase[index].load (std::memory_order_relaxed), cv,
+            dspBase[index].load (std::memory_order_relaxed), cvMagnitude,
             cvAmount[index].load (std::memory_order_relaxed),
-            dspParams[index].hardMin, dspParams[index].hardMax);
+            userRangeMin[index].load (std::memory_order_relaxed),
+            userRangeMax[index].load (std::memory_order_relaxed));
     }
 
     // 2) Input-Gain → Input-Meter (post-Gain, Ableton-Semantik)

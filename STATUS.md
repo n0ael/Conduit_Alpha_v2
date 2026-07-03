@@ -16,7 +16,7 @@
 
 ## Aktueller Meilenstein (Juli 2026 — in Arbeit)
 
-**FX-Chassis-Standard für alle Audio-FX-Module (Plan: 7 Meilensteine M1–M7) — M1–M4 abgeschlossen:**
+**FX-Chassis-Standard für alle Audio-FX-Module (Plan: 7 Meilensteine M1–M7) — M1–M5 abgeschlossen:**
 
 Ziel des Gesamtvorhabens (User-Plan 03.07.): jedes FX-Modul bekommt einheitlich
 Ableton-artige I/O-Gain-Fader mit Meter, einen Link-Audio-Send-Button am Output,
@@ -49,7 +49,14 @@ Bezier-Fader-Kurven, Modul-Typ-Defaults). Wird als CLAUDE.md 4.6 verbindlich.
   - `FxModulePanel`: LINK-Button + Status-LED (offline grau / announced gelb / streaming grün, Farben wie StatusBadge) unter dem Output-Zug; Klick togglet den Send des Post-Output-Gain-Signals, Kanal-Name = moduleId
   - `GraphManager::setLinkSendEnabled` (undo-fähige Patch-Aktion) + Property-Listener-Zweig → `ProcessorModule::setSendEnabled` LIVE (Tap create/retire ohne Rebuild); `materializeModule` setzt den persistierten Send-Zustand VOR prepareForGraph (Preset-Load-Pfad)
   - Verifikation: 265 Testfälle / 11098 Assertions grün (Debug + ASan; TSan via CI). Neu: Toggle an/aus/Undo mit echtem LinkClock-Rig, Rename propagiert Sink-Name live, persistierter Send entsteht bei Materialisierung, Delete Phase 1 zieht Tap sofort zurück, Epoch-Retire-Handshake (Audio-Block-Surrogat), UI-Button undo-fähig + LED offline-safe
-- **Als Nächstes:** M5 Dev-Modus · M6 Kurven + Defaults · M7 CLAUDE.md 4.6
+- **M5 — Dev-Modus + CV-Richtungs-Modell (fertig):**
+  - DEV-Toggle im Node-Header (transient pro Kachel, orange aktiv); im Dev-Modus pro Spalte Min/Max-Editierfelder + Ausblenden-Toggle, ausgeblendete Spalten gedimmt ohne Port
+  - `GraphManager::setParameterUserRange` (validiert gegen Hard-Range, clamped den Wert in DERSELBEN Undo-Transaktion) und `setParameterHidden` (trennt CV-Kabel des Parameters in derselben Transaktion — keine Phantom-Modulation; Bus-Layout bleibt IMMER unverändert). Nur role=dsp ist ausblendbar
+  - **CV-Richtungs-Modell (User-Feedback aus dem Live-Test):** `effective = clamp(base + |cv|·amt·(userMax−userMin), userMin, userMax)` — Gleichrichtung VOR der Block-Mittelung (bipolare Quellen werden zur Modulations-Hüllkurve), die Richtung bestimmt allein der Attenuverter (rechts = vom Fader nach oben, links = nach unten; vorher war negativ bei Sinus-LFOs unhörbare Phaseninversion). Modulation strikt im Dev-Modus-Bereich; User-Range erreicht das Modul live (Property-Listener) und bei der Materialisierung — kein Rebuild
+  - Friedhof-Muster im FxModulePanel: Spalten-Rebuild aus dem eigenen hideButton-Callback zerstört deferred (kein Use-after-free, Muster TransportBar)
+  - `ChassisSchema::cvChannelForParam`: feste CV-Kanal-Zuordnung, uiHidden verschiebt nie Kanäle
+  - Verifikation: 272 Testfälle / 11170 Assertions grün (Debug + ASan). Neu: Richtungs-Modell-Sektionen (Betrag, Richtung, User-Range-Skalierung/-Clamp, Rechteck-Gleichrichtung), setParameterUserRange/-Hidden inkl. Ein-Undo-Semantik, Live+Materialisierungs-Sync der Range, Panel-Dev-Modus (uiHidden nur im Normalmodus weg, Editierfelder committen, ungültige Eingaben restauriert), NodeComponent-DEV-Toggle mit Breiten-Nachzug
+- **Als Nächstes:** M6 Bezier-Fader-Kurven + Modul-Typ-Defaults · M7 CLAUDE.md 4.6
 
 **Davor: Tap-Tempo-Umbau: Monitor + Set-Commit (inspiriert vom M4L-Device „TAP and CHANGE Tempo BPM"):**
 

@@ -45,12 +45,27 @@ public:
     void stopUpdates();
 
     //==========================================================================
+    /** Dev-Modus (4.6, Toggle im Node-Header — transient, kein Patch-/App-
+        Zustand): zeigt pro Spalte Min/Max-Editierfelder (User-Regelbereich)
+        und den Ausblenden-Toggle; ausgeblendete Spalten erscheinen gedimmt.
+        Im Normalmodus verschwinden uiHidden-Spalten komplett (das Bus-Layout
+        bleibt IMMER unverändert). */
+    void setDevMode (bool shouldBeInDevMode);
+    [[nodiscard]] bool isDevMode() const noexcept { return devMode; }
+
+    /** Feuert nach jedem Spalten-Rebuild (Dev-Toggle, uiHidden-Änderung) —
+        der NodeComponent zieht darüber seine Kachelgröße nach. */
+    std::function<void()> onLayoutChanged;
+
+    //==========================================================================
     // Layout-Konstanten — zentral, damit NodeComponent-Sizing und Tests
     // dieselbe Quelle nutzen
     static constexpr int columnWidth  = 56;
     static constexpr int titleHeight  = 18;
     static constexpr int knobHeight   = 28;
     static constexpr int portRowHeight = 26;
+    static constexpr int devRowHeight  = 16;   // Min/Max-Editierfelder (Dev-Modus)
+    static constexpr int hideRowHeight = 16;   // Ausblenden-Toggle (Dev-Modus)
     static constexpr int panelHeight  = 248;
 
     /** Erster CV-Eingangs-Kanal des Chassis (Audio 0..1, CV 2..N — 4.6). */
@@ -81,14 +96,24 @@ public:
     {
         juce::String paramId;
         juce::String cvAmountId;   // "{param}_cv_amt"
+        int cvChannel = -1;        // festes Layout: numAudioIns + dsp-Index (4.6)
+        bool hidden = false;       // uiHidden-Snapshot beim Build
         juce::Label  titleLabel;
         juce::Slider slider { juce::Slider::LinearVertical, juce::Slider::NoTextBox };
         juce::Slider cvKnob { juce::Slider::RotaryHorizontalVerticalDrag,
                               juce::Slider::NoTextBox };
-        std::unique_ptr<PortComponent> cvPort;   // Kanal = firstCvChannel + Index
+        std::unique_ptr<PortComponent> cvPort;   // fehlt bei uiHidden (Kabel getrennt)
+
+        // Dev-Modus-Controls (nur im Dev-Modus erzeugt)
+        juce::Label minEdit, maxEdit;
+        juce::TextButton hideButton;
     };
 
     std::vector<std::unique_ptr<ParameterColumn>> columns;
+
+    /** Anzahl der ausgeblendeten dsp-Parameter im Tree (unabhängig vom
+        Modus) — für Sizing-Entscheidungen des NodeComponent/Tests. */
+    [[nodiscard]] int getNumHiddenParameters() const;
 
     // Gain-Züge (immer vorhanden — Chassis-Standard)
     std::unique_ptr<GainFaderMeter> inputFader;
@@ -114,7 +139,9 @@ private:
     void timerCallback() override;
 
     void buildColumns();
+    void rebuildColumns();   // clear + build + resized + onLayoutChanged
     void refreshSendButtonState();
+    void applyUserRangeToColumn (ParameterColumn& column, const juce::ValueTree& param);
 
     [[nodiscard]] juce::Rectangle<int> sendLedBounds() const;
 
@@ -126,6 +153,13 @@ private:
     GraphManager& graphManager;
 
     LinkSendTaps::Status shownSendStatus = LinkSendTaps::Status::offline;
+    bool devMode = false;   // transient pro Kachel (4.6)
+
+    // Friedhof des Spalten-Rebuilds: der Auslöser kann der hideButton einer
+    // der alten Spalten sein — synchrones Zerstören wäre ein Use-after-free
+    // im eigenen onClick (Muster TransportBar: Destruktion deferred). Wird
+    // asynchron bzw. beim nächsten Rebuild geleert.
+    std::vector<std::unique_ptr<ParameterColumn>> retiredColumns;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (FxModulePanel)
 };

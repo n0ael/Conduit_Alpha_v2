@@ -264,6 +264,90 @@ TEST_CASE ("FxModulePanel: LINK-Button toggelt linkSendEnabled undo-faehig", "[u
     REQUIRE (panel.getShownSendStatus() == conduit::LinkSendTaps::Status::offline);
 }
 
+TEST_CASE ("FxModulePanel Dev-Modus: uiHidden-Spalten verschwinden nur im Normalmodus", "[ui][chassis][devmode]")
+{
+    ChassisRig rig;
+    REQUIRE (rig.manager.setParameterHidden (
+        rig.node.getProperty (conduit::id::nodeId).toString(), "density", true));
+
+    conduit::FxModulePanel panel { rig.node, rig.manager };
+    panel.setSize (conduit::FxModulePanel::widthForColumns (4), conduit::FxModulePanel::panelHeight);
+
+    // Normalmodus: 3 sichtbare Spalten, density fehlt komplett
+    REQUIRE (panel.getNumColumns() == 3);
+    REQUIRE (panel.columns[0]->paramId == "highpass");
+    REQUIRE (panel.cvPortCentre (2) == juce::Point<int>());   // kein Anker für hidden
+
+    // Kanal-Zuordnung bleibt fest: highpass ankert weiter auf Kanal 3
+    REQUIRE (panel.columns[0]->cvChannel == 3);
+
+    // Dev-Modus: alle 4 Spalten sichtbar, hidden ohne Port + markiert
+    int layoutChanges = 0;
+    panel.onLayoutChanged = [&layoutChanges] { ++layoutChanges; };
+    panel.setDevMode (true);
+
+    REQUIRE (layoutChanges == 1);
+    REQUIRE (panel.getNumColumns() == 4);
+    REQUIRE (panel.columns[0]->paramId == "density");
+    REQUIRE (panel.columns[0]->hidden);
+    REQUIRE (panel.columns[0]->cvPort == nullptr);
+    REQUIRE (panel.columns[1]->cvPort != nullptr);
+
+    // Einblenden über den Dev-Toggle: Spalte kehrt mit Port zurück
+    panel.columns[0]->hideButton.onClick();
+    REQUIRE (panel.getNumColumns() == 4);
+    REQUIRE_FALSE (panel.columns[0]->hidden);
+    REQUIRE (panel.columns[0]->cvPort != nullptr);
+    REQUIRE (layoutChanges == 2);   // uiHidden-Listener → rebuild
+}
+
+TEST_CASE ("FxModulePanel Dev-Modus: User-Range steuert den Fader, Editierfelder committen", "[ui][chassis][devmode]")
+{
+    ChassisRig rig;
+    const auto uuid = rig.node.getProperty (conduit::id::nodeId).toString();
+
+    conduit::FxModulePanel panel { rig.node, rig.manager };
+    panel.setDevMode (true);
+
+    // Range-Änderung von außen (Undo/Preset/zweites Panel) zieht nach
+    REQUIRE (rig.manager.setParameterUserRange (uuid, "density", 0.25, 0.75));
+    REQUIRE (panel.columns[0]->slider.getMinimum() == Approx (0.25));
+    REQUIRE (panel.columns[0]->slider.getMaximum() == Approx (0.75));
+    REQUIRE (panel.columns[0]->minEdit.getText().getDoubleValue() == Approx (0.25));
+
+    // Editierfeld committet über den GraphManager (undo-fähig)
+    panel.columns[0]->maxEdit.setText ("0.5", juce::sendNotification);
+    auto density = rig.node.getChildWithName (conduit::id::parameters)
+                       .getChildWithProperty (conduit::id::paramId, "density");
+    REQUIRE ((double) density.getProperty (conduit::id::paramUserMax) == Approx (0.5));
+    REQUIRE (panel.columns[0]->slider.getMaximum() == Approx (0.5));
+
+    // Ungültige Eingabe wird abgelehnt und aus dem Tree restauriert
+    panel.columns[0]->maxEdit.setText ("0.1", juce::sendNotification);   // < userMin
+    REQUIRE ((double) density.getProperty (conduit::id::paramUserMax) == Approx (0.5));
+    REQUIRE (panel.columns[0]->maxEdit.getText().getDoubleValue() == Approx (0.5));
+}
+
+TEST_CASE ("NodeComponent: DEV-Toggle schaltet das Panel, Breite folgt den Spalten", "[ui][chassis][devmode]")
+{
+    ChassisRig rig;
+    const auto uuid = rig.node.getProperty (conduit::id::nodeId).toString();
+    REQUIRE (rig.manager.setParameterHidden (uuid, "density", true));
+
+    conduit::NodeComponent nodeUi { rig.node, rig.manager, rig.uiRegistry };
+
+    // Normalmodus: Breite folgt den 3 sichtbaren Spalten
+    REQUIRE (nodeUi.getWidth() == conduit::FxModulePanel::widthForColumns (3) + 56);
+    REQUIRE_FALSE (nodeUi.getFxPanel()->isDevMode());
+
+    // DEV-Klick: Panel in den Dev-Modus, Breite wächst auf alle 4 Spalten
+    nodeUi.devButton.onClick();
+    REQUIRE (nodeUi.getFxPanel()->isDevMode());
+    REQUIRE (nodeUi.getWidth() == conduit::FxModulePanel::widthForColumns (4) + 56);
+
+    nodeUi.completeTeardownNow();
+}
+
 TEST_CASE ("FxModulePanel: widthForColumns ist die zentrale Breitenformel", "[ui][chassis]")
 {
     using Panel = conduit::FxModulePanel;

@@ -125,6 +125,84 @@ bool GraphManager::renameNode (const juce::String& nodeUuid, const juce::String&
     return true;
 }
 
+bool GraphManager::setParameterUserRange (const juce::String& nodeUuid, const juce::String& paramId,
+                                          double userMin, double userMax)
+{
+    JUCE_ASSERT_MESSAGE_THREAD
+
+    auto nodeTree = rootState.getChildWithName (id::nodes)
+                        .getChildWithProperty (id::nodeId, nodeUuid);
+    auto param = nodeTree.getChildWithName (id::parameters)
+                     .getChildWithProperty (id::paramId, paramId);
+
+    if (! param.isValid())
+        return false;
+
+    const auto hardMin = (double) param.getProperty (id::paramMin, 0.0);
+    const auto hardMax = (double) param.getProperty (id::paramMax, 1.0);
+
+    // User-Bereich muss echt und innerhalb der Hard-Range liegen
+    if (! (userMin < userMax) || userMin < hardMin || userMax > hardMax)
+        return false;
+
+    undoManager.beginNewTransaction ("Regelbereich ändern");
+    param.setProperty (id::paramUserMin, userMin, &undoManager);
+    param.setProperty (id::paramUserMax, userMax, &undoManager);
+
+    // Wert in den neuen Bereich clampen — Teil DERSELBEN Transaktion,
+    // sonst restauriert Undo die Range, aber nicht den Wert
+    const auto value   = (double) param.getProperty (id::paramValue, 0.0);
+    const auto clamped = juce::jlimit (userMin, userMax, value);
+
+    if (! juce::exactlyEqual (value, clamped))
+        param.setProperty (id::paramValue, clamped, &undoManager);
+
+    return true;
+}
+
+bool GraphManager::setParameterHidden (const juce::String& nodeUuid, const juce::String& paramId,
+                                       bool hidden)
+{
+    JUCE_ASSERT_MESSAGE_THREAD
+
+    auto nodeTree = rootState.getChildWithName (id::nodes)
+                        .getChildWithProperty (id::nodeId, nodeUuid);
+    auto param = nodeTree.getChildWithName (id::parameters)
+                     .getChildWithProperty (id::paramId, paramId);
+
+    // Nur dsp-Parameter sind ausblendbar (Gains/Attenuverter sind Standard)
+    if (! param.isValid()
+        || ChassisSchema::roleOf (param) != juce::String (ChassisSchema::roleDsp))
+        return false;
+
+    if ((bool) param.getProperty (id::paramUiHidden, false) == hidden)
+        return true;  // No-op
+
+    undoManager.beginNewTransaction (hidden ? "Parameter ausblenden"
+                                            : "Parameter einblenden");
+    param.setProperty (id::paramUiHidden, hidden, &undoManager);
+
+    // Ausblenden trennt CV-Kabel des Parameters in derselben Transaktion
+    // (User-Entscheidung: keine unsichtbare Phantom-Modulation). Das
+    // Bus-Layout bleibt unverändert (4.6).
+    if (hidden)
+    {
+        const auto cvChannel = ChassisSchema::cvChannelForParam (nodeTree, paramId);
+        auto connections = rootState.getChildWithName (id::connections);
+
+        for (int i = connections.getNumChildren(); --i >= 0;)
+        {
+            const auto connection = connections.getChild (i);
+
+            if (connection.getProperty (id::destNodeId).toString() == nodeUuid
+                && (int) connection.getProperty (id::destChannel) == cvChannel)
+                connections.removeChild (i, &undoManager);
+        }
+    }
+
+    return true;
+}
+
 bool GraphManager::setLinkSendEnabled (const juce::String& nodeUuid, bool enabled)
 {
     JUCE_ASSERT_MESSAGE_THREAD
@@ -547,8 +625,35 @@ void GraphManager::valueTreePropertyChanged (juce::ValueTree& tree, const juce::
         return;
     }
 
+    // User-Regelbereich (Dev-Modus 4.6, auch via Undo/Preset-Diff):
+    // Wirkbereich der CV-Modulation LIVE ins Modul spiegeln — KEIN Rebuild.
+    if ((property == id::paramUserMin || property == id::paramUserMax)
+        && tree.hasType (id::parameter))
+    {
+        const auto nodeTree = tree.getParent().getParent();
+
+        if (nodeTree.hasType (id::node))
+            if (auto* processor = dynamic_cast<ProcessorModule*> (
+                    getModuleFor (nodeTree.getProperty (id::nodeId).toString())))
+                syncParameterUserRange (tree, *processor);
+
+        return;
+    }
+
     // Sonst bewusst keine Reaktion — Topologie ändert sich hier nicht,
     // ein Graph-Rebuild wäre falsch (6.1).
+}
+
+void GraphManager::syncParameterUserRange (const juce::ValueTree& parameterTree,
+                                           ProcessorModule& processor)
+{
+    // Effektiver User-Bereich: fehlende Properties fallen auf die Hard-Range
+    processor.setParameterUserRange (
+        parameterTree.getProperty (id::paramId).toString(),
+        static_cast<float> ((double) parameterTree.getProperty (
+            id::paramUserMin, parameterTree.getProperty (id::paramMin, 0.0))),
+        static_cast<float> ((double) parameterTree.getProperty (
+            id::paramUserMax, parameterTree.getProperty (id::paramMax, 1.0))));
 }
 
 void GraphManager::syncParameterValue (juce::ValueTree parameterTree)
@@ -753,9 +858,26 @@ std::unique_ptr<ConduitModule> GraphManager::materializeModule (juce::ValueTree 
             nodeTree.getProperty (id::moduleId).toString());
 
     // FX-Chassis (4.6): persistierten Send-Zustand VOR prepareForGraph
-    // setzen — der Tap entsteht dann in prepareToPlay (Preset-Load-Pfad)
+    // setzen — der Tap entsteht dann in prepareToPlay (Preset-Load-Pfad).
+    // Dazu die User-Regelbereiche (Dev-Modus) aus dem Tree in die
+    // Modul-Atomics spiegeln (Wirkbereich der CV-Modulation).
     if (auto* processor = dynamic_cast<ProcessorModule*> (module.get()))
+    {
         processor->setSendEnabled ((bool) nodeTree.getProperty (id::linkSendEnabled, false));
+
+        const auto params = nodeTree.getChildWithName (id::parameters);
+
+        for (int i = 0; i < params.getNumChildren(); ++i)
+        {
+            const auto param = params.getChild (i);
+
+            if (ChassisSchema::roleOf (param) != juce::String (ChassisSchema::roleDsp)
+                || ! (param.hasProperty (id::paramUserMin) || param.hasProperty (id::paramUserMax)))
+                continue;
+
+            syncParameterUserRange (param, *processor);
+        }
+    }
 
     // Send-Kanal-Layout VOR prepareForGraph (7.2): setzt die Bus-Kanalzahl
     // (fixe Eingangszahl) und die Eingangs-Struktur, aus der prepareToPlay

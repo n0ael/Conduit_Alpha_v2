@@ -117,6 +117,11 @@ public:
     [[nodiscard]] int getNumOutputPorts() const noexcept;
     [[nodiscard]] bool hasFxPanel() const noexcept { return fxPanel != nullptr; }
     [[nodiscard]] FxModulePanel* getFxPanel() noexcept { return fxPanel.get(); }
+
+    // Dev-Modus-Toggle (nur Chassis-Nodes, 4.6) — transient pro Kachel,
+    // kein Patch-/App-Zustand (User-Entscheidung 03.07.). Public wie die
+    // Panel-Controls: UI-Tests treiben ihn direkt.
+    juce::TextButton devButton { "DEV" };
     [[nodiscard]] int getNumMeterBars() const noexcept;  // Pegelanzeigen (I/O-Endpunkte)
     [[nodiscard]] int getNumSendButtons() const noexcept;  // Link-Send-Toggles (audio_in)
 
@@ -141,6 +146,10 @@ private:
 
     void beginTeardown();
     void applyTreePosition();
+
+    /** Kachelgröße eines Chassis-Nodes aus dem aktuellen Panel-Layout —
+        auch nach Dev-Toggle/uiHidden-Änderung (onLayoutChanged). */
+    void updateChassisSize();
 
     /** Rastet die Position an den Kanten der Geschwister-Kacheln ein:
         Oberkanten (gleiche Höhe) und linke Kanten (bündig untereinander),

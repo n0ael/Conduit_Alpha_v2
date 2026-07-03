@@ -210,7 +210,7 @@ TEST_CASE ("FX-Chassis: Gain-Rampe ist klickfrei (monoton, kleine Schritte)", "[
 }
 
 //==============================================================================
-TEST_CASE ("FX-Chassis: CV-Blockmittel moduliert bipolar mit Hard-Clamp", "[chassis]")
+TEST_CASE ("FX-Chassis: CV-Modulation im Richtungs-Modell (Betrag + Attenuverter-Vorzeichen)", "[chassis]")
 {
     PassthroughChassisModule module;
     REQUIRE (module.prepareForGraph (48000.0, 256).wasOk());
@@ -228,7 +228,7 @@ TEST_CASE ("FX-Chassis: CV-Blockmittel moduliert bipolar mit Hard-Clamp", "[chas
         REQUIRE (module.lastEffective == Approx (0.25f));
     }
 
-    SECTION ("Attenuverter +1: base + cv * range")
+    SECTION ("Attenuverter +1: vom Fader-Wert nach OBEN")
     {
         cvAmt->store (1.0f, std::memory_order_relaxed);
         buffer.clear();
@@ -237,13 +237,22 @@ TEST_CASE ("FX-Chassis: CV-Blockmittel moduliert bipolar mit Hard-Clamp", "[chas
         REQUIRE (module.lastEffective == Approx (0.75f));
     }
 
-    SECTION ("Attenuverter -1: invertiert, Hard-Clamp auf hardMin")
+    SECTION ("Attenuverter -1: vom Fader-Wert nach UNTEN (Clamp auf rangeMin)")
     {
         cvAmt->store (-1.0f, std::memory_order_relaxed);
         buffer.clear();
         fillChannel (buffer, 2, 0.5f);
         module.processBlock (buffer, midi);
         REQUIRE (module.lastEffective == Approx (0.0f));   // 0.25 - 0.5 → clamp
+    }
+
+    SECTION ("Bipolare Quelle: negatives CV wirkt wie positives (Betrag)")
+    {
+        cvAmt->store (1.0f, std::memory_order_relaxed);
+        buffer.clear();
+        fillChannel (buffer, 2, -0.5f);
+        module.processBlock (buffer, midi);
+        REQUIRE (module.lastEffective == Approx (0.75f));   // Richtung kommt vom Knob
     }
 
     SECTION ("Unverbundener CV-Kanal (genullt): Effektivwert = Basiswert")
@@ -254,7 +263,7 @@ TEST_CASE ("FX-Chassis: CV-Blockmittel moduliert bipolar mit Hard-Clamp", "[chas
         REQUIRE (module.lastEffective == Approx (0.25f));
     }
 
-    SECTION ("Blockmittel: alternierendes ±1-CV mittelt sich zu 0")
+    SECTION ("Gleichrichtung VOR der Mittelung: ±1-Rechteck = volle Modulation")
     {
         cvAmt->store (1.0f, std::memory_order_relaxed);
         buffer.clear();
@@ -264,19 +273,43 @@ TEST_CASE ("FX-Chassis: CV-Blockmittel moduliert bipolar mit Hard-Clamp", "[chas
             cv[i] = (i % 2 == 0) ? 1.0f : -1.0f;
 
         module.processBlock (buffer, midi);
-        REQUIRE (module.lastEffective == Approx (0.25f));
+        REQUIRE (module.lastEffective == Approx (1.0f));   // |cv|-Mittel = 1 → clamp oben
+    }
+
+    SECTION ("User-Regelbereich begrenzt UND skaliert die Modulation (Dev-Modus)")
+    {
+        module.setParameterUserRange ("amount", 0.2f, 0.6f);
+        cvAmt->store (1.0f, std::memory_order_relaxed);
+
+        // Tiefe skaliert mit der User-Range: 0.25 + 0.5·1·0.4 = 0.45
+        buffer.clear();
+        fillChannel (buffer, 2, 0.5f);
+        module.processBlock (buffer, midi);
+        REQUIRE (module.lastEffective == Approx (0.45f));
+
+        // Vollausschlag clamped auf userMax, nie darüber hinaus
+        buffer.clear();
+        fillChannel (buffer, 2, 1.0f);
+        module.processBlock (buffer, midi);
+        REQUIRE (module.lastEffective == Approx (0.6f));
+
+        // Negativ: clamped auf userMin
+        cvAmt->store (-1.0f, std::memory_order_relaxed);
+        module.processBlock (buffer, midi);
+        REQUIRE (module.lastEffective == Approx (0.2f));
     }
 }
 
-TEST_CASE ("ChassisSchema::computeEffective clamped hart", "[chassis]")
+TEST_CASE ("ChassisSchema::computeEffective: Richtungs-Modell mit Range-Clamp", "[chassis]")
 {
     using S = conduit::ChassisSchema;
 
-    REQUIRE (S::computeEffective (0.5f, 0.0f, 1.0f, 0.0f, 1.0f)  == Approx (0.5f));
-    REQUIRE (S::computeEffective (0.5f, 1.0f, 1.0f, 0.0f, 1.0f)  == Approx (1.0f));   // Clamp oben
-    REQUIRE (S::computeEffective (0.5f, -1.0f, 1.0f, 0.0f, 1.0f) == Approx (0.0f));   // Clamp unten
-    REQUIRE (S::computeEffective (0.5f, 0.25f, -1.0f, 0.0f, 1.0f) == Approx (0.25f)); // invertiert
-    REQUIRE (S::computeEffective (2.0f, 0.5f, 0.5f, 0.0f, 4.0f)  == Approx (3.0f));   // Range-Skalierung
+    REQUIRE (S::computeEffective (0.5f, 0.0f, 1.0f, 0.0f, 1.0f)   == Approx (0.5f));
+    REQUIRE (S::computeEffective (0.5f, 1.0f, 1.0f, 0.0f, 1.0f)   == Approx (1.0f));   // Clamp oben
+    REQUIRE (S::computeEffective (0.5f, 1.0f, -1.0f, 0.0f, 1.0f)  == Approx (0.0f));   // Clamp unten
+    REQUIRE (S::computeEffective (0.5f, 0.25f, -1.0f, 0.0f, 1.0f) == Approx (0.25f));  // nach unten
+    REQUIRE (S::computeEffective (2.0f, 0.5f, 0.5f, 0.0f, 4.0f)   == Approx (3.0f));   // Range-Skalierung
+    REQUIRE (S::computeEffective (0.3f, 1.0f, 1.0f, 0.2f, 0.6f)   == Approx (0.6f));   // User-Range-Clamp
 }
 
 //==============================================================================
@@ -544,6 +577,117 @@ TEST_CASE ("FX-Chassis: Delete Phase 1 zieht den Send-Tap sofort zurueck", "[cha
     // keine Zombie-Kanäle bei den Peers (7.2)
     REQUIRE (rig.manager.requestNodeDelete (rig.uuid()));
     REQUIRE_FALSE (module->hasActiveSendTap());
+}
+
+//==============================================================================
+TEST_CASE ("Dev-Modus: setParameterUserRange validiert und clamped den Wert mit", "[chassis][devmode]")
+{
+    LinkSendRig rig;
+    auto params  = rig.node.getChildWithName (conduit::id::parameters);
+    auto density = params.getChildWithProperty (conduit::id::paramId, "density");
+
+    density.setProperty (conduit::id::paramValue, 0.9, nullptr);
+
+    // Gültig: Range gesetzt, Wert in DERSELBEN Transaktion geclamped
+    REQUIRE (rig.manager.setParameterUserRange (rig.uuid(), "density", 0.2, 0.6));
+    REQUIRE ((double) density.getProperty (conduit::id::paramUserMin) == Approx (0.2));
+    REQUIRE ((double) density.getProperty (conduit::id::paramUserMax) == Approx (0.6));
+    REQUIRE ((double) density.getProperty (conduit::id::paramValue)   == Approx (0.6));
+
+    // EIN Undo restauriert Range UND Wert
+    REQUIRE (rig.undoManager.undo());
+    REQUIRE_FALSE (density.hasProperty (conduit::id::paramUserMin));
+    REQUIRE ((double) density.getProperty (conduit::id::paramValue) == Approx (0.9));
+
+    // Ungültig: min >= max, außerhalb der Hard-Range, unbekannter Parameter
+    REQUIRE_FALSE (rig.manager.setParameterUserRange (rig.uuid(), "density", 0.6, 0.6));
+    REQUIRE_FALSE (rig.manager.setParameterUserRange (rig.uuid(), "density", -0.5, 0.5));
+    REQUIRE_FALSE (rig.manager.setParameterUserRange (rig.uuid(), "density", 0.0, 1.5));
+    REQUIRE_FALSE (rig.manager.setParameterUserRange (rig.uuid(), "nicht_da", 0.0, 1.0));
+    REQUIRE_FALSE (density.hasProperty (conduit::id::paramUserMin));
+}
+
+TEST_CASE ("Dev-Modus: setParameterHidden trennt CV-Kabel in derselben Transaktion", "[chassis][devmode]")
+{
+    LinkSendRig rig;
+
+    // LFO als CV-Quelle auf den density-CV-Kanal (2)
+    const auto lfo = rig.manager.addModuleNode ("lfo", {});
+    const auto lfoUuid = lfo.getProperty (conduit::id::nodeId).toString();
+    REQUIRE (rig.manager.addConnection (lfoUuid, 0, rig.uuid(), 2));
+
+    auto connections = rig.root.getChildWithName (conduit::id::connections);
+    REQUIRE (connections.getNumChildren() == 1);
+
+    const auto inputChannelsBefore = (int) rig.node.getProperty (conduit::id::numInputChannels);
+
+    // Ausblenden: Property + Kabel-Trennung in EINER Transaktion
+    REQUIRE (rig.manager.setParameterHidden (rig.uuid(), "density", true));
+    auto density = rig.node.getChildWithName (conduit::id::parameters)
+                       .getChildWithProperty (conduit::id::paramId, "density");
+    REQUIRE ((bool) density.getProperty (conduit::id::paramUiHidden));
+    REQUIRE (connections.getNumChildren() == 0);   // keine Phantom-Modulation
+
+    // Bus-Layout bleibt IMMER unverändert (4.6)
+    REQUIRE ((int) rig.node.getProperty (conduit::id::numInputChannels) == inputChannelsBefore);
+
+    // EIN Undo: Property UND Kabel zurück
+    REQUIRE (rig.undoManager.undo());
+    REQUIRE_FALSE ((bool) density.getProperty (conduit::id::paramUiHidden, false));
+    REQUIRE (connections.getNumChildren() == 1);
+
+    // Gains/Attenuverter sind nicht ausblendbar
+    REQUIRE_FALSE (rig.manager.setParameterHidden (rig.uuid(), "input_gain", true));
+    REQUIRE_FALSE (rig.manager.setParameterHidden (rig.uuid(), "density_cv_amt", true));
+}
+
+TEST_CASE ("Dev-Modus: User-Range erreicht das Modul live und bei der Materialisierung", "[chassis][devmode]")
+{
+    LinkSendRig rig;
+    auto* module = rig.module();
+
+    // Default: Wirkbereich = Hard-Range
+    REQUIRE (module->getParameterUserRange ("density").getStart() == Approx (0.0f));
+    REQUIRE (module->getParameterUserRange ("density").getEnd()   == Approx (1.0f));
+
+    // Live: Tree-Property → Listener → Modul-Atomics (kein Rebuild)
+    REQUIRE (rig.manager.setParameterUserRange (rig.uuid(), "density", 0.2, 0.6));
+    REQUIRE (module->getParameterUserRange ("density").getStart() == Approx (0.2f));
+    REQUIRE (module->getParameterUserRange ("density").getEnd()   == Approx (0.6f));
+
+    // Undo restauriert den Wirkbereich (Properties weg → Hard-Range)
+    REQUIRE (rig.undoManager.undo());
+    REQUIRE (module->getParameterUserRange ("density").getEnd() == Approx (1.0f));
+
+    // Materialisierungs-Pfad (Preset-Load): Range steht im Tree, BEVOR das
+    // Modul entsteht
+    auto second = rig.manager.addModuleNode (conduit::AirwindowsDensityModule::staticModuleId, {});
+    second.getChildWithName (conduit::id::parameters)
+          .getChildWithProperty (conduit::id::paramId, "highpass")
+          .setProperty (conduit::id::paramUserMax, 0.5, nullptr);
+    rig.manager.flushPendingTopologyUpdate();
+
+    auto* secondModule = dynamic_cast<conduit::ProcessorModule*> (
+        rig.manager.getModuleFor (second.getProperty (conduit::id::nodeId).toString()));
+    REQUIRE (secondModule != nullptr);
+    REQUIRE (secondModule->getParameterUserRange ("highpass").getEnd() == Approx (0.5f));
+}
+
+TEST_CASE ("ChassisSchema::cvChannelForParam ignoriert uiHidden (festes Layout)", "[chassis][devmode]")
+{
+    conduit::AirwindowsDensityModule density;
+    auto node = density.createState();
+
+    REQUIRE (conduit::ChassisSchema::cvChannelForParam (node, "density")   == 2);
+    REQUIRE (conduit::ChassisSchema::cvChannelForParam (node, "dry_wet")   == 5);
+    REQUIRE (conduit::ChassisSchema::cvChannelForParam (node, "input_gain") == -1);
+    REQUIRE (conduit::ChassisSchema::cvChannelForParam (node, "nicht_da")  == -1);
+
+    // uiHidden verschiebt die Kanal-Zuordnung NICHT
+    node.getChildWithName (conduit::id::parameters)
+        .getChildWithProperty (conduit::id::paramId, "density")
+        .setProperty (conduit::id::paramUiHidden, true, nullptr);
+    REQUIRE (conduit::ChassisSchema::cvChannelForParam (node, "dry_wet") == 5);
 }
 
 //==============================================================================

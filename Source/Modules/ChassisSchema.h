@@ -61,15 +61,51 @@ struct ChassisSchema
         return parameterTree.getProperty (id::paramRole, roleDsp).toString();
     }
 
-    //==========================================================================
-    /** CV-Modulation (Audio Thread, pure): blockkonstanter Effektivwert.
-        cv folgt der ±1-Konvention (CLAUDE.md 8.0), amount ist der
-        Attenuverter (−1..+1). Hard-Clamp auf die DSP-Range — der Fader-
-        User-Bereich (userMin/userMax) beschneidet die Modulation NICHT. */
-    [[nodiscard]] static float computeEffective (float base, float cv, float amount,
-                                                 float hardMin, float hardMax) noexcept
+    /** CV-Eingangs-Kanal eines DSP-Parameters (festes Layout 4.6: Kanal =
+        numAudioIns + Index in der Reihenfolge der role=dsp-Parameter —
+        uiHidden ändert diese Zuordnung NIE). −1, wenn der Parameter kein
+        dsp-Parameter des Nodes ist. Pure, testbar. */
+    [[nodiscard]] static int cvChannelForParam (const juce::ValueTree& nodeTree,
+                                                const juce::String& dspParamId,
+                                                int numAudioIns = 2)
     {
-        return juce::jlimit (hardMin, hardMax, base + cv * amount * (hardMax - hardMin));
+        const auto params = nodeTree.getChildWithName (id::parameters);
+        int dspIndex = 0;
+
+        for (int i = 0; i < params.getNumChildren(); ++i)
+        {
+            const auto param = params.getChild (i);
+
+            if (roleOf (param) != juce::String (roleDsp))
+                continue;
+
+            if (param.getProperty (id::paramId).toString() == dspParamId)
+                return numAudioIns + dspIndex;
+
+            ++dspIndex;
+        }
+
+        return -1;
+    }
+
+    //==========================================================================
+    /** CV-Modulation (Audio Thread, pure): blockkonstanter Effektivwert im
+        RICHTUNGS-Modell (User-Entscheidung 03.07.):
+
+          effective = clamp(base + cvMagnitude·amount·(rangeMax−rangeMin),
+                            rangeMin, rangeMax)
+
+        - cvMagnitude ist der BETRAG des CV (0..1) — bipolare Quellen (LFO-
+          Sinus ±1) werden gleichgerichtet, die Richtung bestimmt allein der
+          Attenuverter: amount > 0 moduliert vom Fader-Wert nach OBEN,
+          amount < 0 nach UNTEN. Kein Kabel (CV 0) → keine Modulation.
+        - rangeMin/rangeMax ist der USER-Bereich (Dev-Modus userMin/userMax,
+          Default = Hard-Range) — die Modulation bleibt strikt darin. */
+    [[nodiscard]] static float computeEffective (float base, float cvMagnitude, float amount,
+                                                 float rangeMin, float rangeMax) noexcept
+    {
+        return juce::jlimit (rangeMin, rangeMax,
+                             base + cvMagnitude * amount * (rangeMax - rangeMin));
     }
 
     //==========================================================================

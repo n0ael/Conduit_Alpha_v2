@@ -686,12 +686,12 @@ void FxModulePanel::resized()
             columnWidthFor (column->buttonMode, devMode, column->numButtons));
         column->titleLabel.setBounds (columnBounds.removeFromTop (titleHeight));
 
-        // Dev + Buttons: Fader-Teil links (56px, Layout wie gehabt), die
-        // Button-Stapel daneben — Fader zum Wert-Finden, Klick speichert (4.6)
+        // Dev + Buttons: Fader-Teil links (devColumnWidth, Layout wie gehabt),
+        // die Button-Stapel daneben — Fader findet den Wert, Klick speichert
         auto stackArea = juce::Rectangle<int>();
 
         if (column->buttonMode && devMode)
-            stackArea = columnBounds.removeFromRight (columnBounds.getWidth() - columnWidth);
+            stackArea = columnBounds.removeFromRight (columnBounds.getWidth() - devColumnWidth);
 
         // Dev-Modus: Ausblenden / Fader↔Buttons / Kurven-Editor als Drittel
         // der Dev-Zeile ganz unten — der Fader schrumpft entsprechend

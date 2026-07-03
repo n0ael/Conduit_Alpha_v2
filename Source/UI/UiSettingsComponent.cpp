@@ -25,16 +25,14 @@ UiSettingsComponent::UiSettingsComponent (UiSettings& settingsToUse)
     };
     addAndMakeVisible (uiScaleSlider);
 
+    // Schriftgröße wirkt LIVE beim Ziehen — anders als beim UI-Scale gibt es
+    // keine Feedback-Schleife (das Fenster skaliert nicht unter dem Cursor,
+    // nur die Texte zeichnen neu; Repaints koalesziert der Message-Loop)
     addAndMakeVisible (fontScaleLabel);
     fontScaleSlider.setRange (static_cast<double> (UiSettings::minFontScale) * 100.0,
                               static_cast<double> (UiSettings::maxFontScale) * 100.0, 1.0);
     fontScaleSlider.setTextValueSuffix (" %");
-    fontScaleSlider.onDragEnd = [this] { applyFontScale(); };
-    fontScaleSlider.onValueChange = [this]
-    {
-        if (! fontScaleSlider.isMouseButtonDown())
-            applyFontScale();
-    };
+    fontScaleSlider.onValueChange = [this] { applyFontScale(); };
     addAndMakeVisible (fontScaleSlider);
 
     devModeToggle.setButtonText (juce::String::fromUTF8 (

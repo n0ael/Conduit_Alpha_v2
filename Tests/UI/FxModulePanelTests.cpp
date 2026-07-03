@@ -361,9 +361,11 @@ TEST_CASE ("NodeComponent: DEV-Toggle schaltet das Panel, Breite folgt den Spalt
     REQUIRE_FALSE (nodeUi.getFxPanel()->isDevMode());
 
     // DEV-Klick: Panel in den Dev-Modus, Breite wächst auf alle 4 Spalten
+    // (Dev-Spalten sind breiter — lesbare Dev-Zeile)
     nodeUi.devButton.onClick();
     REQUIRE (nodeUi.getFxPanel()->isDevMode());
-    REQUIRE (nodeUi.getWidth() == conduit::FxModulePanel::widthForColumns (4) + 56);
+    REQUIRE (nodeUi.getWidth() == conduit::FxModulePanel::widthForColumns (0)
+                                      + 4 * conduit::FxModulePanel::devColumnWidth + 56);
 
     nodeUi.completeTeardownNow();
 }
@@ -591,11 +593,11 @@ TEST_CASE ("FxModulePanel Dev+Buttons: Fader UND Buttons, Klick speichert den Fa
     panel.setDevMode (true);
     panel.setSize (panel.getPreferredWidth(), conduit::FxModulePanel::panelHeight);
 
-    // Dev: Fader sichtbar UND Buttons daneben
+    // Dev: Fader sichtbar UND Buttons daneben (rechts der Dev-Fader-Spalte)
     auto& column = *panel.columns[0];
     REQUIRE (column.slider.isVisible());
     REQUIRE (column.valueButtons.size() == 2);
-    REQUIRE (column.valueButtons[0]->getX() >= conduit::FxModulePanel::columnWidth);
+    REQUIRE (column.valueButtons[0]->getX() >= conduit::FxModulePanel::devColumnWidth);
 
     // Kern-Workflow: Fader auf guten Wert, Button-Klick speichert ihn
     column.slider.setValue (0.7, juce::sendNotificationSync);
@@ -741,9 +743,9 @@ TEST_CASE ("FxModulePanel: columnWidthFor + getPreferredWidth (variable Spaltenb
 {
     using Panel = conduit::FxModulePanel;
 
-    // Fader-Spalte: immer 56, unabhängig von Dev-Modus und Button-Zahl
+    // Fader-Spalte: 56 im Normalmodus, 84 im Dev-Modus (lesbare Dev-Zeile)
     REQUIRE (Panel::columnWidthFor (false, false, 0) == Panel::columnWidth);
-    REQUIRE (Panel::columnWidthFor (false, true, 7)  == Panel::columnWidth);
+    REQUIRE (Panel::columnWidthFor (false, true, 7)  == Panel::devColumnWidth);
 
     // Button-Spalte (Nicht-Dev): 1 Stapel bis 5 Buttons, danach 2
     REQUIRE (Panel::columnWidthFor (true, false, 0) == Panel::buttonStackWidth);
@@ -751,9 +753,9 @@ TEST_CASE ("FxModulePanel: columnWidthFor + getPreferredWidth (variable Spaltenb
     REQUIRE (Panel::columnWidthFor (true, false, 6) == 2 * Panel::buttonStackWidth);
     REQUIRE (Panel::columnWidthFor (true, false, 10) == 2 * Panel::buttonStackWidth);
 
-    // Dev+Buttons: Fader-Spalte + Stapel daneben
-    REQUIRE (Panel::columnWidthFor (true, true, 3) == Panel::columnWidth + Panel::buttonStackWidth);
-    REQUIRE (Panel::columnWidthFor (true, true, 6) == Panel::columnWidth + 2 * Panel::buttonStackWidth);
+    // Dev+Buttons: Dev-Fader-Spalte + Stapel daneben
+    REQUIRE (Panel::columnWidthFor (true, true, 3) == Panel::devColumnWidth + Panel::buttonStackWidth);
+    REQUIRE (Panel::columnWidthFor (true, true, 6) == Panel::devColumnWidth + 2 * Panel::buttonStackWidth);
 
     // Degeneration: reine Fader-Panels liefern exakt widthForColumns
     ChassisRig rig;

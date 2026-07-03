@@ -70,6 +70,12 @@ public:
     // Layout-Konstanten — zentral, damit NodeComponent-Sizing und Tests
     // dieselbe Quelle nutzen
     static constexpr int columnWidth  = 56;
+
+    // Dev-Modus-Spaltenbreite: die Dev-Zeile trägt DREI Buttons (aus/btn/~) —
+    // bei 56px blieben 18px pro Button (JUCE rendert nur noch „…",
+    // User-Feedback 03.07.); 84px geben 28px pro Button
+    static constexpr int devColumnWidth = 84;
+
     static constexpr int titleHeight  = 18;
     static constexpr int knobHeight   = 28;
     static constexpr int portRowHeight = 26;
@@ -95,20 +101,21 @@ public:
              + juce::jmax (0, numDspColumns) * columnWidth + 16;
     }
 
-    /** Breite EINER Spalte: Fader-Modus 56px; Button-Modus (Nicht-Dev)
-        1–2 Stapel à buttonStackWidth (5 Buttons pro Stapel); Dev+Buttons:
-        Fader-Spalte PLUS Stapel daneben (Fader zum Wert-Finden, 4.6). */
+    /** Breite EINER Spalte: Fader-Modus 56px (Dev: 84px — lesbare Dev-Zeile);
+        Button-Modus (Nicht-Dev) 1–2 Stapel à buttonStackWidth (5 Buttons pro
+        Stapel); Dev+Buttons: Dev-Fader-Spalte PLUS Stapel daneben (Fader zum
+        Wert-Finden, 4.6). */
     [[nodiscard]] static int columnWidthFor (bool isButtonMode, bool isInDevMode,
                                              int numButtons) noexcept
     {
         if (! isButtonMode)
-            return columnWidth;
+            return isInDevMode ? devColumnWidth : columnWidth;
 
         const auto stacks = juce::jmax (1,
             (numButtons + ChassisSchema::maxUiButtonsPerStack - 1)
                 / ChassisSchema::maxUiButtonsPerStack);
 
-        return isInDevMode ? columnWidth + stacks * buttonStackWidth
+        return isInDevMode ? devColumnWidth + stacks * buttonStackWidth
                            : stacks * buttonStackWidth;
     }
 

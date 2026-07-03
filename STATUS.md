@@ -174,6 +174,45 @@
   getJost/LnF-Fonts, RAII-Reset), Dev-Mode-Gating (Sichtbarkeit, Reset,
   ctor-Erben, nullptr-Fallback).
 
+**Header-/Icon-Politur (03./04.07.2026, User-Feedback-Runden) — FERTIG:**
+
+- **Anti-Stauch-Regel (neu in CLAUDE.md 10, verbindlich):** Schrift wird NIE
+  horizontal gestaucht — bei Platzmangel kleiner rendern oder kürzen.
+  `PushLookAndFeel::drawLabel` erzwingt Scale 1.0 app-weit; alle
+  `setMinimumHorizontalScale(0.7)`-Aufrufe entfernt.
+- **Dev-Zeile des FxModulePanel:** Text war bei schmalen Buttons prinzipiell
+  unlesbar → Vektor-Icons (eye/eyeOff = ein-/ausblenden, 2×2-Grid ↔ Fader =
+  Ziel-Modus des Fader↔Button-Umschalters, Bezier-Kurve = CurveEditor,
+  +/− = Stepper); `IconTile::setIcon()` neu; Zeile 26px hoch, Dev-Spalten
+  84px breit (`devColumnWidth`); IconTile bemisst das Icon-Inset an der
+  KLEINEREN Seite (Fix für schmale Kacheln).
+- **Skala-Gruppe im Ableton-Look:** [♯-Toggle][Root][Skala] bündig; der
+  ♯-Toggle (neues Icon) schaltet chromatisch (= aus) ↔ zuletzt gewählte
+  Skala; ComboBoxen im Kachel-Stil (`drawComboBox`) mit Tile-Schrift
+  (Jost 13 × fontScale statt V4-Font).
+- **Live-Referenz-Icons (PS-Vorher/Nachher vom User):** Nudge = vier
+  aufrechte dicke Balken (Fill, Doppler-Verdichtung in Nudge-Richtung),
+  Metronom ○● größer/mittig, Tape = o͞o (Bandkante direkt auf den Spulen),
+  Grid-Page = offener Ring, Mixer-Page = Meter-Säulen, Clip-Dreieck
+  zentriert. `draw()` überspringt leere Stroke-Geometrien generisch.
+- **Browser-Panel-Platzhalter:** gespiegeltes Live-Browser-Icon
+  (`browserPanel`, Panel rechts) als disabled-Tile ganz rechts in der
+  TransportBar — **das rechts aufklappende Browser-Panel ist der nächste
+  Meilenstein (User-Ansage 03.07.).**
+- **SVG-Icon-Workflow (`Assets/Icons/`):** `SVG alt/` = Export aller 21
+  PushIcons (viewBox 0..100, Gruppe stroke = Mittellinien mit Laufzeit-
+  Strichstärke, Gruppe fill = exakte Flächen), `SVG angepasst/` = Ablage
+  für im Vektorprogramm überarbeitete Versionen → werden zurück in
+  `PushIcons.cpp` eingepflegt, danach `SVG alt/` aktualisieren
+  (README im Ordner).
+- **Schriftgrößen-Feinschliff:** UI-Scale UND Font-Scale in 1%-Schritten;
+  Font-Slider wendet live beim Ziehen an (keine Feedback-Schleife, anders
+  als der UI-Scale mit Drag-Ende-Commit); drawToggleButton nachgebaut
+  (V4 hat keinen Font-Hook).
+- **Verifikation:** ConduitTests 306 Fälle / 12082 Assertions grün, alle
+  Commits einzeln CI-verifiziert (ein CI-Fix: verwaiste chevron()-Funktion,
+  Clang -Wunused-function — MSVC meldet so etwas nicht).
+
 **FX-Chassis-Standard für alle Audio-FX-Module (Plan: 7 Meilensteine M1–M7) — M1–M6 abgeschlossen:**
 
 Ziel des Gesamtvorhabens (User-Plan 03.07.): jedes FX-Modul bekommt einheitlich

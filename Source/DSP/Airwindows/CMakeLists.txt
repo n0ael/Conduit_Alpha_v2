@@ -43,6 +43,16 @@ target_link_libraries(ConduitAirwindows
         juce::juce_recommended_config_flags
 )
 
+# Dieses Target kompiliert seine eigene Kopie von juce_core.cpp (JUCE-Module
+# werden pro Target übersetzt) — ohne diese Defines sucht Linux/Clang unter
+# Third-Party-curl.h (auf dem CI-Runner nicht installiert), wo MSVC/Windows
+# den Pfad gar nicht erst betritt (CI-Fund: lokal grün, Linux-CI rot).
+# Muss dieselben Defines tragen wie Conduit/ConduitTests in der Root-CMakeLists.
+target_compile_definitions(ConduitAirwindows PUBLIC
+    JUCE_USE_CURL=0
+    JUCE_WEB_BROWSER=0
+)
+
 # Warnungen als Fehler NUR für eigene Sources (Muster Root-CMakeLists) —
 # die JUCE-Modul-Sources werden im selben Target mitkompiliert und dürfen
 # den Build nicht brechen.

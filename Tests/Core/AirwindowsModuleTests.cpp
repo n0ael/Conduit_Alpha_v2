@@ -53,8 +53,8 @@ TEST_CASE ("AirwindowsDensityModule: createState liefert die 4 Airwindows-Parame
     {
         const auto parameter = parameters.getChild (i);
         REQUIRE (parameter.getProperty (conduit::id::paramId).toString() == expectedIds[i]);
-        REQUIRE ((double) parameter.getProperty (conduit::id::paramMin) == 0.0);
-        REQUIRE ((double) parameter.getProperty (conduit::id::paramMax) == 1.0);
+        REQUIRE (juce::exactlyEqual ((double) parameter.getProperty (conduit::id::paramMin), 0.0));
+        REQUIRE (juce::exactlyEqual ((double) parameter.getProperty (conduit::id::paramMax), 1.0));
     }
 }
 

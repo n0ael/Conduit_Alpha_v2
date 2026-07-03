@@ -19,13 +19,13 @@ juce::Path playTriangle()
 
 juce::Path tapeLoopOutline()
 {
-    // Doppel-oo mit Strich an der Oberkante (Tape-Symbol, User-Wunsch):
-    // zwei Spulen unten, die Bandkante läuft als Linie oben drüber.
+    // o͞o (PS-Referenz 04.07.): zwei sich berührende Spulen, die Bandkante
+    // liegt DIREKT auf den Kreisen — kompakt und exakt zentriert
     juce::Path p;
-    p.addEllipse (0.10f, 0.42f, 0.34f, 0.34f);
-    p.addEllipse (0.56f, 0.42f, 0.34f, 0.34f);
-    p.startNewSubPath (0.10f, 0.22f);
-    p.lineTo (0.90f, 0.22f);
+    p.addEllipse (0.14f, 0.34f, 0.36f, 0.36f);
+    p.addEllipse (0.50f, 0.34f, 0.36f, 0.36f);
+    p.startNewSubPath (0.12f, 0.30f);
+    p.lineTo (0.88f, 0.30f);
     return p;
 }
 
@@ -57,16 +57,17 @@ juce::Path captureCorners()
 
 juce::Path metronomeOutline()
 {
-    // ○● — Kreis-Outline links; der gefüllte Punkt rechts kommt in draw()
+    // ○● — Kreis-Outline links; der gefüllte Punkt rechts kommt in draw().
+    // Größer + exakt mittig (PS-Referenz 04.07.)
     juce::Path p;
-    p.addEllipse (0.06f, 0.30f, 0.40f, 0.40f);
+    p.addEllipse (0.03f, 0.28f, 0.44f, 0.44f);
     return p;
 }
 
 juce::Path metronomeDot()
 {
     juce::Path p;
-    p.addEllipse (0.56f, 0.30f, 0.40f, 0.40f);
+    p.addEllipse (0.53f, 0.28f, 0.44f, 0.44f);
     return p;
 }
 
@@ -97,17 +98,19 @@ juce::Path gearSun()
     return p;
 }
 
-juce::Path nudgeBars (bool leanRight)
+juce::Path nudgeBars (bool towardsRight)
 {
-    // Live-Phase-Nudge-Optik (User 03.07.): drei geneigte Striche —
-    // die Neigung zeigt die Richtung (vor/zurück)
+    // Live-Phase-Nudge (PS-Referenz 04.07.): vier AUFRECHTE dicke Balken
+    // (Füllung, kein Stroke), die Abstände verdichten sich in Nudge-
+    // Richtung (Doppler) — beide Richtungen exakt gespiegelt/zentriert
     juce::Path p;
-    const auto slant = leanRight ? 0.18f : -0.18f;
+    constexpr float centres[] = { 0.14f, 0.42f, 0.64f, 0.84f };   // rechts verdichtet
+    constexpr float barWidth = 0.10f;
 
-    for (const auto x : { 0.30f, 0.50f, 0.70f })
+    for (const auto centre : centres)
     {
-        p.startNewSubPath (x - slant * 0.5f, 0.84f);
-        p.lineTo (x + slant * 0.5f, 0.16f);
+        const auto x = towardsRight ? centre : 1.0f - centre;
+        p.addRectangle (x - barWidth * 0.5f, 0.22f, barWidth, 0.56f);
     }
     return p;
 }
@@ -287,9 +290,12 @@ juce::Path strokeGeometry (Icon icon)
         case Icon::metronome:    return metronomeOutline();
         case Icon::plus:         return plusSign();
         case Icon::gear:         return gearSun();
-        case Icon::nudgeLeft:    return nudgeBars (false);
-        case Icon::nudgeRight:   return nudgeBars (true);
-        case Icon::chevronDown:  return chevronDownSmall();
+
+        // reine Fill-Icons (dicke Balken/Dreieck) — kein Stroke obendrauf
+        case Icon::nudgeLeft:
+        case Icon::nudgeRight:
+        case Icon::chevronDown:
+            return {};
         case Icon::pageMixer:    return mixerBars();
         case Icon::pageClip:     return clipBoxOutline();
         case Icon::pageDevice:   return deviceLines();
@@ -318,6 +324,8 @@ juce::Path fillGeometry (Icon icon)
         case Icon::chevronDown: return chevronDownSmall();
         case Icon::fader:       return faderThumb();
         case Icon::browserPanel: return browserPanelFill();
+        case Icon::nudgeLeft:   return nudgeBars (false);
+        case Icon::nudgeRight:  return nudgeBars (true);
 
         // reine Stroke-Icons — explizit statt default (Clang -Wswitch-enum)
         case Icon::play:
@@ -325,8 +333,6 @@ juce::Path fillGeometry (Icon icon)
         case Icon::captureFrame:
         case Icon::plus:
         case Icon::gear:
-        case Icon::nudgeLeft:
-        case Icon::nudgeRight:
         case Icon::pageMixer:
         case Icon::pageDevice:
         case Icon::pageGrid:
@@ -357,10 +363,11 @@ void draw (juce::Graphics& g, Icon icon, juce::Rectangle<float> bounds, juce::Co
 
     g.setColour (colour);
 
-    // chevronDown ist NUR Füllung (kleines Dreieck) — kein Stroke obendrauf
-    if (icon != Icon::chevronDown)
+    // Fill-only-Icons (chevronDown, Nudge-Balken) liefern leere Strokes
+    auto stroke = strokeGeometry (icon);
+
+    if (! stroke.isEmpty())
     {
-        auto stroke = strokeGeometry (icon);
         stroke.applyTransform (transform);
         g.strokePath (stroke, juce::PathStrokeType (strokeWidth,
                                                     juce::PathStrokeType::curved,

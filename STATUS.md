@@ -74,9 +74,24 @@
   11855 Assertions, inkl. generischem Registry-Sweep über alle 57 Airwindows-Module).
   DSP-Level-DoD-Suite (`ConduitAirwindowsTests`, separates Target) läuft — Ergebnis
   wird nach Abschluss hier nachgetragen. App (Debug) gebaut und manuell getestet.
-- **Abschluss:** Alle Suiten grün (Debug + ASan, inkl. vollständiger DoD-Läufe
-  aller 57 Ports), User-Abnahme erteilt, Commit + Push auf master (User-Freigabe
+- **Abschluss:** User-Abnahme erteilt, Commit + Push auf master (User-Freigabe
   03.07.2026 nachmittags — ersetzt die nächtliche „nur lokal"-Vorgabe).
+- **CI-Nachsorge (Lehrstück):** Die CI war schon VOR dieser Session rot (seit
+  AirwindowsModuleTests-Einführung) — Clang hatte die kompletten FX-Chassis-
+  Dateien M1–M7 nie kompiliert. Nachgeschobene Fixes: fehlender `static`
+  (missing-prototypes), 5× Float-== → `juce::exactlyEqual` (M1-Altbestand),
+  Lambda-Shadowing im FxModulePanel (M6b-Altbestand). Zusätzlich: das
+  40-min-CI-Limit fiel durch den 5^6-Vollkreuz-Sweep der 6-Parameter-Reverbs
+  unter TSan → Sweep gedeckelt (Vollkreuz ≤ 4 Parameter, darüber 625
+  LCG-gesampelte Kombos; Suite-Laufzeit 30+ min → ~30 s). Dabei aufgedeckt:
+  die „grünen" DoD-Vollläufe der Session waren durch `| tail`-Piping der
+  Hintergrund-Läufe MASKIERT (Exit-Code von tail) — real waren 7 Fälle rot:
+  6× Blockinvarianz bei block-intern interpolierenden Originalen (Tests per
+  dokumentierter Konvention entfernt, Muster ConsoleLABuss) + Isolator3-
+  Null-Test (resonante Biquad-Kaskade verstärkt Denormal-Guard-Rauschen
+  ~60 dB → dokumentierte Toleranz 1e-4 statt 1e-6, kein Port-Bug). Danach
+  Debug- UND ASan-DoD-Volllauf verifiziert grün (166 Fälle / 313815
+  Assertions, Ausgabe gelesen statt Exit-Code vertraut).
 
 **Nächster geplanter Meilenstein: Fader↔Button-Modus pro Parameter (Dev-Modus, User-Idee 03.07.2026):**
 

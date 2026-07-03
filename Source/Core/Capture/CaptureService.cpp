@@ -324,8 +324,14 @@ void CaptureService::processInputTap (const juce::AudioBuffer<float>& buffer,
             // -- Gate [Baustein 4]: Block-RMS gegen die effektive Schwelle.
             //    Das Meter hat diesen Block bereits gemessen — Open wirkt ab
             //    dem Block, der die Schwelle reißt; den Attack davor liefert
-            //    die Pre-Roll-Übernahme
-            switch (gates[index].process (inputMeter.getRms (ch), numSamples, holdSamples))
+            //    die Pre-Roll-Übernahme. Looper-Arming (B1) übersteuert die
+            //    Detektion: Gate zwangsweise offen, kein Auto-Close
+            if (channelArmed[index].load (std::memory_order_acquire))
+            {
+                if (gates[index].forceOpen() == CaptureGate::Event::opened)
+                    openGate (ch);
+            }
+            else switch (gates[index].process (inputMeter.getRms (ch), numSamples, holdSamples))
             {
                 case CaptureGate::Event::opened: openGate (ch);  break;
                 case CaptureGate::Event::closed: closeGate (ch); break;
@@ -411,6 +417,20 @@ void CaptureService::closeGate (int channel) noexcept
         return;
 
     audioSet->channels[static_cast<size_t> (channel)]->closeGate (sampleClock.now());
+}
+
+//==============================================================================
+void CaptureService::setChannelArmed (int captureIndex, bool shouldBeArmed) noexcept
+{
+    if (juce::isPositiveAndBelow (captureIndex, MAX_CAPTURE_CHANNELS))
+        channelArmed[static_cast<size_t> (captureIndex)].store (shouldBeArmed,
+                                                                std::memory_order_release);
+}
+
+bool CaptureService::isChannelArmed (int captureIndex) const noexcept
+{
+    return juce::isPositiveAndBelow (captureIndex, MAX_CAPTURE_CHANNELS)
+           && channelArmed[static_cast<size_t> (captureIndex)].load (std::memory_order_acquire);
 }
 
 //==============================================================================
@@ -537,8 +557,14 @@ void CaptureService::writeVirtualChannel (VirtualChannelHandle handle,
     // Kanal-Verarbeitung → Pre-Roll-Write (Reihenfolge entscheidend)
     inputMeter.processChannel (index, data, numSamples);
 
+    // Looper-Arming (B1) übersteuert die Detektion wie im Hardware-Pfad
     const auto holdSamples = computeHoldSamples (settings.getHoldMinutes(), audioSampleRate);
-    switch (gates[idx].process (inputMeter.getRms (index), numSamples, holdSamples))
+    if (channelArmed[idx].load (std::memory_order_acquire))
+    {
+        if (gates[idx].forceOpen() == CaptureGate::Event::opened)
+            openGate (index);
+    }
+    else switch (gates[idx].process (inputMeter.getRms (index), numSamples, holdSamples))
     {
         case CaptureGate::Event::opened: openGate (index);  break;
         case CaptureGate::Event::closed: closeGate (index); break;

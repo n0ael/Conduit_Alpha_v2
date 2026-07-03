@@ -5,6 +5,7 @@
 #include "Capture/CaptureService.h"
 #include "Capture/LevelMeter.h"
 #include "ChannelNames.h"
+#include "Looper/BarSampleAnchors.h"
 #include "Metronome.h"
 #include "GraphFader.h"
 #include "GraphManager.h"
@@ -112,6 +113,12 @@ public:
     [[nodiscard]] NodeUiRegistry& getNodeUiRegistry() noexcept;
     [[nodiscard]] OscController& getOscController() noexcept;
     [[nodiscard]] LinkClock& getLinkClock() noexcept;
+
+    /** Takt-Anker der Session-Beat-Achse (Looper B1): lookup() und
+        latestBoundaryBar() sind von jedem Thread lesbar — der Looper-Commit
+        [Message Thread] adressiert damit vergangene Takte sample-exakt im
+        Capture-Ring. */
+    [[nodiscard]] const BarSampleAnchors& getBarAnchors() const noexcept;
     [[nodiscard]] const CaptureService& getCaptureService() const noexcept;
     [[nodiscard]] CaptureService& getCaptureService() noexcept;  // UI: ChangeListener (RAM-Warnung)
     [[nodiscard]] CaptureSettings& getCaptureSettings() noexcept;
@@ -248,6 +255,11 @@ private:
 
     // Link-synchroner Click — läuft nach dem GraphFader auf die Anker-Kanäle
     Metronome metronome;
+
+    // Sample-genaue Takt-Anker der Beat-Achse (Looper B1): der Audio Thread
+    // ankert Takt-Überquerungen direkt nach dem ClockBus-Fill; der
+    // Looper-Commit liest sie vom Message Thread (Atomics-Ring, lock-free)
+    BarSampleAnchors barAnchors;
 
     juce::AudioProcessorGraph graph;
     juce::AudioProcessorGraph::Node::Ptr audioInputNode;

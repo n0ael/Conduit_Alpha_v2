@@ -458,6 +458,8 @@ if(CONDUIT_BUILD_TESTS)
         Tests/Core/InputLinkSendTests.cpp
         Tests/Core/LinkAudioSendTests.cpp
         Tests/Core/LinkSendTapsTests.cpp
+        Tests/Core/LooperMathTests.cpp
+        Tests/Core/BarSampleAnchorsTests.cpp
         Tests/Core/MeterSettingsTests.cpp
         Tests/Core/MetronomeTests.cpp
         Tests/Core/OscControllerTests.cpp

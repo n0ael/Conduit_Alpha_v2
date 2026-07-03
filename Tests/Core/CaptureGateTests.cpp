@@ -292,3 +292,53 @@ TEST_CASE ("CaptureService: Gate-Detektion steuert die Aufnahme end-to-end", "[c
     REQUIRE (service.getChannel (0)->getState() == CaptureChannel::State::idle);
     REQUIRE_FALSE (service.isAnyChannelActive());
 }
+
+//==============================================================================
+TEST_CASE ("CaptureService: Looper-Arming hält das Gate unter der Schwelle offen", "[capture][looper]")
+{
+    juce::ScopedJuceInitialiser_GUI juceRuntime;
+    TempCaptureSettings temp;
+    temp.settings->setHoldMinutes (1);  // Hold = 60 000 Samples bei 1 kHz
+
+    CaptureService service (*temp.settings);
+    service.prepare (1000.0, 32, 2);  // niedrige Samplerate hält den Test klein
+
+    juce::AudioBuffer<float> buffer (2, 32);
+
+    // Stille unter der Schwelle (−40 default): ohne Arming bleibt alles zu
+    feedConstantBlocks (service, buffer, level (-60.0f), 5);
+    REQUIRE (service.getGate (0)->getStatus() == CaptureGate::Status::idle);
+
+    // Armen: der nächste Block öffnet zwangsweise — recording trotz Stille
+    service.setChannelArmed (0, true);
+    REQUIRE (service.isChannelArmed (0));
+    feedConstantBlocks (service, buffer, level (-60.0f), 5);
+    REQUIRE (service.getGate (0)->getStatus() == CaptureGate::Status::recording);
+
+    service.runRamGuard();  // Pool publiziert das vorgehaltene Segment
+    feedConstantBlocks (service, buffer, level (-60.0f), 5);
+    REQUIRE (service.getChannel (0)->getState() == CaptureChannel::State::recording);
+
+    // Der nicht-gearmte Nachbarkanal folgt weiter der Detektion
+    REQUIRE (service.getGate (1)->getStatus() == CaptureGate::Status::idle);
+    REQUIRE_FALSE (service.isChannelArmed (1));
+
+    // Arming unterdrückt das Auto-Close: weit über die Hold-Zeit hinaus
+    // Stille (3000 × 32 = 96 000 > 60 000) — das Gate bleibt offen
+    feedConstantBlocks (service, buffer, 0.0f, 3000);
+    REQUIRE (service.getGate (0)->getStatus() == CaptureGate::Status::recording);
+
+    // Entwaffnen: die normale Detektion übernimmt, die Stille schließt
+    // jetzt regulär über den Hold → Material bleibt als held gebunden
+    service.setChannelArmed (0, false);
+    REQUIRE_FALSE (service.isChannelArmed (0));
+    feedConstantBlocks (service, buffer, 0.0f, 3000);
+    REQUIRE (service.getGate (0)->getStatus() == CaptureGate::Status::held);
+    REQUIRE (service.getChannel (0)->getState() == CaptureChannel::State::held);
+
+    // Out-of-Range-Indizes: definierte No-ops
+    service.setChannelArmed (-1, true);
+    service.setChannelArmed (10'000, true);
+    REQUIRE_FALSE (service.isChannelArmed (-1));
+    REQUIRE_FALSE (service.isChannelArmed (10'000));
+}

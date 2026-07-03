@@ -103,6 +103,22 @@ public:
         return Event::none;
     }
 
+    /** [Audio Thread] Gate zwangsweise öffnen, ohne die Schwelle abzuwarten —
+        Looper-Arming (CaptureService::setChannelArmed): der Aufrufer
+        verdrahtet opened mit der Gate-API wie bei process(). Solange der
+        Kanal gearmt ist, ersetzt dieser Aufruf die Detektion komplett —
+        es gibt damit auch kein Auto-Close. none, wenn bereits offen. */
+    Event forceOpen() noexcept
+    {
+        if (gateOpen)
+            return Event::none;
+
+        gateOpen = true;
+        samplesBelowClose = 0;
+        status.store (Status::recording, std::memory_order_release);
+        return Event::opened;
+    }
+
     /** [Audio Thread] Gate sofort schließen, ohne den Hold abzuwarten —
         Deregistrierung eines virtuellen Kanals (Tap, Delete Phase 1):
         Material bleibt gebunden, Status wird held wie beim Hold-Ablauf.

@@ -158,6 +158,21 @@ public:
     void closeGate (int channel) noexcept;
 
     //==========================================================================
+    // Looper-Arming (Looper-Baustein B1)
+
+    /** [Message Thread] Hält das Gate des Kanals zwangsweise offen: die
+        Detektion wird übersteuert (kein Schwellen-Open nötig, kein
+        Auto-Close) — "die letzten 8 Takte" der Looper-Quelle existieren
+        damit garantiert ab der Quellwahl, rückwirkend ergänzt durch den
+        Pre-Roll. captureIndex zählt Hardware-Kanäle und virtuelle Slots
+        (numChannels + slot). Entwaffnen lässt die normale Detektion
+        weiterlaufen — ein offenes Gate schließt dann regulär über den
+        Hold. Der Audio Thread übernimmt im nächsten Block. */
+    void setChannelArmed (int captureIndex, bool shouldBeArmed) noexcept;
+
+    [[nodiscard]] bool isChannelArmed (int captureIndex) const noexcept;
+
+    //==========================================================================
     // Virtuelle Kanäle (Capture-Taps aus dem Graph) — Klassendoku oben
 
     /** Opaker Slot-Verweis — ungültig (slot == -1), wenn die Registry voll
@@ -312,6 +327,21 @@ public:
         der Leser-Disziplin. */
     [[nodiscard]] const CaptureChannel* getChannel (int channel) const noexcept;
 
+    /** [NUR Audio Thread] Kanal-Sicht des AUDIO-seitigen Puffersatzes —
+        für Audio-Thread-Konsumenten im selben Callback (LooperWaveformTap,
+        Looper-Baustein B4): der Input-Tap dieses Blocks ist bereits
+        gelaufen, der Ring-Inhalt bis SampleClock::now() vollständig.
+        getChannel() liest dagegen die Message-Thread-Sicht (currentSet).
+        nullptr außerhalb des Satzes oder vor prepare(). */
+    [[nodiscard]] const CaptureChannel* getAudioChannelView (int captureIndex) const noexcept
+    {
+        auto* set = audioSet;
+        if (set == nullptr || captureIndex < 0 || captureIndex >= set->totalEntries())
+            return nullptr;
+
+        return set->channels[static_cast<std::size_t> (captureIndex)].get();
+    }
+
     /** nullptr außerhalb von [0, MAX_CAPTURE_CHANNELS). Status und
         effektive Schwelle sind von jedem Thread lesbar. */
     [[nodiscard]] const CaptureGate* getGate (int channel) const noexcept;
@@ -392,6 +422,10 @@ private:
 
     // Gate-Detektion pro Kanal — lebt unabhängig vom Puffersatz
     std::array<CaptureGate, MAX_CAPTURE_CHANNELS> gates;
+
+    // Looper-Arming [Message schreibt, Audio liest]: gearmte Kanäle halten
+    // ihr Gate zwangsweise offen (Detektion übersteuert, forceOpen)
+    std::array<std::atomic<bool>, MAX_CAPTURE_CHANNELS> channelArmed {};
 
     // Im Tap gelesen; nur in prepare() geschrieben (Audio steht)
     double audioSampleRate = 0.0;

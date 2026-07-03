@@ -306,6 +306,7 @@ void EngineProcessor::prepareToPlay (double sampleRate, int samplesPerBlock)
     linkClock.prepare (sampleRate);
     metronome.prepare (sampleRate);
     captureService.prepare (sampleRate, samplesPerBlock, getTotalNumInputChannels());
+    barAnchors.reset();  // SampleClock-Reset invalidiert alle Anker-Positionen
     inputLevels.prepare  (sampleRate, getTotalNumInputChannels());
     outputLevels.prepare (sampleRate, getTotalNumOutputChannels());
     inputLinkSend.prepare (samplesPerBlock);
@@ -363,6 +364,18 @@ void EngineProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::Midi
     clockBus.current.scaleRootNote  = scaleRootAtomic.load (std::memory_order_relaxed);
     clockBus.current.scaleTypeIndex = scaleTypeAtomic.load (std::memory_order_relaxed);
     clockBus.current.globalSwing    = globalSwingAtomic.load (std::memory_order_relaxed);
+
+    // Takt-Anker (Looper B1): Taktgrenzen-Überquerungen dieses Blocks
+    // sample-genau festhalten. Die SampleClock hat am Tap-Ende bereits
+    // weitergetickt — der Block-Start liegt numSamples zurück (Kontrakt
+    // CaptureService.h). Allocation-free (Atomics-Ring).
+    {
+        const auto clockNow = captureService.getSampleClock().now();
+        const auto blockSamples = static_cast<std::uint64_t> (buffer.getNumSamples());
+        if (clockNow >= blockSamples)
+            barAnchors.process (clockBus.current, clockNow - blockSamples,
+                                buffer.getNumSamples());
+    }
 
     // Eingebetteter Input-Link-Send (7.2): NACH captureClockState (der Commit
     // braucht den SessionState-Stash dieses Blocks) und VOR dem Graph (der
@@ -500,6 +513,7 @@ GraphManager& EngineProcessor::getGraphManager() noexcept      { return graphMan
 NodeUiRegistry& EngineProcessor::getNodeUiRegistry() noexcept  { return nodeUiRegistry; }
 OscController& EngineProcessor::getOscController() noexcept    { return oscController; }
 LinkClock& EngineProcessor::getLinkClock() noexcept            { return linkClock; }
+const BarSampleAnchors& EngineProcessor::getBarAnchors() const noexcept { return barAnchors; }
 const CaptureService& EngineProcessor::getCaptureService() const noexcept { return captureService; }
 CaptureService& EngineProcessor::getCaptureService() noexcept   { return captureService; }
 CaptureSettings& EngineProcessor::getCaptureSettings() noexcept { return captureSettings; }

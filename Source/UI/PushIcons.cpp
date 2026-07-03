@@ -97,17 +97,6 @@ juce::Path gearSun()
     return p;
 }
 
-juce::Path chevron (bool pointsRight)
-{
-    juce::Path p;
-    const auto x0 = pointsRight ? 0.36f : 0.64f;
-    const auto x1 = pointsRight ? 0.64f : 0.36f;
-    p.startNewSubPath (x0, 0.18f);
-    p.lineTo (x1, 0.50f);
-    p.lineTo (x0, 0.82f);
-    return p;
-}
-
 juce::Path nudgeBars (bool leanRight)
 {
     // Live-Phase-Nudge-Optik (User 03.07.): drei geneigte Striche —

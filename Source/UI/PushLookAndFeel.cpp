@@ -123,6 +123,47 @@ void PushLookAndFeel::drawLinearSlider (juce::Graphics& g, int x, int y, int wid
     g.fillRect (grip.withSizeKeepingCentre (1.5f, grip.getHeight() - 6.0f));
 }
 
+void PushLookAndFeel::drawRotarySlider (juce::Graphics& g, int x, int y, int width, int height,
+                                        float sliderPosProportional, float rotaryStartAngle,
+                                        float rotaryEndAngle, juce::Slider& slider)
+{
+    const auto bounds  = juce::Rectangle<int> (x, y, width, height).toFloat().reduced (2.0f);
+    const auto radius  = juce::jmin (bounds.getWidth(), bounds.getHeight()) / 2.0f;
+    const auto centre  = bounds.getCentre();
+    const auto enabled = slider.isEnabled();
+    const auto angle   = rotaryStartAngle
+                       + sliderPosProportional * (rotaryEndAngle - rotaryStartAngle);
+
+    // Knob-Körper
+    g.setColour (enabled ? colours::tileActive : colours::tile);
+    g.fillEllipse (centre.x - radius, centre.y - radius, radius * 2.0f, radius * 2.0f);
+    g.setColour (colours::outline);
+    g.drawEllipse (centre.x - radius, centre.y - radius, radius * 2.0f, radius * 2.0f, 1.0f);
+
+    // Wert-Bogen: bipolar (min < 0 < max) ab der Mittelstellung — der
+    // Attenuverter zeigt Richtung UND Tiefe; unipolar ab dem Anfang
+    const auto range = slider.getRange();
+    const auto zeroProportion = range.getStart() < 0.0 && range.getEnd() > 0.0
+        ? (float) ((0.0 - range.getStart()) / range.getLength())
+        : 0.0f;
+    const auto zeroAngle = rotaryStartAngle
+                         + zeroProportion * (rotaryEndAngle - rotaryStartAngle);
+
+    if (std::abs (angle - zeroAngle) > 0.01f)
+    {
+        juce::Path arc;
+        arc.addCentredArc (centre.x, centre.y, radius - 1.0f, radius - 1.0f, 0.0f,
+                           juce::jmin (zeroAngle, angle), juce::jmax (zeroAngle, angle), true);
+        g.setColour (enabled ? colours::ledWhite : colours::textDim);
+        g.strokePath (arc, juce::PathStrokeType (2.0f));
+    }
+
+    // Zeiger-Linie (MI-Stil: vom Zentrum zum Rand)
+    const auto tip = centre.getPointOnCircumference (radius - 2.0f, angle);
+    g.setColour (enabled ? colours::text : colours::textDim);
+    g.drawLine ({ centre, tip }, 1.5f);
+}
+
 juce::Font PushLookAndFeel::getJost (float height, bool medium) const
 {
     const auto& typeface = medium ? jostMedium : jostRegular;

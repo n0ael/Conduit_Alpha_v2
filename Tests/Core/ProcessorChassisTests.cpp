@@ -1,6 +1,7 @@
 #include <catch2/catch_approx.hpp>
 #include <catch2/catch_test_macros.hpp>
 
+#include "Core/EngineProcessor.h"
 #include "Modules/AirwindowsDensityModule.h"
 #include "Modules/ChassisSchema.h"
 #include "Modules/ProcessorModule.h"
@@ -354,6 +355,78 @@ TEST_CASE ("FX-Chassis: Link-Send ohne LinkClock bleibt offline und crashfrei", 
     REQUIRE_FALSE (module.isSinkRetirePending());
 
     module.releaseSessionResources();   // Phase 1 auch ohne Tap harmlos
+}
+
+//==============================================================================
+TEST_CASE ("FX-Chassis: CV-Kabel im Graph moduliert einen DSP-Parameter end-to-end", "[chassis]")
+{
+    juce::ScopedJuceInitialiser_GUI juceRuntime;
+    conduit::EngineProcessor engine;
+    auto& manager = engine.getGraphManager();
+
+    auto nodes = engine.getRootState().getChildWithName (conduit::id::nodes);
+    const auto ioIn  = nodes.getChildWithProperty (conduit::id::factoryId,
+                                                   juce::String (conduit::audioInputModuleId));
+    const auto ioOut = nodes.getChildWithProperty (conduit::id::factoryId,
+                                                   juce::String (conduit::audioOutputModuleId));
+
+    engine.prepareToPlay (48000.0, 32);
+
+    const auto density = manager.addModuleNode (conduit::AirwindowsDensityModule::staticModuleId, {});
+    const auto uuidOf  = [] (const juce::ValueTree& n) { return n.getProperty (conduit::id::nodeId).toString(); };
+
+    // Audio: In ch0 → Density ch0 → Out ch0; CV: In ch1 → Density-CV-Kanal 2
+    // (erster DSP-Parameter "density"). In ch1 dient als CV-Quelle.
+    REQUIRE (manager.addConnection (uuidOf (ioIn), 0, uuidOf (density), 0));
+    REQUIRE (manager.addConnection (uuidOf (density), 0, uuidOf (ioOut), 0));
+    REQUIRE (manager.addConnection (uuidOf (ioIn), 1, uuidOf (density), 2));
+
+    // Basiswert 0, Attenuverter zunächst 0 (CV wirkungslos)
+    auto params = density.getChildWithName (conduit::id::parameters);
+    params.getChildWithProperty (conduit::id::paramId, "density")
+          .setProperty (conduit::id::paramValue, 0.0, nullptr);
+    params.getChildWithProperty (conduit::id::paramId, "density_cv_amt")
+          .setProperty (conduit::id::paramValue, 0.0, nullptr);
+
+    juce::AudioBuffer<float> buffer (2, 32);
+    juce::MidiBuffer midi;
+
+    const auto pumpBlocks = [&] (int count, juce::AudioBuffer<float>* capture = nullptr)
+    {
+        for (int i = 0; i < count; ++i)
+        {
+            juce::FloatVectorOperations::fill (buffer.getWritePointer (0), 0.25f, 32);  // Audio
+            juce::FloatVectorOperations::fill (buffer.getWritePointer (1), 1.0f, 32);   // CV-Quelle
+            engine.processBlock (buffer, midi);
+        }
+
+        if (capture != nullptr)
+            capture->makeCopyOf (buffer);
+    };
+
+    // Topologie-Swap mit laufendem Audio durchpumpen (Muster PatchingTests)
+    manager.flushPendingTopologyUpdate();
+    for (int i = 0; i < 100 && manager.isWaitingForSilence(); ++i)
+    {
+        pumpBlocks (1);
+        manager.flushPendingTopologyUpdate();
+    }
+    REQUIRE_FALSE (manager.isWaitingForSilence());
+
+    // A: cv_amt 0 → CV wirkungslos (Referenz nach eingeschwungenen Fades)
+    juce::AudioBuffer<float> outputA, outputB;
+    pumpBlocks (30, &outputA);
+
+    // B: Attenuverter auf 1 → CV 1.0 hebt density auf 1.0 (Hard-Clamp)
+    params.getChildWithProperty (conduit::id::paramId, "density_cv_amt")
+          .setProperty (conduit::id::paramValue, 1.0, nullptr);
+    pumpBlocks (30, &outputB);
+
+    float difference = 0.0f;
+    for (int i = 0; i < 32; ++i)
+        difference += std::abs (outputA.getSample (0, i) - outputB.getSample (0, i));
+
+    REQUIRE (difference > 0.01f);   // Modulation hörbar am Ausgang angekommen
 }
 
 //==============================================================================

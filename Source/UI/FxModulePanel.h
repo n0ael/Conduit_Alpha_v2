@@ -7,6 +7,7 @@
 
 #include "Core/GraphManager.h"
 #include "UI/GainFaderMeter.h"
+#include "UI/PortComponent.h"
 
 namespace conduit
 {
@@ -20,9 +21,13 @@ namespace conduit
 
     Links der input_gain-Kanalzug, rechts output_gain (GainFaderMeter),
     dazwischen pro sichtbarem DSP-Parameter (role == "dsp") eine vertikale
-    Fader-Spalte: Titel oben, langer Fader darunter. Chassis- und
-    cvAmount-Parameter erscheinen NICHT als Spalten — der Attenuverter-Knob
-    und der CV-Port ziehen in M3 unter die Fader.
+    Fader-Spalte: Titel oben, langer Fader, darunter der Attenuverter-Knob
+    ({param}_cv_amt, bipolar, MI-Stil) und der CV-Eingangs-Port des
+    Parameters (Kanal = firstCvChannel + Spaltenindex, festes Layout 4.6).
+
+    Die CV-Ports sind normale PortComponents — Kabel-Gesten laufen über den
+    NodeCanvas (findParentComponentOfClass), die Anker-Delegation übernimmt
+    NodeComponent::getPortCentre → cvPortCentre().
 
     Bindung (5.3): schreibt nur paramValue ohne UndoManager (Muster
     ParameterPanel); externe Änderungen kommen über den ValueTree-Listener.
@@ -40,9 +45,14 @@ public:
     //==========================================================================
     // Layout-Konstanten — zentral, damit NodeComponent-Sizing und Tests
     // dieselbe Quelle nutzen
-    static constexpr int columnWidth = 56;
-    static constexpr int titleHeight = 18;
-    static constexpr int panelHeight = 216;
+    static constexpr int columnWidth  = 56;
+    static constexpr int titleHeight  = 18;
+    static constexpr int knobHeight   = 28;
+    static constexpr int portRowHeight = 26;
+    static constexpr int panelHeight  = 248;
+
+    /** Erster CV-Eingangs-Kanal des Chassis (Audio 0..1, CV 2..N — 4.6). */
+    static constexpr int firstCvChannel = 2;
 
     /** Panel-Breite für n sichtbare DSP-Spalten (plus zwei Gain-Züge). */
     [[nodiscard]] static int widthForColumns (int numDspColumns) noexcept
@@ -53,6 +63,14 @@ public:
 
     [[nodiscard]] int getNumColumns() const noexcept { return static_cast<int> (columns.size()); }
 
+    /** Kabel-Anker des CV-Ports für cvChannel (firstCvChannel + Spaltenindex),
+        in PANEL-Koordinaten — NodeComponent::getPortCentre rechnet um.
+        Nullpunkt, wenn der Kanal keiner Spalte gehört. */
+    [[nodiscard]] juce::Point<int> cvPortCentre (int cvChannel) const;
+
+    /** CV-Port einer Spalte (für findPortNear des NodeComponent). */
+    [[nodiscard]] const PortComponent* getCvPort (int columnIndex) const noexcept;
+
     void resized() override;
 
     //==========================================================================
@@ -60,8 +78,12 @@ public:
     struct ParameterColumn
     {
         juce::String paramId;
+        juce::String cvAmountId;   // "{param}_cv_amt"
         juce::Label  titleLabel;
         juce::Slider slider { juce::Slider::LinearVertical, juce::Slider::NoTextBox };
+        juce::Slider cvKnob { juce::Slider::RotaryHorizontalVerticalDrag,
+                              juce::Slider::NoTextBox };
+        std::unique_ptr<PortComponent> cvPort;   // Kanal = firstCvChannel + Index
     };
 
     std::vector<std::unique_ptr<ParameterColumn>> columns;

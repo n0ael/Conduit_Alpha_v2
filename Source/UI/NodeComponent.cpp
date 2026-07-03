@@ -48,6 +48,8 @@ NodeComponent::NodeComponent (juce::ValueTree nodeTreeToBind,
     const auto factoryKey = GraphManager::factoryKeyOf (nodeTree);
     isExternalEndpoint = graphManager.isExternalEndpoint (factoryKey);
     endpointIsInput    = (factoryKey == audioInputModuleId);
+    isChassisNode      = nodeTree.getProperty (id::type).toString()
+                             == toString (ModuleType::processor);
     const auto isExternal = isExternalEndpoint;
 
     deleteButton.setButtonText (juce::String::fromUTF8 ("\xc3\x97"));  // ×
@@ -94,10 +96,7 @@ NodeComponent::NodeComponent (juce::ValueTree nodeTreeToBind,
     // Sequencer- und Send-Kacheln haben eigene Bedienleisten (Grid bzw.
     // Attenuator-Zeilen) — der generische ParameterPanel deckt alle anderen
     // Module mit >= 1 Parameter ab (eine Zeile pro Parameter, Label = paramId)
-    const auto isProcessorNode = nodeTree.getProperty (id::type).toString()
-                                     == toString (ModuleType::processor);
-
-    if (isProcessorNode)
+    if (isChassisNode)
     {
         fxPanel = std::make_unique<FxModulePanel> (nodeTree, graphManager);
         addAndMakeVisible (*fxPanel);
@@ -365,6 +364,11 @@ void NodeComponent::rebuildPorts()
     inputChannelCount  = (int) nodeTree.getProperty (id::numInputChannels,  0);
     outputChannelCount = (int) nodeTree.getProperty (id::numOutputChannels, 0);
 
+    // Chassis-Nodes (4.6): an der linken Kante nur die Audio-Eingänge —
+    // die CV-Ports (Kanäle 2..N) zeichnet und positioniert das FxModulePanel
+    if (isChassisNode)
+        inputChannelCount = juce::jmin (inputChannelCount, FxModulePanel::firstCvChannel);
+
     // Stereo-Paare verschmelzen nur am audio_in-Endpunkt zu span-2-Zeilen
     const auto pairStart = hasPairingUi()
         ? std::function<bool (int)> ([this] (int channel)
@@ -554,6 +558,12 @@ int NodeComponent::channelRowY (bool isInputBank, int channel) const
 
 juce::Point<int> NodeComponent::getPortCentre (bool isInput, int channel) const
 {
+    // CV-Eingänge der Chassis-Nodes (Kanäle >= 2) ankern im FxModulePanel
+    // unter ihrer Fader-Spalte (4.6) — Panel-Koordinaten umrechnen
+    if (isChassisNode && isInput && channel >= FxModulePanel::firstCvChannel
+        && fxPanel != nullptr)
+        return fxPanel->getPosition() + fxPanel->cvPortCentre (channel);
+
     const int x = isInput ? 12 : getWidth() - 12;
 
     // Stereo-Paar: beide Kanäle ankern am selben Port (Mitte zwischen den
@@ -603,6 +613,23 @@ const PortComponent* NodeComponent::findPortNear (juce::Point<int> localPoint,
 
     consider (inputPorts);
     consider (outputPorts);
+
+    // CV-Ports der Chassis-Nodes leben im FxModulePanel — getPortCentre
+    // delegiert bereits an cvPortCentre, hier nur die Kandidaten ergänzen
+    if (fxPanel != nullptr)
+        for (int i = 0; i < fxPanel->getNumColumns(); ++i)
+            if (const auto* port = fxPanel->getCvPort (i))
+            {
+                const auto centre = getPortCentre (true, port->getInfo().channel);
+                const auto distance = juce::roundToInt (centre.getDistanceFrom (localPoint));
+
+                if (distance <= nearestDistance)
+                {
+                    nearest = port;
+                    nearestDistance = distance;
+                }
+            }
+
     return nearest;
 }
 

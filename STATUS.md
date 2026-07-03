@@ -16,7 +16,7 @@
 
 ## Aktueller Meilenstein (Juli 2026 — in Arbeit)
 
-**FX-Chassis-Standard für alle Audio-FX-Module (Plan: 7 Meilensteine M1–M7) — M1+M2 abgeschlossen:**
+**FX-Chassis-Standard für alle Audio-FX-Module (Plan: 7 Meilensteine M1–M7) — M1–M3 abgeschlossen:**
 
 Ziel des Gesamtvorhabens (User-Plan 03.07.): jedes FX-Modul bekommt einheitlich
 Ableton-artige I/O-Gain-Fader mit Meter, einen Link-Audio-Send-Button am Output,
@@ -40,8 +40,12 @@ Bezier-Fader-Kurven, Modul-Typ-Defaults). Wird als CLAUDE.md 4.6 verbindlich.
   - `PushLookAndFeel::drawLinearSlider`-Override: Push-/Ableton-Optik (dunkler Track, Füllung, rechteckiger Griffstein) für vertikale UND bestehende horizontale Slider app-weit
   - `NodeComponent`: Processor-Nodes (über `type == "Processor"`, nicht factoryKey) bekommen das FxModulePanel; Kachelgröße folgt der Spaltenzahl; Teardown-Phase-1 verdrahtet
   - Verifikation: 257 Testfälle / 11011 Assertions grün (Debug + ASan). Neu: `FxModulePanelTests` (Spalten nur für role=dsp, Fader↔Tree beidseitig, stopUpdates, Zombie-sicherer Meter-Paint ohne materialisiertes Modul, NodeComponent-Integration, Breitenformel)
-  - Übergang: CV-Ports kleben noch an der linken Kachelkante — M3 zieht sie unter die Fader (Attenuverter-Knob + Port pro Spalte)
-- **Als Nächstes:** M3 CV-Ports im Panel · M4 Link-Send-Button · M5 Dev-Modus · M6 Kurven + Defaults · M7 CLAUDE.md 4.6
+- **M3 — CV-Inputs + Attenuverter in der UI (fertig):**
+  - Pro Fader-Spalte: Attenuverter-Knob (Rotary, bipolar −1..+1, Doppelklick = 0, bindet `{param}_cv_amt`) + CV-Port (PortComponent, Kanal = 2+Spaltenindex) unter dem Fader
+  - `NodeComponent::getPortCentre`/`findPortNear` delegieren CV-Kanäle ≥ 2 an `FxModulePanel::cvPortCentre` — Kabel-Zeichnung und Drop-Toleranz des NodeCanvas funktionieren unverändert; linke Kachelkante trägt nur noch die Audio-Eingänge (Kanäle 0/1)
+  - `PushLookAndFeel::drawRotarySlider`: MI-Stil (Körper, Zeiger, Wert-Bogen ab Mittelstellung bei bipolaren Ranges)
+  - Verifikation: 261 Testfälle / 11070 Assertions grün (Debug + ASan). Neu: CV-Knob-Bindung beidseitig, Port-Kanal-Layout, Anker-Delegation + findPortNear, End-to-End durch den ECHTEN Graph (EngineProcessor: In-ch1 als CV-Quelle auf Density-CV-Kanal 2 → Ausgang ändert sich messbar; cv_amt 0 = wirkungslos)
+- **Als Nächstes:** M4 Link-Send-Button · M5 Dev-Modus · M6 Kurven + Defaults · M7 CLAUDE.md 4.6
 
 **Davor: Tap-Tempo-Umbau: Monitor + Set-Commit (inspiriert vom M4L-Device „TAP and CHANGE Tempo BPM"):**
 

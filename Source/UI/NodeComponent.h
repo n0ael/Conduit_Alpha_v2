@@ -215,6 +215,10 @@ private:
     bool isExternalEndpoint = false;
     bool endpointIsInput = false;  // true = audio_in (Meter-Layout/Provider)
 
+    // Processor-Nodes (FX-Chassis, 4.6): an der linken Kante liegen nur die
+    // Audio-Eingänge (Kanäle 0..1) — die CV-Ports (2..N) leben im FxModulePanel
+    bool isChassisNode = false;
+
     // Nur bei Scope-Nodes (factoryId == "scope") — 30-fps-Waveform
     std::unique_ptr<ScopeDisplay> scopeDisplay;
 

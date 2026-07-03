@@ -170,6 +170,76 @@ TEST_CASE ("NodeComponent: Processor-Nodes bekommen das FxModulePanel", "[ui][ch
     nodeUi.completeTeardownNow();
 }
 
+TEST_CASE ("FxModulePanel: CV-Knobs binden {param}_cv_amt, Ports tragen Kanal 2+i", "[ui][chassis]")
+{
+    ChassisRig rig;
+    conduit::FxModulePanel panel { rig.node, rig.manager };
+
+    // Attenuverter bipolar −1..+1, Default 0
+    REQUIRE (panel.columns[0]->cvKnob.getMinimum() == Approx (-1.0));
+    REQUIRE (panel.columns[0]->cvKnob.getMaximum() == Approx (1.0));
+    REQUIRE (panel.columns[0]->cvKnob.getValue()   == Approx (0.0));
+
+    // Knob → Tree
+    panel.columns[0]->cvKnob.setValue (0.5, juce::sendNotificationSync);
+    REQUIRE (rig.paramValue ("density_cv_amt") == Approx (0.5));
+
+    // Tree → Knob (OSC-Nachzug/Undo/Preset-Load)
+    rig.setParamValue ("highpass_cv_amt", -0.75);
+    REQUIRE (panel.columns[1]->cvKnob.getValue() == Approx (-0.75));
+
+    // CV-Ports: Input-Ports mit festem Kanal-Layout (Audio 0..1, CV 2..N)
+    for (int i = 0; i < panel.getNumColumns(); ++i)
+    {
+        const auto* port = panel.getCvPort (i);
+        REQUIRE (port != nullptr);
+        REQUIRE (port->getInfo().isInput);
+        REQUIRE (port->getInfo().channel == conduit::FxModulePanel::firstCvChannel + i);
+        REQUIRE (port->getInfo().span == 1);
+    }
+}
+
+TEST_CASE ("NodeComponent: CV-Anker liegen im Panel, Kante traegt nur Audio-Ports", "[ui][chassis]")
+{
+    ChassisRig rig;
+    conduit::NodeComponent nodeUi { rig.node, rig.manager, rig.uiRegistry };
+
+    // Linke Kante: nur die 2 Audio-Eingänge (CV-Ports leben im Panel)
+    REQUIRE (nodeUi.getNumInputPorts() == 2);
+    REQUIRE (nodeUi.getNumOutputPorts() == 2);
+
+    // CV-Anker (Kanal 2..5) liegen rechts der Kanten-Ports im Panel-Bereich
+    for (int channel = 2; channel <= 5; ++channel)
+    {
+        const auto centre = nodeUi.getPortCentre (true, channel);
+        REQUIRE (centre.x > 40);
+        REQUIRE (centre.y > conduit::NodeComponent::touchTarget);
+        REQUIRE (centre.x < nodeUi.getWidth());
+        REQUIRE (centre.y < nodeUi.getHeight());
+
+        // Drop-Ziel: findPortNear findet den CV-Port an seinem Anker
+        const auto* port = nodeUi.findPortNear (centre, 10);
+        REQUIRE (port != nullptr);
+        REQUIRE (port->getInfo().channel == channel);
+        REQUIRE (port->getInfo().isInput);
+    }
+
+    // Audio-Anker bleiben an der Kante
+    REQUIRE (nodeUi.getPortCentre (true, 0).x == 12);
+    REQUIRE (nodeUi.getPortCentre (false, 0).x == nodeUi.getWidth() - 12);
+
+    nodeUi.completeTeardownNow();
+}
+
+TEST_CASE ("FxModulePanel: stopUpdates deaktiviert auch die CV-Knobs", "[ui][chassis]")
+{
+    ChassisRig rig;
+    conduit::FxModulePanel panel { rig.node, rig.manager };
+
+    panel.stopUpdates();
+    REQUIRE_FALSE (panel.columns[0]->cvKnob.isEnabled());
+}
+
 TEST_CASE ("FxModulePanel: widthForColumns ist die zentrale Breitenformel", "[ui][chassis]")
 {
     using Panel = conduit::FxModulePanel;

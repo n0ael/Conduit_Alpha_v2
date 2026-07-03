@@ -60,6 +60,14 @@ public:
                            float sliderPos, float minSliderPos, float maxSliderPos,
                            juce::Slider::SliderStyle style, juce::Slider& slider) override;
 
+    /** Rotary im Mutable-Instruments-Stil (kleine Attenuverter-Knobs, 4.6):
+        dunkler Körper, Zeiger-Linie, Wert-Bogen. Bipolare Ranges
+        (min < 0 < max) zeichnen den Bogen ab der Mittelstellung — Standard
+        für {param}_cv_amt (−1..+1, Mitte = keine Modulation). */
+    void drawRotarySlider (juce::Graphics& g, int x, int y, int width, int height,
+                           float sliderPosProportional, float rotaryStartAngle,
+                           float rotaryEndAngle, juce::Slider& slider) override;
+
     /** Jost in gegebener Höhe — zentraler Helper für Custom-Komponenten. */
     [[nodiscard]] juce::Font getJost (float height, bool medium = false) const;
 

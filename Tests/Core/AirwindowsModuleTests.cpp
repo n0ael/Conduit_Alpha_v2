@@ -3,6 +3,7 @@
 #include "Modules/AirwindowsDensityModule.h"
 #include "Modules/AirwindowsSlewModule.h"
 #include "Modules/AirwindowsSpiralModule.h"
+#include "Modules/ChassisSchema.h"
 #include "Modules/ModuleFactory.h"
 
 namespace
@@ -35,47 +36,65 @@ void fillWithRamp (juce::AudioBuffer<float>& buffer, float start)
 
 } // namespace
 
-//==============================================================================
-TEST_CASE ("AirwindowsDensityModule: createState liefert die 4 Airwindows-Parameter", "[airwindows]")
+[[nodiscard]] juce::StringArray dspParameterIdsOf (const juce::ValueTree& nodeTree)
 {
-    conduit::AirwindowsDensityModule density;
-    const auto node = density.createState();
-
-    REQUIRE ((int) node.getProperty (conduit::id::numInputChannels)  == 2);
-    REQUIRE ((int) node.getProperty (conduit::id::numOutputChannels) == 2);
-
-    const auto parameters = node.getChildWithName (conduit::id::parameters);
-    REQUIRE (parameters.getNumChildren() == 4);
-
-    const juce::StringArray expectedIds { "density", "highpass", "out_level", "dry_wet" };
+    juce::StringArray ids;
+    const auto parameters = nodeTree.getChildWithName (conduit::id::parameters);
 
     for (int i = 0; i < parameters.getNumChildren(); ++i)
     {
         const auto parameter = parameters.getChild (i);
-        REQUIRE (parameter.getProperty (conduit::id::paramId).toString() == expectedIds[i]);
+
+        if (conduit::ChassisSchema::roleOf (parameter) == juce::String (conduit::ChassisSchema::roleDsp))
+            ids.add (parameter.getProperty (conduit::id::paramId).toString());
+    }
+
+    return ids;
+}
+
+//==============================================================================
+TEST_CASE ("AirwindowsDensityModule: createState liefert die 4 Airwindows-Parameter im Chassis", "[airwindows]")
+{
+    conduit::AirwindowsDensityModule density;
+    const auto node = density.createState();
+
+    // Chassis-Layout (4.6): 2 Audio-Eingänge + 1 CV-Kanal pro DSP-Parameter
+    REQUIRE ((int) node.getProperty (conduit::id::numInputChannels)  == 6);
+    REQUIRE ((int) node.getProperty (conduit::id::numOutputChannels) == 2);
+
+    // Gains + 4×(dsp, cv_amt)
+    const auto parameters = node.getChildWithName (conduit::id::parameters);
+    REQUIRE (parameters.getNumChildren() == 10);
+
+    REQUIRE (dspParameterIdsOf (node) == juce::StringArray { "density", "highpass", "out_level", "dry_wet" });
+
+    for (const auto& dspId : dspParameterIdsOf (node))
+    {
+        const auto parameter = parameters.getChildWithProperty (conduit::id::paramId, dspId);
         REQUIRE (juce::exactlyEqual ((double) parameter.getProperty (conduit::id::paramMin), 0.0));
         REQUIRE (juce::exactlyEqual ((double) parameter.getProperty (conduit::id::paramMax), 1.0));
     }
 }
 
-TEST_CASE ("AirwindowsSlewModule: createState liefert genau 1 Parameter (clamping)", "[airwindows]")
+TEST_CASE ("AirwindowsSlewModule: createState liefert genau 1 DSP-Parameter (clamping)", "[airwindows]")
 {
     conduit::AirwindowsSlewModule slew;
     const auto node = slew.createState();
 
-    const auto parameters = node.getChildWithName (conduit::id::parameters);
-    REQUIRE (parameters.getNumChildren() == 1);
-    REQUIRE (parameters.getChild (0).getProperty (conduit::id::paramId).toString() == "clamping");
+    REQUIRE (dspParameterIdsOf (node) == juce::StringArray { "clamping" });
+    REQUIRE ((int) node.getProperty (conduit::id::numInputChannels) == 3);   // 2 Audio + 1 CV
 }
 
-TEST_CASE ("AirwindowsSpiralModule: createState liefert 0 Parameter, trotzdem stereo", "[airwindows]")
+TEST_CASE ("AirwindowsSpiralModule: createState liefert 0 DSP-Parameter, trotzdem stereo", "[airwindows]")
 {
     conduit::AirwindowsSpiralModule spiral;
     const auto node = spiral.createState();
 
+    // Ohne DSP-Parameter kein CV-Bus — reines Stereo-Modul mit Chassis-Gains
     REQUIRE ((int) node.getProperty (conduit::id::numInputChannels)  == 2);
     REQUIRE ((int) node.getProperty (conduit::id::numOutputChannels) == 2);
-    REQUIRE (node.getChildWithName (conduit::id::parameters).getNumChildren() == 0);
+    REQUIRE (dspParameterIdsOf (node).isEmpty());
+    REQUIRE (node.getChildWithName (conduit::id::parameters).getNumChildren() == 2);   // nur Gains
 }
 
 //==============================================================================
@@ -95,6 +114,12 @@ TEST_CASE ("AirwindowsProcessorModule: getParameterTarget kennt nur eigene Ids",
 
     conduit::AirwindowsSpiralModule spiral;
     REQUIRE (spiral.getParameterTarget ("anything") == nullptr);
+
+    // Chassis-Ziele kommen bei ALLEN Processor-Modulen dazu (4.6)
+    REQUIRE (density.getParameterTarget ("input_gain")      != nullptr);
+    REQUIRE (density.getParameterTarget ("output_gain")     != nullptr);
+    REQUIRE (density.getParameterTarget ("density_cv_amt")  != nullptr);
+    REQUIRE (spiral.getParameterTarget ("input_gain")       != nullptr);
 }
 
 //==============================================================================

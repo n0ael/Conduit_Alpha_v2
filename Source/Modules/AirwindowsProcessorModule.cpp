@@ -3,66 +3,50 @@
 namespace conduit
 {
 
+std::vector<ChassisParamDesc> AirwindowsProcessorModule::makeDescs (const airwindows::AirwindowsPlugin& plugin)
+{
+    std::vector<ChassisParamDesc> descs;
+    descs.reserve (static_cast<size_t> (plugin.getNumParameters()));
+
+    for (int i = 0; i < plugin.getNumParameters(); ++i)
+    {
+        const auto& info = plugin.getParameterInfo (i);
+        descs.push_back ({ info.id, info.defaultValue, 0.0f, 1.0f });  // Airwindows-Konvention 0..1
+    }
+
+    return descs;
+}
+
 AirwindowsProcessorModule::AirwindowsProcessorModule (std::unique_ptr<airwindows::AirwindowsPlugin> pluginToUse,
                                                       juce::String moduleIdToUse,
                                                       juce::String displayNameToUse)
-    : ProcessorModule (BusesProperties()
-          .withInput  ("Input",  juce::AudioChannelSet::stereo(), true)
-          .withOutput ("Output", juce::AudioChannelSet::stereo(), true)),
+    : ProcessorModule (makeDescs (*pluginToUse)),
       plugin (std::move (pluginToUse)),
       moduleIdString (std::move (moduleIdToUse)),
       displayNameString (std::move (displayNameToUse))
 {
-    jassert (plugin != nullptr);
-
-    for (int i = 0; i < plugin->getNumParameters(); ++i)
-        targets[(size_t) i].store (plugin->getParameterInfo (i).defaultValue, std::memory_order_relaxed);
 }
 
 //==============================================================================
 juce::String AirwindowsProcessorModule::getModuleId() const          { return moduleIdString; }
 juce::String AirwindowsProcessorModule::getModuleDisplayName() const { return displayNameString; }
-int AirwindowsProcessorModule::getStateVersion() const                { return 1; }
-
-void AirwindowsProcessorModule::appendParametersTo (juce::ValueTree& parameters)
-{
-    for (int i = 0; i < plugin->getNumParameters(); ++i)
-    {
-        const auto& info = plugin->getParameterInfo (i);
-        parameters.appendChild (makeParameter (info.id, info.defaultValue, 0.0, 1.0, info.defaultValue), nullptr);
-    }
-}
-
-std::atomic<float>* AirwindowsProcessorModule::getParameterTarget (const juce::String& parameterId) noexcept
-{
-    for (int i = 0; i < plugin->getNumParameters(); ++i)
-        if (parameterId == plugin->getParameterInfo (i).id)
-            return &targets[(size_t) i];
-
-    return nullptr;
-}
+int AirwindowsProcessorModule::getStateVersion() const                { return chassisStateVersion; }
 
 //==============================================================================
-void AirwindowsProcessorModule::prepareToPlay (double sampleRate, int)
+void AirwindowsProcessorModule::prepareCore (double sampleRate, int)
 {
     plugin->prepare (sampleRate);
 }
 
-void AirwindowsProcessorModule::releaseResources()
+void AirwindowsProcessorModule::processCore (juce::AudioBuffer<float>& audio, juce::MidiBuffer&)
 {
-}
-
-void AirwindowsProcessorModule::processBlock (juce::AudioBuffer<float>& buffer, juce::MidiBuffer&)
-{
-    juce::ScopedNoDenormals noDenormals;
-
     for (int i = 0; i < plugin->getNumParameters(); ++i)
-        plugin->setParameter (i, targets[(size_t) i].load (std::memory_order_relaxed));
+        plugin->setParameter (i, effectiveParam (i));
 
-    auto* left  = buffer.getWritePointer (0);
-    auto* right = buffer.getWritePointer (1);
+    auto* left  = audio.getWritePointer (0);
+    auto* right = audio.getWritePointer (1);
 
-    plugin->process (left, right, left, right, buffer.getNumSamples());
+    plugin->process (left, right, left, right, audio.getNumSamples());
 }
 
 } // namespace conduit

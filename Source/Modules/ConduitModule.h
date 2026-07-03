@@ -61,6 +61,18 @@ namespace id
     inline const juce::Identifier paramMax      { "max" };
     inline const juce::Identifier paramDefault  { "default" };
 
+    // FX-Chassis (4.6): Rollen-Layout + Dev-Modus-Properties pro Parameter.
+    // userMin/userMax/uiHidden/curve sind PATCH-Zustand (serialisiert,
+    // undo-fähig) — die UI nutzt sie, der DSP clamped IMMER auf min/max.
+    inline const juce::Identifier paramRole     { "role" };      // "dsp" | "chassis" | "cvAmount"
+    inline const juce::Identifier paramUserMin  { "userMin" };   // optional: Fader-Range
+    inline const juce::Identifier paramUserMax  { "userMax" };
+    inline const juce::Identifier paramUiHidden { "uiHidden" };  // optional: Spalte ausgeblendet
+    inline const juce::Identifier paramCurve    { "curve" };     // optional: "x1 y1 x2 y2" (Bezier)
+
+    // FX-Chassis: Link-Audio-Send-Tap am Modul-Ausgang (Patch-Zustand)
+    inline const juce::Identifier linkSendEnabled { "linkSendEnabled" };
+
     // Connections
     inline const juce::Identifier connection    { "Connection" };
     inline const juce::Identifier sourceNodeId  { "sourceNodeId" };

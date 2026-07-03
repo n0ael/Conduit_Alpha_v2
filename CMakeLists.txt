@@ -118,8 +118,10 @@ set(CONDUIT_CPP_SOURCES
     Source/Core/Capture/CaptureWriter.cpp
     Source/Core/Capture/InputMeter.cpp
     Source/Core/Capture/LevelMeter.cpp
+    Source/Modules/ChassisSchema.cpp
     Source/Modules/ConduitModule.cpp
     Source/Modules/ModuleFactory.cpp
+    Source/Modules/ProcessorModule.cpp
     Source/Modules/AirwindowsProcessorModule.cpp
     Source/Modules/AirwindowsDensityModule.cpp
     Source/Modules/AirwindowsSlewModule.cpp
@@ -197,6 +199,7 @@ target_sources(Conduit PRIVATE
     Source/Interfaces/ISendConfigClient.h
     Source/Interfaces/IStochastic.h
     Source/Modules/AnalysisModule.h
+    Source/Modules/ChassisSchema.h
     Source/Modules/ConduitModule.h
     Source/Modules/GeneratorModule.h
     Source/Modules/IOModule.h
@@ -340,6 +343,7 @@ if(CONDUIT_BUILD_TESTS)
         Tests/Core/OscControllerTests.cpp
         Tests/Core/OscSendServiceTests.cpp
         Tests/Core/PatchingTests.cpp
+        Tests/Core/ProcessorChassisTests.cpp
         Tests/Core/RemoteModuleBinderTests.cpp
         Tests/Core/PresetTests.cpp
         Tests/Core/ScopeModuleTests.cpp
@@ -386,8 +390,10 @@ if(CONDUIT_BUILD_TESTS)
         Source/Core/Capture/CaptureWriter.cpp
         Source/Core/Capture/InputMeter.cpp
         Source/Core/Capture/LevelMeter.cpp
+        Source/Modules/ChassisSchema.cpp
         Source/Modules/ConduitModule.cpp
         Source/Modules/ModuleFactory.cpp
+        Source/Modules/ProcessorModule.cpp
         Source/Modules/AirwindowsProcessorModule.cpp
         Source/Modules/AirwindowsDensityModule.cpp
         Source/Modules/AirwindowsSlewModule.cpp

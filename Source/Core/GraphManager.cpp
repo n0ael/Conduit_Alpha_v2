@@ -8,6 +8,7 @@
 #include "Interfaces/ILinkAudioClient.h"
 #include "Interfaces/ISendConfigClient.h"
 #include "Interfaces/IStochastic.h"
+#include "Modules/ChassisSchema.h"
 #include "Modules/LinkAudioSendModule.h"
 #include "Modules/ModuleFactory.h"
 #include "NodeUiRegistry.h"
@@ -179,6 +180,12 @@ void GraphManager::normalizeNode (juce::ValueTree nodeTree)
     // Modul-spezifische Migration: Multi-Input-Send-Schema (stateVersion 1→2)
     if (factoryKeyOf (nodeTree) == LinkAudioSendModule::staticModuleId)
         LinkAudioSendModule::migrate (nodeTree);
+
+    // FX-Chassis-Migration (4.6, stateVersion 1→2): gilt für ALLE
+    // Processor-Nodes — ergänzt Gains, Attenuverter, role und CV-Kanäle.
+    // Idempotent, frisch angelegte Nodes sind bereits chassis-förmig.
+    if (nodeTree.getProperty (id::type).toString() == toString (ModuleType::processor))
+        ChassisSchema::migrate (nodeTree);
 }
 
 //==============================================================================

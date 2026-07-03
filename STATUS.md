@@ -16,7 +16,27 @@
 
 ## Aktueller Meilenstein (Juli 2026 — in Arbeit)
 
-**Tap-Tempo-Umbau: Monitor + Set-Commit (inspiriert vom M4L-Device „TAP and CHANGE Tempo BPM"):**
+**FX-Chassis-Standard für alle Audio-FX-Module (Plan: 7 Meilensteine M1–M7) — M1 abgeschlossen:**
+
+Ziel des Gesamtvorhabens (User-Plan 03.07.): jedes FX-Modul bekommt einheitlich
+Ableton-artige I/O-Gain-Fader mit Meter, einen Link-Audio-Send-Button am Output,
+alle DSP-Parameter als vertikale Fader-Reihe mit CV-Input + Attenuverter pro
+Parameter (Mutable-Stil) sowie einen Dev-Modus (Range-Edit, uiHidden,
+Bezier-Fader-Kurven, Modul-Typ-Defaults). Wird als CLAUDE.md 4.6 verbindlich.
+
+- **M1 — Chassis-DSP + Schema + Migration (fertig):**
+  - `ProcessorModule` ist vom Einzeiler zum FX-Chassis ausgebaut: Subklassen implementieren nur noch `prepareCore()`/`processCore()` (reine Stereo-Audio-Sicht) und liefern DSP-Parameter als `ChassisParamDesc`-Liste an den Konstruktor; `prepareToPlay`/`processBlock`/`appendParametersTo`/`getParameterTarget` sind final
+  - Signal-Reihenfolge: noteBlockBegin → CV-Blockmittel → In-Gain (−60..+6 dB, 5-ms-SmoothedValue, −60 = exakt 0) → In-Meter → processCore → Out-Gain → Out-Meter → Link-Tap-commit; komplett lock-/alloc-frei (RT-Audit-Test)
+  - **CV→Parameter-Modulation (neu im Projekt):** Kanal-Layout FEST Audio 0..1, CV 2..N (CV-Kanal von Parameter i = 2+i, eigener Discrete-Bus); `effective = clamp(base + cv·cv_amt·(hardMax−hardMin), hardMin, hardMax)`, Attenuverter `{param}_cv_amt` bipolar −1..+1; unverbundene CV-Kanäle sind vom Graph genullt → neutral
+  - Parameter-Property `role` (`dsp`/`chassis`/`cvAmount`) fürs spätere UI-Layout; OSC-Adressen bleiben kanonisch, Auto-Registration greift ohne Zusatzcode; neue Schema-Ids `userMin`/`userMax`/`uiHidden`/`curve`/`linkSendEnabled` (M5/M6) definiert
+  - Eigene 2×2-`LevelMeter`-Instanzen pro Modul (in/out); Link-Send-Tap-Grundgerüst (`LinkSendTaps`, `setSendEnabled`, atomarer rtTap, Phase-1-Retire via `releaseSessionResources`) — GraphManager-Weiterleitung + UI-Button folgen in M4
+  - `ChassisSchema` (pure, testbar): Rollen-Konstanten, `computeEffective()`, idempotente Migration v1→v2 in `GraphManager::normalizeNode` für alle Processor-Nodes (Gains/Attenuverter/role ergänzen, `numInputChannels = 2 + numDsp`, Kanäle 0/1 stabil — Kabel und User-Werte überleben)
+  - `AirwindowsProcessorModule` auf die zwei Core-Hooks geschrumpft (targets-Array/Schema/Bus entfallen), `stateVersion` → 2
+  - **Verifikation:** 250 Testfälle / 10985 Assertions grün (Debug + ASan lokal). Neu: `ProcessorChassisTests` (13 Fälle — Schema/Rollen, Unity/Stille, klickfreie Rampe, bipolare CV-Modulation + Hard-Clamp + Blockmittel, Allocation-Audit, Meter post-Gain, Link-Send offline-safe, Migration idempotent + identisch zu createState)
+  - Übergangszustand: das alte ParameterPanel zeigt die neuen Chassis-Zeilen (input_gain/output_gain/*_cv_amt) als normale Fader, CV-Ports erscheinen als zusätzliche Input-Ports — hübsch wird es in M2 (FxModulePanel)
+- **Als Nächstes:** M2 vertikale Fader-UI (GainFaderMeter + FxModulePanel) · M3 CV-Ports im Panel · M4 Link-Send-Button · M5 Dev-Modus · M6 Kurven + Defaults · M7 CLAUDE.md 4.6
+
+**Davor: Tap-Tempo-Umbau: Monitor + Set-Commit (inspiriert vom M4L-Device „TAP and CHANGE Tempo BPM"):**
 
 - **Modell-Wechsel:** Tappen misst das Tempo NUR (Session bleibt unberührt) — die neue **Set-Kachel** neben Tap zeigt das getappte Tempo als Monitor (cyan) und committet beim Klick zur Link-Session. Ersetzt das alte Auto-Commit beim (n+1)-ten Tap.
 - **Endloses Tappen:** kein Timeout-Reset mehr — Pausen verwerfen nur das unplausible Riesen-Intervall (> 3 s), die Messung läuft weiter (Median über rollierendes 8er-Fenster, folgt Tempowechseln). Reset NUR durch **Gedrückthalten** der Tap-Kachel (Dauer einstellbar 0.3–3 s).

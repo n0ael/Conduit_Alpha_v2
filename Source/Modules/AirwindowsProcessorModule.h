@@ -1,8 +1,7 @@
 #pragma once
 
-#include <array>
-#include <atomic>
 #include <memory>
+#include <vector>
 
 #include "DSP/Airwindows/AirwindowsPlugin.h"
 #include "ProcessorModule.h"
@@ -20,20 +19,17 @@ namespace conduit
     (AirwindowsDensityModule etc.) reichen nur eine fertige Plugin-Instanz
     plus moduleId/Displayname durch — sonst identisch.
 
-    Bewusst KEIN SmoothedValue: AirwindowsPlugin::process() snapshottet
-    Parameter bereits selbst einmal pro Block (block-konstant, exakt wie
-    beim VST-Original — siehe AirwindowsPlugin.h). Zusätzliches
-    Sample-Ramping in dieser Schicht würde dieses dokumentierte, gegen die
-    DoD-Tests verifizierte Originalverhalten verändern.
+    Schema, Echtzeit-Ziele, I/O-Gains, Meter, CV-Eingänge und Link-Send
+    kommen vollständig aus dem FX-Chassis (ProcessorModule, CLAUDE.md 4.6) —
+    hier lebt NUR noch die Airwindows-DSP:
 
-    Bus: fest stereo (2 in / 2 out) — passt zu "stereo, 2 in / 2 out" aus
-    AirwindowsPlugin.h; kein Mono-Fallback nötig.
+    Bewusst KEIN SmoothedValue auf den DSP-Parametern: AirwindowsPlugin::
+    process() snapshottet Parameter bereits selbst einmal pro Block
+    (block-konstant, exakt wie beim VST-Original — siehe AirwindowsPlugin.h);
+    das Chassis liefert mit effectiveParam(i) ebenfalls blockkonstante Werte.
 
-    Thread-Ownership:
-      - getParameterTarget()-Rückgabe wird von Fremd-Threads beschrieben
-        (Dual-State 6.1)
-      - prepareToPlay() → Message Thread (ruft plugin->prepare())
-      - processBlock() → Audio Thread, lock-free, allocation-free
+    Bus: Audio fest stereo (2 in / 2 out) + ein CV-Eingang je Parameter
+    (Chassis-Layout).
 */
 class AirwindowsProcessorModule : public ProcessorModule
 {
@@ -48,26 +44,18 @@ public:
     [[nodiscard]] juce::String getModuleDisplayName() const override;
     [[nodiscard]] int getStateVersion() const override;
 
-    //==========================================================================
-    [[nodiscard]] std::atomic<float>* getParameterTarget (const juce::String& parameterId) noexcept override;
-
-    //==========================================================================
-    // AudioProcessor
-    void prepareToPlay (double sampleRate, int samplesPerBlock) override;
-    void releaseResources() override;
-    void processBlock (juce::AudioBuffer<float>& buffer, juce::MidiBuffer& midiMessages) override;
-
 protected:
-    void appendParametersTo (juce::ValueTree& parameters) override;
+    //==========================================================================
+    // Chassis-Hooks (Audio-Sicht: Kanäle 0..1)
+    void prepareCore (double sampleRate, int maximumBlockSize) override;
+    void processCore (juce::AudioBuffer<float>& audio, juce::MidiBuffer& midiMessages) override;
 
 private:
+    [[nodiscard]] static std::vector<ChassisParamDesc> makeDescs (const airwindows::AirwindowsPlugin& plugin);
+
     std::unique_ptr<airwindows::AirwindowsPlugin> plugin;
     juce::String moduleIdString;
     juce::String displayNameString;
-
-    // Ein Slot pro Airwindows-Parameter (0 bei Spiral) — Adresse stabil über
-    // die Modul-Lebensdauer (ConduitModule/AudioProcessor nicht kopierbar).
-    std::array<std::atomic<float>, airwindows::AirwindowsPlugin::maxParameters> targets {};
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (AirwindowsProcessorModule)
 };

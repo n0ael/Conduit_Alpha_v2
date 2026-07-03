@@ -137,6 +137,8 @@ set(CONDUIT_CPP_SOURCES
     Source/UI/CapturePanel.cpp
     Source/UI/CaptureSettingsComponent.cpp
     Source/UI/CaptureToast.cpp
+    Source/UI/FxModulePanel.cpp
+    Source/UI/GainFaderMeter.cpp
     Source/UI/InputSendButton.cpp
     Source/UI/LevelMeterBar.cpp
     Source/UI/LinkAudioSendPanel.cpp
@@ -221,6 +223,8 @@ target_sources(Conduit PRIVATE
     Source/UI/CaptureAllButton.h
     Source/UI/CapturePanel.h
     Source/UI/CaptureToast.h
+    Source/UI/FxModulePanel.h
+    Source/UI/GainFaderMeter.h
     Source/UI/InputSendButton.h
     Source/UI/LinkAudioSendPanel.h
     Source/UI/LinkAudioStatusBadge.h
@@ -351,6 +355,7 @@ if(CONDUIT_BUILD_TESTS)
         Tests/Core/SourceNameResolverTests.cpp
         Tests/Core/ThreadingStressTests.cpp
         Tests/Core/TransportLinkTests.cpp
+        Tests/UI/FxModulePanelTests.cpp
         Tests/UI/NodeCanvasTests.cpp
         Tests/UI/LevelMeterBarTests.cpp
         Tests/UI/LinkAudioSendPanelTests.cpp
@@ -409,6 +414,8 @@ if(CONDUIT_BUILD_TESTS)
         Source/UI/CapturePanel.cpp
         Source/UI/CaptureSettingsComponent.cpp
         Source/UI/CaptureToast.cpp
+        Source/UI/FxModulePanel.cpp
+        Source/UI/GainFaderMeter.cpp
         Source/UI/InputSendButton.cpp
         Source/UI/LevelMeterBar.cpp
         Source/UI/LinkAudioSendPanel.cpp

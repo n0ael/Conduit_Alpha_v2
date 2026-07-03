@@ -113,9 +113,10 @@ public:
 
     //==========================================================================
     // Meter [beliebiger Thread] — UI löst pro Tick transient über
-    // GraphManager::getModuleFor auf (Zombie-UI-Regel 5.3)
-    [[nodiscard]] const LevelMeter& getInputMeter() const noexcept  { return inputMeter; }
-    [[nodiscard]] const LevelMeter& getOutputMeter() const noexcept { return outputMeter; }
+    // GraphManager::getModuleFor auf (Zombie-UI-Regel 5.3). Non-const,
+    // damit die UI resetClip() (atomarer Latch) auslösen kann.
+    [[nodiscard]] LevelMeter& getInputMeter() noexcept  { return inputMeter; }
+    [[nodiscard]] LevelMeter& getOutputMeter() noexcept { return outputMeter; }
 
     //==========================================================================
     [[nodiscard]] int getNumDspParameters() const noexcept

@@ -90,12 +90,21 @@ NodeComponent::NodeComponent (juce::ValueTree nodeTreeToBind,
     if (channelNames != nullptr && portLabelDirection().has_value())
         channelNames->addChangeListener (this);
 
-    // Sequencer- und Send-Kacheln haben eine eigene Bedienleiste (Grid bzw.
+    // Processor-Nodes bekommen die Chassis-Oberfläche (FxModulePanel, 4.6);
+    // Sequencer- und Send-Kacheln haben eigene Bedienleisten (Grid bzw.
     // Attenuator-Zeilen) — der generische ParameterPanel deckt alle anderen
     // Module mit >= 1 Parameter ab (eine Zeile pro Parameter, Label = paramId)
-    if (factoryKey != StepSequencerModule::staticModuleId
-        && factoryKey != LinkAudioSendModule::staticModuleId
-        && nodeTree.getChildWithName (id::parameters).getNumChildren() > 0)
+    const auto isProcessorNode = nodeTree.getProperty (id::type).toString()
+                                     == toString (ModuleType::processor);
+
+    if (isProcessorNode)
+    {
+        fxPanel = std::make_unique<FxModulePanel> (nodeTree, graphManager);
+        addAndMakeVisible (*fxPanel);
+    }
+    else if (factoryKey != StepSequencerModule::staticModuleId
+             && factoryKey != LinkAudioSendModule::staticModuleId
+             && nodeTree.getChildWithName (id::parameters).getNumChildren() > 0)
     {
         parameterPanel = std::make_unique<ParameterPanel> (nodeTree);
         addAndMakeVisible (*parameterPanel);
@@ -129,6 +138,14 @@ NodeComponent::NodeComponent (juce::ValueTree nodeTreeToBind,
     else if (isExternalEndpoint)
     {
         updateEndpointSize();  // Höhe folgt der Hardware-Kanalzahl (Schritt B)
+    }
+    else if (fxPanel != nullptr)
+    {
+        // Chassis-Kachel: Panel-Breite + 28px Rand je Seite für die
+        // Port-Hit-Zonen (Audio links, CV-Ports ziehen in M3 unter die Fader)
+        setSize (juce::jmax (defaultWidth,
+                             FxModulePanel::widthForColumns (fxPanel->getNumColumns()) + 56),
+                 touchTarget + FxModulePanel::panelHeight + 8);
     }
     else if (parameterPanel != nullptr)
     {
@@ -190,6 +207,9 @@ void NodeComponent::beginTeardown()
 
     if (parameterPanel != nullptr)
         parameterPanel->stopUpdates();
+
+    if (fxPanel != nullptr)
+        fxPanel->stopUpdates();
 
     for (auto& toggle : pairToggles)
         toggle->setEnabled (false);
@@ -697,6 +717,9 @@ void NodeComponent::resized()
 
     if (sendPanel != nullptr)
         sendPanel->setBounds (getLocalBounds().withTrimmedTop (touchTarget).reduced (22, 4));
+
+    if (fxPanel != nullptr)
+        fxPanel->setBounds (getLocalBounds().withTrimmedTop (touchTarget).reduced (28, 4));
 
     const auto placePorts = [this] (std::vector<std::unique_ptr<PortComponent>>& ports)
     {

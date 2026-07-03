@@ -1,0 +1,180 @@
+#include <catch2/catch_approx.hpp>
+#include <catch2/catch_test_macros.hpp>
+
+#include "Core/GraphFader.h"
+#include "Core/GraphManager.h"
+#include "Core/NodeUiRegistry.h"
+#include "Modules/AirwindowsDensityModule.h"
+#include "Modules/AirwindowsSpiralModule.h"
+#include "Modules/ChassisSchema.h"
+#include "Modules/ModuleFactory.h"
+#include "UI/FxModulePanel.h"
+#include "UI/NodeComponent.h"
+
+using Catch::Approx;
+
+namespace
+{
+
+juce::ValueTree makeRootTree()
+{
+    juce::ValueTree root (conduit::id::root);
+    root.appendChild (juce::ValueTree (conduit::id::nodes),               nullptr);
+    root.appendChild (juce::ValueTree (conduit::id::connections),         nullptr);
+    root.appendChild (juce::ValueTree (conduit::id::calibrationProfiles), nullptr);
+    return root;
+}
+
+// Voller GraphManager-Rig (Panel + Meter-Auflösung brauchen ihn)
+struct ChassisRig
+{
+    explicit ChassisRig (const char* factoryKey = conduit::AirwindowsDensityModule::staticModuleId)
+    {
+        conduit::registerDefaultModules (factory);
+        node = manager.addModuleNode (factoryKey, {});
+        manager.flushPendingTopologyUpdate();  // materialisiert das Modul
+    }
+
+    [[nodiscard]] double paramValue (const juce::String& paramId) const
+    {
+        return (double) node.getChildWithName (conduit::id::parameters)
+                            .getChildWithProperty (conduit::id::paramId, paramId)
+                            .getProperty (conduit::id::paramValue);
+    }
+
+    void setParamValue (const juce::String& paramId, double value)
+    {
+        node.getChildWithName (conduit::id::parameters)
+            .getChildWithProperty (conduit::id::paramId, paramId)
+            .setProperty (conduit::id::paramValue, value, nullptr);
+    }
+
+    juce::ScopedJuceInitialiser_GUI juceRuntime;
+    juce::ValueTree root = makeRootTree();
+    juce::AudioProcessorGraph graph;
+    conduit::GraphFader fader;
+    conduit::ModuleFactory factory;
+    juce::UndoManager undoManager;
+    conduit::NodeUiRegistry uiRegistry;
+    conduit::GraphManager manager { root, graph, fader, factory, undoManager, uiRegistry };
+    juce::ValueTree node;
+};
+
+} // namespace
+
+//==============================================================================
+TEST_CASE ("FxModulePanel: nur DSP-Parameter werden Spalten, Gain-Zuege existieren immer", "[ui][chassis]")
+{
+    ChassisRig rig;
+    conduit::FxModulePanel panel { rig.node, rig.manager };
+
+    // Density: 4 DSP-Spalten (Gains + cv_amt erscheinen NICHT als Spalten)
+    REQUIRE (panel.getNumColumns() == 4);
+    REQUIRE (panel.columns[0]->paramId == "density");
+    REQUIRE (panel.columns[3]->paramId == "dry_wet");
+
+    REQUIRE (panel.inputFader  != nullptr);
+    REQUIRE (panel.outputFader != nullptr);
+    REQUIRE (panel.inputFader->getParamId()  == juce::String (conduit::ChassisSchema::inputGainId));
+    REQUIRE (panel.outputFader->getParamId() == juce::String (conduit::ChassisSchema::outputGainId));
+
+    // Gain-Fader in dB-Range
+    REQUIRE (panel.inputFader->slider.getMinimum() == Approx (-60.0));
+    REQUIRE (panel.inputFader->slider.getMaximum() == Approx (6.0));
+}
+
+TEST_CASE ("FxModulePanel: Spiral hat 0 Spalten, aber beide Gain-Zuege", "[ui][chassis]")
+{
+    ChassisRig rig { conduit::AirwindowsSpiralModule::staticModuleId };
+    conduit::FxModulePanel panel { rig.node, rig.manager };
+
+    REQUIRE (panel.getNumColumns() == 0);
+    REQUIRE (panel.inputFader  != nullptr);
+    REQUIRE (panel.outputFader != nullptr);
+}
+
+//==============================================================================
+TEST_CASE ("FxModulePanel: Fader schreiben paramValue, externe Aenderungen ziehen nach", "[ui][chassis]")
+{
+    ChassisRig rig;
+    conduit::FxModulePanel panel { rig.node, rig.manager };
+
+    // Spalten-Fader → Tree
+    panel.columns[0]->slider.setValue (0.7, juce::sendNotificationSync);
+    REQUIRE (rig.paramValue ("density") == Approx (0.7));
+
+    // Gain-Fader → Tree
+    panel.outputFader->slider.setValue (-12.0, juce::sendNotificationSync);
+    REQUIRE (rig.paramValue ("output_gain") == Approx (-12.0));
+
+    // Tree → Fader (OSC-Nachzug/Undo/Preset-Load)
+    rig.setParamValue ("density", 0.2);
+    REQUIRE (panel.columns[0]->slider.getValue() == Approx (0.2));
+
+    rig.setParamValue ("input_gain", -6.0);
+    REQUIRE (panel.inputFader->slider.getValue() == Approx (-6.0));
+}
+
+TEST_CASE ("FxModulePanel: stopUpdates deaktiviert alle Fader (Phase 1)", "[ui][chassis]")
+{
+    ChassisRig rig;
+    conduit::FxModulePanel panel { rig.node, rig.manager };
+
+    panel.stopUpdates();
+
+    REQUIRE_FALSE (panel.columns[0]->slider.isEnabled());
+    REQUIRE_FALSE (panel.inputFader->slider.isEnabled());
+    REQUIRE_FALSE (panel.outputFader->slider.isEnabled());
+
+    // Nach stopUpdates zieht der Tree nicht mehr nach (Listener entfernt)
+    const auto before = panel.columns[0]->slider.getValue();
+    rig.setParamValue ("density", 0.9);
+    REQUIRE (panel.columns[0]->slider.getValue() == Approx (before));
+}
+
+//==============================================================================
+TEST_CASE ("GainFaderMeter: ohne materialisiertes Modul kein Crash (Zombie-Regel)", "[ui][chassis]")
+{
+    ChassisRig rig;
+
+    // Node-Tree, der im Manager NICHT existiert → getModuleFor == nullptr
+    conduit::AirwindowsDensityModule detached;
+    auto orphanTree = detached.createState();
+
+    conduit::GainFaderMeter fader { orphanTree, conduit::ChassisSchema::inputGainId,
+                                    rig.manager, true };
+    fader.setBounds (0, 0, 60, 200);
+
+    // Paint-Durchlauf auf ein Image — resolveMeter() liefert nullptr, kein Crash
+    juce::Image image (juce::Image::ARGB, 60, 200, true);
+    juce::Graphics g (image);
+    fader.paint (g);
+
+    fader.stopUpdates();
+}
+
+//==============================================================================
+TEST_CASE ("NodeComponent: Processor-Nodes bekommen das FxModulePanel", "[ui][chassis]")
+{
+    ChassisRig rig;
+    conduit::NodeComponent nodeUi { rig.node, rig.manager, rig.uiRegistry };
+
+    REQUIRE (nodeUi.hasFxPanel());
+    REQUIRE (nodeUi.getFxPanel()->getNumColumns() == 4);
+
+    // Breite folgt der Spaltenzahl (zentrale Formel)
+    REQUIRE (nodeUi.getWidth()
+             == juce::jmax (conduit::NodeComponent::defaultWidth,
+                            conduit::FxModulePanel::widthForColumns (4) + 56));
+
+    nodeUi.completeTeardownNow();
+}
+
+TEST_CASE ("FxModulePanel: widthForColumns ist die zentrale Breitenformel", "[ui][chassis]")
+{
+    using Panel = conduit::FxModulePanel;
+
+    REQUIRE (Panel::widthForColumns (0) == 2 * conduit::GainFaderMeter::preferredWidth + 16);
+    REQUIRE (Panel::widthForColumns (4) - Panel::widthForColumns (0) == 4 * Panel::columnWidth);
+    REQUIRE (Panel::widthForColumns (-1) == Panel::widthForColumns (0));  // defensiv
+}

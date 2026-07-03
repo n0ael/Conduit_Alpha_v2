@@ -11,6 +11,7 @@
 #include "Core/GraphManager.h"
 #include "Core/InputLinkSend.h"
 #include "Core/NodeUiRegistry.h"
+#include "UI/FxModulePanel.h"
 #include "UI/InputSendButton.h"
 #include "UI/LevelMeterBar.h"
 #include "UI/LinkAudioSendPanel.h"
@@ -114,6 +115,8 @@ public:
 
     [[nodiscard]] int getNumInputPorts() const noexcept;
     [[nodiscard]] int getNumOutputPorts() const noexcept;
+    [[nodiscard]] bool hasFxPanel() const noexcept { return fxPanel != nullptr; }
+    [[nodiscard]] FxModulePanel* getFxPanel() noexcept { return fxPanel.get(); }
     [[nodiscard]] int getNumMeterBars() const noexcept;  // Pegelanzeigen (I/O-Endpunkte)
     [[nodiscard]] int getNumSendButtons() const noexcept;  // Link-Send-Toggles (audio_in)
 
@@ -224,10 +227,13 @@ private:
     // Bedien-Panel: pro Eingang Attenuator + Name + Status-LED (7.2)
     std::unique_ptr<LinkAudioSendPanel> sendPanel;
 
-    // Alle anderen Module mit >= 1 Parameter (nicht Scope/Sequencer/Send,
-    // die eigene Bedienoberflächen haben) — eine Zeile pro Parameter,
-    // Label = paramId. nullptr bei 0 Parametern (z.B. Spiral, I/O-Endpunkte).
+    // Alle anderen Module mit >= 1 Parameter (nicht Scope/Sequencer/Send/
+    // Processor, die eigene Bedienoberflächen haben) — eine Zeile pro
+    // Parameter, Label = paramId. nullptr bei 0 Parametern (I/O-Endpunkte).
     std::unique_ptr<ParameterPanel> parameterPanel;
+
+    // Processor-Nodes (FX-Chassis, 4.6): Gain-Züge + vertikale Fader-Reihe
+    std::unique_ptr<FxModulePanel> fxPanel;
 
     std::unique_ptr<juce::VBlankAttachment> teardownVBlank;
     bool tearingDown = false;

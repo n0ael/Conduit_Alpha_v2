@@ -71,6 +71,58 @@ void PushLookAndFeel::drawButtonBackground (juce::Graphics& g, juce::Button& but
     g.fillRoundedRectangle (bounds, cornerRadius);
 }
 
+void PushLookAndFeel::drawLinearSlider (juce::Graphics& g, int x, int y, int width, int height,
+                                        float sliderPos, float minSliderPos, float maxSliderPos,
+                                        juce::Slider::SliderStyle style, juce::Slider& slider)
+{
+    if (style != juce::Slider::LinearVertical && style != juce::Slider::LinearHorizontal)
+    {
+        juce::LookAndFeel_V4::drawLinearSlider (g, x, y, width, height, sliderPos,
+                                                minSliderPos, maxSliderPos, style, slider);
+        return;
+    }
+
+    const auto bounds  = juce::Rectangle<int> (x, y, width, height).toFloat();
+    const auto enabled = slider.isEnabled();
+    const auto track   = juce::Colour (0xff1b1e22);
+    const auto fill    = (enabled ? colours::textDim : colours::outline).withAlpha (0.9f);
+    const auto thumb   = enabled ? colours::ledWhite : colours::textDim;
+
+    if (style == juce::Slider::LinearVertical)
+    {
+        // Track: schmale Rinne mittig; Füllung von unten bis zum Griff
+        const auto trackRect = bounds.withSizeKeepingCentre (4.0f, bounds.getHeight());
+        g.setColour (track);
+        g.fillRoundedRectangle (trackRect, 2.0f);
+
+        g.setColour (fill);
+        g.fillRoundedRectangle (trackRect.withTop (sliderPos), 2.0f);
+
+        // Griffstein (Ableton-Fader): breites flaches Rechteck mit Mittellinie
+        const auto grip = juce::Rectangle<float> (bounds.getCentreX() - 10.0f,
+                                                  sliderPos - 5.0f, 20.0f, 10.0f);
+        g.setColour (thumb);
+        g.fillRoundedRectangle (grip, 2.0f);
+        g.setColour (track);
+        g.fillRect (grip.withSizeKeepingCentre (grip.getWidth() - 6.0f, 1.5f));
+        return;
+    }
+
+    const auto trackRect = bounds.withSizeKeepingCentre (bounds.getWidth(), 4.0f);
+    g.setColour (track);
+    g.fillRoundedRectangle (trackRect, 2.0f);
+
+    g.setColour (fill);
+    g.fillRoundedRectangle (trackRect.withRight (sliderPos), 2.0f);
+
+    const auto grip = juce::Rectangle<float> (sliderPos - 5.0f,
+                                              bounds.getCentreY() - 10.0f, 10.0f, 20.0f);
+    g.setColour (thumb);
+    g.fillRoundedRectangle (grip, 2.0f);
+    g.setColour (track);
+    g.fillRect (grip.withSizeKeepingCentre (1.5f, grip.getHeight() - 6.0f));
+}
+
 juce::Font PushLookAndFeel::getJost (float height, bool medium) const
 {
     const auto& typeface = medium ? jostMedium : jostRegular;

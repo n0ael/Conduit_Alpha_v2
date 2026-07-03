@@ -16,7 +16,7 @@
 
 ## Aktueller Meilenstein (Juli 2026 — in Arbeit)
 
-**FX-Chassis-Standard für alle Audio-FX-Module (Plan: 7 Meilensteine M1–M7) — M1 abgeschlossen:**
+**FX-Chassis-Standard für alle Audio-FX-Module (Plan: 7 Meilensteine M1–M7) — M1+M2 abgeschlossen:**
 
 Ziel des Gesamtvorhabens (User-Plan 03.07.): jedes FX-Modul bekommt einheitlich
 Ableton-artige I/O-Gain-Fader mit Meter, einen Link-Audio-Send-Button am Output,
@@ -34,7 +34,14 @@ Bezier-Fader-Kurven, Modul-Typ-Defaults). Wird als CLAUDE.md 4.6 verbindlich.
   - `AirwindowsProcessorModule` auf die zwei Core-Hooks geschrumpft (targets-Array/Schema/Bus entfallen), `stateVersion` → 2
   - **Verifikation:** 250 Testfälle / 10985 Assertions grün (Debug + ASan lokal). Neu: `ProcessorChassisTests` (13 Fälle — Schema/Rollen, Unity/Stille, klickfreie Rampe, bipolare CV-Modulation + Hard-Clamp + Blockmittel, Allocation-Audit, Meter post-Gain, Link-Send offline-safe, Migration idempotent + identisch zu createState)
   - Übergangszustand: das alte ParameterPanel zeigt die neuen Chassis-Zeilen (input_gain/output_gain/*_cv_amt) als normale Fader, CV-Ports erscheinen als zusätzliche Input-Ports — hübsch wird es in M2 (FxModulePanel)
-- **Als Nächstes:** M2 vertikale Fader-UI (GainFaderMeter + FxModulePanel) · M3 CV-Ports im Panel · M4 Link-Send-Button · M5 Dev-Modus · M6 Kurven + Defaults · M7 CLAUDE.md 4.6
+- **M2 — Vertikale Fader-UI (fertig):**
+  - `GainFaderMeter` (neu): Ableton-Kanalzug — vertikaler dB-Fader (Doppelklick = 0 dB), dB-Skala, integriertes Stereo-Meter (RMS/Peak/Peak-Hold/Clip-Feld mit Klick-Reset); Meter-Auflösung pro 30-fps-Tick transient über `GraphManager::getModuleFor` (Zombie-UI-Regel, Muster ScopeDisplay)
+  - `FxModulePanel` (neu): Pflicht-Oberfläche aller Processor-Nodes — links In-Zug, Mitte pro dsp-Parameter eine vertikale Fader-Spalte (Titel + langer Fader), rechts Out-Zug; layoutet nach `role`, Gains/cv_amt erscheinen nicht als Spalten; zentrale Breitenformel `widthForColumns`
+  - `PushLookAndFeel::drawLinearSlider`-Override: Push-/Ableton-Optik (dunkler Track, Füllung, rechteckiger Griffstein) für vertikale UND bestehende horizontale Slider app-weit
+  - `NodeComponent`: Processor-Nodes (über `type == "Processor"`, nicht factoryKey) bekommen das FxModulePanel; Kachelgröße folgt der Spaltenzahl; Teardown-Phase-1 verdrahtet
+  - Verifikation: 257 Testfälle / 11011 Assertions grün (Debug + ASan). Neu: `FxModulePanelTests` (Spalten nur für role=dsp, Fader↔Tree beidseitig, stopUpdates, Zombie-sicherer Meter-Paint ohne materialisiertes Modul, NodeComponent-Integration, Breitenformel)
+  - Übergang: CV-Ports kleben noch an der linken Kachelkante — M3 zieht sie unter die Fader (Attenuverter-Knob + Port pro Spalte)
+- **Als Nächstes:** M3 CV-Ports im Panel · M4 Link-Send-Button · M5 Dev-Modus · M6 Kurven + Defaults · M7 CLAUDE.md 4.6
 
 **Davor: Tap-Tempo-Umbau: Monitor + Set-Commit (inspiriert vom M4L-Device „TAP and CHANGE Tempo BPM"):**
 

@@ -52,6 +52,14 @@ public:
                                const juce::Colour& backgroundColour,
                                bool isHighlighted, bool isDown) override;
 
+    /** Lineare Slider im Push-Stil (Ableton-Fader-Optik): schmaler dunkler
+        Track, Füllung bis zum Griff, rechteckiger Griffstein. Vertikal für
+        die FX-Chassis-Fader (4.6), horizontal für die bestehenden Panels.
+        Andere Styles fallen an LookAndFeel_V4 zurück. */
+    void drawLinearSlider (juce::Graphics& g, int x, int y, int width, int height,
+                           float sliderPos, float minSliderPos, float maxSliderPos,
+                           juce::Slider::SliderStyle style, juce::Slider& slider) override;
+
     /** Jost in gegebener Höhe — zentraler Helper für Custom-Komponenten. */
     [[nodiscard]] juce::Font getJost (float height, bool medium = false) const;
 

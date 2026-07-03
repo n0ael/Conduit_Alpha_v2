@@ -323,7 +323,7 @@ TEST_CASE ("CurveEditor: Min/Max-Felder committen ueber onRangeChanged, unguelti
 {
     juce::ScopedJuceInitialiser_GUI juceRuntime;
 
-    conduit::CurveEditor editor { juce::String(), 0.25, 0.75 };
+    conduit::CurveEditor editor { juce::String(), 0.25, 0.75, 0.0, 1.0 };
 
     double committedMin = -1.0, committedMax = -1.0;
     bool acceptNext = true;
@@ -412,6 +412,86 @@ TEST_CASE ("FxModulePanel: curve-Property erreicht den Spalten-Fader live", "[ui
     // Reset auf linear (Undo-Pfad identisch: Property weg → Kurve weg)
     REQUIRE (rig.manager.setParameterCurve (uuid, "density", ""));
     REQUIRE_FALSE (panel.columns[0]->slider.hasResponseCurve());
+}
+
+TEST_CASE ("CurveEditor: Link-Controls committen Quelle + Amount", "[ui][chassis][link]")
+{
+    juce::ScopedJuceInitialiser_GUI juceRuntime;
+
+    conduit::CurveEditor editor { juce::String(), 0.0, 1.0, 0.0, 1.0,
+                                  { "highpass", "out_level" }, "out_level", -0.5 };
+
+    // Initial: bestehender Link vorausgewählt
+    REQUIRE (editor.linkSourceBox.getNumItems() == 3);   // kein Link + 2 Quellen
+    REQUIRE (editor.linkSourceBox.getText() == "out_level");
+    REQUIRE (editor.linkAmountSlider.getValue() == Approx (-0.5));
+
+    juce::String committedSource ("unberuehrt");
+    double committedAmount = 99.0;
+    editor.onLinkChanged = [&] (const juce::String& source, double amount)
+    {
+        committedSource = source;
+        committedAmount = amount;
+    };
+
+    // Quelle wechseln → Commit mit Quelle + aktuellem Amount
+    editor.linkSourceBox.setSelectedItemIndex (1, juce::sendNotificationSync);   // "highpass"
+    REQUIRE (committedSource == "highpass");
+    REQUIRE (committedAmount == Approx (-0.5));
+
+    // Amount ändern → Commit
+    editor.linkAmountSlider.setValue (0.75, juce::sendNotificationSync);
+    REQUIRE (committedAmount == Approx (0.75));
+
+    // "kein Link" → leere Quelle (Link lösen)
+    editor.linkSourceBox.setSelectedItemIndex (0, juce::sendNotificationSync);
+    REQUIRE (committedSource.isEmpty());
+}
+
+TEST_CASE ("CurveEditor: Range-Endpunkte sind draggbar, Tabs schalten Fader/Link-Kurve", "[ui][chassis][link]")
+{
+    juce::ScopedJuceInitialiser_GUI juceRuntime;
+
+    conduit::CurveEditor editor { juce::String(), 0.2, 0.8, 0.0, 1.0,
+                                  { "out_level" }, "out_level", -1.0 };
+
+    double committedMin = -1.0, committedMax = -1.0;
+    editor.onRangeChanged = [&] (double newMin, double newMax)
+    {
+        committedMin = newMin;
+        committedMax = newMax;
+        return true;
+    };
+
+    // Max-Endpunkt nach unten ziehen → userMax folgt, min bleibt
+    editor.dragEndpointToValue (true, 0.6);
+    REQUIRE (committedMax == Approx (0.6));
+    REQUIRE (committedMin == Approx (0.2));
+    REQUIRE (editor.maxEdit.getText().getDoubleValue() == Approx (0.6));
+
+    // Min-Endpunkt kann max nie überholen (Mindestabstand)
+    editor.dragEndpointToValue (false, 0.9);
+    REQUIRE (committedMin < 0.6);
+
+    // Tabs: Link-Tab wählbar (Quelle gesetzt); Kurven-Commits landen getrennt
+    juce::String faderCurveText ("unberuehrt"), linkCurveText ("unberuehrt");
+    editor.onCurveChanged     = [&] (const juce::String& t) { faderCurveText = t; };
+    editor.onLinkCurveChanged = [&] (const juce::String& t) { linkCurveText = t; };
+
+    editor.setActiveTab (conduit::CurveEditor::Tab::link);
+    REQUIRE (editor.getActiveTab() == conduit::CurveEditor::Tab::link);
+    editor.setHandle (0, 0.9f, 0.1f);
+    REQUIRE (linkCurveText.isNotEmpty());
+    REQUIRE (faderCurveText == "unberuehrt");
+
+    editor.setActiveTab (conduit::CurveEditor::Tab::fader);
+    editor.setHandle (0, 0.1f, 0.9f);
+    REQUIRE (faderCurveText != "unberuehrt");
+
+    // Ohne Quelle ist der Link-Tab gesperrt
+    editor.linkSourceBox.setSelectedItemIndex (0, juce::sendNotificationSync);   // kein Link
+    editor.setActiveTab (conduit::CurveEditor::Tab::link);
+    REQUIRE (editor.getActiveTab() == conduit::CurveEditor::Tab::fader);
 }
 
 TEST_CASE ("FxModulePanel: widthForColumns ist die zentrale Breitenformel", "[ui][chassis]")

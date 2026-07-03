@@ -70,7 +70,9 @@ ProcessorModule::ProcessorModule (std::vector<ChassisParamDesc> dspParameterDesc
         dspBase[i].store (dspParams[i].defaultValue, std::memory_order_relaxed);
         userRangeMin[i].store (dspParams[i].hardMin, std::memory_order_relaxed);
         userRangeMax[i].store (dspParams[i].hardMax, std::memory_order_relaxed);
+        linkSource[i].store (-1, std::memory_order_relaxed);
         effective[i] = dspParams[i].defaultValue;
+        stage1[i]    = dspParams[i].defaultValue;
     }
 }
 
@@ -131,6 +133,69 @@ void ProcessorModule::setParameterUserRange (const juce::String& dspParamId,
         userRangeMax[i].store (juce::jmax (lo, hi), std::memory_order_relaxed);
         return;
     }
+}
+
+void ProcessorModule::setParameterLink (const juce::String& targetParamId,
+                                        const juce::String& sourceParamId, float amount) noexcept
+{
+    for (size_t target = 0; target < dspParams.size(); ++target)
+    {
+        if (targetParamId != dspParams[target].id)
+            continue;
+
+        int resolvedSource = -1;
+
+        if (sourceParamId.isNotEmpty() && sourceParamId != targetParamId)
+            for (size_t source = 0; source < dspParams.size(); ++source)
+                if (sourceParamId == dspParams[source].id)
+                {
+                    resolvedSource = static_cast<int> (source);
+                    break;
+                }
+
+        linkAmount[target].store (juce::jlimit (-1.0f, 1.0f, amount), std::memory_order_relaxed);
+        linkSource[target].store (resolvedSource, std::memory_order_relaxed);
+        return;
+    }
+}
+
+void ProcessorModule::setParameterLinkCurve (const juce::String& targetParamId,
+                                             std::optional<ChassisSchema::BezierCurve> curve) noexcept
+{
+    for (size_t i = 0; i < dspParams.size(); ++i)
+    {
+        if (targetParamId != dspParams[i].id)
+            continue;
+
+        if (curve.has_value())
+        {
+            linkCurveX1[i].store (curve->x1, std::memory_order_relaxed);
+            linkCurveY1[i].store (curve->y1, std::memory_order_relaxed);
+            linkCurveX2[i].store (curve->x2, std::memory_order_relaxed);
+            linkCurveY2[i].store (curve->y2, std::memory_order_relaxed);
+        }
+
+        linkCurveOn[i].store (curve.has_value(), std::memory_order_relaxed);
+        return;
+    }
+}
+
+bool ProcessorModule::hasParameterLinkCurve (const juce::String& dspParamId) const noexcept
+{
+    for (size_t i = 0; i < dspParams.size(); ++i)
+        if (dspParamId == dspParams[i].id)
+            return linkCurveOn[i].load (std::memory_order_relaxed);
+
+    return false;
+}
+
+int ProcessorModule::getParameterLinkSourceIndex (const juce::String& dspParamId) const noexcept
+{
+    for (size_t i = 0; i < dspParams.size(); ++i)
+        if (dspParamId == dspParams[i].id)
+            return linkSource[i].load (std::memory_order_relaxed);
+
+    return -1;
 }
 
 juce::Range<float> ProcessorModule::getParameterUserRange (const juce::String& dspParamId) const noexcept
@@ -249,9 +314,51 @@ void ProcessorModule::processBlock (juce::AudioBuffer<float>& buffer, juce::Midi
             cvMagnitude = sum / static_cast<float> (numFrames);
         }
 
-        effective[index] = ChassisSchema::computeEffective (
+        stage1[index] = ChassisSchema::computeEffective (
             dspBase[index].load (std::memory_order_relaxed), cvMagnitude,
             cvAmount[index].load (std::memory_order_relaxed),
+            userRangeMin[index].load (std::memory_order_relaxed),
+            userRangeMax[index].load (std::memory_order_relaxed));
+    }
+
+    // 1b) Control-Links (4.6, modulintern): Stufe 2 liest AUSSCHLIESSLICH
+    //     Stufe-1-Werte — Zyklen (A↔B) sind dadurch harmlos, die
+    //     Reihenfolge egal. Quelle normalisiert auf ihren User-Bereich.
+    for (int i = 0; i < getNumDspParameters(); ++i)
+    {
+        const auto index  = static_cast<size_t> (i);
+        const auto source = linkSource[index].load (std::memory_order_relaxed);
+
+        if (source < 0 || source >= getNumDspParameters())
+        {
+            effective[index] = stage1[index];
+            continue;
+        }
+
+        const auto sourceIndex = static_cast<size_t> (source);
+        const auto srcMin      = userRangeMin[sourceIndex].load (std::memory_order_relaxed);
+        const auto srcMax      = userRangeMax[sourceIndex].load (std::memory_order_relaxed);
+        const auto srcSpan     = srcMax - srcMin;
+        auto srcNorm           = srcSpan > 0.0f
+                               ? juce::jlimit (0.0f, 1.0f, (stage1[sourceIndex] - srcMin) / srcSpan)
+                               : 0.0f;
+
+        // Optionale Link-Response-Kurve (z.B. Gain-Matching): formt die
+        // normalisierte Quelle — pure Bezier-Auswertung, alloc-/lock-frei
+        if (linkCurveOn[index].load (std::memory_order_relaxed))
+        {
+            const ChassisSchema::BezierCurve curve {
+                linkCurveX1[index].load (std::memory_order_relaxed),
+                linkCurveY1[index].load (std::memory_order_relaxed),
+                linkCurveX2[index].load (std::memory_order_relaxed),
+                linkCurveY2[index].load (std::memory_order_relaxed)
+            };
+            srcNorm = ChassisSchema::evaluateCurve (curve, srcNorm);
+        }
+
+        effective[index] = ChassisSchema::computeEffective (
+            stage1[index], srcNorm,
+            linkAmount[index].load (std::memory_order_relaxed),
             userRangeMin[index].load (std::memory_order_relaxed),
             userRangeMax[index].load (std::memory_order_relaxed));
     }

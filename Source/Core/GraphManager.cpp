@@ -236,6 +236,73 @@ bool GraphManager::setParameterCurve (const juce::String& nodeUuid, const juce::
     return true;
 }
 
+bool GraphManager::setParameterLink (const juce::String& nodeUuid, const juce::String& targetParamId,
+                                     const juce::String& sourceParamId, double amount)
+{
+    JUCE_ASSERT_MESSAGE_THREAD
+
+    auto nodeTree = rootState.getChildWithName (id::nodes)
+                        .getChildWithProperty (id::nodeId, nodeUuid);
+    const auto params = nodeTree.getChildWithName (id::parameters);
+    auto target = params.getChildWithProperty (id::paramId, targetParamId);
+
+    if (! target.isValid()
+        || ChassisSchema::roleOf (target) != juce::String (ChassisSchema::roleDsp)
+        || sourceParamId == targetParamId)
+        return false;
+
+    // Nicht-leere Quelle muss ein dsp-Parameter DESSELBEN Moduls sein
+    if (sourceParamId.isNotEmpty())
+    {
+        const auto source = params.getChildWithProperty (id::paramId, sourceParamId);
+
+        if (! source.isValid()
+            || ChassisSchema::roleOf (source) != juce::String (ChassisSchema::roleDsp))
+            return false;
+    }
+
+    undoManager.beginNewTransaction (sourceParamId.isEmpty() ? "Control-Link lösen"
+                                                             : "Control-Link setzen");
+
+    if (sourceParamId.isEmpty())
+    {
+        target.removeProperty (id::paramLinkSource, &undoManager);
+        target.removeProperty (id::paramLinkAmount, &undoManager);
+    }
+    else
+    {
+        target.setProperty (id::paramLinkSource, sourceParamId, &undoManager);
+        target.setProperty (id::paramLinkAmount, juce::jlimit (-1.0, 1.0, amount), &undoManager);
+    }
+
+    return true;
+}
+
+bool GraphManager::setParameterLinkCurve (const juce::String& nodeUuid, const juce::String& paramId,
+                                          const juce::String& curveText)
+{
+    JUCE_ASSERT_MESSAGE_THREAD
+
+    auto nodeTree = rootState.getChildWithName (id::nodes)
+                        .getChildWithProperty (id::nodeId, nodeUuid);
+    auto param = nodeTree.getChildWithName (id::parameters)
+                     .getChildWithProperty (id::paramId, paramId);
+
+    if (! param.isValid()
+        || ChassisSchema::roleOf (param) != juce::String (ChassisSchema::roleDsp)
+        || (curveText.isNotEmpty() && ! ChassisSchema::parseCurve (curveText).has_value()))
+        return false;
+
+    undoManager.beginNewTransaction ("Link-Kurve ändern");
+
+    if (curveText.isEmpty())
+        param.removeProperty (id::paramLinkCurve, &undoManager);   // linear
+    else
+        param.setProperty (id::paramLinkCurve, curveText, &undoManager);
+
+    return true;
+}
+
 bool GraphManager::setLinkSendEnabled (const juce::String& nodeUuid, bool enabled)
 {
     JUCE_ASSERT_MESSAGE_THREAD
@@ -677,9 +744,11 @@ void GraphManager::valueTreePropertyChanged (juce::ValueTree& tree, const juce::
         return;
     }
 
-    // User-Regelbereich (Dev-Modus 4.6, auch via Undo/Preset-Diff):
-    // Wirkbereich der CV-Modulation LIVE ins Modul spiegeln — KEIN Rebuild.
-    if ((property == id::paramUserMin || property == id::paramUserMax)
+    // User-Regelbereich / Control-Link (Dev-Modus 4.6, auch via Undo/
+    // Preset-Diff): LIVE ins Modul spiegeln — KEIN Rebuild.
+    if ((property == id::paramUserMin || property == id::paramUserMax
+         || property == id::paramLinkSource || property == id::paramLinkAmount
+         || property == id::paramLinkCurve)
         && tree.hasType (id::parameter))
     {
         const auto nodeTree = tree.getParent().getParent();
@@ -687,13 +756,33 @@ void GraphManager::valueTreePropertyChanged (juce::ValueTree& tree, const juce::
         if (nodeTree.hasType (id::node))
             if (auto* processor = dynamic_cast<ProcessorModule*> (
                     getModuleFor (nodeTree.getProperty (id::nodeId).toString())))
-                syncParameterUserRange (tree, *processor);
+            {
+                if (property == id::paramUserMin || property == id::paramUserMax)
+                    syncParameterUserRange (tree, *processor);
+                else
+                    syncParameterLink (tree, *processor);
+            }
 
         return;
     }
 
     // Sonst bewusst keine Reaktion — Topologie ändert sich hier nicht,
     // ein Graph-Rebuild wäre falsch (6.1).
+}
+
+void GraphManager::syncParameterLink (const juce::ValueTree& parameterTree,
+                                      ProcessorModule& processor)
+{
+    const auto paramId = parameterTree.getProperty (id::paramId).toString();
+
+    processor.setParameterLink (
+        paramId,
+        parameterTree.getProperty (id::paramLinkSource).toString(),
+        static_cast<float> ((double) parameterTree.getProperty (id::paramLinkAmount, 0.0)));
+
+    processor.setParameterLinkCurve (
+        paramId,
+        ChassisSchema::parseCurve (parameterTree.getProperty (id::paramLinkCurve).toString()));
 }
 
 void GraphManager::syncParameterUserRange (const juce::ValueTree& parameterTree,
@@ -923,11 +1012,14 @@ std::unique_ptr<ConduitModule> GraphManager::materializeModule (juce::ValueTree 
         {
             const auto param = params.getChild (i);
 
-            if (ChassisSchema::roleOf (param) != juce::String (ChassisSchema::roleDsp)
-                || ! (param.hasProperty (id::paramUserMin) || param.hasProperty (id::paramUserMax)))
+            if (ChassisSchema::roleOf (param) != juce::String (ChassisSchema::roleDsp))
                 continue;
 
-            syncParameterUserRange (param, *processor);
+            if (param.hasProperty (id::paramUserMin) || param.hasProperty (id::paramUserMax))
+                syncParameterUserRange (param, *processor);
+
+            if (param.hasProperty (id::paramLinkSource) || param.hasProperty (id::paramLinkCurve))
+                syncParameterLink (param, *processor);
         }
     }
 

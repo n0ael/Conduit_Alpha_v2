@@ -70,6 +70,12 @@ namespace id
     inline const juce::Identifier paramUiHidden { "uiHidden" };  // optional: Spalte ausgeblendet
     inline const juce::Identifier paramCurve    { "curve" };     // optional: "x1 y1 x2 y2" (Bezier)
 
+    // Control-Linking (4.6, modulintern): dieser Parameter folgt einem
+    // anderen dsp-Parameter DESSELBEN Moduls als interne Modulation
+    inline const juce::Identifier paramLinkSource { "linkSource" };  // optional: paramId der Quelle
+    inline const juce::Identifier paramLinkAmount { "linkAmount" };  // optional: bipolar −1..+1
+    inline const juce::Identifier paramLinkCurve  { "linkCurve" };   // optional: Response-Kurve (Bezier)
+
     // FX-Chassis: Link-Audio-Send-Tap am Modul-Ausgang (Patch-Zustand)
     inline const juce::Identifier linkSendEnabled { "linkSendEnabled" };
 

@@ -12,37 +12,69 @@ namespace conduit
 //==============================================================================
 /**
     Parameter-Setup-Popup des Dev-Modus (4.6) — lebt in einer CallOutBox
-    über der Fader-Spalte: Bezier-Response-Kurve (zwei draggbare Kontroll-
-    punkte, auf [0,1] begrenzt → Monotonie, ChassisSchema-Doku) PLUS die
-    Min/Max-Felder des User-Regelbereichs (User-Wunsch 03.07.: Range gehört
-    ins Kurven-Tool integriert).
+    über der Fader-Spalte. Zwei Tabs:
 
-    onCurveChanged feuert bei jedem Drag-Schritt mit dem Kurven-String
-    ("x1 y1 x2 y2") bzw. einem LEEREN String für linear (Reset);
-    onRangeChanged beim Committen der Min/Max-Felder — liefert der Aufrufer
-    false (vom GraphManager abgelehnt), restauriert der Editor die Felder.
-    Beide committen undo-fähig über den GraphManager.
+    FADER-Tab: Bezier-Response-Kurve des Faders im Fenster der HARD-Range —
+    die Kurve läuft von (0, userMin) nach (1, userMax), die beiden ENDPUNKTE
+    sind vertikal draggbar und setzen userMin/userMax direkt (User-Wunsch
+    03.07.: Range-Punkte zum Anfassen); die Min/Max-Textfelder bleiben
+    zusätzlich. Zwei Kontrollpunkte formen die Kurve (auf [0,1] begrenzt →
+    Monotonie, ChassisSchema-Doku), Reset auf linear.
+
+    LINK-Tab (aktiv, sobald eine Link-Quelle gewählt ist): Response-Kurve
+    des Control-Links (normalisierte Quelle → Modulationsform, z.B. fürs
+    Gain-Matching) — reine 0..1-Ansicht ohne Range-Endpunkte.
+
+    Callbacks committen undo-fähig über den GraphManager:
+      onCurveChanged      — Fader-Kurve ("x1 y1 x2 y2", leer = linear)
+      onRangeChanged      — userMin/userMax; false = abgelehnt → restauriert
+      onLinkChanged       — Link-Quelle (leer = lösen) + Amount −1..+1
+      onLinkCurveChanged  — Link-Kurve (leer = linear)
 */
 class CurveEditor final : public juce::Component
 {
 public:
-    CurveEditor (const juce::String& initialCurve, double userMin, double userMax);
+    /** linkSources: dsp-Parameter-Ids DESSELBEN Moduls (ohne den eigenen). */
+    CurveEditor (const juce::String& initialCurve, double userMin, double userMax,
+                 double hardMinToUse, double hardMaxToUse,
+                 const juce::StringArray& linkSources = {},
+                 const juce::String& currentLinkSource = {},
+                 double currentLinkAmount = 0.0,
+                 const juce::String& initialLinkCurve = {});
 
     std::function<void (const juce::String&)> onCurveChanged;
     std::function<bool (double newMin, double newMax)> onRangeChanged;
+    std::function<void (const juce::String& source, double amount)> onLinkChanged;
+    std::function<void (const juce::String&)> onLinkCurveChanged;
 
-    static constexpr int preferredSize = 160;
+    static constexpr int preferredSize = 170;
 
-    // Min/Max-Felder public — UI-Tests treiben sie direkt (Muster Panel)
-    juce::Label minEdit, maxEdit;
+    //==========================================================================
+    enum class Tab { fader, link };
 
-    [[nodiscard]] ChassisSchema::BezierCurve getCurve() const noexcept { return curve; }
+    void setActiveTab (Tab tab);
+    [[nodiscard]] Tab getActiveTab() const noexcept { return activeTab; }
 
-    /** Kontrollpunkt setzen (0 oder 1, Werte 0..1) — für Tests ohne Maus. */
+    /** Kurve des AKTIVEN Tabs. */
+    [[nodiscard]] ChassisSchema::BezierCurve getCurve() const noexcept;
+
+    /** Kontrollpunkt (0/1) des aktiven Tabs setzen — für Tests ohne Maus. */
     void setHandle (int handleIndex, float x, float y);
 
-    /** Reset auf linear (entfernt die Kurve beim Aufrufer). */
+    /** Range-Endpunkt (Fader-Tab) auf einen WERT ziehen — für Tests ohne
+        Maus; committet via onRangeChanged (abgelehnt = keine Änderung). */
+    void dragEndpointToValue (bool maxEndpoint, double value);
+
+    /** Reset der Kurve des aktiven Tabs auf linear. */
     void resetToLinear();
+
+    //==========================================================================
+    // Controls public — UI-Tests treiben sie direkt (Muster Panel)
+    juce::Label minEdit, maxEdit;
+    juce::ComboBox linkSourceBox;
+    juce::Slider linkAmountSlider { juce::Slider::LinearHorizontal, juce::Slider::NoTextBox };
+    juce::TextButton faderTabButton { "Fader" };
+    juce::TextButton linkTabButton { "Link" };
 
     void paint (juce::Graphics& g) override;
     void resized() override;
@@ -50,16 +82,35 @@ public:
     void mouseDrag (const juce::MouseEvent& event) override;
 
 private:
+    struct CurveState
+    {
+        ChassisSchema::BezierCurve curve { 0.25f, 0.25f, 0.75f, 0.75f };
+        bool isLinear = true;
+    };
+
+    [[nodiscard]] CurveState& activeCurve() noexcept;
+    [[nodiscard]] const CurveState& activeCurve() const noexcept;
+
     [[nodiscard]] juce::Rectangle<float> plotArea() const;
-    [[nodiscard]] juce::Point<float> handlePosition (int handleIndex) const;
-    void notifyChange();
+
+    // Fader-Tab: Wert ↔ Bildschirm-y im HARD-Range-Fenster
+    [[nodiscard]] float yForValue (double value) const;
+    [[nodiscard]] double valueForY (float y) const;
+
+    [[nodiscard]] juce::Point<float> handlePosition (int handleIndex) const;   // 0/1 Kontrolle, 2 min, 3 max
+    void notifyCurveChange();
     void commitRange();
     void refreshRangeFields();
+    void commitLink();
+    void updateTabButtons();
 
-    ChassisSchema::BezierCurve curve;
-    bool isLinear = true;      // Anzeige-Zustand: keine Kurve gesetzt
+    CurveState faderCurve, linkCurve;
+    Tab activeTab = Tab::fader;
     int draggedHandle = -1;
+
     double currentMin = 0.0, currentMax = 1.0;
+    const double hardMin, hardMax;
+    juce::StringArray sources;
 
     juce::TextButton resetButton { "linear" };
 

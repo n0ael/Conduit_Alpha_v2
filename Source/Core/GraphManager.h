@@ -130,6 +130,21 @@ public:
     bool setParameterCurve (const juce::String& nodeUuid, const juce::String& paramId,
                             const juce::String& curveText);
 
+    /** Patch-Aktion (Dev-Modus 4.6): Control-Link — targetParamId folgt
+        sourceParamId (dsp-Parameter DESSELBEN Moduls) als interne
+        Modulation mit bipolarem Amount (−1..+1, negativ = gegenläufig).
+        Leere Quelle löscht den Link. Undo-fähig (eine Transaktion), wird
+        live ins Modul gespiegelt — kein Rebuild. false bei unbekannten/
+        nicht-dsp-Parametern oder Quelle == Ziel. Message Thread. */
+    bool setParameterLink (const juce::String& nodeUuid, const juce::String& targetParamId,
+                           const juce::String& sourceParamId, double amount);
+
+    /** Patch-Aktion (Dev-Modus 4.6): Response-Kurve des Control-Links —
+        formt die normalisierte Quelle (z.B. Gain-Matching). "x1 y1 x2 y2"
+        oder leer für linear. Undo-fähig, live gespiegelt. Message Thread. */
+    bool setParameterLinkCurve (const juce::String& nodeUuid, const juce::String& paramId,
+                                const juce::String& curveText);
+
     /** Dev-Modus 4.6: aktuelle dsp-Overrides des Nodes (userMin/userMax/
         uiHidden/curve) als Modul-Typ-Defaults sichern — greift bei künftigen
         Neu-Anlagen dieses factoryIds. false ohne ModuleUiDefaults/Node. */
@@ -283,6 +298,11 @@ private:
         Wirkbereich der CV-Modulation. Kein Rebuild. */
     static void syncParameterUserRange (const juce::ValueTree& parameterTree,
                                         ProcessorModule& processor);
+
+    /** Tree → Atomic (Dev-Modus 4.6): spiegelt den Control-Link
+        (linkSource/linkAmount) ins Chassis. Kein Rebuild. */
+    static void syncParameterLink (const juce::ValueTree& parameterTree,
+                                   ProcessorModule& processor);
 
     [[nodiscard]] bool isManagedGraphNode (juce::AudioProcessorGraph::NodeID nodeId) const;
     [[nodiscard]] bool isExternalGraphNode (juce::AudioProcessorGraph::NodeID nodeId) const;

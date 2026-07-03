@@ -68,7 +68,8 @@ void ModuleUiDefaults::captureFromNode (const juce::ValueTree& nodeTree)
         const auto hasOverride = param.hasProperty (id::paramUserMin)
                               || param.hasProperty (id::paramUserMax)
                               || (bool) param.getProperty (id::paramUiHidden, false)
-                              || param.hasProperty (id::paramCurve);
+                              || param.hasProperty (id::paramCurve)
+                              || param.hasProperty (id::paramLinkSource);
 
         if (! hasOverride)
             continue;
@@ -87,6 +88,15 @@ void ModuleUiDefaults::captureFromNode (const juce::ValueTree& nodeTree)
 
         if (param.hasProperty (id::paramCurve))
             entry->setAttribute ("curve", param.getProperty (id::paramCurve).toString());
+
+        if (param.hasProperty (id::paramLinkSource))
+        {
+            entry->setAttribute ("linkSource", param.getProperty (id::paramLinkSource).toString());
+            entry->setAttribute ("linkAmount", (double) param.getProperty (id::paramLinkAmount, 0.0));
+
+            if (param.hasProperty (id::paramLinkCurve))
+                entry->setAttribute ("linkCurve", param.getProperty (id::paramLinkCurve).toString());
+        }
     }
 
     // Keine Overrides mehr → Eintrag löschen (Reset auf Werks-Defaults)
@@ -142,6 +152,15 @@ void ModuleUiDefaults::applyTo (juce::ValueTree& nodeTree)
 
         if (entry->hasAttribute ("curve"))
             param.setProperty (id::paramCurve, entry->getStringAttribute ("curve"), nullptr);
+
+        if (entry->hasAttribute ("linkSource"))
+        {
+            param.setProperty (id::paramLinkSource, entry->getStringAttribute ("linkSource"), nullptr);
+            param.setProperty (id::paramLinkAmount, entry->getDoubleAttribute ("linkAmount"), nullptr);
+
+            if (entry->hasAttribute ("linkCurve"))
+                param.setProperty (id::paramLinkCurve, entry->getStringAttribute ("linkCurve"), nullptr);
+        }
     }
 }
 

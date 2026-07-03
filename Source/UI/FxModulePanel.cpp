@@ -211,12 +211,33 @@ void FxModulePanel::buildColumns()
                                            button = &column->curveButton]
             {
                 const auto param = paramTreeFor (paramId);
+
+                // Link-Quellen: alle ANDEREN dsp-Parameter dieses Moduls
+                juce::StringArray linkSources;
+                const auto parameters = parametersTree();
+
+                for (int i = 0; i < parameters.getNumChildren(); ++i)
+                {
+                    const auto candidate = parameters.getChild (i);
+                    const auto candidateId = candidate.getProperty (id::paramId).toString();
+
+                    if (candidateId != paramId
+                        && ChassisSchema::roleOf (candidate) == juce::String (ChassisSchema::roleDsp))
+                        linkSources.add (candidateId);
+                }
+
                 auto editor = std::make_unique<CurveEditor> (
                     param.getProperty (id::paramCurve).toString(),
                     (double) param.getProperty (id::paramUserMin,
                                                 param.getProperty (id::paramMin, 0.0)),
                     (double) param.getProperty (id::paramUserMax,
-                                                param.getProperty (id::paramMax, 1.0)));
+                                                param.getProperty (id::paramMax, 1.0)),
+                    (double) param.getProperty (id::paramMin, 0.0),
+                    (double) param.getProperty (id::paramMax, 1.0),
+                    linkSources,
+                    param.getProperty (id::paramLinkSource).toString(),
+                    (double) param.getProperty (id::paramLinkAmount, 0.0),
+                    param.getProperty (id::paramLinkCurve).toString());
 
                 editor->onCurveChanged = [this, uuid, paramId] (const juce::String& curveText)
                 {
@@ -225,6 +246,14 @@ void FxModulePanel::buildColumns()
                 editor->onRangeChanged = [this, uuid, paramId] (double newMin, double newMax)
                 {
                     return graphManager.setParameterUserRange (uuid, paramId, newMin, newMax);
+                };
+                editor->onLinkChanged = [this, uuid, paramId] (const juce::String& source, double amount)
+                {
+                    graphManager.setParameterLink (uuid, paramId, source, amount);
+                };
+                editor->onLinkCurveChanged = [this, uuid, paramId] (const juce::String& curveText)
+                {
+                    graphManager.setParameterLinkCurve (uuid, paramId, curveText);
                 };
 
                 juce::CallOutBox::launchAsynchronously (std::move (editor),

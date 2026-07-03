@@ -152,6 +152,27 @@ public:
     /** Aktueller Wirkbereich (Diagnose/Tests); leerer Range bei unbekannter Id. */
     [[nodiscard]] juce::Range<float> getParameterUserRange (const juce::String& dspParamId) const noexcept;
 
+    /** [Message Thread] Control-Link (4.6, modulintern): targetParamId folgt
+        sourceParamId als interne Modulation — Audio-Thread zweistufig:
+        Stufe 1 = base + CV, Stufe 2 = clamp(stufe1 + normQuelle·amount·
+        userRange). Beide Stufen lesen Stufe-1-Werte → Zyklen (A↔B) sind
+        harmlos. Leere/unbekannte Quelle oder Quelle == Ziel löscht den Link.
+        Der GraphManager speist bei Materialisierung + Property-Änderung. */
+    void setParameterLink (const juce::String& targetParamId,
+                           const juce::String& sourceParamId, float amount) noexcept;
+
+    /** Aktive Link-Quelle eines Parameters (Diagnose/Tests): dsp-Index der
+        Quelle oder −1. */
+    [[nodiscard]] int getParameterLinkSourceIndex (const juce::String& dspParamId) const noexcept;
+
+    /** [Message Thread] Response-Kurve des Control-Links (4.6): formt die
+        normalisierte Quelle vor der Modulation (z.B. Gain-Matching) —
+        nullopt = linear. */
+    void setParameterLinkCurve (const juce::String& targetParamId,
+                                std::optional<ChassisSchema::BezierCurve> curve) noexcept;
+
+    [[nodiscard]] bool hasParameterLinkCurve (const juce::String& dspParamId) const noexcept;
+
 protected:
     //==========================================================================
     // Chassis-Hooks — die gesamte Modul-DSP lebt hier
@@ -189,11 +210,20 @@ private:
     // Manager), Audio Thread liest; Default = Hard-Range der Descs
     std::array<std::atomic<float>, maxDspParameters> userRangeMin {};
     std::array<std::atomic<float>, maxDspParameters> userRangeMax {};
+
+    // Control-Links (4.6): Quelle als dsp-Index (−1 = kein Link) + Amount;
+    // optionale Response-Kurve als 4 Kontrollwerte + Enable-Flag
+    std::array<std::atomic<int>,   maxDspParameters> linkSource {};
+    std::array<std::atomic<float>, maxDspParameters> linkAmount {};
+    std::array<std::atomic<bool>,  maxDspParameters> linkCurveOn {};
+    std::array<std::atomic<float>, maxDspParameters> linkCurveX1 {}, linkCurveY1 {},
+                                                     linkCurveX2 {}, linkCurveY2 {};
     std::atomic<float> inputGainDb  { static_cast<float> (ChassisSchema::gainDefaultDb) };
     std::atomic<float> outputGainDb { static_cast<float> (ChassisSchema::gainDefaultDb) };
 
     // Nur Audio Thread
     std::array<float, maxDspParameters> effective {};
+    std::array<float, maxDspParameters> stage1 {};   // base + CV, vor den Links
     juce::SmoothedValue<float> smoothedInputGain  { 1.0f };
     juce::SmoothedValue<float> smoothedOutputGain { 1.0f };
     juce::AudioBuffer<float> audioView;                 // Alias auf Kanäle 0..1, alloc-frei

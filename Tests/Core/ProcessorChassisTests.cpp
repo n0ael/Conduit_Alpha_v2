@@ -42,6 +42,32 @@ protected:
     }
 };
 
+/** Zwei DSP-Parameter — für Control-Link-Tests (Quelle → Ziel). */
+class DualChassisModule final : public conduit::ProcessorModule
+{
+public:
+    DualChassisModule()
+        : ProcessorModule ({ { "alpha", 0.5f, 0.0f, 1.0f },
+                             { "beta",  0.8f, 0.0f, 1.0f } })
+    {
+    }
+
+    [[nodiscard]] juce::String getModuleId() const override          { return "test_dual"; }
+    [[nodiscard]] juce::String getModuleDisplayName() const override { return "Test Dual"; }
+    [[nodiscard]] int getStateVersion() const override               { return chassisStateVersion; }
+
+    float lastAlpha = 0.0f, lastBeta = 0.0f;
+
+protected:
+    void prepareCore (double, int) override {}
+
+    void processCore (juce::AudioBuffer<float>&, juce::MidiBuffer&) override
+    {
+        lastAlpha = effectiveParam (0);
+        lastBeta  = effectiveParam (1);
+    }
+};
+
 void fillChannel (juce::AudioBuffer<float>& buffer, int channel, float value)
 {
     auto* data = buffer.getWritePointer (channel);
@@ -297,6 +323,105 @@ TEST_CASE ("FX-Chassis: CV-Modulation im Richtungs-Modell (Betrag + Attenuverter
         cvAmt->store (-1.0f, std::memory_order_relaxed);
         module.processBlock (buffer, midi);
         REQUIRE (module.lastEffective == Approx (0.2f));
+    }
+}
+
+TEST_CASE ("FX-Chassis: Control-Link moduliert das Ziel aus der Stufe-1-Quelle", "[chassis][link]")
+{
+    DualChassisModule module;
+    REQUIRE (module.prepareForGraph (48000.0, 128).wasOk());
+
+    juce::AudioBuffer<float> buffer (4, 128);   // 2 Audio + 2 CV
+    juce::MidiBuffer midi;
+
+    SECTION ("Negativer Amount: Quelle hoch -> Ziel runter (User-Beispiel)")
+    {
+        module.setParameterLink ("beta", "alpha", -1.0f);
+
+        buffer.clear();
+        module.processBlock (buffer, midi);
+
+        // alpha 0.5 → srcNorm 0.5; beta = clamp(0.8 − 0.5·1·1) = 0.3
+        REQUIRE (module.lastAlpha == Approx (0.5f));
+        REQUIRE (module.lastBeta  == Approx (0.3f));
+
+        // Quelle auf Maximum → Ziel fällt weiter (0.8 − 1.0 → clamp 0)
+        module.getParameterTarget ("alpha")->store (1.0f, std::memory_order_relaxed);
+        module.processBlock (buffer, midi);
+        REQUIRE (module.lastBeta == Approx (0.0f));
+    }
+
+    SECTION ("Link folgt auch der CV-Modulation der Quelle (Stufe 1)")
+    {
+        module.setParameterLink ("beta", "alpha", -1.0f);
+        module.getParameterTarget ("alpha")->store (0.0f, std::memory_order_relaxed);
+        module.getParameterTarget ("alpha_cv_amt")->store (1.0f, std::memory_order_relaxed);
+
+        buffer.clear();
+        fillChannel (buffer, 2, 0.5f);   // CV-Kanal von alpha
+        module.processBlock (buffer, midi);
+
+        // alpha Stufe 1 = 0 + 0.5 = 0.5 → beta = 0.8 − 0.5 = 0.3
+        REQUIRE (module.lastAlpha == Approx (0.5f));
+        REQUIRE (module.lastBeta  == Approx (0.3f));
+    }
+
+    SECTION ("Zyklus A<->B ist harmlos: beide lesen Stufe-1-Werte")
+    {
+        module.setParameterLink ("beta",  "alpha", -1.0f);
+        module.setParameterLink ("alpha", "beta",  -1.0f);
+
+        buffer.clear();
+        module.processBlock (buffer, midi);
+
+        // Stufe 1: alpha 0.5, beta 0.8 → alpha = 0.5 − 0.8 → 0; beta = 0.8 − 0.5 = 0.3
+        REQUIRE (module.lastAlpha == Approx (0.0f));
+        REQUIRE (module.lastBeta  == Approx (0.3f));
+        REQUIRE (std::isfinite (module.lastAlpha));
+    }
+
+    SECTION ("Leere Quelle loest den Link")
+    {
+        module.setParameterLink ("beta", "alpha", -1.0f);
+        module.setParameterLink ("beta", "", 0.0f);
+
+        buffer.clear();
+        module.processBlock (buffer, midi);
+        REQUIRE (module.lastBeta == Approx (0.8f));
+    }
+
+    SECTION ("Link-Response-Kurve formt die Quelle (Gain-Matching)")
+    {
+        module.setParameterLink ("beta", "alpha", -1.0f);
+
+        const auto curve = conduit::ChassisSchema::parseCurve ("0.9 0.1 0.9 0.4");
+        REQUIRE (curve.has_value());
+        module.setParameterLinkCurve ("beta", curve);
+        REQUIRE (module.hasParameterLinkCurve ("beta"));
+
+        buffer.clear();
+        module.processBlock (buffer, midi);
+
+        // srcNorm 0.5 → durch die Kurve geformt, dann Richtungs-Modell
+        const auto shaped = conduit::ChassisSchema::evaluateCurve (*curve, 0.5f);
+        REQUIRE (module.lastBeta == Approx (juce::jlimit (0.0f, 1.0f, 0.8f - shaped)));
+
+        // Kurve entfernen → wieder linear
+        module.setParameterLinkCurve ("beta", std::nullopt);
+        module.processBlock (buffer, midi);
+        REQUIRE (module.lastBeta == Approx (0.3f));
+    }
+
+    SECTION ("Link-Tiefe skaliert mit der User-Range des Ziels")
+    {
+        module.setParameterLink ("beta", "alpha", -1.0f);
+        module.setParameterUserRange ("beta", 0.6f, 1.0f);
+
+        buffer.clear();
+        module.processBlock (buffer, midi);
+
+        // beta = clamp(0.8 − 0.5·0.4, 0.6, 1.0) = 0.6
+        REQUIRE (module.lastBeta == Approx (0.6f));
     }
 }
 
@@ -673,6 +798,67 @@ TEST_CASE ("Dev-Modus: User-Range erreicht das Modul live und bei der Materialis
     REQUIRE (secondModule->getParameterUserRange ("highpass").getEnd() == Approx (0.5f));
 }
 
+TEST_CASE ("Dev-Modus: setParameterLink validiert, synct live und bei Materialisierung", "[chassis][link]")
+{
+    LinkSendRig rig;
+    auto* module = rig.module();
+
+    // Gültig: density folgt out_level, live gespiegelt (Index 2 = out_level)
+    REQUIRE (rig.manager.setParameterLink (rig.uuid(), "density", "out_level", -0.5));
+    REQUIRE (module->getParameterLinkSourceIndex ("density") == 2);
+
+    auto density = rig.node.getChildWithName (conduit::id::parameters)
+                       .getChildWithProperty (conduit::id::paramId, "density");
+    REQUIRE (density.getProperty (conduit::id::paramLinkSource).toString() == "out_level");
+
+    // Lösen (leere Quelle) + Undo stellt den Link wieder her
+    REQUIRE (rig.manager.setParameterLink (rig.uuid(), "density", "", 0.0));
+    REQUIRE (module->getParameterLinkSourceIndex ("density") == -1);
+    REQUIRE (rig.undoManager.undo());
+    REQUIRE (module->getParameterLinkSourceIndex ("density") == 2);
+
+    // Ungültig: Quelle == Ziel, unbekannte/nicht-dsp-Parameter
+    REQUIRE_FALSE (rig.manager.setParameterLink (rig.uuid(), "density", "density", 1.0));
+    REQUIRE_FALSE (rig.manager.setParameterLink (rig.uuid(), "density", "input_gain", 1.0));
+    REQUIRE_FALSE (rig.manager.setParameterLink (rig.uuid(), "input_gain", "density", 1.0));
+    REQUIRE_FALSE (rig.manager.setParameterLink (rig.uuid(), "density", "nicht_da", 1.0));
+
+    // Materialisierungs-Pfad: Link steht im Tree, BEVOR das Modul entsteht
+    auto second = rig.manager.addModuleNode (conduit::AirwindowsDensityModule::staticModuleId, {});
+    auto secondParam = second.getChildWithName (conduit::id::parameters)
+                           .getChildWithProperty (conduit::id::paramId, "highpass");
+    secondParam.setProperty (conduit::id::paramLinkSource, "density", nullptr);
+    secondParam.setProperty (conduit::id::paramLinkAmount, 0.5, nullptr);
+    rig.manager.flushPendingTopologyUpdate();
+
+    auto* secondModule = dynamic_cast<conduit::ProcessorModule*> (
+        rig.manager.getModuleFor (second.getProperty (conduit::id::nodeId).toString()));
+    REQUIRE (secondModule->getParameterLinkSourceIndex ("highpass") == 0);   // density
+}
+
+TEST_CASE ("Dev-Modus: setParameterLinkCurve validiert, synct live und ist undo-faehig", "[chassis][link]")
+{
+    LinkSendRig rig;
+    auto* module = rig.module();
+
+    REQUIRE (rig.manager.setParameterLink (rig.uuid(), "density", "out_level", -1.0));
+    REQUIRE_FALSE (module->hasParameterLinkCurve ("density"));
+
+    // Setzen → live gespiegelt; leerer String entfernt; Undo stellt her
+    REQUIRE (rig.manager.setParameterLinkCurve (rig.uuid(), "density", "0.9 0.1 0.9 0.4"));
+    REQUIRE (module->hasParameterLinkCurve ("density"));
+
+    REQUIRE (rig.manager.setParameterLinkCurve (rig.uuid(), "density", ""));
+    REQUIRE_FALSE (module->hasParameterLinkCurve ("density"));
+
+    REQUIRE (rig.undoManager.undo());
+    REQUIRE (module->hasParameterLinkCurve ("density"));
+
+    // Ungültig: unlesbarer String, nicht-dsp-Parameter
+    REQUIRE_FALSE (rig.manager.setParameterLinkCurve (rig.uuid(), "density", "kaputt"));
+    REQUIRE_FALSE (rig.manager.setParameterLinkCurve (rig.uuid(), "input_gain", "0.5 0.5 0.5 0.5"));
+}
+
 TEST_CASE ("ChassisSchema::cvChannelForParam ignoriert uiHidden (festes Layout)", "[chassis][devmode]")
 {
     conduit::AirwindowsDensityModule density;
@@ -790,6 +976,10 @@ TEST_CASE ("ModuleUiDefaults: Capture → Overlay bei Neu-Anlage, Presets unberu
           .setProperty (conduit::id::paramUiHidden, true, nullptr);
     params.getChildWithProperty (conduit::id::paramId, "dry_wet")
           .setProperty (conduit::id::paramCurve, "0.9 0.1 0.9 0.4", nullptr);
+    params.getChildWithProperty (conduit::id::paramId, "out_level")
+          .setProperty (conduit::id::paramLinkSource, "density", nullptr);
+    params.getChildWithProperty (conduit::id::paramId, "out_level")
+          .setProperty (conduit::id::paramLinkAmount, -0.5, nullptr);
 
     defaults.captureFromNode (sourceNode);
     REQUIRE (defaults.hasDefaultsFor ("airwindows_density"));
@@ -806,6 +996,10 @@ TEST_CASE ("ModuleUiDefaults: Capture → Overlay bei Neu-Anlage, Presets unberu
                  .getProperty (conduit::id::paramUiHidden));
     REQUIRE (freshParams.getChildWithProperty (conduit::id::paramId, "dry_wet")
                  .getProperty (conduit::id::paramCurve).toString() == "0.9 0.1 0.9 0.4");
+    REQUIRE (freshParams.getChildWithProperty (conduit::id::paramId, "out_level")
+                 .getProperty (conduit::id::paramLinkSource).toString() == "density");
+    REQUIRE ((double) freshParams.getChildWithProperty (conduit::id::paramId, "out_level")
+                 .getProperty (conduit::id::paramLinkAmount) == Approx (-0.5));
 
     // Anderer Modul-Typ: kein Overlay
     REQUIRE_FALSE (defaults.hasDefaultsFor ("airwindows_spiral"));

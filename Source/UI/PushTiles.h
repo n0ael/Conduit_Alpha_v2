@@ -29,6 +29,11 @@ public:
 
     void setAccentColour (juce::Colour newAccent);
 
+    /** Zustandsabhängige Symbole (z.B. Auge ↔ Auge-durchgestrichen in der
+        Dev-Zeile des FxModulePanel). */
+    void setIcon (Icon newIcon);
+    [[nodiscard]] Icon getIcon() const noexcept { return icon; }
+
 private:
     void paintButton (juce::Graphics& g, bool isHighlighted, bool isDown) override;
 

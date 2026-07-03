@@ -300,7 +300,9 @@ void FxModulePanel::buildColumns()
         {
             const auto uuid = nodeTree.getProperty (id::nodeId).toString();
 
-            column->hideButton.setButtonText (hidden ? "ein" : "aus");
+            // Auge offen = sichtbar (Klick blendet aus), durchgestrichen =
+            // ausgeblendet (Klick blendet ein) — DAW-Konvention
+            column->hideButton.setIcon (hidden ? push::Icon::eyeOff : push::Icon::eye);
             column->hideButton.setTooltip (hidden
                 ? juce::String::fromUTF8 ("Parameter wieder einblenden")
                 : juce::String::fromUTF8 ("Parameter ausblenden — trennt bestehende CV-Kabel"));
@@ -313,7 +315,6 @@ void FxModulePanel::buildColumns()
             // Parameter-Setup als CallOutBox über der Spalte: Bezier-Kurve
             // PLUS Min/Max des User-Regelbereichs — Änderungen committen
             // live und undo-fähig via GraphManager
-            column->curveButton.setButtonText ("~");
             column->curveButton.setTooltip (
                 juce::String::fromUTF8 ("Fader-Kurve + Regelbereich editieren"));
             column->curveButton.onClick = [this, uuid, paramId = column->paramId,
@@ -372,8 +373,10 @@ void FxModulePanel::buildColumns()
             };
             addAndMakeVisible (column->curveButton);
 
-            // Fader↔Button-Umschalter (4.6): dritter Toggle der Dev-Zeile
-            column->modeButton.setButtonText (column->buttonMode ? "fdr" : "btn");
+            // Fader↔Button-Umschalter (4.6): dritter Toggle der Dev-Zeile —
+            // das Icon zeigt den ZIEL-Modus (Grid = zu Buttons, Fader = zurück)
+            column->modeButton.setIcon (column->buttonMode ? push::Icon::fader
+                                                           : push::Icon::valueButtons);
             column->modeButton.setTooltip (juce::String::fromUTF8 (column->buttonMode
                 ? "Zurück zum Fader — die Buttons bleiben gespeichert"
                 : "Wert-Buttons statt Fader (in der Nicht-Dev-Ansicht)"));
@@ -387,7 +390,6 @@ void FxModulePanel::buildColumns()
             // +/−-Stepper: Button-Anzahl (0..10) wird NUR im Dev-Modus bestimmt
             if (column->buttonMode)
             {
-                column->addButton.setButtonText ("+");
                 column->addButton.setTooltip (juce::String::fromUTF8 (
                     "Button anhängen — startet mit dem aktuellen Fader-Wert"));
                 column->addButton.onClick = [this, uuid, paramId = column->paramId,
@@ -398,7 +400,6 @@ void FxModulePanel::buildColumns()
                 column->addButton.setEnabled (column->numButtons < ChassisSchema::maxUiButtons);
                 addAndMakeVisible (column->addButton);
 
-                column->removeButton.setButtonText (juce::String::fromUTF8 ("−"));
                 column->removeButton.setTooltip (juce::String::fromUTF8 (
                     "Letzten Button entfernen"));
                 column->removeButton.onClick = [this, uuid, paramId = column->paramId,

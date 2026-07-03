@@ -23,6 +23,12 @@ constexpr conduit::push::Icon allIcons[] = {
     conduit::push::Icon::pageClip,
     conduit::push::Icon::pageDevice,
     conduit::push::Icon::pageGrid,
+    conduit::push::Icon::minus,
+    conduit::push::Icon::eye,
+    conduit::push::Icon::eyeOff,
+    conduit::push::Icon::valueButtons,
+    conduit::push::Icon::fader,
+    conduit::push::Icon::curve,
 };
 
 } // namespace

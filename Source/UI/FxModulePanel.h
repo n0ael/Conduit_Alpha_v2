@@ -9,6 +9,7 @@
 #include "Core/LinkSendTaps.h"
 #include "Modules/ChassisSchema.h"
 #include "UI/CurvedSlider.h"
+#include "UI/PushTiles.h"
 #include "UI/GainFaderMeter.h"
 #include "UI/PortComponent.h"
 
@@ -173,13 +174,15 @@ public:
         // Wert-Buttons (Fader↔Button-Modus 4.6) — nur bei buttonMode gebaut
         std::vector<std::unique_ptr<ValueButton>> valueButtons;
 
-        // Dev-Modus-Controls (nur im Dev-Modus erzeugt). Min/Max des
-        // User-Regelbereichs leben IM Kurven-Editor (CallOutBox, ~-Button)
-        juce::TextButton hideButton;
-        juce::TextButton curveButton;   // öffnet Kurve + Range (CurveEditor)
-        juce::TextButton modeButton;    // Fader↔Buttons ("btn"/"fdr")
-        juce::TextButton addButton;     // "+" — Button anhängen (Dev + buttonMode)
-        juce::TextButton removeButton;  // "−" — letzten Button entfernen
+        // Dev-Modus-Controls (nur im Dev-Modus erzeugt) — vektorbasierte
+        // Icon-Kacheln statt Text (User 03.07.: Text war bei den schmalen
+        // Buttons unlesbar). Min/Max des User-Regelbereichs leben IM
+        // Kurven-Editor (CallOutBox, curve-Icon).
+        push::IconTile hideButton   { push::Icon::eye,          "hide" };   // eye ↔ eyeOff
+        push::IconTile curveButton  { push::Icon::curve,        "curve" };  // Kurve + Range
+        push::IconTile modeButton   { push::Icon::valueButtons, "mode" };   // Ziel: Buttons ↔ Fader
+        push::IconTile addButton    { push::Icon::plus,         "addButton" };
+        push::IconTile removeButton { push::Icon::minus,        "removeButton" };
     };
 
     std::vector<std::unique_ptr<ParameterColumn>> columns;

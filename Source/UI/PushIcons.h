@@ -38,7 +38,16 @@ enum class Icon
     pageMixer,      // Fader-Balken
     pageClip,       // ▷ im Rechteck
     pageDevice,     // |||
-    pageGrid        // Ω
+    pageGrid,       // Ω
+
+    // Dev-Zeile des FxModulePanel (4.6) — Symbole statt Text (User 03.07.:
+    // Text war bei 28px-Buttons unlesbar; Vektor-Icons skalieren immer)
+    minus,          // −  letzten Wert-Button entfernen
+    eye,            // 👁 Parameter sichtbar (Klick blendet aus)
+    eyeOff,         // 👁 durchgestrichen — ausgeblendet (Klick blendet ein)
+    valueButtons,   // ▦  2×2-Kacheln: Wert-Buttons statt Fader
+    fader,          // ⊦  vertikaler Fader mit Griff: zurück zum Fader
+    curve           // ~  Bezier-Kurve/Range-Editor
 };
 
 /** Zeichnet das Icon in die Bounds (Stroke-Breite skaliert mit der Größe). */

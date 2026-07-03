@@ -57,6 +57,15 @@ void IconTile::setAccentColour (juce::Colour newAccent)
     repaint();
 }
 
+void IconTile::setIcon (Icon newIcon)
+{
+    if (icon == newIcon)
+        return;
+
+    icon = newIcon;
+    repaint();
+}
+
 void IconTile::paintButton (juce::Graphics& g, bool isHighlighted, bool isDown)
 {
     const auto bounds = getLocalBounds().toFloat().reduced (0.5f);

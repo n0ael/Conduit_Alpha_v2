@@ -157,6 +157,70 @@ juce::Path deviceLines()
     return p;
 }
 
+juce::Path minusSign()
+{
+    juce::Path p;
+    p.startNewSubPath (0.12f, 0.50f);
+    p.lineTo (0.88f, 0.50f);
+    return p;
+}
+
+juce::Path eyeOutline (bool crossedOut)
+{
+    // Mandelform (zwei Bögen) + Pupille; optional Diagonalstrich
+    juce::Path p;
+    p.startNewSubPath (0.06f, 0.50f);
+    p.quadraticTo (0.50f, 0.10f, 0.94f, 0.50f);
+    p.quadraticTo (0.50f, 0.90f, 0.06f, 0.50f);
+    p.closeSubPath();
+    p.addEllipse (0.38f, 0.38f, 0.24f, 0.24f);
+
+    if (crossedOut)
+    {
+        p.startNewSubPath (0.14f, 0.88f);
+        p.lineTo (0.86f, 0.12f);
+    }
+
+    return p;
+}
+
+juce::Path valueButtonsGrid()
+{
+    // 2×2 abgerundete Kacheln — die Wert-Button-Stapel in Miniatur
+    juce::Path p;
+
+    for (const auto y : { 0.12f, 0.54f })
+        for (const auto x : { 0.12f, 0.54f })
+            p.addRoundedRectangle (x, y, 0.34f, 0.34f, 0.06f);
+
+    return p;
+}
+
+juce::Path faderTrack()
+{
+    // Vertikale Bahn — der Griffstein kommt als Füllung in draw()
+    juce::Path p;
+    p.startNewSubPath (0.50f, 0.08f);
+    p.lineTo (0.50f, 0.92f);
+    return p;
+}
+
+juce::Path faderThumb()
+{
+    juce::Path p;
+    p.addRoundedRectangle (0.26f, 0.38f, 0.48f, 0.20f, 0.05f);
+    return p;
+}
+
+juce::Path curveSweep()
+{
+    // Bezier-S-Kurve wie im CurveEditor
+    juce::Path p;
+    p.startNewSubPath (0.10f, 0.86f);
+    p.cubicTo (0.60f, 0.86f, 0.40f, 0.14f, 0.90f, 0.14f);
+    return p;
+}
+
 juce::Path gridLoop()
 {
     // Ω-Schleife: großer Bogen mit zwei Füßchen
@@ -199,6 +263,12 @@ juce::Path strokeGeometry (Icon icon)
         case Icon::pageClip:     return clipBoxOutline();
         case Icon::pageDevice:   return deviceLines();
         case Icon::pageGrid:     return gridLoop();
+        case Icon::minus:        return minusSign();
+        case Icon::eye:          return eyeOutline (false);
+        case Icon::eyeOff:       return eyeOutline (true);
+        case Icon::valueButtons: return valueButtonsGrid();
+        case Icon::fader:        return faderTrack();
+        case Icon::curve:        return curveSweep();
     }
 
     jassertfalse;
@@ -213,6 +283,7 @@ juce::Path fillGeometry (Icon icon)
         case Icon::metronome:   return metronomeDot();
         case Icon::pageClip:    return clipBoxTriangle();
         case Icon::chevronDown: return chevronDownSmall();
+        case Icon::fader:       return faderThumb();
 
         // reine Stroke-Icons — explizit statt default (Clang -Wswitch-enum)
         case Icon::play:
@@ -225,6 +296,11 @@ juce::Path fillGeometry (Icon icon)
         case Icon::pageMixer:
         case Icon::pageDevice:
         case Icon::pageGrid:
+        case Icon::minus:
+        case Icon::eye:
+        case Icon::eyeOff:
+        case Icon::valueButtons:
+        case Icon::curve:
             return {};
     }
 

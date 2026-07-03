@@ -984,6 +984,73 @@ TEST_CASE ("ChassisSchema: Bezier-Kurven parsen, evaluieren und invertieren", "[
     }
 }
 
+TEST_CASE ("ChassisSchema: parseButtons/buttonsToString Roundtrip, Limits, Robustheit", "[chassis][buttons]")
+{
+    using S = conduit::ChassisSchema;
+
+    SECTION ("Roundtrip inkl. Sonderzeichen im Namen (JSON-Escaping)")
+    {
+        const std::vector<S::ButtonPreset> buttons {
+            { "Dry",                          0.0 },
+            { juce::String::fromUTF8 ("Wet \"ö\" 50%"), 0.5 },
+            { "Max",                          1.0 },
+        };
+
+        const auto text = S::buttonsToString (buttons);
+        const auto parsed = S::parseButtons (text);
+        REQUIRE (parsed.has_value());
+        REQUIRE (parsed->size() == 3);
+        REQUIRE ((*parsed)[0].name == "Dry");
+        REQUIRE ((*parsed)[1].name == juce::String::fromUTF8 ("Wet \"ö\" 50%"));
+        REQUIRE ((*parsed)[1].value == Approx (0.5));
+        REQUIRE ((*parsed)[2].value == Approx (1.0));
+    }
+
+    SECTION ("Ganzzahl-Werte werden akzeptiert (JSON kennt kein double-Literal-Zwang)")
+    {
+        const auto parsed = S::parseButtons ("[{\"n\":\"Eins\",\"v\":1}]");
+        REQUIRE (parsed.has_value());
+        REQUIRE ((*parsed)[0].value == Approx (1.0));
+    }
+
+    SECTION ("nullopt bei Muell, Nicht-Array, fehlendem n/v, Ueberlaenge")
+    {
+        REQUIRE_FALSE (S::parseButtons ("").has_value());
+        REQUIRE_FALSE (S::parseButtons ("kaputt").has_value());
+        REQUIRE_FALSE (S::parseButtons ("{\"n\":\"x\",\"v\":0}").has_value());   // Objekt statt Array
+        REQUIRE_FALSE (S::parseButtons ("[{\"n\":\"x\"}]").has_value());          // v fehlt
+        REQUIRE_FALSE (S::parseButtons ("[{\"v\":0.5}]").has_value());            // n fehlt
+        REQUIRE_FALSE (S::parseButtons ("[{\"n\":\"x\",\"v\":\"nan\"}]").has_value());  // v kein Zahlwert
+
+        // 11 Einträge überschreiten maxUiButtons
+        std::vector<S::ButtonPreset> tooMany;
+        for (int i = 0; i < S::maxUiButtons + 1; ++i)
+            tooMany.push_back ({ "P" + juce::String (i + 1), 0.1 * i });
+        REQUIRE_FALSE (S::parseButtons (S::buttonsToString (tooMany)).has_value());
+    }
+
+    SECTION ("Namen werden getrimmt und auf maxUiButtonNameLength gekuerzt")
+    {
+        const auto parsed = S::parseButtons (
+            "[{\"n\":\"  ganz langer button name weit ueber dem limit  \",\"v\":0.5}]");
+        REQUIRE (parsed.has_value());
+        REQUIRE ((*parsed)[0].name.length() == S::maxUiButtonNameLength);
+        REQUIRE ((*parsed)[0].name.startsWith ("ganz langer"));
+    }
+
+    SECTION ("isButtonMode: nur uiMode == \"buttons\"")
+    {
+        juce::ValueTree param (conduit::id::parameter);
+        REQUIRE_FALSE (S::isButtonMode (param));
+
+        param.setProperty (conduit::id::paramUiMode, "buttons", nullptr);
+        REQUIRE (S::isButtonMode (param));
+
+        param.setProperty (conduit::id::paramUiMode, "fader", nullptr);
+        REQUIRE_FALSE (S::isButtonMode (param));
+    }
+}
+
 TEST_CASE ("Dev-Modus: setParameterCurve validiert und ist undo-faehig", "[chassis][curve]")
 {
     LinkSendRig rig;
@@ -1002,6 +1069,144 @@ TEST_CASE ("Dev-Modus: setParameterCurve validiert und ist undo-faehig", "[chass
     // Ungültig: unlesbarer String, nicht-dsp-Parameter
     REQUIRE_FALSE (rig.manager.setParameterCurve (rig.uuid(), "density", "kaputt"));
     REQUIRE_FALSE (rig.manager.setParameterCurve (rig.uuid(), "input_gain", "0.5 0.5 0.5 0.5"));
+}
+
+//==============================================================================
+TEST_CASE ("Dev-Modus: setParameterUiMode toggelt undo-faehig, nur dsp", "[chassis][devmode][buttons]")
+{
+    LinkSendRig rig;
+    auto density = rig.node.getChildWithName (conduit::id::parameters)
+                       .getChildWithProperty (conduit::id::paramId, "density");
+
+    REQUIRE (rig.manager.setParameterUiMode (rig.uuid(), "density", true));
+    REQUIRE (density.getProperty (conduit::id::paramUiMode).toString() == "buttons");
+    REQUIRE (conduit::ChassisSchema::isButtonMode (density));
+
+    // Zurück auf Fader: Property entfernt
+    REQUIRE (rig.manager.setParameterUiMode (rig.uuid(), "density", false));
+    REQUIRE_FALSE (density.hasProperty (conduit::id::paramUiMode));
+
+    // Je ein Undo pro Schritt
+    REQUIRE (rig.undoManager.undo());
+    REQUIRE (conduit::ChassisSchema::isButtonMode (density));
+    REQUIRE (rig.undoManager.undo());
+    REQUIRE_FALSE (density.hasProperty (conduit::id::paramUiMode));
+
+    // No-op erzeugt KEINE neue Transaktion (Fader → Fader)
+    const auto undosBefore = rig.undoManager.getUndoDescriptions().size();
+    REQUIRE (rig.manager.setParameterUiMode (rig.uuid(), "density", false));
+    REQUIRE (rig.undoManager.getUndoDescriptions().size() == undosBefore);
+
+    // Nur dsp-Parameter
+    REQUIRE_FALSE (rig.manager.setParameterUiMode (rig.uuid(), "input_gain", true));
+    REQUIRE_FALSE (rig.manager.setParameterUiMode (rig.uuid(), "density_cv_amt", true));
+    REQUIRE_FALSE (rig.manager.setParameterUiMode (rig.uuid(), "nicht_da", true));
+}
+
+TEST_CASE ("Dev-Modus: setParameterButtonCount legt Buttons mit aktuellem Wert an, EIN Undo", "[chassis][devmode][buttons]")
+{
+    using S = conduit::ChassisSchema;
+    LinkSendRig rig;
+    auto density = rig.node.getChildWithName (conduit::id::parameters)
+                       .getChildWithProperty (conduit::id::paramId, "density");
+
+    density.setProperty (conduit::id::paramValue, 0.42, nullptr);
+
+    // Wachsen: P1..P3, alle mit dem aktuellen Wert
+    REQUIRE (rig.manager.setParameterButtonCount (rig.uuid(), "density", 3));
+    auto buttons = S::parseButtons (density.getProperty (conduit::id::paramUiButtons).toString());
+    REQUIRE (buttons.has_value());
+    REQUIRE (buttons->size() == 3);
+    REQUIRE ((*buttons)[0].name == "P1");
+    REQUIRE ((*buttons)[2].name == "P3");
+    REQUIRE ((*buttons)[0].value == Approx (0.42));
+    REQUIRE ((*buttons)[2].value == Approx (0.42));
+
+    // Schrumpfen entfernt von hinten
+    REQUIRE (rig.manager.setParameterButtonCount (rig.uuid(), "density", 2));
+    buttons = S::parseButtons (density.getProperty (conduit::id::paramUiButtons).toString());
+    REQUIRE (buttons->size() == 2);
+
+    // EIN Undo restauriert die komplette vorige Liste
+    REQUIRE (rig.undoManager.undo());
+    buttons = S::parseButtons (density.getProperty (conduit::id::paramUiButtons).toString());
+    REQUIRE (buttons->size() == 3);
+
+    // 0 entfernt das Property
+    REQUIRE (rig.manager.setParameterButtonCount (rig.uuid(), "density", 0));
+    REQUIRE_FALSE (density.hasProperty (conduit::id::paramUiButtons));
+
+    // Limits + Rollen
+    REQUIRE_FALSE (rig.manager.setParameterButtonCount (rig.uuid(), "density", S::maxUiButtons + 1));
+    REQUIRE_FALSE (rig.manager.setParameterButtonCount (rig.uuid(), "density", -1));
+    REQUIRE_FALSE (rig.manager.setParameterButtonCount (rig.uuid(), "input_gain", 2));
+    REQUIRE_FALSE (rig.manager.setParameterButtonCount (rig.uuid(), "nicht_da", 2));
+
+    // Maximal 10
+    REQUIRE (rig.manager.setParameterButtonCount (rig.uuid(), "density", S::maxUiButtons));
+    buttons = S::parseButtons (density.getProperty (conduit::id::paramUiButtons).toString());
+    REQUIRE (static_cast<int> (buttons->size()) == S::maxUiButtons);
+    REQUIRE ((*buttons)[9].name == "P10");
+}
+
+TEST_CASE ("Dev-Modus: storeParameterButtonValue schreibt paramValue geclamped in den Button", "[chassis][devmode][buttons]")
+{
+    using S = conduit::ChassisSchema;
+    LinkSendRig rig;
+    auto density = rig.node.getChildWithName (conduit::id::parameters)
+                       .getChildWithProperty (conduit::id::paramId, "density");
+
+    density.setProperty (conduit::id::paramValue, 0.3, nullptr);
+    REQUIRE (rig.manager.setParameterButtonCount (rig.uuid(), "density", 3));
+
+    // Kern-Workflow: Fader-Wert ändern, in Button 1 speichern
+    density.setProperty (conduit::id::paramValue, 0.7, nullptr);
+    REQUIRE (rig.manager.storeParameterButtonValue (rig.uuid(), "density", 1));
+    auto buttons = S::parseButtons (density.getProperty (conduit::id::paramUiButtons).toString());
+    REQUIRE ((*buttons)[1].value == Approx (0.7));
+    REQUIRE ((*buttons)[0].value == Approx (0.3));   // Nachbarn unberührt
+
+    // Undo restauriert den alten Button-Wert
+    REQUIRE (rig.undoManager.undo());
+    buttons = S::parseButtons (density.getProperty (conduit::id::paramUiButtons).toString());
+    REQUIRE ((*buttons)[1].value == Approx (0.3));
+
+    // Wert außerhalb der Hard-Range wird beim Speichern geclamped
+    density.setProperty (conduit::id::paramValue, 7.5, nullptr);   // Hard-Max = 1.0
+    REQUIRE (rig.manager.storeParameterButtonValue (rig.uuid(), "density", 0));
+    buttons = S::parseButtons (density.getProperty (conduit::id::paramUiButtons).toString());
+    REQUIRE ((*buttons)[0].value == Approx (1.0));
+
+    // Ungültige Indizes / Parameter
+    REQUIRE_FALSE (rig.manager.storeParameterButtonValue (rig.uuid(), "density", -1));
+    REQUIRE_FALSE (rig.manager.storeParameterButtonValue (rig.uuid(), "density", 3));
+    REQUIRE_FALSE (rig.manager.storeParameterButtonValue (rig.uuid(), "input_gain", 0));
+}
+
+TEST_CASE ("Dev-Modus: renameParameterButton validiert und ist undo-faehig", "[chassis][devmode][buttons]")
+{
+    using S = conduit::ChassisSchema;
+    LinkSendRig rig;
+    auto density = rig.node.getChildWithName (conduit::id::parameters)
+                       .getChildWithProperty (conduit::id::paramId, "density");
+
+    REQUIRE (rig.manager.setParameterButtonCount (rig.uuid(), "density", 2));
+
+    REQUIRE (rig.manager.renameParameterButton (rig.uuid(), "density", 0, "  Dry  "));
+    auto buttons = S::parseButtons (density.getProperty (conduit::id::paramUiButtons).toString());
+    REQUIRE ((*buttons)[0].name == "Dry");   // getrimmt
+    REQUIRE ((*buttons)[1].name == "P2");
+
+    REQUIRE (rig.undoManager.undo());
+    buttons = S::parseButtons (density.getProperty (conduit::id::paramUiButtons).toString());
+    REQUIRE ((*buttons)[0].name == "P1");
+
+    // Leer / nur Whitespace / zu lang / Index daneben
+    REQUIRE_FALSE (rig.manager.renameParameterButton (rig.uuid(), "density", 0, ""));
+    REQUIRE_FALSE (rig.manager.renameParameterButton (rig.uuid(), "density", 0, "   "));
+    REQUIRE_FALSE (rig.manager.renameParameterButton (rig.uuid(), "density", 0,
+                                                      juce::String::repeatedString ("x", S::maxUiButtonNameLength + 1)));
+    REQUIRE_FALSE (rig.manager.renameParameterButton (rig.uuid(), "density", 2, "Dry"));
 }
 
 //==============================================================================
@@ -1063,6 +1268,51 @@ TEST_CASE ("ModuleUiDefaults: Capture → Overlay bei Neu-Anlage, Presets unberu
     REQUIRE_FALSE (defaults.hasDefaultsFor ("airwindows_density"));
 
     // Aufräumen: Test-Settings-Datei löschen
+    juce::PropertiesFile (options).getFile().deleteFile();
+}
+
+TEST_CASE ("ModuleUiDefaults: uiMode + uiButtons wandern durch Capture → Overlay", "[chassis][defaults][buttons]")
+{
+    using S = conduit::ChassisSchema;
+    juce::ScopedJuceInitialiser_GUI juceRuntime;
+
+    juce::TemporaryFile tempMarker;
+    auto options = conduit::ModuleUiDefaults::defaultOptions();
+    options.applicationName = "ModuleUiDefaultsTest_"
+                            + tempMarker.getFile().getFileNameWithoutExtension();
+    conduit::ModuleUiDefaults defaults { options };
+
+    // Quelle: Button-Modus mit benannter Liste (Sonderzeichen → XML-Escaping)
+    const std::vector<S::ButtonPreset> buttons {
+        { "Dry", 0.0 }, { juce::String::fromUTF8 ("Hälfte"), 0.5 }, { "Max", 1.0 },
+    };
+
+    conduit::AirwindowsDensityModule source;
+    auto sourceNode = source.createState();
+    auto density = sourceNode.getChildWithName (conduit::id::parameters)
+                       .getChildWithProperty (conduit::id::paramId, "density");
+    density.setProperty (conduit::id::paramUiMode, S::uiModeButtons, nullptr);
+    density.setProperty (conduit::id::paramUiButtons, S::buttonsToString (buttons), nullptr);
+
+    defaults.captureFromNode (sourceNode);
+    REQUIRE (defaults.hasDefaultsFor ("airwindows_density"));
+
+    // Overlay: beide Properties kommen an, Liste identisch
+    conduit::AirwindowsDensityModule freshModule;
+    auto fresh = freshModule.createState();
+    defaults.applyTo (fresh);
+
+    auto freshDensity = fresh.getChildWithName (conduit::id::parameters)
+                            .getChildWithProperty (conduit::id::paramId, "density");
+    REQUIRE (S::isButtonMode (freshDensity));
+
+    const auto applied = S::parseButtons (
+        freshDensity.getProperty (conduit::id::paramUiButtons).toString());
+    REQUIRE (applied.has_value());
+    REQUIRE (applied->size() == 3);
+    REQUIRE ((*applied)[1].name == juce::String::fromUTF8 ("Hälfte"));
+    REQUIRE ((*applied)[1].value == Approx (0.5));
+
     juce::PropertiesFile (options).getFile().deleteFile();
 }
 

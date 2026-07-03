@@ -134,6 +134,56 @@ float ChassisSchema::curvePositionForValue (const BezierCurve& curve, float norm
 }
 
 //==============================================================================
+std::optional<std::vector<ChassisSchema::ButtonPreset>> ChassisSchema::parseButtons (const juce::String& text)
+{
+    if (text.isEmpty())
+        return std::nullopt;
+
+    const auto parsed = juce::JSON::parse (text);
+    const auto* entries = parsed.getArray();
+
+    if (entries == nullptr || entries->size() > maxUiButtons)
+        return std::nullopt;
+
+    std::vector<ButtonPreset> buttons;
+    buttons.reserve (static_cast<size_t> (entries->size()));
+
+    for (const auto& entry : *entries)
+    {
+        const auto nameVar  = entry.getProperty ("n", juce::var());
+        const auto valueVar = entry.getProperty ("v", juce::var());
+
+        if (! nameVar.isString() || ! (valueVar.isDouble() || valueVar.isInt()))
+            return std::nullopt;
+
+        auto name = nameVar.toString().trim();
+
+        if (name.length() > maxUiButtonNameLength)
+            name = name.substring (0, maxUiButtonNameLength);
+
+        buttons.push_back ({ name, static_cast<double> (valueVar) });
+    }
+
+    return buttons;
+}
+
+juce::String ChassisSchema::buttonsToString (const std::vector<ButtonPreset>& buttons)
+{
+    juce::Array<juce::var> entries;
+    entries.ensureStorageAllocated (static_cast<int> (buttons.size()));
+
+    for (const auto& button : buttons)
+    {
+        auto* entry = new juce::DynamicObject();
+        entry->setProperty ("n", button.name);
+        entry->setProperty ("v", button.value);
+        entries.add (juce::var (entry));
+    }
+
+    return juce::JSON::toString (juce::var (entries), true /*allOnOneLine*/);
+}
+
+//==============================================================================
 void ChassisSchema::migrate (juce::ValueTree nodeTree, int numAudioIns)
 {
     if (! nodeTree.hasType (id::node))

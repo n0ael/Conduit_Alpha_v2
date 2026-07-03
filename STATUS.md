@@ -93,19 +93,46 @@
   Debug- UND ASan-DoD-Volllauf verifiziert grün (166 Fälle / 313815
   Assertions, Ausgabe gelesen statt Exit-Code vertraut).
 
-**Nächster geplanter Meilenstein: Fader↔Button-Modus pro Parameter (Dev-Modus, User-Idee 03.07.2026):**
+**Fader↔Button-Modus pro dsp-Parameter (Dev-Modus) — FERTIG (03.07.2026):**
 
-- Im Dev-Modus soll sich jede dsp-Parameter-Spalte von Fader auf benannte
-  Preset-Wert-Buttons umschalten lassen: max. 5 Buttons pro Reihe, danach
-  automatisch zweite Reihe (Limit z.B. 10); Button = benennbarer Wert-Snapshot
-  („aktuellen Wert als Button speichern", Umbenennen per Doppelklick).
-- Architektur-Mapping (Muster CLAUDE.md 4.6, wie userMin/userMax/curve):
-  neue per-Parameter-Patch-Properties `uiMode` ("fader"|"buttons") +
-  Snapshot-Liste (Name+Wert); Buttons schreiben denselben Wert über denselben
-  undo-fähigen Pfad wie der Fader — OSC/CV/Control-Links unverändert;
-  `ModuleUiDefaults` nimmt Button-Sets pro factoryId mit („als Standard").
-- Motivation u.a. GlitchShifter/Tighten: ein Button-Sprung = EIN
-  Geometrie-Wechsel (ein kurzer Wet-Dip) statt Dutzender beim Fader-Sweep.
+- **Konzept (User-Entscheidungen):** jede dsp-Parameter-Spalte des FxModulePanel
+  kann auf benannte Wert-Buttons umgeschaltet werden (Dev-Zeile, dritter Toggle
+  „btn"/„fdr"). Nicht-Dev: Buttons ERSETZEN den Fader (vertikale Stapel à 5,
+  ab dem 6. ein zweiter Stapel daneben, Limit 10; Spalte verbreitert sich) —
+  Klick ruft den Wert über den Fader-Pfad ab (paramValue ohne UndoManager,
+  6.1). Dev: Fader UND Buttons gleichzeitig — Fader findet den Wert, Button-
+  Klick SPEICHERT ihn (undo-fähig), +/−-Stepper bestimmt die Anzahl (nur hier),
+  Doppelklick benennt um (Label-setEditable-Muster). Aktiver Button = LED-Stil
+  (exactlyEqual über float). Motivation u.a. GlitchShifter/Tighten: ein
+  Button-Sprung = EIN Geometrie-Wechsel statt Dutzender beim Fader-Sweep.
+- **Datenmodell (Muster 4.6, wie userMin/userMax/curve):** per-Parameter-
+  Patch-Properties `uiMode` (nur "buttons", fehlend = Fader) + `uiButtons`
+  (EIN JSON-String-Property `[{"n":"Dry","v":0.25},…]` via juce::JSON —
+  atomar undo-fähig, robustes Namens-Escaping, reist als XML-Attribut durch
+  ModuleUiDefaults; var-Arrays überleben XML nicht, deshalb String). uiButtons
+  bleibt beim Zurückschalten auf Fader geparkt (verlustfrei). Keine Migration
+  nötig, OSC/CV/Control-Links unberührt.
+- **APIs:** `ChassisSchema::parseButtons/buttonsToString/isButtonMode` (+
+  Limits maxUiButtons=10, maxUiButtonsPerStack=5, Name ≤ 16 Zeichen);
+  GraphManager `setParameterUiMode` / `setParameterButtonCount` (wachsen mit
+  aktuellem Wert als „P{n}", schrumpfen von hinten, EIN Undo = ganze Liste) /
+  `storeParameterButtonValue` (clamped auf Hard-Range) /
+  `renameParameterButton`. ModuleUiDefaults nimmt beide Properties mit
+  (applyTo validiert uiButtons defensiv via parseButtons).
+- **UI:** `FxModulePanel::ValueButton` (Label-basiert wegen Doppelklick-
+  Rename; onClick nur bei Einzelklick — der zweite Klick gehört dem Editor);
+  variable Spaltenbreiten über `columnWidthFor`/`getPreferredWidth`
+  (degeneriert ohne Button-Spalten exakt zu widthForColumns — bestehende
+  Tests unverändert grün), NodeComponent-Sizing folgt getPreferredWidth.
+  Friedhof-Mechanismus (retiredColumns) um valueButtons/modeButton/Stepper
+  erweitert — Rebuild aus dem eigenen onClick bleibt crashfrei. Button-Höhe
+  dynamisch (≥53px bei ≤3 Buttons, gekappt 34px — dokumentierte Ausnahme
+  von der 44px-Regel analog 16px-Dev-Zeile).
+- **Verifikation:** ConduitTests 298 Fälle / 11998 Assertions grün, Debug UND
+  ASan (Ausgabe gelesen); ConduitAirwindowsTests 166 / 313815 grün. Neue
+  Tests: parseButtons-Roundtrip/Limits/Robustheit, alle 4 GraphManager-APIs
+  mit Undo, Defaults-Roundtrip, 5 UI-Fälle (Ersetzen/Stapel-Layout/
+  Dev-Speichern/Stepper/Aktiv-Markierung).
 
 **FX-Chassis-Standard für alle Audio-FX-Module (Plan: 7 Meilensteine M1–M7) — M1–M6 abgeschlossen:**
 

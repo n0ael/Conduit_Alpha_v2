@@ -9,7 +9,8 @@ namespace
 {
     // XML-Format pro factoryId-Eintrag:
     //   <Defaults><Param id="density" userMin=".." userMax=".."
-    //                    uiHidden=".." curve=".."/>…</Defaults>
+    //                    uiHidden=".." curve=".."
+    //                    uiMode=".." uiButtons=".."/>…</Defaults>
     constexpr const char* defaultsTag = "Defaults";
     constexpr const char* paramTag    = "Param";
     constexpr const char* keyPrefix   = "defaults_";   // Property-Key = defaults_{factoryId}
@@ -69,7 +70,9 @@ void ModuleUiDefaults::captureFromNode (const juce::ValueTree& nodeTree)
                               || param.hasProperty (id::paramUserMax)
                               || (bool) param.getProperty (id::paramUiHidden, false)
                               || param.hasProperty (id::paramCurve)
-                              || param.hasProperty (id::paramLinkSource);
+                              || param.hasProperty (id::paramLinkSource)
+                              || ChassisSchema::isButtonMode (param)
+                              || param.hasProperty (id::paramUiButtons);
 
         if (! hasOverride)
             continue;
@@ -97,6 +100,13 @@ void ModuleUiDefaults::captureFromNode (const juce::ValueTree& nodeTree)
             if (param.hasProperty (id::paramLinkCurve))
                 entry->setAttribute ("linkCurve", param.getProperty (id::paramLinkCurve).toString());
         }
+
+        // Fader↔Button-Modus (4.6): JSON-Liste reist als XML-Attribut
+        if (ChassisSchema::isButtonMode (param))
+            entry->setAttribute ("uiMode", ChassisSchema::uiModeButtons);
+
+        if (param.hasProperty (id::paramUiButtons))
+            entry->setAttribute ("uiButtons", param.getProperty (id::paramUiButtons).toString());
     }
 
     // Keine Overrides mehr → Eintrag löschen (Reset auf Werks-Defaults)
@@ -161,6 +171,15 @@ void ModuleUiDefaults::applyTo (juce::ValueTree& nodeTree)
             if (entry->hasAttribute ("linkCurve"))
                 param.setProperty (id::paramLinkCurve, entry->getStringAttribute ("linkCurve"), nullptr);
         }
+
+        // Fader↔Button-Modus (4.6) — uiButtons defensiv validieren
+        // (handeditierte Settings-Dateien dürfen nie kaputte Patches erzeugen)
+        if (entry->getStringAttribute ("uiMode") == juce::String (ChassisSchema::uiModeButtons))
+            param.setProperty (id::paramUiMode, ChassisSchema::uiModeButtons, nullptr);
+
+        if (const auto buttonsText = entry->getStringAttribute ("uiButtons");
+            ChassisSchema::parseButtons (buttonsText).has_value())
+            param.setProperty (id::paramUiButtons, buttonsText, nullptr);
     }
 }
 

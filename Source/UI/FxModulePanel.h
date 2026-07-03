@@ -7,6 +7,7 @@
 
 #include "Core/GraphManager.h"
 #include "Core/LinkSendTaps.h"
+#include "Modules/ChassisSchema.h"
 #include "UI/CurvedSlider.h"
 #include "UI/GainFaderMeter.h"
 #include "UI/PortComponent.h"
@@ -26,6 +27,13 @@ namespace conduit
     Fader-Spalte: Titel oben, langer Fader, darunter der Attenuverter-Knob
     ({param}_cv_amt, bipolar, MI-Stil) und der CV-Eingangs-Port des
     Parameters (Kanal = firstCvChannel + Spaltenindex, festes Layout 4.6).
+
+    Fader↔Button-Modus (4.6, Patch-Properties uiMode/uiButtons): eine Spalte
+    kann statt des Faders benannte Wert-Buttons zeigen (vertikale Stapel à 5,
+    max. 10 — die Spalte verbreitert sich ab dem 6.). Im Dev-Modus sind Fader
+    UND Buttons sichtbar: der Fader findet den Wert, ein Button-Klick
+    speichert ihn (undo-fähig), +/− bestimmen die Anzahl, Doppelklick benennt
+    um. Im Normalmodus ruft der Klick den Wert über den Fader-Pfad ab.
 
     Die CV-Ports sind normale PortComponents — Kabel-Gesten laufen über den
     NodeCanvas (findParentComponentOfClass), die Anker-Delegation übernimmt
@@ -68,15 +76,43 @@ public:
     static constexpr int hideRowHeight = 16;   // Ausblenden-/Kurven-Zeile (Dev-Modus)
     static constexpr int panelHeight  = 248;
 
+    // Fader↔Button-Modus (4.6): ein Button-Stapel ist eine Spaltenbreite,
+    // die +/−-Stepper-Zeile sitzt im Dev-Modus unter den Stapeln
+    static constexpr int buttonStackWidth = 56;
+    static constexpr int stepperRowHeight = 16;
+
     /** Erster CV-Eingangs-Kanal des Chassis (Audio 0..1, CV 2..N — 4.6). */
     static constexpr int firstCvChannel = 2;
 
-    /** Panel-Breite für n sichtbare DSP-Spalten (plus zwei Gain-Züge). */
+    /** Panel-Breite für n sichtbare DSP-Spalten (plus zwei Gain-Züge) —
+        Spezialfall „alle Spalten im Fader-Modus" von getPreferredWidth(). */
     [[nodiscard]] static int widthForColumns (int numDspColumns) noexcept
     {
         return 2 * GainFaderMeter::preferredWidth
              + juce::jmax (0, numDspColumns) * columnWidth + 16;
     }
+
+    /** Breite EINER Spalte: Fader-Modus 56px; Button-Modus (Nicht-Dev)
+        1–2 Stapel à buttonStackWidth (5 Buttons pro Stapel); Dev+Buttons:
+        Fader-Spalte PLUS Stapel daneben (Fader zum Wert-Finden, 4.6). */
+    [[nodiscard]] static int columnWidthFor (bool isButtonMode, bool isInDevMode,
+                                             int numButtons) noexcept
+    {
+        if (! isButtonMode)
+            return columnWidth;
+
+        const auto stacks = juce::jmax (1,
+            (numButtons + ChassisSchema::maxUiButtonsPerStack - 1)
+                / ChassisSchema::maxUiButtonsPerStack);
+
+        return isInDevMode ? columnWidth + stacks * buttonStackWidth
+                           : stacks * buttonStackWidth;
+    }
+
+    /** Ist-Breite des Panels aus den GEBAUTEN Spalten (variable Breiten —
+        Button-Spalten sind breiter); degeneriert ohne Button-Spalten exakt
+        zu widthForColumns(getNumColumns()). */
+    [[nodiscard]] int getPreferredWidth() const noexcept;
 
     [[nodiscard]] int getNumColumns() const noexcept { return static_cast<int> (columns.size()); }
 
@@ -91,6 +127,21 @@ public:
     void resized() override;
 
     //==========================================================================
+    /** Wert-Button (Fader↔Button-Modus 4.6): Label-basiert, damit das
+        Doppelklick-Rename (Dev-Modus) das bewährte setEditable-Muster nutzt.
+        Klick = onClick — Nicht-Dev: gespeicherten Wert abrufen (Fader-Pfad),
+        Dev: aktuellen Fader-Wert in den Button speichern (undo-fähig). */
+    struct ValueButton final : juce::Label
+    {
+        std::function<void()> onClick;
+        double storedValue = 0.0;   // Cache für die Aktiv-Markierung (kein Re-Parse)
+        bool active = false;        // paramValue == storedValue (exactlyEqual über float)
+
+        void mouseUp (const juce::MouseEvent& e) override;
+        void paint (juce::Graphics& g) override;
+    };
+
+    //==========================================================================
     // Eine DSP-Parameter-Spalte — Controls public, UI-Tests treiben sie direkt
     struct ParameterColumn
     {
@@ -98,16 +149,27 @@ public:
         juce::String cvAmountId;   // "{param}_cv_amt"
         int cvChannel = -1;        // festes Layout: numAudioIns + dsp-Index (4.6)
         bool hidden = false;       // uiHidden-Snapshot beim Build
+
+        // Fader↔Button-Modus (4.6): Snapshots beim Build — bestimmen die
+        // Spaltenbreite (columnWidthFor) und das Layout in resized()
+        bool buttonMode = false;   // uiMode == "buttons"
+        int  numButtons = 0;       // Länge der uiButtons-Liste
         juce::Label  titleLabel;
         CurvedSlider slider { juce::Slider::LinearVertical, juce::Slider::NoTextBox };
         juce::Slider cvKnob { juce::Slider::RotaryHorizontalVerticalDrag,
                               juce::Slider::NoTextBox };
         std::unique_ptr<PortComponent> cvPort;   // fehlt bei uiHidden (Kabel getrennt)
 
+        // Wert-Buttons (Fader↔Button-Modus 4.6) — nur bei buttonMode gebaut
+        std::vector<std::unique_ptr<ValueButton>> valueButtons;
+
         // Dev-Modus-Controls (nur im Dev-Modus erzeugt). Min/Max des
         // User-Regelbereichs leben IM Kurven-Editor (CallOutBox, ~-Button)
         juce::TextButton hideButton;
         juce::TextButton curveButton;   // öffnet Kurve + Range (CurveEditor)
+        juce::TextButton modeButton;    // Fader↔Buttons ("btn"/"fdr")
+        juce::TextButton addButton;     // "+" — Button anhängen (Dev + buttonMode)
+        juce::TextButton removeButton;  // "−" — letzten Button entfernen
     };
 
     std::vector<std::unique_ptr<ParameterColumn>> columns;
@@ -148,6 +210,7 @@ private:
     void rebuildColumns();   // clear + build + resized + onLayoutChanged
     void refreshSendButtonState();
     void applyUserRangeToColumn (ParameterColumn& column, const juce::ValueTree& param);
+    void layoutValueButtons (ParameterColumn& column, juce::Rectangle<int> stackArea);
 
     [[nodiscard]] juce::Rectangle<int> sendLedBounds() const;
 

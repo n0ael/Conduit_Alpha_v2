@@ -70,6 +70,13 @@ namespace id
     inline const juce::Identifier paramUiHidden { "uiHidden" };  // optional: Spalte ausgeblendet
     inline const juce::Identifier paramCurve    { "curve" };     // optional: "x1 y1 x2 y2" (Bezier)
 
+    // Fader↔Button-Modus (4.6, Dev-Modus): Spalte zeigt statt des Faders
+    // benannte Wert-Buttons. uiButtons bleibt beim Zurückschalten auf Fader
+    // erhalten (verlustfreies Hin- und Herschalten) — die UI baut Buttons
+    // nur bei uiMode == "buttons".
+    inline const juce::Identifier paramUiMode    { "uiMode" };    // optional: "buttons" (fehlend = Fader)
+    inline const juce::Identifier paramUiButtons { "uiButtons" }; // optional: JSON [{"n":"Dry","v":0.25},…]
+
     // Control-Linking (4.6, modulintern): dieser Parameter folgt einem
     // anderen dsp-Parameter DESSELBEN Moduls als interne Modulation
     inline const juce::Identifier paramLinkSource { "linkSource" };  // optional: paramId der Quelle

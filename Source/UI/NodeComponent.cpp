@@ -310,10 +310,10 @@ void NodeComponent::updateChassisSize()
     if (fxPanel == nullptr)
         return;
 
-    // Panel-Breite folgt den SICHTBAREN Spalten + 28px Rand je Seite für
-    // die Port-Hit-Zonen der Audio-Kanäle
-    setSize (juce::jmax (defaultWidth,
-                         FxModulePanel::widthForColumns (fxPanel->getNumColumns()) + 56),
+    // Panel-Breite folgt den SICHTBAREN Spalten (variable Breiten — Button-
+    // Spalten sind breiter, 4.6) + 28px Rand je Seite für die Port-Hit-Zonen
+    // der Audio-Kanäle
+    setSize (juce::jmax (defaultWidth, fxPanel->getPreferredWidth() + 56),
              touchTarget + FxModulePanel::panelHeight + 8);
     resized();
 

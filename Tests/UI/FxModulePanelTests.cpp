@@ -511,3 +511,195 @@ TEST_CASE ("FxModulePanel: widthForColumns ist die zentrale Breitenformel", "[ui
     REQUIRE (Panel::widthForColumns (4) - Panel::widthForColumns (0) == 4 * Panel::columnWidth);
     REQUIRE (Panel::widthForColumns (-1) == Panel::widthForColumns (0));  // defensiv
 }
+
+TEST_CASE ("FxModulePanel Button-Modus: Buttons ersetzen den Fader im Normalmodus", "[ui][chassis][buttons]")
+{
+    ChassisRig rig;
+    const auto uuid = rig.node.getProperty (conduit::id::nodeId).toString();
+
+    rig.setParamValue ("density", 0.3);
+    REQUIRE (rig.manager.setParameterUiMode (uuid, "density", true));
+    REQUIRE (rig.manager.setParameterButtonCount (uuid, "density", 3));
+    REQUIRE (rig.manager.renameParameterButton (uuid, "density", 1, "Halb"));
+
+    conduit::FxModulePanel panel { rig.node, rig.manager };
+    panel.setSize (panel.getPreferredWidth(), conduit::FxModulePanel::panelHeight);
+
+    // Spalte im Button-Modus: 3 Buttons, Fader unsichtbar, CV bleibt bedienbar
+    auto& column = *panel.columns[0];
+    REQUIRE (column.buttonMode);
+    REQUIRE (column.valueButtons.size() == 3);
+    REQUIRE_FALSE (column.slider.isVisible());
+    REQUIRE (column.cvKnob.isVisible());
+    REQUIRE (column.cvPort != nullptr);
+    REQUIRE (column.valueButtons[1]->getText() == "Halb");
+
+    // Andere Spalten bleiben Fader
+    REQUIRE_FALSE (panel.columns[1]->buttonMode);
+    REQUIRE (panel.columns[1]->slider.isVisible());
+
+    // Recall: Klick schreibt den gespeicherten Wert über den Fader-Pfad
+    rig.setParamValue ("density", 0.9);
+    REQUIRE_FALSE (column.valueButtons[0]->active);
+    column.valueButtons[0]->onClick();
+    REQUIRE (rig.paramValue ("density") == Approx (0.3));
+
+    // Aktiv-Markierung folgt dem paramValue (in-place, exactlyEqual)
+    REQUIRE (column.valueButtons[0]->active);
+    rig.setParamValue ("density", 0.55);
+    REQUIRE_FALSE (column.valueButtons[0]->active);
+}
+
+TEST_CASE ("FxModulePanel Button-Modus: 6 Buttons -> zwei Stapel, Spalte doppelt breit", "[ui][chassis][buttons]")
+{
+    ChassisRig rig;
+    const auto uuid = rig.node.getProperty (conduit::id::nodeId).toString();
+
+    REQUIRE (rig.manager.setParameterUiMode (uuid, "density", true));
+    REQUIRE (rig.manager.setParameterButtonCount (uuid, "density", 6));
+
+    conduit::FxModulePanel panel { rig.node, rig.manager };
+    panel.setSize (panel.getPreferredWidth(), conduit::FxModulePanel::panelHeight);
+
+    // Breite: 3 Fader-Spalten + 1 Doppelspalte
+    REQUIRE (panel.getPreferredWidth()
+             == conduit::FxModulePanel::widthForColumns (3)
+                    + 2 * conduit::FxModulePanel::buttonStackWidth);
+
+    // Button 5 (Index 5, zweiter Stapel) liegt rechts von Button 0, gleiche Höhe
+    auto& column = *panel.columns[0];
+    REQUIRE (column.valueButtons.size() == 6);
+    REQUIRE (column.valueButtons[5]->getX() > column.valueButtons[0]->getX());
+    REQUIRE (column.valueButtons[5]->getY() == column.valueButtons[0]->getY());
+
+    // Buttons 0..4 stapeln vertikal im ersten Stapel
+    REQUIRE (column.valueButtons[4]->getX() == column.valueButtons[0]->getX());
+    REQUIRE (column.valueButtons[4]->getY() > column.valueButtons[3]->getY());
+}
+
+TEST_CASE ("FxModulePanel Dev+Buttons: Fader UND Buttons, Klick speichert den Fader-Wert undo-faehig", "[ui][chassis][devmode][buttons]")
+{
+    using S = conduit::ChassisSchema;
+    ChassisRig rig;
+    const auto uuid = rig.node.getProperty (conduit::id::nodeId).toString();
+
+    rig.setParamValue ("density", 0.3);
+    REQUIRE (rig.manager.setParameterUiMode (uuid, "density", true));
+    REQUIRE (rig.manager.setParameterButtonCount (uuid, "density", 2));
+
+    conduit::FxModulePanel panel { rig.node, rig.manager };
+    panel.setDevMode (true);
+    panel.setSize (panel.getPreferredWidth(), conduit::FxModulePanel::panelHeight);
+
+    // Dev: Fader sichtbar UND Buttons daneben
+    auto& column = *panel.columns[0];
+    REQUIRE (column.slider.isVisible());
+    REQUIRE (column.valueButtons.size() == 2);
+    REQUIRE (column.valueButtons[0]->getX() >= conduit::FxModulePanel::columnWidth);
+
+    // Kern-Workflow: Fader auf guten Wert, Button-Klick speichert ihn
+    column.slider.setValue (0.7, juce::sendNotificationSync);
+    panel.columns[0]->valueButtons[1]->onClick();   // Rebuild! Zugriff über Panel
+
+    auto density = rig.node.getChildWithName (conduit::id::parameters)
+                       .getChildWithProperty (conduit::id::paramId, "density");
+    auto buttons = S::parseButtons (density.getProperty (conduit::id::paramUiButtons).toString());
+    REQUIRE ((*buttons)[1].value == Approx (0.7));
+    REQUIRE ((*buttons)[0].value == Approx (0.3));
+
+    // Undo restauriert die Liste; Panel rebuildet crashfrei (Friedhof)
+    REQUIRE (rig.undoManager.undo());
+    buttons = S::parseButtons (density.getProperty (conduit::id::paramUiButtons).toString());
+    REQUIRE ((*buttons)[1].value == Approx (0.3));
+    REQUIRE (panel.columns[0]->valueButtons.size() == 2);
+}
+
+TEST_CASE ("FxModulePanel Dev: modeButton schaltet uiMode, Stepper aendert die Anzahl", "[ui][chassis][devmode][buttons]")
+{
+    ChassisRig rig;
+    conduit::FxModulePanel panel { rig.node, rig.manager };
+    panel.setDevMode (true);
+
+    int layoutChanges = 0;
+    panel.onLayoutChanged = [&layoutChanges] { ++layoutChanges; };
+
+    // Umschalten auf Buttons: Property + Rebuild + Layout-Callback
+    panel.columns[0]->modeButton.onClick();
+    auto density = rig.node.getChildWithName (conduit::id::parameters)
+                       .getChildWithProperty (conduit::id::paramId, "density");
+    REQUIRE (conduit::ChassisSchema::isButtonMode (density));
+    REQUIRE (layoutChanges == 1);
+    REQUIRE (panel.columns[0]->buttonMode);
+
+    // Stepper: 2× anhängen, 1× entfernen
+    panel.columns[0]->addButton.onClick();
+    panel.columns[0]->addButton.onClick();
+    REQUIRE (panel.columns[0]->valueButtons.size() == 2);
+    panel.columns[0]->removeButton.onClick();
+    REQUIRE (panel.columns[0]->valueButtons.size() == 1);
+
+    // removeButton bei 0 disabled, addButton bei 10 disabled
+    panel.columns[0]->removeButton.onClick();
+    REQUIRE (panel.columns[0]->valueButtons.empty());
+    REQUIRE_FALSE (panel.columns[0]->removeButton.isEnabled());
+
+    for (int clickIndex = 0; clickIndex < conduit::ChassisSchema::maxUiButtons; ++clickIndex)
+        panel.columns[0]->addButton.onClick();
+    REQUIRE (static_cast<int> (panel.columns[0]->valueButtons.size())
+             == conduit::ChassisSchema::maxUiButtons);
+    REQUIRE_FALSE (panel.columns[0]->addButton.isEnabled());
+
+    // Zurück auf Fader: Buttons verschwinden, uiButtons bleibt geparkt
+    panel.columns[0]->modeButton.onClick();
+    REQUIRE_FALSE (panel.columns[0]->buttonMode);
+    REQUIRE (panel.columns[0]->valueButtons.empty());
+    REQUIRE (density.hasProperty (conduit::id::paramUiButtons));
+    REQUIRE (panel.columns[0]->slider.isVisible());
+}
+
+TEST_CASE ("FxModulePanel Dev: Button-Rename via GraphManager erreicht das Label", "[ui][chassis][devmode][buttons]")
+{
+    ChassisRig rig;
+    const auto uuid = rig.node.getProperty (conduit::id::nodeId).toString();
+
+    REQUIRE (rig.manager.setParameterUiMode (uuid, "density", true));
+    REQUIRE (rig.manager.setParameterButtonCount (uuid, "density", 1));
+
+    conduit::FxModulePanel panel { rig.node, rig.manager };
+    panel.setDevMode (true);
+
+    REQUIRE (panel.columns[0]->valueButtons[0]->getText() == "P1");
+
+    // Rename (Label-Inline-Edit ist headless unzuverlässig — API-Pfad):
+    // Property-Change → Rebuild → neues Label trägt den Namen
+    REQUIRE (rig.manager.renameParameterButton (uuid, "density", 0, "Sweet"));
+    REQUIRE (panel.columns[0]->valueButtons[0]->getText() == "Sweet");
+
+    // Nicht-Dev: Labels sind nicht editierbar
+    panel.setDevMode (false);
+    REQUIRE_FALSE (panel.columns[0]->valueButtons[0]->isEditableOnDoubleClick());
+}
+
+TEST_CASE ("FxModulePanel: columnWidthFor + getPreferredWidth (variable Spaltenbreiten)", "[ui][chassis][buttons]")
+{
+    using Panel = conduit::FxModulePanel;
+
+    // Fader-Spalte: immer 56, unabhängig von Dev-Modus und Button-Zahl
+    REQUIRE (Panel::columnWidthFor (false, false, 0) == Panel::columnWidth);
+    REQUIRE (Panel::columnWidthFor (false, true, 7)  == Panel::columnWidth);
+
+    // Button-Spalte (Nicht-Dev): 1 Stapel bis 5 Buttons, danach 2
+    REQUIRE (Panel::columnWidthFor (true, false, 0) == Panel::buttonStackWidth);
+    REQUIRE (Panel::columnWidthFor (true, false, 5) == Panel::buttonStackWidth);
+    REQUIRE (Panel::columnWidthFor (true, false, 6) == 2 * Panel::buttonStackWidth);
+    REQUIRE (Panel::columnWidthFor (true, false, 10) == 2 * Panel::buttonStackWidth);
+
+    // Dev+Buttons: Fader-Spalte + Stapel daneben
+    REQUIRE (Panel::columnWidthFor (true, true, 3) == Panel::columnWidth + Panel::buttonStackWidth);
+    REQUIRE (Panel::columnWidthFor (true, true, 6) == Panel::columnWidth + 2 * Panel::buttonStackWidth);
+
+    // Degeneration: reine Fader-Panels liefern exakt widthForColumns
+    ChassisRig rig;
+    conduit::FxModulePanel panel { rig.node, rig.manager };
+    REQUIRE (panel.getPreferredWidth() == Panel::widthForColumns (panel.getNumColumns()));
+}

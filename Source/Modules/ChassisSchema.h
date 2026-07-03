@@ -1,6 +1,7 @@
 #pragma once
 
 #include <optional>
+#include <vector>
 
 #include "ConduitModule.h"
 
@@ -137,6 +138,43 @@ struct ChassisSchema
 
     /** Inverse: normierter Wert → Fader-Position (y monoton, s.o.). */
     [[nodiscard]] static float curvePositionForValue (const BezierCurve& curve, float normValue) noexcept;
+
+    //==========================================================================
+    /** Fader↔Button-Modus (4.6, Dev-Modus): ein dsp-Parameter kann statt des
+        Faders benannte Wert-Buttons zeigen (Parameter-Property `uiMode` ==
+        "buttons"). Die Button-Liste lebt als EIN JSON-String-Property
+        `uiButtons` ([{"n":"Dry","v":0.25},…]) — atomar undo-fähig, reist als
+        XML-Attribut durch ModuleUiDefaults, Namen robust escaped. REINER
+        UI-Patch-Zustand: DSP, OSC und CV sind davon unberührt (Buttons
+        schreiben denselben paramValue-Pfad wie der Fader).
+
+        Parsing/Serialisierung NUR auf dem Message Thread (JSON alloziert). */
+    static constexpr const char* uiModeButtons = "buttons";
+
+    static constexpr int maxUiButtons          = 10;  // hartes Listen-Limit
+    static constexpr int maxUiButtonsPerStack  = 5;   // UI: Buttons pro Stapel
+    static constexpr int maxUiButtonNameLength = 16;
+
+    struct ButtonPreset
+    {
+        juce::String name;
+        double value = 0.0;
+    };
+
+    /** JSON "[{"n":…,"v":…},…]" → Liste. nullopt bei leerem/unlesbarem
+        String, Nicht-Array, fehlendem n/v oder > maxUiButtons Einträgen.
+        Namen werden getrimmt und auf maxUiButtonNameLength gekürzt; Werte
+        werden NICHT geclamped (die Hard-Range kennt der Aufrufer). */
+    [[nodiscard]] static std::optional<std::vector<ButtonPreset>> parseButtons (const juce::String& text);
+
+    [[nodiscard]] static juce::String buttonsToString (const std::vector<ButtonPreset>& buttons);
+
+    /** Ob ein Parameter-Tree im Button-Modus steht (uiMode == "buttons"). */
+    [[nodiscard]] static bool isButtonMode (const juce::ValueTree& parameterTree)
+    {
+        return parameterTree.getProperty (id::paramUiMode).toString()
+                   == juce::String (uiModeButtons);
+    }
 
     //==========================================================================
     /** Response des Control-Links (4.6): Bezier-FORM plus frei setzbarem

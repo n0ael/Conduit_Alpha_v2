@@ -303,6 +303,164 @@ bool GraphManager::setParameterLinkCurve (const juce::String& nodeUuid, const ju
     return true;
 }
 
+namespace
+{
+    /** Button-Liste eines Parameters (fehlendes/kaputtes Property = leer). */
+    [[nodiscard]] std::vector<ChassisSchema::ButtonPreset> buttonsOf (const juce::ValueTree& param)
+    {
+        return ChassisSchema::parseButtons (param.getProperty (id::paramUiButtons).toString())
+            .value_or (std::vector<ChassisSchema::ButtonPreset>{});
+    }
+
+    /** Aktueller paramValue, geclamped auf die Hard-Range (min/max). */
+    [[nodiscard]] double clampedParamValueOf (const juce::ValueTree& param)
+    {
+        return juce::jlimit ((double) param.getProperty (id::paramMin, 0.0),
+                             (double) param.getProperty (id::paramMax, 1.0),
+                             (double) param.getProperty (id::paramValue, 0.0));
+    }
+} // namespace
+
+bool GraphManager::setParameterUiMode (const juce::String& nodeUuid, const juce::String& paramId,
+                                       bool useButtons)
+{
+    JUCE_ASSERT_MESSAGE_THREAD
+
+    auto nodeTree = rootState.getChildWithName (id::nodes)
+                        .getChildWithProperty (id::nodeId, nodeUuid);
+    auto param = nodeTree.getChildWithName (id::parameters)
+                     .getChildWithProperty (id::paramId, paramId);
+
+    if (! param.isValid()
+        || ChassisSchema::roleOf (param) != juce::String (ChassisSchema::roleDsp))
+        return false;
+
+    // No-op ohne Transaktion (Muster setParameterHidden). Beim Zurückschalten
+    // zählt hasProperty, nicht isButtonMode — ein handeditiertes uiMode="fader"
+    // soll trotzdem entfernt werden.
+    if (useButtons ? ChassisSchema::isButtonMode (param)
+                   : ! param.hasProperty (id::paramUiMode))
+        return true;
+
+    undoManager.beginNewTransaction ("Button-Modus umschalten");
+
+    if (useButtons)
+        param.setProperty (id::paramUiMode, ChassisSchema::uiModeButtons, &undoManager);
+    else
+        param.removeProperty (id::paramUiMode, &undoManager);   // uiButtons bleibt geparkt
+
+    return true;
+}
+
+bool GraphManager::setParameterButtonCount (const juce::String& nodeUuid, const juce::String& paramId,
+                                            int count)
+{
+    JUCE_ASSERT_MESSAGE_THREAD
+
+    auto nodeTree = rootState.getChildWithName (id::nodes)
+                        .getChildWithProperty (id::nodeId, nodeUuid);
+    auto param = nodeTree.getChildWithName (id::parameters)
+                     .getChildWithProperty (id::paramId, paramId);
+
+    if (! param.isValid()
+        || ChassisSchema::roleOf (param) != juce::String (ChassisSchema::roleDsp)
+        || count < 0 || count > ChassisSchema::maxUiButtons)
+        return false;
+
+    auto buttons = buttonsOf (param);
+
+    if (static_cast<int> (buttons.size()) == count)
+        return true;   // No-op
+
+    undoManager.beginNewTransaction ("Button-Anzahl ändern");
+
+    if (static_cast<int> (buttons.size()) > count)
+    {
+        buttons.resize (static_cast<size_t> (count));   // von hinten entfernen
+    }
+    else
+    {
+        const auto value = clampedParamValueOf (param);
+
+        while (static_cast<int> (buttons.size()) < count)
+            buttons.push_back ({ "P" + juce::String (buttons.size() + 1), value });
+    }
+
+    if (buttons.empty())
+        param.removeProperty (id::paramUiButtons, &undoManager);
+    else
+        param.setProperty (id::paramUiButtons,
+                           ChassisSchema::buttonsToString (buttons), &undoManager);
+
+    return true;
+}
+
+bool GraphManager::storeParameterButtonValue (const juce::String& nodeUuid, const juce::String& paramId,
+                                              int buttonIndex)
+{
+    JUCE_ASSERT_MESSAGE_THREAD
+
+    auto nodeTree = rootState.getChildWithName (id::nodes)
+                        .getChildWithProperty (id::nodeId, nodeUuid);
+    auto param = nodeTree.getChildWithName (id::parameters)
+                     .getChildWithProperty (id::paramId, paramId);
+
+    if (! param.isValid()
+        || ChassisSchema::roleOf (param) != juce::String (ChassisSchema::roleDsp))
+        return false;
+
+    auto buttons = buttonsOf (param);
+
+    if (buttonIndex < 0 || buttonIndex >= static_cast<int> (buttons.size()))
+        return false;
+
+    const auto value = clampedParamValueOf (param);
+    auto& target = buttons[static_cast<size_t> (buttonIndex)];
+
+    // Float-Vergleich bewusst über float (6.1-Falle: var speichert double)
+    if (juce::exactlyEqual (static_cast<float> (target.value), static_cast<float> (value)))
+        return true;   // No-op
+
+    undoManager.beginNewTransaction ("Wert in Button speichern");
+    target.value = value;
+    param.setProperty (id::paramUiButtons, ChassisSchema::buttonsToString (buttons), &undoManager);
+
+    return true;
+}
+
+bool GraphManager::renameParameterButton (const juce::String& nodeUuid, const juce::String& paramId,
+                                          int buttonIndex, const juce::String& newName)
+{
+    JUCE_ASSERT_MESSAGE_THREAD
+
+    auto nodeTree = rootState.getChildWithName (id::nodes)
+                        .getChildWithProperty (id::nodeId, nodeUuid);
+    auto param = nodeTree.getChildWithName (id::parameters)
+                     .getChildWithProperty (id::paramId, paramId);
+
+    if (! param.isValid()
+        || ChassisSchema::roleOf (param) != juce::String (ChassisSchema::roleDsp))
+        return false;
+
+    auto buttons = buttonsOf (param);
+    const auto trimmed = newName.trim();
+
+    if (buttonIndex < 0 || buttonIndex >= static_cast<int> (buttons.size())
+        || trimmed.isEmpty() || trimmed.length() > ChassisSchema::maxUiButtonNameLength)
+        return false;
+
+    auto& target = buttons[static_cast<size_t> (buttonIndex)];
+
+    if (target.name == trimmed)
+        return true;   // No-op
+
+    undoManager.beginNewTransaction ("Button umbenennen");
+    target.name = trimmed;
+    param.setProperty (id::paramUiButtons, ChassisSchema::buttonsToString (buttons), &undoManager);
+
+    return true;
+}
+
 bool GraphManager::setLinkSendEnabled (const juce::String& nodeUuid, bool enabled)
 {
     JUCE_ASSERT_MESSAGE_THREAD

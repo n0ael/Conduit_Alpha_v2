@@ -145,9 +145,39 @@ public:
     bool setParameterLinkCurve (const juce::String& nodeUuid, const juce::String& paramId,
                                 const juce::String& curveText);
 
+    /** Patch-Aktion (Dev-Modus 4.6): Fader↔Button-Modus eines dsp-Parameters.
+        true → uiMode = "buttons" (Nicht-Dev-Ansicht zeigt Wert-Buttons statt
+        Fader), false → Property entfernt (Fader). Die Button-Liste uiButtons
+        bleibt beim Zurückschalten erhalten. Undo-fähig; DSP/OSC/CV unberührt.
+        false bei unbekanntem/nicht-dsp-Parameter. Message Thread. */
+    bool setParameterUiMode (const juce::String& nodeUuid, const juce::String& paramId,
+                             bool useButtons);
+
+    /** Patch-Aktion (Dev-Modus 4.6): Button-Anzahl 0..ChassisSchema::
+        maxUiButtons. Wachsen hängt Buttons "P{n}" mit dem AKTUELLEN
+        paramValue (geclamped auf die Hard-Range) an, Schrumpfen entfernt von
+        hinten; 0 entfernt das Property. EIN Undo restauriert die komplette
+        Liste. false bei nicht-dsp/unbekanntem Parameter oder count außerhalb
+        des Limits. Message Thread. */
+    bool setParameterButtonCount (const juce::String& nodeUuid, const juce::String& paramId,
+                                  int count);
+
+    /** Patch-Aktion (Dev-Modus 4.6, Kern-Workflow): speichert den AKTUELLEN
+        paramValue (geclamped auf die Hard-Range) in Button buttonIndex.
+        Undo-fähig. false bei ungültigem Index/Parameter. Message Thread. */
+    bool storeParameterButtonValue (const juce::String& nodeUuid, const juce::String& paramId,
+                                    int buttonIndex);
+
+    /** Patch-Aktion (Dev-Modus 4.6): benennt Button buttonIndex um. Name wird
+        getrimmt; false bei leerem Ergebnis, > ChassisSchema::
+        maxUiButtonNameLength Zeichen oder ungültigem Index. Message Thread. */
+    bool renameParameterButton (const juce::String& nodeUuid, const juce::String& paramId,
+                                int buttonIndex, const juce::String& newName);
+
     /** Dev-Modus 4.6: aktuelle dsp-Overrides des Nodes (userMin/userMax/
-        uiHidden/curve) als Modul-Typ-Defaults sichern — greift bei künftigen
-        Neu-Anlagen dieses factoryIds. false ohne ModuleUiDefaults/Node. */
+        uiHidden/curve/uiMode/uiButtons) als Modul-Typ-Defaults sichern —
+        greift bei künftigen Neu-Anlagen dieses factoryIds. false ohne
+        ModuleUiDefaults/Node. */
     bool captureModuleUiDefaults (const juce::String& nodeUuid);
 
     /** Phase 1 des zweiphasigen Deletes (5.3): setzt nodeState → Deleting.

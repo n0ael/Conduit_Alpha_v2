@@ -14,6 +14,38 @@ namespace
     constexpr int sendLedWidth  = 16;
 }
 
+//==============================================================================
+void FxModulePanel::ValueButton::mouseUp (const juce::MouseEvent& e)
+{
+    // Nur der erste Klick löst aus — der zweite eines Doppelklicks gehört
+    // dem Rename-Editor (setEditable-Muster)
+    if (! isBeingEdited() && e.mouseWasClicked()
+        && e.getNumberOfClicks() == 1 && onClick != nullptr)
+        onClick();
+
+    juce::Label::mouseUp (e);
+}
+
+void FxModulePanel::ValueButton::paint (juce::Graphics& g)
+{
+    const auto bounds = getLocalBounds().toFloat().reduced (1.5f);
+
+    if (active)
+    {
+        // LED-Stil (Push 10.0): der Button, dessen Wert gerade anliegt
+        g.setColour (push::colours::ledCyan.withAlpha (0.2f));
+        g.fillRoundedRectangle (bounds, 3.0f);
+        g.setColour (push::colours::ledCyan);
+    }
+    else
+    {
+        g.setColour (push::colours::textDim.withAlpha (0.4f));
+    }
+
+    g.drawRoundedRectangle (bounds, 3.0f, 1.0f);
+    juce::Label::paint (g);   // Text + Inline-Editor zeichnet das Label
+}
+
 FxModulePanel::FxModulePanel (juce::ValueTree nodeTreeToBind, GraphManager& graphManagerToUse)
     : nodeTree (std::move (nodeTreeToBind)),
       graphManager (graphManagerToUse)
@@ -44,7 +76,7 @@ FxModulePanel::FxModulePanel (juce::ValueTree nodeTreeToBind, GraphManager& grap
     // Dev-Modus: Ist-Zustand (Range/Hidden/Kurve) als Modul-Typ-Default
     // sichern — greift bei künftigen Neu-Anlagen (4.6)
     saveDefaultsButton.setTooltip (juce::String::fromUTF8 (
-        "Regelbereiche, Sichtbarkeit und Kurven als Standard für diesen Modul-Typ speichern"));
+        "Regelbereiche, Sichtbarkeit, Kurven und Wert-Buttons als Standard für diesen Modul-Typ speichern"));
     saveDefaultsButton.onClick = [this]
     {
         graphManager.captureModuleUiDefaults (nodeTree.getProperty (id::nodeId).toString());
@@ -77,6 +109,12 @@ void FxModulePanel::stopUpdates()
         column->cvKnob.setEnabled (false);
         column->hideButton.setEnabled (false);
         column->curveButton.setEnabled (false);
+        column->modeButton.setEnabled (false);
+        column->addButton.setEnabled (false);
+        column->removeButton.setEnabled (false);
+
+        for (auto& valueButton : column->valueButtons)
+            valueButton->setEnabled (false);
     }
 }
 
@@ -135,6 +173,15 @@ void FxModulePanel::buildColumns()
         column->cvChannel  = ChassisSchema::cvChannelForParam (nodeTree, column->paramId);
         column->hidden     = hidden;
 
+        // Fader↔Button-Modus (4.6): Snapshots bestimmen Spaltenbreite/Layout.
+        // Kaputte uiButtons-Strings (handeditierte Patches) → leere Liste,
+        // nie Crash; Buttons werden NUR bei uiMode == "buttons" gebaut.
+        column->buttonMode = ChassisSchema::isButtonMode (param);
+        const auto buttonList = ChassisSchema::parseButtons (
+            param.getProperty (id::paramUiButtons).toString())
+                .value_or (std::vector<ChassisSchema::ButtonPreset>{});
+        column->numButtons = static_cast<int> (buttonList.size());
+
         column->titleLabel.setText (column->paramId, juce::dontSendNotification);
         column->titleLabel.setFont (juce::Font (juce::FontOptions (11.0f)));
         column->titleLabel.setColour (juce::Label::textColourId,
@@ -153,6 +200,68 @@ void FxModulePanel::buildColumns()
                 p.setProperty (id::paramValue, slider->getValue(), nullptr);
         };
         addAndMakeVisible (column->slider);
+
+        // Button-Modus ohne Dev: Buttons ERSETZEN den Fader — der Slider
+        // bleibt Member (Range-/Value-Sync unverändert), nur unsichtbar
+        if (column->buttonMode && ! devMode)
+            column->slider.setVisible (false);
+
+        // Wert-Buttons (4.6): Nicht-Dev ruft den gespeicherten Wert ab
+        // (derselbe Tree-Pfad wie der Fader, kein UndoManager); Dev speichert
+        // den aktuellen Fader-Wert in den Button (undo-fähig) und benennt
+        // per Doppelklick um (Label-Muster NodeComponent-Rename)
+        if (column->buttonMode)
+        {
+            const auto ownerUuid = nodeTree.getProperty (id::nodeId).toString();
+            const auto currentValue = (double) param.getProperty (id::paramValue, 0.0);
+
+            for (size_t buttonIndex = 0; buttonIndex < buttonList.size(); ++buttonIndex)
+            {
+                auto button = std::make_unique<ValueButton>();
+                const auto& preset = buttonList[buttonIndex];
+
+                button->setText (preset.name, juce::dontSendNotification);
+                button->setFont (juce::Font (juce::FontOptions (11.0f)));
+                button->setJustificationType (juce::Justification::centred);
+                button->setMinimumHorizontalScale (0.7f);
+                button->storedValue = preset.value;
+                button->active = juce::exactlyEqual (static_cast<float> (preset.value),
+                                                     static_cast<float> (currentValue));
+                button->setEditable (false, devMode, false);
+
+                if (devMode)
+                {
+                    button->onClick = [this, ownerUuid, paramId = column->paramId,
+                                       storeIndex = static_cast<int> (buttonIndex)]
+                    {
+                        graphManager.storeParameterButtonValue (ownerUuid, paramId, storeIndex);
+                    };
+
+                    // Rename-Commit; bei Ablehnung Text restaurieren — dann
+                    // gibt es KEINEN Property-Change, der Button lebt weiter
+                    button->onTextChange = [this, ownerUuid, paramId = column->paramId,
+                                            renameIndex = static_cast<int> (buttonIndex),
+                                            oldName = preset.name, buttonPtr = button.get()]
+                    {
+                        if (! graphManager.renameParameterButton (ownerUuid, paramId, renameIndex,
+                                                                  buttonPtr->getText()))
+                            buttonPtr->setText (oldName, juce::dontSendNotification);
+                    };
+                }
+                else
+                {
+                    button->onClick = [this, paramId = column->paramId,
+                                       recallValue = preset.value]
+                    {
+                        if (auto p = paramTreeFor (paramId); p.isValid())
+                            p.setProperty (id::paramValue, recallValue, nullptr);
+                    };
+                }
+
+                addAndMakeVisible (*button);
+                column->valueButtons.push_back (std::move (button));
+            }
+        }
 
         // Attenuverter (MI-Stil): bipolar −1..+1, Mitte = keine Modulation,
         // Doppelklick zurück auf 0 — bindet {param}_cv_amt
@@ -263,12 +372,53 @@ void FxModulePanel::buildColumns()
             };
             addAndMakeVisible (column->curveButton);
 
+            // Fader↔Button-Umschalter (4.6): dritter Toggle der Dev-Zeile
+            column->modeButton.setButtonText (column->buttonMode ? "fdr" : "btn");
+            column->modeButton.setTooltip (juce::String::fromUTF8 (column->buttonMode
+                ? "Zurück zum Fader — die Buttons bleiben gespeichert"
+                : "Wert-Buttons statt Fader (in der Nicht-Dev-Ansicht)"));
+            column->modeButton.onClick = [this, uuid, paramId = column->paramId,
+                                          toButtons = ! column->buttonMode]
+            {
+                graphManager.setParameterUiMode (uuid, paramId, toButtons);
+            };
+            addAndMakeVisible (column->modeButton);
+
+            // +/−-Stepper: Button-Anzahl (0..10) wird NUR im Dev-Modus bestimmt
+            if (column->buttonMode)
+            {
+                column->addButton.setButtonText ("+");
+                column->addButton.setTooltip (juce::String::fromUTF8 (
+                    "Button anhängen — startet mit dem aktuellen Fader-Wert"));
+                column->addButton.onClick = [this, uuid, paramId = column->paramId,
+                                             grownCount = column->numButtons + 1]
+                {
+                    graphManager.setParameterButtonCount (uuid, paramId, grownCount);
+                };
+                column->addButton.setEnabled (column->numButtons < ChassisSchema::maxUiButtons);
+                addAndMakeVisible (column->addButton);
+
+                column->removeButton.setButtonText (juce::String::fromUTF8 ("−"));
+                column->removeButton.setTooltip (juce::String::fromUTF8 (
+                    "Letzten Button entfernen"));
+                column->removeButton.onClick = [this, uuid, paramId = column->paramId,
+                                                shrunkCount = column->numButtons - 1]
+                {
+                    graphManager.setParameterButtonCount (uuid, paramId, shrunkCount);
+                };
+                column->removeButton.setEnabled (column->numButtons > 0);
+                addAndMakeVisible (column->removeButton);
+            }
+
             // Ausgeblendete Spalten gedimmt zeigen (Dev-Sichtbarkeit)
             if (hidden)
             {
                 column->titleLabel.setAlpha (0.4f);
                 column->slider.setAlpha (0.4f);
                 column->cvKnob.setAlpha (0.4f);
+
+                for (auto& valueButton : column->valueButtons)
+                    valueButton->setAlpha (0.4f);
             }
         }
 
@@ -290,9 +440,17 @@ void FxModulePanel::rebuildColumns()
                              static_cast<juce::Component*> (&column->cvKnob),
                              static_cast<juce::Component*> (&column->hideButton),
                              static_cast<juce::Component*> (&column->curveButton),
+                             static_cast<juce::Component*> (&column->modeButton),
+                             static_cast<juce::Component*> (&column->addButton),
+                             static_cast<juce::Component*> (&column->removeButton),
                              static_cast<juce::Component*> (column->cvPort.get()) })
             if (child != nullptr)
                 removeChildComponent (child);
+
+        // ValueButtons ebenfalls lösen — der Auslöser kann ihr eigener
+        // onClick/onTextChange sein (Friedhof, s.u.)
+        for (auto& valueButton : column->valueButtons)
+            removeChildComponent (valueButton.get());
 
         retiredColumns.push_back (std::move (column));
     }
@@ -313,6 +471,16 @@ void FxModulePanel::rebuildColumns()
 
     if (onLayoutChanged != nullptr)
         onLayoutChanged();
+}
+
+int FxModulePanel::getPreferredWidth() const noexcept
+{
+    int width = 2 * GainFaderMeter::preferredWidth + 16;
+
+    for (const auto& column : columns)
+        width += columnWidthFor (column->buttonMode, devMode, column->numButtons);
+
+    return width;
 }
 
 int FxModulePanel::getNumHiddenParameters() const
@@ -423,7 +591,10 @@ void FxModulePanel::valueTreePropertyChanged (juce::ValueTree& tree, const juce:
     // uiHidden strukturiert die Spalten um, User-Range aktualisiert nur
     if (tree.hasType (id::parameter))
     {
-        if (property == id::paramUiHidden)
+        // uiMode/uiButtons ändern Struktur UND Spaltenbreite → Rebuild
+        // (auch beim Rename: der Friedhof macht das crashsicher)
+        if (property == id::paramUiHidden
+            || property == id::paramUiMode || property == id::paramUiButtons)
         {
             rebuildColumns();
             return;
@@ -456,8 +627,24 @@ void FxModulePanel::valueTreePropertyChanged (juce::ValueTree& tree, const juce:
     {
         if (column->paramId == paramId)
         {
-            column->slider.setValue ((double) tree.getProperty (id::paramValue),
-                                     juce::dontSendNotification);
+            const auto newValue = (double) tree.getProperty (id::paramValue);
+            column->slider.setValue (newValue, juce::dontSendNotification);
+
+            // Aktiv-Markierung in-place nachziehen (kein Rebuild) —
+            // Vergleich bewusst über float (6.1: var speichert double)
+            for (auto& valueButton : column->valueButtons)
+            {
+                const auto isActive = juce::exactlyEqual (
+                    static_cast<float> (valueButton->storedValue),
+                    static_cast<float> (newValue));
+
+                if (valueButton->active != isActive)
+                {
+                    valueButton->active = isActive;
+                    valueButton->repaint();
+                }
+            }
+
             return;
         }
 
@@ -495,16 +682,25 @@ void FxModulePanel::resized()
 
     for (auto& column : columns)
     {
-        auto columnBounds = bounds.removeFromLeft (columnWidth);
+        auto columnBounds = bounds.removeFromLeft (
+            columnWidthFor (column->buttonMode, devMode, column->numButtons));
         column->titleLabel.setBounds (columnBounds.removeFromTop (titleHeight));
 
-        // Dev-Modus: Ausblenden-Toggle + Kurven-/Range-Button ganz unten —
-        // der Fader schrumpft entsprechend
+        // Dev + Buttons: Fader-Teil links (56px, Layout wie gehabt), die
+        // Button-Stapel daneben — Fader zum Wert-Finden, Klick speichert (4.6)
+        auto stackArea = juce::Rectangle<int>();
+
+        if (column->buttonMode && devMode)
+            stackArea = columnBounds.removeFromRight (columnBounds.getWidth() - columnWidth);
+
+        // Dev-Modus: Ausblenden / Fader↔Buttons / Kurven-Editor als Drittel
+        // der Dev-Zeile ganz unten — der Fader schrumpft entsprechend
         if (devMode)
         {
             auto hideRow = columnBounds.removeFromBottom (hideRowHeight);
-            column->curveButton.setBounds (hideRow.removeFromRight (hideRow.getWidth() / 3)
-                                               .reduced (1));
+            const auto thirdWidth = hideRow.getWidth() / 3;
+            column->curveButton.setBounds (hideRow.removeFromRight (thirdWidth).reduced (1));
+            column->modeButton.setBounds (hideRow.removeFromRight (thirdWidth).reduced (1));
             column->hideButton.setBounds (hideRow.reduced (2, 1));
         }
 
@@ -516,7 +712,56 @@ void FxModulePanel::resized()
         auto knobRow = columnBounds.removeFromBottom (knobHeight);
         column->cvKnob.setBounds (knobRow.withSizeKeepingCentre (knobHeight - 4, knobHeight - 4));
 
-        column->slider.setBounds (columnBounds.reduced (4, 2));
+        // Nicht-Dev + Buttons: die Stapel ERSETZEN den Fader-Bereich
+        // (Knob-/Port-Zeile bleibt — CV-Modulation ist weiter bedienbar)
+        if (column->buttonMode && ! devMode)
+            stackArea = columnBounds;
+        else
+            column->slider.setBounds (columnBounds.reduced (4, 2));
+
+        layoutValueButtons (*column, stackArea);
+    }
+}
+
+void FxModulePanel::layoutValueButtons (ParameterColumn& column, juce::Rectangle<int> stackArea)
+{
+    if (! column.buttonMode || stackArea.isEmpty())
+        return;
+
+    // Dev: +/−-Stepper unter den Stapeln (Anzahl nur hier veränderbar)
+    if (devMode)
+    {
+        auto stepperRow = stackArea.removeFromBottom (stepperRowHeight);
+        column.removeButton.setBounds (
+            stepperRow.removeFromLeft (stepperRow.getWidth() / 2).reduced (1));
+        column.addButton.setBounds (stepperRow.reduced (1));
+    }
+
+    const auto numButtons = static_cast<int> (column.valueButtons.size());
+
+    if (numButtons == 0)
+        return;
+
+    const auto stacks = juce::jmax (1,
+        (numButtons + ChassisSchema::maxUiButtonsPerStack - 1)
+            / ChassisSchema::maxUiButtonsPerStack);
+    const auto stackWidth = stackArea.getWidth() / stacks;
+
+    // Wenige Buttons = hohe Touch-Ziele (≥53px bei ≤3); volle Stapel bleiben
+    // bei ~32px — bewusste Ausnahme von der 44px-Regel (10.0) analog zur
+    // 16px-Dev-Zeile, gekappt bei 34px
+    const auto rowsUsed = juce::jmin (numButtons, ChassisSchema::maxUiButtonsPerStack);
+    const auto buttonHeight = juce::jmin (34, stackArea.getHeight() / juce::jmax (1, rowsUsed));
+
+    for (int buttonIndex = 0; buttonIndex < numButtons; ++buttonIndex)
+    {
+        const auto stackIndex = buttonIndex / ChassisSchema::maxUiButtonsPerStack;
+        const auto rowIndex   = buttonIndex % ChassisSchema::maxUiButtonsPerStack;
+
+        column.valueButtons[static_cast<size_t> (buttonIndex)]->setBounds (
+            stackArea.getX() + stackIndex * stackWidth,
+            stackArea.getY() + rowIndex * buttonHeight,
+            stackWidth, buttonHeight);
     }
 }
 

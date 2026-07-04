@@ -16,6 +16,9 @@ namespace conduit
       - dspMeter:  DSP-/XRun-Anzeige in der TransportBar (Default an, wie
                    Abletons CPU-Meter) — bewusst UNABHÄNGIG vom Dev-Modus
                    (User-Entscheidung 04.07.2026)
+      - softKeyboard: On-Screen-Tastatur des Browser-Suchfelds (M5) —
+                   Plattform-Default: AN auf Linux (Kiosk/Touch), AUS auf
+                   Desktop (Windows/macOS); zur Laufzeit umschaltbar
 
     WICHTIG: diese Klasse SPEICHERT nur und broadcastet Änderungen — sie ruft
     nie juce::Desktop::setGlobalScaleFactor und fasst keine Fonts an. Die
@@ -55,6 +58,15 @@ public:
     [[nodiscard]] bool isDspMeterEnabled() const noexcept { return dspMeterEnabled; }
     void setDspMeterEnabled (bool enabled);
 
+#if JUCE_LINUX
+    static constexpr bool defaultSoftKeyboardEnabled = true;
+#else
+    static constexpr bool defaultSoftKeyboardEnabled = false;
+#endif
+
+    [[nodiscard]] bool isSoftKeyboardEnabled() const noexcept { return softKeyboardEnabled; }
+    void setSoftKeyboardEnabled (bool enabled);
+
 private:
     void loadFromFile();
 
@@ -63,6 +75,7 @@ private:
     float fontScale       = defaultFontScale;
     bool  devModeEnabled  = false;
     bool  dspMeterEnabled = true;
+    bool  softKeyboardEnabled = defaultSoftKeyboardEnabled;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (UiSettings)
 };

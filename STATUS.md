@@ -103,9 +103,30 @@ Verzeichnisse unter Dokumente/Conduit (+ Captures aus CaptureSettings).
   gebaut und sähe sonst eine leere Factory. 6 neue Tests (380/20502,
   Debug + ASan); Smoke: browser_m4_search_*.png („tape" → 8 Treffer über
   Name/Tags inkl. Kategorien-Spalte, „tapexxx" → Empty-State).
+- **M5 (TouchKeyboard):** `TouchKeyboard` (Source/UI/Browser) —
+  QWERTZ-Minimallayout (3 Buchstabenreihen + ⌫, umschaltbare Ziffernreihe
+  via 123/ABC, Leer/Clr/▾), Tasten 46 px hoch (Breite teilt die
+  320er-Spalte — die 44-px-Regel des Prompts gilt der HÖHE). Zeichen
+  gehen AUSSCHLIESSLICH an den gebundenen TextEditor (SafePointer,
+  insertTextAtCaret/deleteBackwards/setText) — keine globalen
+  Key-Injections. **Fokus-Kernregel:** jede Taste setzt
+  setWantsKeyboardFocus(false) UND setMouseClickGrabsKeyboardFocus(false),
+  sonst schlösse der Fokusverlust die Tastatur beim ersten Tippen
+  (testgedeckt). Auf/Zu: Desktop-FocusChangeListener im Panel — Suchfeld
+  fokussiert → aufklappen (nur wenn Setting an), Fokus außerhalb von
+  Suchfeld+Tastatur-Subtree → einklappen; zusätzlich ▾-Taste, Escape,
+  Return, Panel-Schließen. Slide 180 ms über zweite AnimatedValue, das
+  Suchfeld schiebt sich sichtbar nach oben. Setting
+  `UiSettings::softKeyboardEnabled` (Default: Linux AN, Desktop AUS,
+  Muster dspMeter) + Toggle in der Oberflächen-Settings-Seite; Laufzeit-
+  Umschalten klappt eine offene Tastatur ein
+  (EngineEditor-Broadcast → refreshSoftKeyboardSetting). 7 neue Tests
+  (387/20640, Debug + ASan); Smoke: browser_m5_keyboard_*.png („lfo" per
+  Screen-Tasten → Treffer, Ziffernreihe). Smoke-Hinweis: das Setting
+  wurde über eine gesicherte Ui.settings injiziert und danach
+  wiederhergestellt.
 - **Offen:**
-  M5 TouchKeyboard (UiSettings::softKeyboardEnabled, Linux an/Desktop aus)
-  → M6 PROJEKTE/AUDIO-Daten + Abschlussbericht.
+  M6 PROJEKTE/AUDIO-Daten + Abschlussbericht.
 
 ---
 

@@ -45,6 +45,7 @@ public:
     // Text im ctor via String::fromUTF8 (MSVC-CP1252-Falle bei Umlaut-Literalen)
     juce::ToggleButton devModeToggle;
     juce::ToggleButton dspMeterToggle;
+    juce::ToggleButton softKeyboardToggle;
 
     /** Slider-Werte (Prozent) in die Settings committen — Tests rufen direkt. */
     void applyUiScale();

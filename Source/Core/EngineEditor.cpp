@@ -24,7 +24,8 @@ EngineEditor::EngineEditor (EngineProcessor& engineProcessor,
               &engineProcessor.getChannelNames(),
               &engineProcessor.getInputLevels(), &engineProcessor.getOutputLevels(),
               &engineProcessor.getInputLinkSend(), &engineProcessor.getUiSettings()),
-      browserModel (engineProcessor.getModuleFactory(), browserContext, browserWorker)
+      browserModel (engineProcessor.getModuleFactory(), browserContext, browserWorker),
+      browserPanel (browserModel, engineProcessor.getUiSettings())
 {
     // Push-3-Design app-weit: Jost + dunkle Kacheln auch in PopupMenus,
     // Dialogen und dem Settings-Fenster (CLAUDE.md 10)
@@ -252,6 +253,9 @@ void EngineEditor::changeListenerCallback (juce::ChangeBroadcaster* source)
             if (auto* component = desktop.getComponent (i))
                 component->sendLookAndFeelChange();
     }
+
+    // Soft-Keyboard-Setting live umschalten: aus → offene Tastatur einklappen
+    browserPanel.refreshSoftKeyboardSetting();
 
     // Dev Mode: Tile-Sichtbarkeit folgt; Deaktivieren schließt das Panel
     transportBar.setDevTileVisible (uiSettings.isDevModeEnabled());

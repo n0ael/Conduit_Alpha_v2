@@ -3,7 +3,9 @@
 #include <juce_gui_basics/juce_gui_basics.h>
 
 #include "Core/Browser/BrowserModel.h"
+#include "Core/UiSettings.h"
 #include "UI/AnimatedValue.h"
+#include "UI/Browser/TouchKeyboard.h"
 #include "UI/PushTiles.h"
 
 namespace conduit
@@ -19,7 +21,12 @@ namespace conduit
     virtualisierte Liste (juce::ListBox mit wiederverwendeten
     BrowserListRow-Komponenten, 44-px-Zeilen) · Suchfeld ganz UNTEN
     (Daumen-Erreichbarkeit; Live-Filter mit ~120 ms Debounce über den
-    Hintergrund-Index, Escape löscht) · [TouchKeyboard folgt in M5].
+    Hintergrund-Index, Escape löscht) · TouchKeyboard (M5): klappt beim
+    Fokussieren des Suchfelds von unten auf (VBlank-Slide ~180 ms, das
+    Suchfeld schiebt sich nach oben), wenn UiSettings::softKeyboard an
+    ist (Default: Linux an, Desktop aus); schließt über die ▾-Taste,
+    Escape/Return oder Fokus außerhalb von Suchfeld+Tastatur
+    (Desktop-FocusChangeListener mit Subtree-Whitelist).
 
     Das Panel kennt weder GraphManager noch Engine — Navigation macht das
     BrowserModel, Aktions-Zeilen laufen über die std::function-Hooks
@@ -31,10 +38,11 @@ namespace conduit
 */
 class BrowserPanel final : public juce::Component,
                            private juce::ListBoxModel,
-                           private juce::Timer   // Such-Debounce (~120 ms)
+                           private juce::Timer,   // Such-Debounce (~120 ms)
+                           private juce::FocusChangeListener
 {
 public:
-    explicit BrowserPanel (BrowserModel& modelToUse);
+    BrowserPanel (BrowserModel& modelToUse, UiSettings& uiSettingsToUse);
     ~BrowserPanel() override;
 
     //==========================================================================
@@ -71,10 +79,22 @@ public:
     void paint (juce::Graphics& g) override;
     void resized() override;
 
+    //==========================================================================
+    // TouchKeyboard (M5)
+
+    /** Klappt die Tastatur auf/zu (Fokus-Listener + Test-Seam) —
+        Aufklappen nur, wenn das Setting an ist. */
+    void setKeyboardVisible (bool shouldShow, bool animate = true);
+    [[nodiscard]] bool isKeyboardVisible() const noexcept { return keyboardVisible; }
+
+    /** Setting wurde umgeschaltet (Editor-Broadcast): aus → einklappen. */
+    void refreshSoftKeyboardSetting();
+
     /** Test-Zugriff (read-only Verwendung). */
     [[nodiscard]] juce::ListBox& getListBox() noexcept { return list; }
     [[nodiscard]] push::IconTile& getBackTile() noexcept { return backTile; }
     [[nodiscard]] juce::TextEditor& getSearchField() noexcept { return searchField; }
+    [[nodiscard]] TouchKeyboard& getKeyboard() noexcept { return keyboard; }
 
     /** Test-Seam: Tap auf Zeile index (derselbe Pfad wie die Row-Geste). */
     void activateRowForTest (int rowIndex) { handleRowActivated (rowIndex); }
@@ -93,11 +113,15 @@ private:
     // juce::Timer — Such-Debounce
     void timerCallback() override;
 
+    // juce::FocusChangeListener — öffnet/schließt das TouchKeyboard
+    void globalFocusChanged (juce::Component* focusedComponent) override;
+
     void handleRowActivated (int rowIndex);
     void refreshFromModel();
     void updateHeader();
 
     BrowserModel& model;
+    UiSettings& uiSettings;
 
     push::IconTile backTile { push::Icon::chevronLeft, "browserBack" };
     juce::Label breadcrumbLabel;
@@ -105,8 +129,12 @@ private:
     juce::TextEditor searchField;
     juce::Rectangle<int> searchIconArea;   // Lupe links neben dem Feld (paint)
 
+    TouchKeyboard keyboard;
+
     AnimatedValue slide { *this };
+    AnimatedValue keyboardSlide { *this };
     bool open = false;
+    bool keyboardVisible = false;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (BrowserPanel)
 };

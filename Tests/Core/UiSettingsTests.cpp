@@ -133,3 +133,29 @@ TEST_CASE ("UiSettings: ChangeBroadcast nur bei echter Änderung", "[uisettings]
     settings.removeChangeListener (&counter);
     REQUIRE (counter.calls == 2);
 }
+
+TEST_CASE ("UiSettings: softKeyboard — Plattform-Default + Persistenz", "[uisettings]")
+{
+    using conduit::UiSettings;
+    TempUiSettings temp;
+
+    {
+        UiSettings settings (temp.options());
+
+        // Plattform-Default: AN auf Linux (Kiosk/Touch), AUS auf Desktop
+        REQUIRE (settings.isSoftKeyboardEnabled()
+                     == UiSettings::defaultSoftKeyboardEnabled);
+#if JUCE_LINUX
+        REQUIRE (UiSettings::defaultSoftKeyboardEnabled);
+#else
+        REQUIRE_FALSE (UiSettings::defaultSoftKeyboardEnabled);
+#endif
+
+        settings.setSoftKeyboardEnabled (! UiSettings::defaultSoftKeyboardEnabled);
+    }
+
+    // Zweite Instanz liest den persistierten Wert
+    UiSettings reloaded (temp.options());
+    REQUIRE (reloaded.isSoftKeyboardEnabled()
+                 == ! UiSettings::defaultSoftKeyboardEnabled);
+}

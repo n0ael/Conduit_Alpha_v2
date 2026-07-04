@@ -125,7 +125,7 @@ private:
     juce::ThreadPool browserWorker { juce::ThreadPoolOptions{}.withNumberOfThreads (1) };
     BrowserContextProvider browserContext;
     BrowserModel browserModel;   // Init in der Ctor-Liste (braucht EngineProcessor-Definition)
-    BrowserPanel browserPanel { browserModel };
+    BrowserPanel browserPanel;   // dito (UiSettings kommt vom Processor)
 
     // Port-Tooltips der I/O-Endpunkte (ChannelNames-Labels, Maus-Hover)
     juce::TooltipWindow tooltipWindow { this };

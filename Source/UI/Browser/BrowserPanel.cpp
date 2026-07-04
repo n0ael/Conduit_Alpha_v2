@@ -13,8 +13,8 @@ namespace
 } // namespace
 
 //==============================================================================
-BrowserPanel::BrowserPanel (BrowserModel& modelToUse)
-    : model (modelToUse)
+BrowserPanel::BrowserPanel (BrowserModel& modelToUse, UiSettings& uiSettingsToUse)
+    : model (modelToUse), uiSettings (uiSettingsToUse)
 {
     backTile.setTooltip (juce::String::fromUTF8 ("Zurück"));
     backTile.onClick = [this] { model.goBack(); };
@@ -41,13 +41,27 @@ BrowserPanel::BrowserPanel (BrowserModel& modelToUse)
     searchField.setColour (juce::TextEditor::focusedOutlineColourId, push::colours::textDim);
     searchField.setColour (juce::TextEditor::textColourId, push::colours::text);
     searchField.onTextChange = [this] { startTimer (searchDebounceMs); };
-    searchField.onReturnKey  = [this] { timerCallback(); };
+    searchField.onReturnKey  = [this]
+    {
+        timerCallback();
+        setKeyboardVisible (false);   // Commit klappt die Tastatur ein
+    };
     searchField.onEscapeKey  = [this]
     {
         searchField.setText ({}, juce::dontSendNotification);
         timerCallback();
+        setKeyboardVisible (false);
     };
     addAndMakeVisible (searchField);
+
+    // TouchKeyboard (M5): tippt NUR ins Suchfeld, klappt beim Fokussieren
+    // auf (Setting-abhängig) — Sichtbarkeit steuert der Fokus-Listener
+    keyboard.setTarget (&searchField);
+    keyboard.onCloseRequested = [this] { setKeyboardVisible (false); };
+    addChildComponent (keyboard);
+
+    keyboardSlide.onUpdate = [this] (float) { resized(); };
+    juce::Desktop::getInstance().addFocusChangeListener (this);
 
     model.onRowsChanged = [this] { refreshFromModel(); };
 
@@ -65,6 +79,7 @@ BrowserPanel::BrowserPanel (BrowserModel& modelToUse)
 
 BrowserPanel::~BrowserPanel()
 {
+    juce::Desktop::getInstance().removeFocusChangeListener (this);
     model.onRowsChanged = nullptr;
     list.setModel (nullptr);
 }
@@ -83,10 +98,60 @@ void BrowserPanel::setOpen (bool shouldBeOpen, bool animate)
         setVisible (true);
     }
 
+    if (! open)
+        setKeyboardVisible (false, false);   // Panel zu → Tastatur sofort weg
+
     if (animate)
         slide.animateTo (open ? 1.0f : 0.0f, slideMs);
     else
         slide.snapTo (open ? 1.0f : 0.0f);
+}
+
+//==============================================================================
+void BrowserPanel::setKeyboardVisible (bool shouldShow, bool animate)
+{
+    if (shouldShow && ! uiSettings.isSoftKeyboardEnabled())
+        return;   // Setting aus → Suchfeld verhält sich wie ein normales Feld
+
+    if (keyboardVisible == shouldShow)
+        return;
+
+    keyboardVisible = shouldShow;
+    model.state.setProperty ("softKeyboardVisible", shouldShow, nullptr);
+
+    if (shouldShow)
+        keyboard.setVisible (true);
+
+    if (animate)
+        keyboardSlide.animateTo (shouldShow ? 1.0f : 0.0f, slideMs);
+    else
+        keyboardSlide.snapTo (shouldShow ? 1.0f : 0.0f);
+}
+
+void BrowserPanel::refreshSoftKeyboardSetting()
+{
+    if (! uiSettings.isSoftKeyboardEnabled())
+        setKeyboardVisible (false);
+}
+
+void BrowserPanel::globalFocusChanged (juce::Component* focusedComponent)
+{
+    // Suchfeld fokussiert → aufklappen; Fokus außerhalb von Suchfeld +
+    // Tastatur-Subtree → einklappen (die Tasten selbst greifen nie den
+    // Fokus, tauchen hier also gar nicht auf — doppelte Absicherung)
+    if (focusedComponent == &searchField
+        || (focusedComponent != nullptr && searchField.isParentOf (focusedComponent)))
+    {
+        setKeyboardVisible (true);
+        return;
+    }
+
+    if (focusedComponent != nullptr
+        && (focusedComponent == &keyboard || keyboard.isParentOf (focusedComponent)))
+        return;   // Whitelist: Tastatur-Subtree schließt nicht
+
+    if (focusedComponent != nullptr)
+        setKeyboardVisible (false);
 }
 
 int BrowserPanel::currentDockWidth() const
@@ -104,8 +169,8 @@ void BrowserPanel::paint (juce::Graphics& g)
     g.fillRect (0, 0, 1, getHeight());
     g.fillRect (0, headerHeight - 1, getWidth(), 1);
 
-    // Oberkante der Suchzeile + Lupe
-    g.fillRect (0, getHeight() - searchHeight, getWidth(), 1);
+    // Oberkante der Suchzeile + Lupe (Zeile wandert mit dem Keyboard hoch)
+    g.fillRect (0, searchField.getY() - 7, getWidth(), 1);
     if (! searchIconArea.isEmpty())
         push::draw (g, push::Icon::search,
                     searchIconArea.withSizeKeepingCentre (20, 20).toFloat(),
@@ -121,7 +186,16 @@ void BrowserPanel::resized()
     backTile.setBounds (header.removeFromLeft (headerHeight).reduced (4));
     breadcrumbLabel.setBounds (header.reduced (6, 0));
 
-    // Suchzeile ganz unten: Lupe links, Feld daneben
+    // TouchKeyboard schiebt sich von unten ein (Suchfeld rutscht hoch)
+    const auto keyboardFull    = keyboard.preferredHeight();
+    const auto keyboardVisiblePx = juce::roundToInt (
+        keyboardSlide.getCurrent() * (float) keyboardFull);
+    keyboard.setBounds (bounds.getX(), getHeight() - keyboardVisiblePx,
+                        bounds.getWidth(), keyboardFull);
+    keyboard.setVisible (keyboardVisiblePx > 0);
+    bounds.removeFromBottom (keyboardVisiblePx);
+
+    // Suchzeile darüber: Lupe links, Feld daneben
     auto searchRow = bounds.removeFromBottom (searchHeight).reduced (8, 6);
     searchIconArea = searchRow.removeFromLeft (28);
     searchField.setBounds (searchRow);

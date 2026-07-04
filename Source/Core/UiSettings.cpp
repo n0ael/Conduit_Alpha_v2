@@ -9,6 +9,7 @@ namespace
     constexpr const char* fontScaleKey = "fontScale";
     constexpr const char* devModeKey   = "devModeEnabled";
     constexpr const char* dspMeterKey  = "dspMeterEnabled";
+    constexpr const char* softKeyboardKey = "softKeyboardEnabled";
 }
 
 //==============================================================================
@@ -48,6 +49,8 @@ void UiSettings::loadFromFile()
             static_cast<float> (file->getDoubleValue (fontScaleKey, defaultFontScale)));
         devModeEnabled  = file->getBoolValue (devModeKey, false);
         dspMeterEnabled = file->getBoolValue (dspMeterKey, true);
+        softKeyboardEnabled = file->getBoolValue (softKeyboardKey,
+                                                  defaultSoftKeyboardEnabled);
     }
 }
 
@@ -113,6 +116,22 @@ void UiSettings::setDspMeterEnabled (bool enabled)
     if (auto* file = applicationProperties.getUserSettings())
     {
         file->setValue (dspMeterKey, enabled);
+        file->saveIfNeeded();
+    }
+
+    sendChangeMessage();
+}
+
+void UiSettings::setSoftKeyboardEnabled (bool enabled)
+{
+    if (enabled == softKeyboardEnabled)
+        return;
+
+    softKeyboardEnabled = enabled;
+
+    if (auto* file = applicationProperties.getUserSettings())
+    {
+        file->setValue (softKeyboardKey, enabled);
         file->saveIfNeeded();
     }
 

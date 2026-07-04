@@ -1,6 +1,7 @@
 #include <catch2/catch_test_macros.hpp>
 
 #include "Core/Browser/BrowserModel.h"
+#include "../Core/TestSettingsFolder.h"
 #include "UI/Browser/BrowserPanel.h"
 
 namespace
@@ -12,6 +13,15 @@ struct RegisteredFactory
     conduit::ModuleFactory factory;
 };
 
+juce::PropertiesFile::Options tempUiOptions (const juce::File& folder)
+{
+    juce::PropertiesFile::Options options;
+    options.applicationName = "ConduitBrowserPanelTests";
+    options.filenameSuffix  = ".settings";
+    options.folderName      = folder.getFullPathName();
+    return options;
+}
+
 struct PanelRig
 {
     PanelRig()
@@ -20,12 +30,14 @@ struct PanelRig
     }
 
     juce::ScopedJuceInitialiser_GUI juceRuntime;
+    conduit::test::ScopedSettingsFolder settingsFolder;
+    conduit::UiSettings uiSettings { tempUiOptions (settingsFolder.folder) };
     RegisteredFactory registered;
     conduit::ModuleFactory& factory = registered.factory;
     conduit::BrowserContextProvider context;
     juce::ThreadPool worker { juce::ThreadPoolOptions{}.withNumberOfThreads (1) };
     conduit::BrowserModel model { factory, context, worker };
-    conduit::BrowserPanel panel { model };
+    conduit::BrowserPanel panel { model, uiSettings };
 };
 } // namespace
 
@@ -165,4 +177,61 @@ TEST_CASE ("Browser-Panel: virtualisierte Zeilen — Komponenten nur für den Vi
 
     REQUIRE (liveRows > 0);
     REQUIRE (liveRows < numRows);   // nie alle Einträge als Komponenten
+}
+
+//==============================================================================
+TEST_CASE ("Browser-Panel: TouchKeyboard folgt Setting + klappt korrekt",
+           "[browser][ui][keyboard]")
+{
+    PanelRig rig;
+
+    // Setting AUS (Desktop-Default auf Windows/macOS): Aufklappen wird
+    // ignoriert, das Suchfeld verhaelt sich wie ein normales Feld
+    rig.uiSettings.setSoftKeyboardEnabled (false);
+    rig.panel.setKeyboardVisible (true, false);
+    REQUIRE_FALSE (rig.panel.isKeyboardVisible());
+
+    // Setting AN: Keyboard klappt auf, das Suchfeld schiebt sich hoch
+    rig.uiSettings.setSoftKeyboardEnabled (true);
+    const auto searchYWithout = rig.panel.getSearchField().getY();
+
+    rig.panel.setKeyboardVisible (true, false);
+    REQUIRE (rig.panel.isKeyboardVisible());
+    REQUIRE (rig.panel.getKeyboard().isVisible());
+    REQUIRE (rig.panel.getSearchField().getY()
+                 == searchYWithout - rig.panel.getKeyboard().preferredHeight());
+
+    // Setting zur Laufzeit ausschalten -> offene Tastatur klappt ein
+    rig.uiSettings.setSoftKeyboardEnabled (false);
+    rig.panel.refreshSoftKeyboardSetting();
+    REQUIRE_FALSE (rig.panel.isKeyboardVisible());
+    REQUIRE (rig.panel.getSearchField().getY() == searchYWithout);
+}
+
+TEST_CASE ("Browser-Panel: Keyboard tippt ins Suchfeld, Panel-Schliessen raeumt auf",
+           "[browser][ui][keyboard]")
+{
+    PanelRig rig;
+    rig.uiSettings.setSoftKeyboardEnabled (true);
+    rig.panel.setOpen (true);
+    rig.panel.setKeyboardVisible (true, false);
+
+    // Tasten-Tap -> Suchfeld-Text (derselbe Pfad wie Touch)
+    REQUIRE (rig.panel.getKeyboard().pressKeyForTest ("l"));
+    REQUIRE (rig.panel.getKeyboard().pressKeyForTest ("f"));
+    REQUIRE (rig.panel.getKeyboard().pressKeyForTest ("o"));
+    REQUIRE (rig.panel.getSearchField().getText() == "lfo");
+
+    // Debounce-Flush -> Modell im Suchmodus
+    rig.panel.flushSearchDebounceForTest();
+    REQUIRE (rig.model.isSearching());
+
+    // Schliessen-Taste klappt ein; Panel-Schliessen ebenfalls
+    const auto close = juce::String::fromUTF8 ("\xe2\x96\xbe");
+    REQUIRE (rig.panel.getKeyboard().pressKeyForTest (close));
+    REQUIRE_FALSE (rig.panel.isKeyboardVisible());
+
+    rig.panel.setKeyboardVisible (true, false);
+    rig.panel.setOpen (false);
+    REQUIRE_FALSE (rig.panel.isKeyboardVisible());
 }

@@ -196,6 +196,7 @@ set(CONDUIT_CPP_SOURCES
     Source/UI/AudioSettingsComponent.cpp
     Source/UI/Browser/BrowserListRow.cpp
     Source/UI/Browser/BrowserPanel.cpp
+    Source/UI/Browser/TouchKeyboard.cpp
     Source/UI/CaptureAllButton.cpp
     Source/UI/CapturePanel.cpp
     Source/UI/CaptureSettingsComponent.cpp
@@ -346,8 +347,10 @@ target_sources(Conduit PRIVATE
     Source/Modules/StepSequencerModule.h
     Source/UI/AnimatedValue.h
     Source/UI/AudioSettingsComponent.h
+    Source/UI/Browser/BrowserDragPayload.h
     Source/UI/Browser/BrowserListRow.h
     Source/UI/Browser/BrowserPanel.h
+    Source/UI/Browser/TouchKeyboard.h
     Source/UI/CaptureAllButton.h
     Source/UI/CapturePanel.h
     Source/UI/CaptureToast.h
@@ -497,6 +500,7 @@ if(CONDUIT_BUILD_TESTS)
         Tests/Core/TransportLinkTests.cpp
         Tests/Core/UiSettingsTests.cpp
         Tests/UI/BrowserPanelTests.cpp
+        Tests/UI/TouchKeyboardTests.cpp
         Tests/UI/FxModulePanelTests.cpp
         Tests/UI/NodeCanvasTests.cpp
         Tests/UI/LevelMeterBarTests.cpp
@@ -617,6 +621,7 @@ if(CONDUIT_BUILD_TESTS)
         Source/UI/AudioSettingsComponent.cpp
         Source/UI/Browser/BrowserListRow.cpp
         Source/UI/Browser/BrowserPanel.cpp
+        Source/UI/Browser/TouchKeyboard.cpp
         Source/UI/CaptureAllButton.cpp
         Source/UI/CapturePanel.cpp
         Source/UI/CaptureSettingsComponent.cpp

@@ -45,6 +45,12 @@ UiSettingsComponent::UiSettingsComponent (UiSettings& settingsToUse)
     dspMeterToggle.onClick = [this] { settings.setDspMeterEnabled (dspMeterToggle.getToggleState()); };
     addAndMakeVisible (dspMeterToggle);
 
+    softKeyboardToggle.setButtonText (juce::String::fromUTF8 (
+        "On-Screen-Tastatur im Browser-Suchfeld (Touch)"));
+    softKeyboardToggle.onClick = [this]
+    { settings.setSoftKeyboardEnabled (softKeyboardToggle.getToggleState()); };
+    addAndMakeVisible (softKeyboardToggle);
+
     settings.addChangeListener (this);
     syncControls();
 }
@@ -78,6 +84,8 @@ void UiSettingsComponent::syncControls()
                               juce::dontSendNotification);
     devModeToggle.setToggleState (settings.isDevModeEnabled(), juce::dontSendNotification);
     dspMeterToggle.setToggleState (settings.isDspMeterEnabled(), juce::dontSendNotification);
+    softKeyboardToggle.setToggleState (settings.isSoftKeyboardEnabled(),
+                                       juce::dontSendNotification);
 }
 
 //==============================================================================
@@ -103,6 +111,8 @@ void UiSettingsComponent::resized()
     devModeToggle.setBounds (area.removeFromTop (30));
     area.removeFromTop (6);
     dspMeterToggle.setBounds (area.removeFromTop (30));
+    area.removeFromTop (6);
+    softKeyboardToggle.setBounds (area.removeFromTop (30));
 }
 
 } // namespace conduit

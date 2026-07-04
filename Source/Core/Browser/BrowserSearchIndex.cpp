@@ -26,7 +26,12 @@ void BrowserSearchIndex::rebuildAsync (std::vector<Source> sources)
 
     const auto jobGeneration = ++generation;
 
-    worker.addJob ([this, jobGeneration, aliveFlag = alive,
+    // Der Pool-Job darf `this` NIE dereferenzieren — der Index kann vor dem
+    // ThreadPool sterben (TSan-/ASan-Fund CI 04.07.2026: this->dispatcher
+    // nach free gelesen). Deshalb: Dispatcher als KOPIE capturen; `this`
+    // wandert nur als Wert ins innere Lambda und wird dort erst NACH dem
+    // Alive-Check benutzt (Dtor und inneres Lambda laufen beide auf dem MT).
+    worker.addJob ([this, jobGeneration, aliveFlag = alive, dispatch = dispatcher,
                     captured = std::move (sources)]
     {
         // [Pool-Thread] — nur kopierte Daten anfassen
@@ -42,7 +47,7 @@ void BrowserSearchIndex::rebuildAsync (std::vector<Source> sources)
             built->push_back (std::move (entry));
         }
 
-        dispatcher ([this, jobGeneration, aliveFlag, built]
+        dispatch ([this, jobGeneration, aliveFlag, built]
         {
             if (! aliveFlag->load())
                 return;   // Index wurde zerstört, Ergebnis verwerfen

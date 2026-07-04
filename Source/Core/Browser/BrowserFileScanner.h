@@ -58,7 +58,8 @@ public:
 
     /** Testdiagnose: wie oft ein AudioFormatReader geöffnet wurde
         (mtime-Cache-Beleg). */
-    [[nodiscard]] int getMetadataReadCount() const noexcept { return metadataReads.load(); }
+    [[nodiscard]] int getMetadataReadCount() const noexcept
+    { return resources->metadataReads.load(); }
 
 private:
     struct CacheSlot
@@ -67,16 +68,24 @@ private:
         Entry entry;
     };
 
+    /** Alles, was der Pool-Job anfasst, lebt hinter EINEM shared_ptr —
+        der Job darf `this` nie dereferenzieren, weil der Scanner vor dem
+        ThreadPool sterben kann (TSan-/ASan-Fund CI 04.07.2026, gleiches
+        Muster wie beim BrowserSearchIndex). */
+    struct Resources
+    {
+        juce::AudioFormatManager formatManager;   // nach Ctor unverändert (Pool liest)
+        juce::CriticalSection cacheLock;
+        std::map<juce::String, CacheSlot> cache;  // fullPath → Header-Metadaten
+        std::atomic<int> metadataReads { 0 };
+    };
+
     juce::ThreadPool& worker;
     BrowserSearchIndex::Dispatcher dispatcher;
 
-    juce::AudioFormatManager formatManager;   // nach Ctor unverändert (Pool liest)
-
-    juce::CriticalSection cacheLock;
-    std::map<juce::String, CacheSlot> cache;  // fullPath → Header-Metadaten
+    std::shared_ptr<Resources> resources = std::make_shared<Resources>();
 
     std::map<juce::String, int> generations;  // scanId → jüngste Generation [MT]
-    std::atomic<int> metadataReads { 0 };
     std::shared_ptr<std::atomic<bool>> alive
         = std::make_shared<std::atomic<bool>> (true);
 

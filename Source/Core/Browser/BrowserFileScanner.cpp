@@ -28,7 +28,7 @@ BrowserFileScanner::BrowserFileScanner (juce::ThreadPool& workerToUse,
                       : BrowserSearchIndex::Dispatcher ([] (std::function<void()> fn)
                         { juce::MessageManager::callAsync (std::move (fn)); }))
 {
-    formatManager.registerBasicFormats();
+    resources->formatManager.registerBasicFormats();
 }
 
 BrowserFileScanner::~BrowserFileScanner()
@@ -45,8 +45,13 @@ void BrowserFileScanner::scanAsync (const juce::String& scanId,
 
     const auto jobGeneration = ++generations[scanId];
 
+    // Der Pool-Job darf `this` NIE dereferenzieren (Scanner kann vor dem
+    // Pool sterben) — er arbeitet auf dem shared Resources-Block und einer
+    // Dispatcher-KOPIE; `this` wandert nur als Wert ins innere Lambda und
+    // wird erst nach dem Alive-Check benutzt (beides Message Thread).
     worker.addJob ([this, scanId, directory, wildcard, readAudioMetadata,
-                    jobGeneration, aliveFlag = alive]
+                    jobGeneration, aliveFlag = alive, dispatch = dispatcher,
+                    shared = resources]
     {
         // [Pool-Thread] — Verzeichnis listen + Header-Metadaten lesen
         auto entries = std::make_shared<std::vector<Entry>>();
@@ -64,20 +69,21 @@ void BrowserFileScanner::scanAsync (const juce::String& scanId,
                 const auto key = file.getFullPathName();
 
                 {
-                    const juce::ScopedLock lock (cacheLock);
-                    if (const auto it = cache.find (key);
-                        it != cache.end() && it->second.modTimeMs == entry.modTimeMs)
+                    const juce::ScopedLock lock (shared->cacheLock);
+                    if (const auto it = shared->cache.find (key);
+                        it != shared->cache.end()
+                        && it->second.modTimeMs == entry.modTimeMs)
                     {
                         entries->push_back (it->second.entry);
                         continue;   // unverändert — Reader übersprungen
                     }
                 }
 
-                metadataReads.fetch_add (1);
+                shared->metadataReads.fetch_add (1);
 
                 // Header-only: Reader öffnen liest keine Sample-Daten
                 if (const std::unique_ptr<juce::AudioFormatReader> reader {
-                        formatManager.createReaderFor (file) })
+                        shared->formatManager.createReaderFor (file) })
                 {
                     if (reader->sampleRate > 0.0)
                         entry.durationSeconds = (double) reader->lengthInSamples
@@ -85,8 +91,8 @@ void BrowserFileScanner::scanAsync (const juce::String& scanId,
                     entry.formatSummary = summarizeFormat (*reader);
                 }
 
-                const juce::ScopedLock lock (cacheLock);
-                cache[key] = { entry.modTimeMs, entry };
+                const juce::ScopedLock lock (shared->cacheLock);
+                shared->cache[key] = { entry.modTimeMs, entry };
             }
 
             entries->push_back (std::move (entry));
@@ -96,7 +102,7 @@ void BrowserFileScanner::scanAsync (const juce::String& scanId,
                    [] (const Entry& a, const Entry& b)
                    { return a.name.compareIgnoreCase (b.name) < 0; });
 
-        dispatcher ([this, scanId, jobGeneration, aliveFlag, entries]
+        dispatch ([this, scanId, jobGeneration, aliveFlag, entries]
         {
             if (! aliveFlag->load())
                 return;

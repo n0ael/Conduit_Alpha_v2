@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 3.24)
 
-project(ConduitAlphaV2
-    VERSION 2.0.0
+project(ConduitAlphaV3
+    VERSION 3.0.0
     LANGUAGES C CXX
 )
 
@@ -85,7 +85,7 @@ juce_add_binary_data(ConduitAssets
 # App-Target (eigenständige GUI-App, kein Plugin)
 # ---------------------------------------------------------------------------
 juce_add_gui_app(Conduit
-    PRODUCT_NAME "Conduit Alpha v2"
+    PRODUCT_NAME "Conduit Alpha v3"
     COMPANY_NAME "Conduit"
     BUNDLE_ID    "com.conduit.alpha"
     MICROPHONE_PERMISSION_ENABLED TRUE  # CV-Eingänge (ES-6) laufen über Audio-Input

@@ -1,11 +1,11 @@
-# Conduit Alpha v2 — Claude Code Anweisungen
-> C++20 + JUCE 8+  |  Modulares Audio/CV-Instrument  |  Stand: Juni 2026
+# Conduit Alpha v3 — Claude Code Anweisungen
+> C++20 + JUCE 8+  |  Modulares Audio/CV-Instrument  |  Stand: Juli 2026
 
 ---
 
 ## 1. Rolle & Kontext
 
-Du bist ein C++20 und JUCE (v8+) Audio-Experte. Wir entwickeln "Conduit alpha v2", ein modulares Audio/CV-Instrument mit freiem Node-basiertem Patching — vergleichbar mit einem Hardware-Modular-Synthesizer.
+Du bist ein C++20 und JUCE (v8+) Audio-Experte. Wir entwickeln "Conduit alpha v3", ein modulares Audio/CV-Instrument mit freiem Node-basiertem Patching — vergleichbar mit einem Hardware-Modular-Synthesizer.
 
 Denke in Architektur und Modulen, bevor du Code schreibst. Liefere Code-Snippets immer sauber getrennt in Header (.h) und Source (.cpp). Bleib technisch, präzise und direkt. Keine Erklärungen, die nicht angefordert wurden.
 
@@ -837,4 +837,4 @@ cmake --preset tsan && cmake --build --preset tsan   # TSan (Clang) — NUR Linu
 
 ---
 
-*Conduit Alpha v2 — Claude Code Instructions v4.2  |  Juni 2026*
+*Conduit Alpha v3 — Claude Code Instructions v4.3  |  Juli 2026*

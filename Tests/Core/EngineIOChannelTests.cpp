@@ -1,6 +1,7 @@
 #include <catch2/catch_test_macros.hpp>
 
 #include "Core/EngineProcessor.h"
+#include "TestSettingsFolder.h"
 
 namespace
 {
@@ -73,7 +74,8 @@ bool hasConnection (conduit::EngineProcessor& engine,
 //==============================================================================
 TEST_CASE ("EngineProcessor akzeptiert Multichannel-I/O-Layouts", "[engine][io]")
 {
-    conduit::EngineProcessor engine;
+    conduit::test::ScopedSettingsFolder settingsFolder;
+    conduit::EngineProcessor engine { settingsFolder.folder };
 
     SECTION ("echte Hardware-Kanalzahl (8/8) wird angenommen")
         REQUIRE (engine.checkBusesLayoutSupported (ioLayout (8, 8)));
@@ -93,7 +95,8 @@ TEST_CASE ("EngineProcessor akzeptiert Multichannel-I/O-Layouts", "[engine][io]"
 
 TEST_CASE ("EngineProcessor reicht die Device-Kanalzahl bis zum Graph durch", "[engine][io]")
 {
-    conduit::EngineProcessor engine;
+    conduit::test::ScopedSettingsFolder settingsFolder;
+    conduit::EngineProcessor engine { settingsFolder.folder };
 
     // Genau der Aufruf des AudioProcessorPlayer nach findMostSuitableLayout:
     // setPlayConfigDetails wählt das nächstbeste unterstützte Layout. Da wir
@@ -117,7 +120,8 @@ TEST_CASE ("EngineProcessor reicht die Device-Kanalzahl bis zum Graph durch", "[
 //==============================================================================
 TEST_CASE ("syncHardwareIOChannels koppelt die I/O-Nodes an die Device-Kanalzahl", "[engine][io]")
 {
-    conduit::EngineProcessor engine;
+    conduit::test::ScopedSettingsFolder settingsFolder;
+    conduit::EngineProcessor engine { settingsFolder.folder };
 
     const auto in  = ioNode (engine, conduit::audioInputModuleId);
     const auto out = ioNode (engine, conduit::audioOutputModuleId);
@@ -173,7 +177,8 @@ TEST_CASE ("syncHardwareIOChannels koppelt die I/O-Nodes an die Device-Kanalzahl
 //==============================================================================
 TEST_CASE ("syncHardwareIOChannels kappt Kabel auf verschwundene I/O-Kanäle", "[engine][io]")
 {
-    conduit::EngineProcessor engine;
+    conduit::test::ScopedSettingsFolder settingsFolder;
+    conduit::EngineProcessor engine { settingsFolder.folder };
     engine.syncHardwareIOChannels (8, 8);  // Multichannel-Interface
 
     const auto inId  = ioNode (engine, conduit::audioInputModuleId).getProperty (conduit::id::nodeId).toString();

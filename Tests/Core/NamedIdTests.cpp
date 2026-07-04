@@ -8,6 +8,7 @@
 #include "Core/OscController.h"
 #include "Modules/AttenuatorModule.h"
 #include "Modules/ModuleFactory.h"
+#include "TestSettingsFolder.h"
 
 using Catch::Approx;
 
@@ -154,6 +155,7 @@ TEST_CASE ("Migration: Alt-Bestand ohne factoryId materialisiert weiter", "[name
 TEST_CASE ("named_id ist persistent: Rename überlebt Preset-Roundtrip (Spec 7)", "[namedid]")
 {
     juce::ScopedJuceInitialiser_GUI juceRuntime;
+    conduit::test::ScopedSettingsFolder settingsFolder;
     const auto file = juce::File::getSpecialLocation (juce::File::tempDirectory)
                           .getChildFile (juce::String ("conduit_namedid")
                                          + conduit::EngineProcessor::presetFileExtension);
@@ -161,14 +163,14 @@ TEST_CASE ("named_id ist persistent: Rename überlebt Preset-Roundtrip (Spec 7)"
     juce::String nodeUuid;
 
     {
-        conduit::EngineProcessor source;
+        conduit::EngineProcessor source { settingsFolder.folder };
         const auto node = source.getGraphManager().addModuleNode (attenuatorId, {});
         nodeUuid = uuidOf (node);
         REQUIRE (source.getGraphManager().renameNode (nodeUuid, "neutron_filter"));
         REQUIRE (source.savePreset (file).wasOk());
     }
 
-    conduit::EngineProcessor target;
+    conduit::EngineProcessor target { settingsFolder.folder };
     REQUIRE (target.loadPreset (file).wasOk());
 
     const auto restored = target.getRootState().getChildWithName (conduit::id::nodes)
@@ -183,7 +185,8 @@ TEST_CASE ("named_id ist persistent: Rename überlebt Preset-Roundtrip (Spec 7)"
 TEST_CASE ("Externe I/O-Endpunkte: lesbare Namen, weiterhin geschützt", "[namedid]")
 {
     juce::ScopedJuceInitialiser_GUI juceRuntime;
-    conduit::EngineProcessor engine;
+    conduit::test::ScopedSettingsFolder settingsFolder;
+    conduit::EngineProcessor engine { settingsFolder.folder };
 
     const auto nodes = engine.getRootState().getChildWithName (conduit::id::nodes);
     const auto ioIn = nodes.getChildWithProperty (conduit::id::factoryId,

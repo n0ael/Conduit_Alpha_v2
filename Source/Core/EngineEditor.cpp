@@ -131,6 +131,22 @@ EngineEditor::EngineEditor (EngineProcessor& engineProcessor,
     transportBar.onPageSelected = [this] (int pageIndex)
     { pageHost.setPage (pageIndex); };
 
+    // Tape (oo) → Retro-Looper-Page (B3): Toggle Looper ↔ Device; die
+    // Tape-LED folgt dem Page-Zustand über den Editor-Timer
+    transportBar.onToggleLooperPage = [this]
+    {
+        pageHost.setPage (pageHost.getPage() == TransportBar::pageLooper
+                              ? TransportBar::pageDevice
+                              : TransportBar::pageLooper);
+    };
+
+    // Looper-Quellen (Master + Hardware-Paare + Taps): Auswahl armt den
+    // Capture-Kanal und persistiert den Schlüssel (setLooperSource);
+    // Tap-/Label-Änderungen bauen die Liste neu (ChangeListener unten)
+    looperPage.onSourceSelected = [this] (const juce::String& sourceKey)
+    { engine.setLooperSource (sourceKey); };
+    rebuildLooperSources();
+
     transportBar.setBrowserItems (buildBrowserItems());
 
     // Metronom-Ziel-Paare fürs Link-Menü: Labels aus den ChannelNames,
@@ -182,6 +198,11 @@ EngineEditor::EngineEditor (EngineProcessor& engineProcessor,
     appliedFontScale = engine.getUiSettings().getFontScale();
     engine.getUiSettings().addChangeListener (this);
 
+    // Looper-Quellen folgen Tap-Registrierungen (CaptureService-Broadcast)
+    // und Label-/Pairing-Änderungen (ChannelNames-Broadcast)
+    engine.getCaptureService().addChangeListener (this);
+    engine.getChannelNames().addChangeListener (this);
+
     // Dev-Tile + Dev-Panel (nur im Dev Mode)
     transportBar.onToggleDevPanel = [this] { toggleDevPanel(); };
     transportBar.setDevTileVisible (engine.getUiSettings().isDevModeEnabled());
@@ -192,6 +213,8 @@ EngineEditor::EngineEditor (EngineProcessor& engineProcessor,
 
 EngineEditor::~EngineEditor()
 {
+    engine.getChannelNames().removeChangeListener (this);
+    engine.getCaptureService().removeChangeListener (this);
     engine.getUiSettings().removeChangeListener (this);
 
     // Der Service überlebt den Editor — Callback lösen, sonst zeigte ein
@@ -205,6 +228,14 @@ EngineEditor::~EngineEditor()
 //==============================================================================
 void EngineEditor::changeListenerCallback (juce::ChangeBroadcaster* source)
 {
+    // Looper-Quellen: Tap-Zeilen (CaptureService) und Kanal-Labels
+    // (ChannelNames) ändern die Auswahl-Liste der Looper-Page
+    if (source == &engine.getCaptureService() || source == &engine.getChannelNames())
+    {
+        rebuildLooperSources();
+        return;
+    }
+
     if (source != &engine.getUiSettings())
         return;
 
@@ -273,6 +304,65 @@ void EngineEditor::closeDevPanelAsync()
             self->transportBar.setDevPanelOpen (false);
         }
     });
+}
+
+//==============================================================================
+//==============================================================================
+std::vector<LooperPage::Source> EngineEditor::buildLooperSources()
+{
+    std::vector<LooperPage::Source> sources;
+
+    // Master zuerst — die Session-Summe (Master-Output-Tap, B2) ist die
+    // naheliegendste Looper-Quelle und der Fallback unbekannter Schlüssel
+    sources.push_back ({ "master", "Master" });
+
+    // Hardware-Eingangs-Paare: Kanalzahl aus dem audio_in-Tree-Node
+    // (folgt der Hardware), Labels aus den ChannelNames — Muster
+    // metronomeTargetNames
+    auto nodesTree = rootState.getChildWithName (id::nodes);
+    auto inNode = nodesTree.getChildWithProperty (id::factoryId, juce::String (audioInputModuleId));
+    if (! inNode.isValid())
+        inNode = nodesTree.getChildWithProperty (id::moduleId, juce::String (audioInputModuleId));
+
+    const auto channels = inNode.isValid()
+                        ? (int) inNode.getProperty (id::numOutputChannels, 2) : 2;
+    auto& labels = engine.getChannelNames();
+
+    for (int channel = 0; channel + 1 < channels; channel += 2)
+        sources.push_back ({ "hw:" + juce::String (channel / 2),
+                             labels.getLabel (ChannelNames::Direction::input, channel)
+                                 + " / "
+                                 + labels.getLabel (ChannelNames::Direction::input, channel + 1) });
+
+    // Capture-Taps der Module (virtuelle Slots hinter master_l/_r):
+    // _l/_r-Stereo-Paare auf den Basisnamen reduziert, Mono-Taps einzeln
+    juce::StringArray seenBaseNames;
+    const auto& capture = engine.getCaptureService();
+
+    for (int slot = 2; slot < CaptureService::MAX_VIRTUAL_CHANNELS; ++slot)
+    {
+        const auto info = capture.getVirtualChannelUiInfo (slot);
+        if (! info.inUse || info.name.isEmpty())
+            continue;
+
+        auto baseName = info.name;
+        if (baseName.endsWith ("_l") || baseName.endsWith ("_r"))
+            baseName = baseName.dropLastCharacters (2);
+
+        if (seenBaseNames.contains (baseName))
+            continue;
+
+        seenBaseNames.add (baseName);
+        sources.push_back ({ "tap:" + baseName, "Tap: " + baseName });
+    }
+
+    return sources;
+}
+
+void EngineEditor::rebuildLooperSources()
+{
+    looperPage.setSources (buildLooperSources(),
+                           engine.getTransportSettings().getLooperSource());
 }
 
 //==============================================================================
@@ -473,6 +563,9 @@ void EngineEditor::timerCallback()
 
     if (capturePanel.isVisible())
         capturePanel.refresh();
+
+    // Tape-LED: Looper-Page offen (Loop-Playback kommt mit B5)
+    transportBar.setLooperStatus (pageHost.getPage() == TransportBar::pageLooper, false);
 
     // audioSetupWarning folgt dem Controller (setzt/löscht bei Gerätewechsel)
     const auto warning = rootState.getProperty (id::audioSetupWarning).toString();

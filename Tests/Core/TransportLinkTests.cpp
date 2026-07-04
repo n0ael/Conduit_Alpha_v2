@@ -263,3 +263,36 @@ TEST_CASE ("LinkClock: Start/Stop lokal (Sync deaktiviert — Peers bleiben unbe
     clock.setStartStopSyncEnabled (true);
     REQUIRE (clock.isStartStopSyncEnabled());
 }
+
+//==============================================================================
+TEST_CASE ("TransportSettings: Looper-Quelle und -Anker (B3) — Roundtrip + Clamp", "[transport][looper]")
+{
+    juce::ScopedJuceInitialiser_GUI juceRuntime;
+    TempTransportSettings temp;
+
+    {
+        conduit::TransportSettings settings (temp.options());
+
+        // Defaults
+        REQUIRE (settings.getLooperSource() == "master");
+        REQUIRE (settings.getLooperAnchor() == 0);
+
+        settings.setLooperSource ("tap:delay_1");
+        settings.setLooperAnchor (3);
+
+        // Leerer Schlüssel fällt definiert auf "master" zurück
+        settings.setLooperSource ("");
+        REQUIRE (settings.getLooperSource() == "master");
+        settings.setLooperSource ("hw:1");
+
+        // Anker-Clamp 0..31
+        settings.setLooperAnchor (99);
+        REQUIRE (settings.getLooperAnchor() == 31);
+        settings.setLooperAnchor (2);
+    }
+
+    // Zweite Instanz liest dieselbe Datei
+    conduit::TransportSettings reloaded (temp.options());
+    REQUIRE (reloaded.getLooperSource() == "hw:1");
+    REQUIRE (reloaded.getLooperAnchor() == 2);
+}

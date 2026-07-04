@@ -17,19 +17,21 @@ namespace conduit
       Clip   (▷▭)  — Fugue-Machine-Sequencer,
                      CV- und MIDI-Ziele            [eigener Meilenstein]
       Device (|||) — die Patch-Canvas (bestehend)
+      Looper (oo)  — Retro-Looper (B3), erreichbar über die Tape-Kachel
+                     statt über ein Page-Icon
 
-    Der Host besitzt nur die Platzhalter; die Device-Komponente (NodeCanvas)
-    gehört weiterhin dem EngineEditor und wird als Referenz eingehängt —
-    ihre Verdrahtung (Provider, Tooltips) bleibt unangetastet.
+    Der Host besitzt nur die Platzhalter; Device-Komponente (NodeCanvas)
+    und LooperPage gehören weiterhin dem EngineEditor und werden als
+    Referenz eingehängt — ihre Verdrahtung bleibt unangetastet.
 
     Page-Indizes == TransportBar::PageIndex. Message Thread.
 */
 class PageHost final : public juce::Component
 {
 public:
-    /** devicePage: die bestehende Canvas (nicht owned, muss den Host
-        überleben — Member-Reihenfolge im EngineEditor). */
-    explicit PageHost (juce::Component& devicePage);
+    /** devicePage (Canvas) und looperPage: nicht owned, müssen den Host
+        überleben — Member-Reihenfolge im EngineEditor. */
+    PageHost (juce::Component& devicePage, juce::Component& looperPage);
 
     void setPage (int pageIndex);
     [[nodiscard]] int getPage() const noexcept { return currentPage; }
@@ -51,6 +53,7 @@ private:
     };
 
     juce::Component& device;
+    juce::Component& looper;
     Placeholder gridPage   { push::Icon::pageGrid,  "Grid" };
     Placeholder mixerPage  { push::Icon::pageMixer, "Mixer" };
     Placeholder clipPage   { push::Icon::pageClip,  "Clip" };

@@ -9,6 +9,7 @@
 #include "Modules/ChassisSchema.h"
 #include "Modules/ModuleFactory.h"
 #include "Modules/ProcessorModule.h"
+#include "TestSettingsFolder.h"
 #include "Util/RtAllocationGuard.h"
 
 using Catch::Approx;
@@ -543,7 +544,8 @@ TEST_CASE ("FX-Chassis: Link-Send ohne LinkClock bleibt offline und crashfrei", 
 TEST_CASE ("FX-Chassis: CV-Kabel im Graph moduliert einen DSP-Parameter end-to-end", "[chassis]")
 {
     juce::ScopedJuceInitialiser_GUI juceRuntime;
-    conduit::EngineProcessor engine;
+    conduit::test::ScopedSettingsFolder settingsFolder;
+    conduit::EngineProcessor engine { settingsFolder.folder };
     auto& manager = engine.getGraphManager();
 
     auto nodes = engine.getRootState().getChildWithName (conduit::id::nodes);

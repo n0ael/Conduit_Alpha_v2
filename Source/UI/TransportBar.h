@@ -55,6 +55,7 @@ public:
     std::function<void()> onUndo, onRedo, onSave, onSettings;
     std::function<void()> onToggleDevPanel;   // Dev-Tile (nur im Dev Mode sichtbar)
     std::function<void()> onCaptureAll, onToggleCapturePanel;
+    std::function<void()> onToggleLooperPage;             // Tape-Kachel (oo)
     std::function<void (int pageIndex)> onPageSelected;   // Reihenfolge: pages[]
 
     /** Browser-Einträge (Module + Presets) — Anzeige-Reihenfolge = Liste. */
@@ -73,6 +74,9 @@ public:
     void setCaptureStatus (bool recording, bool held, bool exporting);
     void setWarningText (const juce::String& warning);
 
+    /** Tape-LED (rot): Looper-Page offen ODER Loop spielt (B5). */
+    void setLooperStatus (bool pageOpen, bool playing);
+
     /** Ableton-artige Positions-Anzeige „Takt. Beat. Sechzehntel" aus dem
         Session-Beat (Quantum 4) — public static für Tests. */
     [[nodiscard]] static juce::String formatPosition (double beatPosition);
@@ -80,8 +84,11 @@ public:
     //==========================================================================
     static constexpr int preferredHeight = 56;
 
-    /** Page-Reihenfolge in der Bar (Icon-Optik wie auf dem Push). */
-    enum PageIndex { pageGrid = 0, pageMixer = 1, pageClip = 2, pageDevice = 3 };
+    /** Page-Reihenfolge in der Bar (Icon-Optik wie auf dem Push).
+        pageLooper hat KEIN Page-Icon — die Looper-Page (B3) öffnet über
+        die Tape-Kachel (oo) links im Transport. */
+    enum PageIndex { pageGrid = 0, pageMixer = 1, pageClip = 2, pageDevice = 3,
+                     pageLooper = 4 };
 
     void setSelectedPage (int pageIndex);
     [[nodiscard]] int getSelectedPage() const noexcept { return selectedPage; }
@@ -92,6 +99,7 @@ public:
     //==========================================================================
     // Test-/Editor-Zugriff auf einzelne Kacheln (read-only Verwendung)
     [[nodiscard]] push::IconTile& getPlayTile()     noexcept { return playTile; }
+    [[nodiscard]] push::IconTile& getTapeTile()     noexcept { return tapeTile; }
     [[nodiscard]] push::IconTile& getCaptureTile()  noexcept { return captureTile; }
     [[nodiscard]] push::IconTile& getPlusTile()     noexcept { return plusTile; }
     [[nodiscard]] push::TextTile& getUndoTile()     noexcept { return undoTile; }

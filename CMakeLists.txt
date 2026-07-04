@@ -206,6 +206,7 @@ set(CONDUIT_CPP_SOURCES
     Source/UI/NodeCanvas.cpp
     Source/UI/NodeComponent.cpp
     Source/UI/OscSettingsComponent.cpp
+    Source/UI/LooperPage.cpp
     Source/UI/PageHost.cpp
     Source/UI/ParameterPanel.cpp
     Source/UI/PortComponent.cpp
@@ -460,6 +461,7 @@ if(CONDUIT_BUILD_TESTS)
         Tests/Core/LinkSendTapsTests.cpp
         Tests/Core/LooperMathTests.cpp
         Tests/Core/BarSampleAnchorsTests.cpp
+        Tests/Core/LooperSourceTests.cpp
         Tests/Core/MasterTapTests.cpp
         Tests/Core/MeterSettingsTests.cpp
         Tests/Core/MetronomeTests.cpp
@@ -480,6 +482,7 @@ if(CONDUIT_BUILD_TESTS)
         Tests/UI/LevelMeterBarTests.cpp
         Tests/UI/LinkAudioSendPanelTests.cpp
         Tests/UI/OscSettingsComponentTests.cpp
+        Tests/UI/LooperPageTests.cpp
         Tests/UI/PageHostTests.cpp
         Tests/UI/PushDesignTests.cpp
         Tests/UI/SequencerControlPanelTests.cpp
@@ -603,7 +606,8 @@ if(CONDUIT_BUILD_TESTS)
         Source/UI/NodeComponent.cpp
         Source/UI/ModuleBrowser.cpp
         Source/UI/OscSettingsComponent.cpp
-        Source/UI/PageHost.cpp
+        Source/UI/LooperPage.cpp
+    Source/UI/PageHost.cpp
         Source/UI/ParameterPanel.cpp
         Source/UI/PortComponent.cpp
         Source/UI/PushIcons.cpp

@@ -34,8 +34,14 @@ TransportBar::TransportBar (juce::ValueTree rootTree, LinkClock& linkClockToUse,
     playTile.setTooltip ("Link Start/Stop");
     playTile.onClick = [this] { linkClock.requestIsPlaying (! linkClock.isPlaying()); };
 
-    tapeTile.setEnabled (false);
-    tapeTile.setTooltip (juce::String::fromUTF8 ("Looper-Page — eigener Meilenstein"));
+    // Tape (oo) = Retro-Looper (B3): öffnet/schließt die Looper-Page; die
+    // LED folgt über setLooperStatus (Page offen ODER Loop spielt, B5)
+    tapeTile.setTooltip (juce::String::fromUTF8 ("Retro-Looper — Page öffnen/schließen"));
+    tapeTile.onClick = [this]
+    {
+        if (onToggleLooperPage != nullptr)
+            onToggleLooperPage();
+    };
 
     // Metronom: Link-synchroner Click auf die Anker-Kanäle (Ziel im Link-Menü)
     metronomeTile.setTooltip (juce::String::fromUTF8 ("Metronom — Ziel-Kanäle im Link-Menü"));
@@ -344,6 +350,11 @@ void TransportBar::setCaptureStatus (bool recording, bool held, bool exporting)
     captureTile.setAccentColour (recording  ? push::colours::ledRed
                                 : exporting ? push::colours::ledCyan
                                             : push::colours::ledOrange);
+}
+
+void TransportBar::setLooperStatus (bool pageOpen, bool playing)
+{
+    tapeTile.setActive (pageOpen || playing);
 }
 
 void TransportBar::setWarningText (const juce::String& warning)

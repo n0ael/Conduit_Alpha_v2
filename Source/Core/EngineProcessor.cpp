@@ -7,11 +7,39 @@
 namespace conduit
 {
 
+namespace
+{
+    /** Settings-Umleitung (Test-Injektionspunkt): ein absoluter folderName
+        gewinnt in juce::File::getChildFile über das AppData-Verzeichnis —
+        dasselbe Muster nutzen die Settings-Unit-Tests bereits einzeln.
+        Ungültiges File → Options unverändert (Produktions-Pfade). */
+    juce::PropertiesFile::Options redirectSettings (juce::PropertiesFile::Options options,
+                                                    const juce::File& folder)
+    {
+        if (folder != juce::File())
+            options.folderName = folder.getFullPathName();
+
+        return options;
+    }
+}
+
 EngineProcessor::EngineProcessor()
+    : EngineProcessor (juce::File())
+{
+}
+
+EngineProcessor::EngineProcessor (const juce::File& settingsFolder)
     : juce::AudioProcessor (BusesProperties()
           .withInput  ("Input",  juce::AudioChannelSet::stereo(), true)
           .withOutput ("Output", juce::AudioChannelSet::stereo(), true)),
-      rootState (id::root)
+      rootState (id::root),
+      captureSettings  (redirectSettings (CaptureSettings::defaultOptions(),  settingsFolder)),
+      channelNames     (redirectSettings (ChannelNames::defaultOptions(),     settingsFolder)),
+      meterSettings    (redirectSettings (MeterSettings::defaultOptions(),    settingsFolder)),
+      uiSettings       (redirectSettings (UiSettings::defaultOptions(),       settingsFolder)),
+      moduleUiDefaults (redirectSettings (ModuleUiDefaults::defaultOptions(), settingsFolder)),
+      transportSettings (redirectSettings (TransportSettings::defaultOptions(), settingsFolder)),
+      oscSendSettings  (redirectSettings (OscSendSettings::defaultOptions(),  settingsFolder))
 {
     // Schema 6.2 — die drei Top-Level-Container des Root-Trees
     rootState.appendChild (juce::ValueTree (id::nodes),               nullptr);
@@ -139,6 +167,74 @@ void EngineProcessor::applyTransportSettings()
     linkClock.setClockOffsetMs (transportSettings.getClockOffsetMs());
     metronome.setEnabled (transportSettings.isMetronomeEnabled());
     metronome.setAnchor (transportSettings.getMetronomeAnchor());
+}
+
+//==============================================================================
+void EngineProcessor::setLooperSource (const juce::String& sourceKey)
+{
+    transportSettings.setLooperSource (sourceKey);
+    applyLooperSourceArming();
+}
+
+void EngineProcessor::applyLooperSourceArming()
+{
+    JUCE_ASSERT_MESSAGE_THREAD
+
+    // Vorherige Quelle entwaffnen — die normale Gate-Detektion übernimmt
+    // dort wieder (offenes Material schließt regulär über den Hold, B1)
+    captureService.setChannelArmed (looperLeftIndex, false);
+    captureService.setChannelArmed (looperRightIndex, false);
+    looperLeftIndex  = -1;
+    looperRightIndex = -1;
+
+    const auto key = transportSettings.getLooperSource();
+
+    if (key == "master")
+    {
+        // Master-Output-Tap (B2): Registry-Slots 0/1; captureIndex ist −1,
+        // solange kein Puffersatz die Slots trägt (vor prepare)
+        looperLeftIndex  = captureService.getVirtualChannelUiInfo (0).captureIndex;
+        looperRightIndex = captureService.getVirtualChannelUiInfo (1).captureIndex;
+    }
+    else if (key.startsWith ("hw:"))
+    {
+        // Hardware-Eingangs-Paar 2n/2n+1 — nur Kanäle, die der aktuelle
+        // Puffersatz tatsächlich trägt
+        const auto pair = key.substring (3).getIntValue();
+        const auto channels = captureService.getRingNumChannels();
+        const auto leftChannel = pair * 2;
+
+        if (leftChannel < channels)
+            looperLeftIndex = leftChannel;
+        if (leftChannel + 1 < channels)
+            looperRightIndex = leftChannel + 1;
+    }
+    else if (key.startsWith ("tap:"))
+    {
+        // Capture-Tap eines Moduls: Basisname → _l/_r-Paar (Stereo) bzw.
+        // exakter Name (Mono-Tap)
+        const auto baseName = key.substring (4);
+
+        for (int slot = 0; slot < CaptureService::MAX_VIRTUAL_CHANNELS; ++slot)
+        {
+            const auto info = captureService.getVirtualChannelUiInfo (slot);
+            if (! info.inUse || info.captureIndex < 0)
+                continue;
+
+            if (info.name == baseName + "_l" || info.name == baseName)
+                looperLeftIndex = info.captureIndex;
+            else if (info.name == baseName + "_r")
+                looperRightIndex = info.captureIndex;
+        }
+    }
+
+    // Mono-Quelle: rechts folgt links (Commit/Waveform lesen beide Seiten)
+    if (looperRightIndex < 0)
+        looperRightIndex = looperLeftIndex;
+
+    captureService.setChannelArmed (looperLeftIndex, true);
+    if (looperRightIndex != looperLeftIndex)
+        captureService.setChannelArmed (looperRightIndex, true);
 }
 
 void EngineProcessor::rebuildInputSends()
@@ -315,6 +411,10 @@ void EngineProcessor::prepareToPlay (double sampleRate, int samplesPerBlock)
     metronome.prepare (sampleRate);
     captureService.prepare (sampleRate, samplesPerBlock, getTotalNumInputChannels());
     barAnchors.reset();  // SampleClock-Reset invalidiert alle Anker-Positionen
+
+    // Looper-Quelle neu auflösen: der frische Puffersatz vergibt die
+    // Capture-Indizes der virtuellen Slots neu (B3)
+    applyLooperSourceArming();
     inputLevels.prepare  (sampleRate, getTotalNumInputChannels());
     outputLevels.prepare (sampleRate, getTotalNumOutputChannels());
     inputLinkSend.prepare (samplesPerBlock);

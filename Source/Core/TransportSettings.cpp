@@ -14,6 +14,8 @@ namespace
     constexpr const char* tapResetHoldKey    = "tapResetHold";
     constexpr const char* metronomeKey       = "metronome";
     constexpr const char* metronomeAnchorKey = "metronomeAnchor";
+    constexpr const char* looperSourceKey    = "looperSource";
+    constexpr const char* looperAnchorKey    = "looperAnchor";
 
     constexpr double minTapResetHold = 0.3;
     constexpr double maxTapResetHold = 3.0;
@@ -59,6 +61,11 @@ void TransportSettings::loadFromFile()
                                             file->getDoubleValue (tapResetHoldKey, 1.0));
         metronome       = file->getBoolValue (metronomeKey, false);
         metronomeAnchor = juce::jlimit (0, 31, file->getIntValue (metronomeAnchorKey, 0));
+
+        looperSource = file->getValue (looperSourceKey, "master");
+        if (looperSource.isEmpty())
+            looperSource = "master";
+        looperAnchor = juce::jlimit (0, 31, file->getIntValue (looperAnchorKey, 0));
     }
 }
 
@@ -161,6 +168,28 @@ void TransportSettings::setMetronomeAnchor (int pairIndex)
 
     metronomeAnchor = clamped;
     writeValue (metronomeAnchorKey, clamped);
+}
+
+void TransportSettings::setLooperSource (const juce::String& sourceKey)
+{
+    const auto effective = sourceKey.isEmpty() ? juce::String ("master") : sourceKey;
+
+    if (looperSource == effective)
+        return;
+
+    looperSource = effective;
+    writeValue (looperSourceKey, effective);
+}
+
+void TransportSettings::setLooperAnchor (int pairIndex)
+{
+    const auto clamped = juce::jlimit (0, 31, pairIndex);
+
+    if (looperAnchor == clamped)
+        return;
+
+    looperAnchor = clamped;
+    writeValue (looperAnchorKey, clamped);
 }
 
 } // namespace conduit

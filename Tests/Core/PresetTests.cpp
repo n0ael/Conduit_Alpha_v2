@@ -3,6 +3,7 @@
 
 #include "Core/EngineProcessor.h"
 #include "Modules/AttenuatorModule.h"
+#include "TestSettingsFolder.h"
 
 using Catch::Approx;
 
@@ -34,12 +35,13 @@ constexpr auto attenuatorId = conduit::AttenuatorModule::staticModuleId;
 TEST_CASE ("Preset-Round-Trip: Patch überlebt Save → frische Engine → Load (5.4)", "[preset]")
 {
     juce::ScopedJuceInitialiser_GUI juceRuntime;
+    conduit::test::ScopedSettingsFolder settingsFolder;
     const auto file = tempPresetFile ("conduit_roundtrip");
 
     juce::String savedAttenuatorUuid;
 
     {
-        conduit::EngineProcessor source;
+        conduit::EngineProcessor source { settingsFolder.folder };
         auto& manager = source.getGraphManager();
 
         auto node = manager.addModuleNode (attenuatorId, { 300, 200 });
@@ -54,7 +56,7 @@ TEST_CASE ("Preset-Round-Trip: Patch überlebt Save → frische Engine → Load 
         REQUIRE (source.savePreset (file).wasOk());
     }
 
-    conduit::EngineProcessor target;
+    conduit::EngineProcessor target { settingsFolder.folder };
     REQUIRE (target.loadPreset (file).wasOk());
 
     auto nodes = target.getRootState().getChildWithName (conduit::id::nodes);
@@ -89,7 +91,8 @@ TEST_CASE ("Preset-Load ist undo-fähig — ein Undo stellt den alten Patch wied
     juce::ScopedJuceInitialiser_GUI juceRuntime;
     const auto file = tempPresetFile ("conduit_undo");
 
-    conduit::EngineProcessor engine;
+    conduit::test::ScopedSettingsFolder settingsFolder;
+    conduit::EngineProcessor engine { settingsFolder.folder };
     auto& manager = engine.getGraphManager();
 
     // Zustand A: leeres Default-Patch speichern
@@ -120,7 +123,8 @@ TEST_CASE ("Preset-Save flusht ausstehende OSC-Werte (isDirty-Guard 6.1)", "[pre
     juce::ScopedJuceInitialiser_GUI juceRuntime;
     const auto file = tempPresetFile ("conduit_dirty");
 
-    conduit::EngineProcessor engine;
+    conduit::test::ScopedSettingsFolder settingsFolder;
+    conduit::EngineProcessor engine { settingsFolder.folder };
     auto& manager = engine.getGraphManager();
     auto& osc = engine.getOscController();
 
@@ -152,7 +156,8 @@ TEST_CASE ("Preset-Save flusht ausstehende OSC-Werte (isDirty-Guard 6.1)", "[pre
 TEST_CASE ("loadPreset lehnt kaputte Dateien ab und lässt den Zustand unangetastet", "[preset]")
 {
     juce::ScopedJuceInitialiser_GUI juceRuntime;
-    conduit::EngineProcessor engine;
+    conduit::test::ScopedSettingsFolder settingsFolder;
+    conduit::EngineProcessor engine { settingsFolder.folder };
 
     const auto nodeCount = engine.getRootState()
                                .getChildWithName (conduit::id::nodes).getNumChildren();

@@ -69,6 +69,16 @@ public:
     [[nodiscard]] int getMetronomeAnchor() const noexcept { return metronomeAnchor; }
     void setMetronomeAnchor (int pairIndex);  // Clamp 0..31
 
+    /** Retro-Looper (B3): Quell-Schlüssel der Looper-Page — "master",
+        "hw:{paar}" oder "tap:{name}" (Auflösung in Capture-Indizes macht
+        EngineProcessor::setLooperSource). Leer wird zu "master". */
+    [[nodiscard]] juce::String getLooperSource() const noexcept { return looperSource; }
+    void setLooperSource (const juce::String& sourceKey);
+
+    /** Stereo-Anker des Loop-Playbacks (Paar n = Kanäle 2n/2n+1, B5/B6). */
+    [[nodiscard]] int getLooperAnchor() const noexcept { return looperAnchor; }
+    void setLooperAnchor (int pairIndex);  // Clamp 0..31
+
 private:
     void loadFromFile();
     void writeValue (const char* key, const juce::var& value);
@@ -84,6 +94,8 @@ private:
     double tapResetHoldSeconds = 1.0;
     bool   metronome        = false;
     int    metronomeAnchor  = 0;
+    juce::String looperSource = "master";
+    int    looperAnchor     = 0;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (TransportSettings)
 };

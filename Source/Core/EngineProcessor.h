@@ -155,6 +155,21 @@ public:
         lauscht und speist die LinkClock (applyTransportSettings). */
     [[nodiscard]] TransportSettings& getTransportSettings() noexcept;
 
+    //==========================================================================
+    /** Looper-Quelle (B3) [Message Thread]: persistiert den Quell-Schlüssel
+        ("master" | "hw:{paar}" | "tap:{name}") in den TransportSettings,
+        löst ihn in Capture-Indizes auf und armt die Kanäle (Vorgänger
+        entwaffnet) — das Gate der Quelle bleibt damit garantiert offen (B1).
+        Re-Apply nach prepareToPlay (Puffersatz-Indizes) übernimmt der
+        Processor selbst. */
+    void setLooperSource (const juce::String& sourceKey);
+
+    /** Aufgelöste Capture-Indizes der Looper-Quelle (links/rechts; Mono =
+        beide gleich, −1 = nicht auflösbar) — Waveform-Tap (B4) und
+        Commit (B5) lesen sie; Tests prüfen das Arming. Message Thread. */
+    [[nodiscard]] int getLooperLeftIndex() const noexcept  { return looperLeftIndex; }
+    [[nodiscard]] int getLooperRightIndex() const noexcept { return looperRightIndex; }
+
     /** OSC-Send-Pfad (7.3): Ziel-Host/Port/Enable (App-Zustand, Settings-UI)
         und der Snapshot-Diff-Sender selbst. */
     [[nodiscard]] OscSendSettings& getOscSendSettings() noexcept;
@@ -190,6 +205,11 @@ private:
     void changeListenerCallback (juce::ChangeBroadcaster* source) override;
     void applyMeterSettings();
     void applyTransportSettings();  // TransportSettings → LinkClock
+
+    /** Looper-Quelle (B3): Schlüssel aus den TransportSettings in
+        Capture-Indizes auflösen und Arming nachziehen — bei Quellwahl und
+        nach jedem prepareToPlay (Puffersatz-Swap ändert die Tap-Indizes). */
+    void applyLooperSourceArming();
 
     /** Zieht die Input-Link-Sends diff-basiert aus dem ChannelNames-Zustand
         nach (Enable-Flags, Pairing, Labels) — bei jedem ChannelNames-
@@ -249,6 +269,11 @@ private:
     // unveränderlich — der Audio Thread liest sie deshalb direkt
     CaptureService::VirtualChannelHandle masterTapLeft;
     CaptureService::VirtualChannelHandle masterTapRight;
+
+    // Looper-Quelle (B3): aufgelöste Capture-Indizes der gearmten Kanäle
+    // (nur Message Thread; −1 = nicht auflösbar, z. B. vor prepare)
+    int looperLeftIndex  = -1;
+    int looperRightIndex = -1;
 
     // Sicht-Metering (Ableton-Style) für die audio_in/audio_out-Kacheln —
     // getrennt vom capture-InputMeter; processBlock speist beide.

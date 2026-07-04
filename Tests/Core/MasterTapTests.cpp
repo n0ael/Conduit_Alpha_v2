@@ -4,6 +4,7 @@
 
 #include "Core/EngineProcessor.h"
 #include "Modules/AttenuatorModule.h"
+#include "TestSettingsFolder.h"
 
 namespace
 {
@@ -15,41 +16,14 @@ juce::String uuidOf (const juce::ValueTree& node)
     return node.getProperty (conduit::id::nodeId).toString();
 }
 
-/** Der EngineProcessor lädt die ECHTEN TransportSettings des Users
-    (Conduit/Transport.settings) — der Test verstellt Metronom-Enable und
-    -Anker und MUSS beides restaurieren (auch bei REQUIRE-Throw). */
-struct ScopedMetronomeOverride
-{
-    explicit ScopedMetronomeOverride (conduit::TransportSettings& settingsToUse,
-                                      bool enabled, int anchor)
-        : settings (settingsToUse),
-          originalEnabled (settingsToUse.isMetronomeEnabled()),
-          originalAnchor (settingsToUse.getMetronomeAnchor())
-    {
-        settings.setMetronomeEnabled (enabled);
-        settings.setMetronomeAnchor (anchor);
-        settings.dispatchPendingMessages();
-    }
-
-    ~ScopedMetronomeOverride()
-    {
-        settings.setMetronomeEnabled (originalEnabled);
-        settings.setMetronomeAnchor (originalAnchor);
-        settings.dispatchPendingMessages();
-    }
-
-    conduit::TransportSettings& settings;
-    bool originalEnabled;
-    int  originalAnchor;
-};
-
 } // namespace
 
 //==============================================================================
 TEST_CASE ("Master-Output-Tap: master_l/_r sind ab Konstruktion registriert", "[looper][capture]")
 {
     juce::ScopedJuceInitialiser_GUI juceRuntime;
-    conduit::EngineProcessor engine;
+    conduit::test::ScopedSettingsFolder settingsFolder;
+    conduit::EngineProcessor engine { settingsFolder.folder };
     const auto& capture = engine.getCaptureService();
 
     const auto left  = capture.getVirtualChannelUiInfo (0);
@@ -75,7 +49,8 @@ TEST_CASE ("Master-Output-Tap: Session-Summe landet im Ring, der Metronom-Click 
            "[looper][capture]")
 {
     juce::ScopedJuceInitialiser_GUI juceRuntime;
-    conduit::EngineProcessor engine;
+    conduit::test::ScopedSettingsFolder settingsFolder;
+    conduit::EngineProcessor engine { settingsFolder.folder };
     auto& manager = engine.getGraphManager();
     auto& capture = engine.getCaptureService();
 
@@ -137,11 +112,14 @@ TEST_CASE ("Master-Output-Tap: Session-Summe landet im Ring, der Metronom-Click 
     REQUIRE (master != nullptr);
     REQUIRE (master->getState() == conduit::CaptureChannel::State::recording);
 
-    // Metronom an, Anker-Paar 0 = dieselben Kanäle wie der Tap (der echte
-    // User-Anker kann außerhalb des 2-Kanal-Test-Buffers liegen). Pumpen,
-    // bis ein Click im Ausgangs-Buffer nachweisbar ist: Onset = 1.0 + 0.4
-    const ScopedMetronomeOverride metronomeOverride (engine.getTransportSettings(),
-                                                     true, 0);
+    // Metronom an, Anker-Paar 0 = dieselben Kanäle wie der Tap. Kein
+    // Restaurieren nötig: die TransportSettings leben im Temp-Ordner des
+    // Tests, nicht in der echten Transport.settings. Pumpen, bis ein Click
+    // im Ausgangs-Buffer nachweisbar ist: Onset = 1.0 + 0.4
+    auto& transport = engine.getTransportSettings();
+    transport.setMetronomeEnabled (true);
+    transport.setMetronomeAnchor (0);
+    transport.dispatchPendingMessages();
 
     maxBufferSample = 0.0f;
     const auto deadline = juce::Time::getMillisecondCounter() + 3000;

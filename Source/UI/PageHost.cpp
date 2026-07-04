@@ -1,16 +1,18 @@
 #include "PageHost.h"
 
 #include "PushLookAndFeel.h"
+#include "TransportBar.h"
 
 namespace conduit
 {
 
-PageHost::PageHost (juce::Component& devicePage)
-    : device (devicePage)
+PageHost::PageHost (juce::Component& devicePage, juce::Component& looperPage)
+    : device (devicePage), looper (looperPage)
 {
     addChildComponent (gridPage);
     addChildComponent (mixerPage);
     addChildComponent (clipPage);
+    addChildComponent (looper);
     addAndMakeVisible (device);
 
     setPage (currentPage);
@@ -18,12 +20,13 @@ PageHost::PageHost (juce::Component& devicePage)
 
 void PageHost::setPage (int pageIndex)
 {
-    currentPage = juce::jlimit (0, 3, pageIndex);
+    currentPage = juce::jlimit (0, (int) TransportBar::pageLooper, pageIndex);
 
-    gridPage.setVisible (currentPage == 0);
-    mixerPage.setVisible (currentPage == 1);
-    clipPage.setVisible (currentPage == 2);
-    device.setVisible (currentPage == 3);
+    gridPage.setVisible (currentPage == TransportBar::pageGrid);
+    mixerPage.setVisible (currentPage == TransportBar::pageMixer);
+    clipPage.setVisible (currentPage == TransportBar::pageClip);
+    device.setVisible (currentPage == TransportBar::pageDevice);
+    looper.setVisible (currentPage == TransportBar::pageLooper);
 }
 
 void PageHost::resized()
@@ -33,6 +36,7 @@ void PageHost::resized()
     mixerPage.setBounds (bounds);
     clipPage.setBounds (bounds);
     device.setBounds (bounds);
+    looper.setBounds (bounds);
 }
 
 //==============================================================================

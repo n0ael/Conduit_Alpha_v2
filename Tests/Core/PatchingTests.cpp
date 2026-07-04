@@ -6,6 +6,7 @@
 #include "Core/NodeUiRegistry.h"
 #include "Modules/AttenuatorModule.h"
 #include "Modules/ModuleFactory.h"
+#include "TestSettingsFolder.h"
 
 namespace
 {
@@ -150,7 +151,8 @@ TEST_CASE ("EngineProcessor: erster hörbarer Patch — Audio In → Attenuator 
            "[patching]")
 {
     juce::ScopedJuceInitialiser_GUI juceRuntime;
-    conduit::EngineProcessor engine;
+    conduit::test::ScopedSettingsFolder settingsFolder;
+    conduit::EngineProcessor engine { settingsFolder.folder };
     auto& manager = engine.getGraphManager();
 
     // I/O-Grundausstattung steht im frischen Patch

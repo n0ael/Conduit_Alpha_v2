@@ -8,6 +8,7 @@
 #include "UI/CapturePanel.h"
 #include "UI/CaptureToast.h"
 #include "UI/DevPanel.h"
+#include "UI/LooperPage.h"
 #include "UI/NodeCanvas.h"
 #include "UI/PageHost.h"
 #include "UI/PushLookAndFeel.h"
@@ -68,6 +69,11 @@ private:
     void closeDevPanelAsync();
     [[nodiscard]] std::vector<ModuleBrowser::Item> buildBrowserItems();
 
+    // Looper-Page (B3): Quellen-Liste (Master + Hardware-Paare + Taps)
+    // neu aufbauen — bei Start, Tap-Änderungen und ChannelNames-Broadcasts
+    [[nodiscard]] std::vector<LooperPage::Source> buildLooperSources();
+    void rebuildLooperSources();
+
     EngineProcessor& engine;
     juce::ValueTree rootState;  // ref-counted Handle, read/listen-only
     juce::UndoManager& undoManager;
@@ -90,9 +96,13 @@ private:
 
     NodeCanvas canvas;
 
-    // Nach der Canvas deklariert (hält eine Referenz darauf): die vier Pages
-    // hinter den Push-Icons — Device = Canvas, Rest Platzhalter
-    PageHost pageHost { canvas };
+    // Retro-Looper-Page (B3) — hinter der Tape-Kachel, VOR dem PageHost
+    // deklariert (der hält eine Referenz darauf)
+    LooperPage looperPage;
+
+    // Nach Canvas + LooperPage deklariert (hält Referenzen darauf): die
+    // Pages hinter den Push-Icons — Device = Canvas, Rest Platzhalter
+    PageHost pageHost { canvas, looperPage };
 
     // Port-Tooltips der I/O-Endpunkte (ChannelNames-Labels, Maus-Hover)
     juce::TooltipWindow tooltipWindow { this };

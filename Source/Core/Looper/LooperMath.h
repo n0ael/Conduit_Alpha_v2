@@ -117,12 +117,14 @@ struct CommitRange
 
 /** latestBoundaryBar = jüngste sample-genau geankerte Taktgrenze
     (BarSampleAnchors::latestBoundaryBar, −1 = noch keine). Ungültig,
-    solange noch keine `bars` kompletten Takte existieren (Session-Anfang). */
+    solange nicht bars+1 Grenzen existieren: Grenze 0 (Session-Start) wird
+    nie ÜBERQUERT und ist deshalb nie geankert — der früheste 1-Takt-Commit
+    liegt hinter Grenze 2. */
 [[nodiscard]] inline CommitRange commitRangeForBars (std::int64_t latestBoundaryBar,
                                                      int bars) noexcept
 {
     CommitRange range;
-    if (bars < 1 || bars > maxBars || latestBoundaryBar < bars)
+    if (bars < 1 || bars > maxBars || latestBoundaryBar < bars + 1)
         return range;
 
     range.endBar   = latestBoundaryBar;

@@ -99,13 +99,13 @@ TEST_CASE ("LooperMath: Pixel → Segment und Pixel → Beat-Offset", "[looper]"
 //==============================================================================
 TEST_CASE ("LooperMath: commitRangeForBars — letzte N komplette Takte", "[looper]")
 {
-    // Jüngste Grenze 8 → 8 komplette Takte seit Session-Start
-    const auto full = lm::commitRangeForBars (8, 8);
+    // Jüngste Grenze 9 → Grenzen 1..9 geankert, 8 Takte adressierbar
+    const auto full = lm::commitRangeForBars (9, 8);
     REQUIRE (full.valid);
-    REQUIRE (full.startBar == 0);
-    REQUIRE (full.endBar == 8);
+    REQUIRE (full.startBar == 1);
+    REQUIRE (full.endBar == 9);
     REQUIRE (full.lengthBeats() == Approx (32.0));
-    REQUIRE (full.endBeat() == Approx (32.0));
+    REQUIRE (full.endBeat() == Approx (36.0));
 
     const auto one = lm::commitRangeForBars (12, 1);
     REQUIRE (one.valid);
@@ -113,15 +113,16 @@ TEST_CASE ("LooperMath: commitRangeForBars — letzte N komplette Takte", "[loop
     REQUIRE (one.endBar == 12);
     REQUIRE (one.lengthBeats() == Approx (4.0));
 
-    // Session-Anfang: noch keine N kompletten Takte → ungültig
-    REQUIRE_FALSE (lm::commitRangeForBars (7, 8).valid);
+    // Session-Anfang: Grenze 0 wird nie geankert → bars+1 Grenzen nötig
+    REQUIRE_FALSE (lm::commitRangeForBars (8, 8).valid);
+    REQUIRE_FALSE (lm::commitRangeForBars (1, 1).valid);
+    REQUIRE (lm::commitRangeForBars (2, 1).valid);
     REQUIRE_FALSE (lm::commitRangeForBars (0, 1).valid);
     REQUIRE_FALSE (lm::commitRangeForBars (-1, 1).valid);
 
     // Kanten der Commit-Länge
     REQUIRE_FALSE (lm::commitRangeForBars (20, 0).valid);
     REQUIRE_FALSE (lm::commitRangeForBars (20, 9).valid);
-    REQUIRE (lm::commitRangeForBars (8, 8).valid);
 }
 
 TEST_CASE ("LooperMath: loopPhaseBeats — beat-abgeleitete Phase ohne Drift", "[looper]")

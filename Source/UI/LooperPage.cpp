@@ -22,9 +22,14 @@ LooperPage::LooperPage()
     };
     addAndMakeVisible (sourceCombo);
 
-    // Stop kommt mit dem Playback (Baustein B5) — sichtbar, aber disabled
+    // Stop (B5): enabled nur bei laufendem Loop (Editor-Timer)
     stopTile.setEnabled (false);
-    stopTile.setTooltip (juce::String::fromUTF8 ("Loop-Playback — Baustein B5"));
+    stopTile.setTooltip (juce::String::fromUTF8 ("Loop-Playback beenden (5-ms-Fade)"));
+    stopTile.onClick = [this]
+    {
+        if (onStop != nullptr)
+            onStop();
+    };
     addAndMakeVisible (stopTile);
 
     statusLabel.setColour (juce::Label::textColourId, push::colours::textDim);

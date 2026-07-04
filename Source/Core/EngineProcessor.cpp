@@ -167,6 +167,13 @@ void EngineProcessor::applyTransportSettings()
     linkClock.setClockOffsetMs (transportSettings.getClockOffsetMs());
     metronome.setEnabled (transportSettings.isMetronomeEnabled());
     metronome.setAnchor (transportSettings.getMetronomeAnchor());
+    looperEngine.setAnchor (transportSettings.getLooperAnchor());
+}
+
+juce::Result EngineProcessor::commitLooper (int bars)
+{
+    return looperEngine.commit (bars, captureService,
+                                looperLeftIndex, looperRightIndex, barAnchors);
 }
 
 //==============================================================================
@@ -416,9 +423,10 @@ void EngineProcessor::prepareToPlay (double sampleRate, int samplesPerBlock)
     barAnchors.reset();  // SampleClock-Reset invalidiert alle Anker-Positionen
 
     // Looper-Quelle neu auflösen: der frische Puffersatz vergibt die
-    // Capture-Indizes der virtuellen Slots neu (B3); der Waveform-Binner
-    // verwirft seine Bins (SampleClock-Reset, B4)
+    // Capture-Indizes der virtuellen Slots neu (B3); Waveform-Binner und
+    // Loop-Playback verwerfen ihren Stand (SampleClock-Reset, B4/B5)
     looperWaveformTap.prepare();
+    looperEngine.prepare (sampleRate);
     applyLooperSourceArming();
     inputLevels.prepare  (sampleRate, getTotalNumInputChannels());
     outputLevels.prepare (sampleRate, getTotalNumOutputChannels());
@@ -527,6 +535,13 @@ void EngineProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::Midi
         if (clockNow >= blockSamples)
             looperWaveformTap.process (clockBus.current, captureService,
                                        clockNow - blockSamples, buffer.getNumSamples());
+
+        // Loop-Playback (B5): NACH dem Master-Tap (der Looper kann seine
+        // eigene Ausgabe nie wieder einfangen) und VOR dem Metronom.
+        // Block-Start + Anker speisen den jitter-freien Beat-Playhead.
+        looperEngine.process (buffer, getTotalNumOutputChannels(), clockBus.current,
+                              clockNow >= blockSamples ? clockNow - blockSamples : 0,
+                              barAnchors);
     }
 
     // Metronom NACH dem Fader (Click faded bei Graph-Swaps nicht mit) und

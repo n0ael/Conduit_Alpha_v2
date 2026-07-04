@@ -50,6 +50,10 @@ public:
         persistiert den Schlüssel. */
     std::function<void (const juce::String& sourceKey)> onSourceSelected;
 
+    /** Stop-Kachel (B5) — der Editor beendet das Loop-Playback; die Kachel
+        ist nur bei laufendem Loop enabled (Editor-Timer). */
+    std::function<void()> onStop;
+
     /** [Editor-Timer] Statuszeile (B5: „spielt: 4 Bars" etc.). */
     void setStatus (const juce::String& statusText);
 

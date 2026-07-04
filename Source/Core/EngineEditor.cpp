@@ -152,12 +152,18 @@ EngineEditor::EngineEditor (EngineProcessor& engineProcessor,
     // dieselbe Basis wie die Audio-Seite)
     looperPage.getStrip().setDataSource (&engine.getLooperWaveformTap());
     looperPage.getStrip().getBeatNow = [this] { return linkClock.getBeatPosition(); };
+
+    // Segment-Klick = Commit der letzten N Takte (B5): spielt sofort
+    // phasenstarr; Fehlerfälle (zu wenig Historie, > 60 s, keine Quelle)
+    // kommen als Toast
     looperPage.getStrip().onSegmentClicked = [this] (int bars)
     {
-        // Commit kommt in Baustein B5 — bis dahin zeigt der Klick nur an
-        captureToast.show ("Commit (" + juce::String (bars)
-                           + (bars == 1 ? " Bar" : " Bars") + ") — Baustein B5");
+        const auto result = engine.commitLooper (bars);
+        if (result.failed())
+            captureToast.show (result.getErrorMessage());
     };
+
+    looperPage.onStop = [this] { engine.stopLooper(); };
 
     transportBar.setBrowserItems (buildBrowserItems());
 
@@ -576,8 +582,28 @@ void EngineEditor::timerCallback()
     if (capturePanel.isVisible())
         capturePanel.refresh();
 
-    // Tape-LED: Looper-Page offen (Loop-Playback kommt mit B5)
-    transportBar.setLooperStatus (pageHost.getPage() == TransportBar::pageLooper, false);
+    // Looper-Status (B5): Tape-LED (Page offen ODER Loop spielt), Stop-
+    // Kachel und Statuszeile der Looper-Page
+    {
+        const auto& looper = engine.getLooperEngine();
+        const auto playing = looper.isPlaying();
+
+        transportBar.setLooperStatus (pageHost.getPage() == TransportBar::pageLooper,
+                                      playing);
+        looperPage.getStopTile().setEnabled (playing);
+
+        if (playing)
+        {
+            const auto bars = looper.getLoopBars();
+            looperPage.setStatus ("spielt: " + juce::String (bars)
+                                  + (bars == 1 ? " Bar" : " Bars"));
+        }
+        else
+        {
+            looperPage.setStatus (juce::String::fromUTF8 (
+                "bereit — Segment-Klick committet die letzten 8/4/2/1 Takte"));
+        }
+    }
 
     // audioSetupWarning folgt dem Controller (setzt/löscht bei Gerätewechsel)
     const auto warning = rootState.getProperty (id::audioSetupWarning).toString();

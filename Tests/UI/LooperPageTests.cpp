@@ -42,8 +42,14 @@ TEST_CASE ("LooperPage: Quellen-Liste, persistierte Auswahl und Klick-Callback",
         REQUIRE (selectedKey == "hw:0");
     }
 
-    SECTION ("Stop-Kachel ist bis Baustein B5 disabled")
+    SECTION ("Stop-Kachel: initial disabled (kein Loop), Klick meldet onStop")
     {
         REQUIRE_FALSE (page.getStopTile().isEnabled());
+
+        bool stopped = false;
+        page.onStop = [&] { stopped = true; };
+        page.getStopTile().setEnabled (true);  // Editor-Timer bei laufendem Loop
+        page.getStopTile().onClick();          // synchron (kein Modal-Loop verfügbar)
+        REQUIRE (stopped);
     }
 }

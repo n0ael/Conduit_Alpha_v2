@@ -6,6 +6,7 @@
 #include "Capture/LevelMeter.h"
 #include "ChannelNames.h"
 #include "Looper/BarSampleAnchors.h"
+#include "Looper/LooperEngine.h"
 #include "Looper/LooperWaveformTap.h"
 #include "Metronome.h"
 #include "GraphFader.h"
@@ -175,6 +176,17 @@ public:
         holt die Bins per pop() ab (Konsumentenrolle exklusiv). */
     [[nodiscard]] LooperWaveformTap& getLooperWaveformTap() noexcept { return looperWaveformTap; }
 
+    /** Looper-Commit (B5) [Message Thread]: die letzten `bars` kompletten
+        Takte der gewählten Quelle committen und sofort phasenstarr
+        abspielen — Fehlermeldung für den Toast bei fail. */
+    [[nodiscard]] juce::Result commitLooper (int bars);
+
+    /** [Message Thread] Loop-Playback mit 5-ms-Fade beenden. */
+    void stopLooper() noexcept { looperEngine.stop(); }
+
+    /** Status fürs UI (Tape-LED, Stop-Kachel, Statuszeile). */
+    [[nodiscard]] const LooperEngine& getLooperEngine() const noexcept { return looperEngine; }
+
     /** OSC-Send-Pfad (7.3): Ziel-Host/Port/Enable (App-Zustand, Settings-UI)
         und der Snapshot-Diff-Sender selbst. */
     [[nodiscard]] OscSendSettings& getOscSendSettings() noexcept;
@@ -283,6 +295,10 @@ private:
     // Waveform-Binner der Looper-Page (B4): läuft am Block-Ende nach dem
     // Master-Tap-Write; die Quelle speist applyLooperSourceArming
     LooperWaveformTap looperWaveformTap;
+
+    // Loop-Playback (B5): nach Master-Tap/Binner, vor dem Metronom auf
+    // das Anker-Paar der TransportSettings (looperAnchor)
+    LooperEngine looperEngine;
 
     // Sicht-Metering (Ableton-Style) für die audio_in/audio_out-Kacheln —
     // getrennt vom capture-InputMeter; processBlock speist beide.

@@ -79,6 +79,18 @@ void BrowserListRow::paint (juce::Graphics& g)
                                (float) chevron.getCentreY()));
     }
 
+    // Sekundär-Info rechtsbündig dim (Suche: Kategorie; M6: Dauer/Format)
+    if (row.secondary.isNotEmpty())
+    {
+        g.setColour (push::colours::textDim);
+        g.setFont (push::scaledFont (12.0f));
+        const auto secondaryArea = area.removeFromRight (
+            juce::jmin (area.getWidth() / 2, 120));
+        g.drawText (row.secondary, secondaryArea,
+                    juce::Justification::centredRight, true);
+        area.removeFromRight (8);
+    }
+
     g.setColour (isHint || isHeader ? push::colours::textDim : push::colours::text);
     g.setFont (push::scaledFont (isHeader ? 13.0f : 16.0f, isHeader));
     // Nie horizontal stauchen (User-Regel 07/2026) — kürzen statt quetschen

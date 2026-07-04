@@ -2,6 +2,7 @@
 
 #include "Core/Browser/BrowserModel.h"
 #include "DSP/Airwindows/AirwindowsRegistry.h"
+#include "TestDispatcher.h"
 
 namespace
 {
@@ -11,13 +12,35 @@ using Row     = conduit::BrowserModel::Row;
 constexpr int pageMixer  = 1;
 constexpr int pageDevice = 3;
 
+/** Factory MIT Registrierung VOR der Model-Konstruktion — der Suchindex
+    wird im Model-Ctor gebaut und sähe eine leere Factory sonst nie. */
+struct RegisteredFactory
+{
+    RegisteredFactory() { conduit::registerDefaultModules (factory); }
+    conduit::ModuleFactory factory;
+};
+
 struct ModelRig
 {
-    ModelRig() { conduit::registerDefaultModules (factory); }
+    /** Wartet auf den async Index-Build (Dispatcher-Queue pumpen). */
+    bool waitForSearchRows (const juce::String& needle)
+    {
+        model.setSearchText (needle);
 
-    conduit::ModuleFactory factory;
+        return dispatcher.pumpUntil ([this]
+        {
+            return ! model.rows().empty()
+                   && model.rows().front().kind == Row::Kind::module;
+        });
+    }
+
+    juce::ScopedJuceInitialiser_GUI juceRuntime;
+    RegisteredFactory registered;
+    conduit::ModuleFactory& factory = registered.factory;
     conduit::BrowserContextProvider context;
-    conduit::BrowserModel model { factory, context };
+    juce::ThreadPool worker { juce::ThreadPoolOptions{}.withNumberOfThreads (1) };
+    conduit::test::QueueDispatcher dispatcher;
+    conduit::BrowserModel model { factory, context, worker, dispatcher.fn() };
 };
 
 bool hasRowWithLabel (const std::vector<Row>& rows, const juce::String& label)
@@ -192,6 +215,58 @@ TEST_CASE ("Browser-Modell: Kontextwechsel verlässt unsichtbare Bereiche", "[br
     // PROJEKTE bleibt bei weiteren Wechseln stehen (global sichtbar)
     rig.context.setActivePage (pageDevice);
     REQUIRE (rig.model.breadcrumbText() == "PROJEKTE");
+}
+
+//==============================================================================
+TEST_CASE ("Browser-Modell: Suche liefert flache Trefferliste mit Kategorie",
+           "[browser][search]")
+{
+    ModelRig rig;
+
+    REQUIRE (rig.waitForSearchRows ("chamber"));
+
+    REQUIRE (rig.model.rows().size() == 1);
+    const auto& hit = rig.model.rows().front();
+    REQUIRE (hit.kind == Row::Kind::module);
+    REQUIRE (hit.id == "airwindows_chamber");
+    REQUIRE (hit.secondary == "Reverb/Delay");
+    REQUIRE (rig.model.breadcrumbText() == "Suche");
+    REQUIRE (rig.model.canGoBack());
+
+    // Suche über Tags: "sibilance" → DeBess
+    REQUIRE (rig.waitForSearchRows ("sibilance"));
+    REQUIRE (rig.model.rows().front().id == "airwindows_debess");
+
+    // Leerer Text → zurück zur Navigation (Übersicht der Device-Page)
+    rig.model.setSearchText ({});
+    REQUIRE (rig.model.breadcrumbText() == "Browser");
+    REQUIRE (rig.model.rows().size() == 3);
+}
+
+TEST_CASE ("Browser-Modell: Suche — Empty-State und Kontext-Filter",
+           "[browser][search]")
+{
+    ModelRig rig;
+
+    // Erst sicherstellen, dass der Index steht (ein Treffer kommt durch)
+    REQUIRE (rig.waitForSearchRows ("lfo"));
+
+    // Unsinniger Begriff → sauberer Empty-State
+    rig.model.setSearchText ("xyzzy_nichts");
+    REQUIRE (rig.model.rows().size() == 1);
+    REQUIRE (rig.model.rows().front().kind == Row::Kind::hint);
+    REQUIRE (rig.model.rows().front().label == "Keine Treffer");
+
+    // Module sind nur im Device-Kontext sichtbar — außerhalb liefert
+    // dieselbe Suche keine Modul-Treffer
+    rig.context.setActivePage (pageMixer);
+    rig.model.setSearchText ("lfo");
+    REQUIRE (rig.model.rows().front().kind == Row::Kind::hint);
+
+    // goBack löscht die Suche (Navigation bleibt stehen)
+    rig.model.goBack();
+    REQUIRE_FALSE (rig.model.isSearching());
+    REQUIRE (rig.model.getSearchText().isEmpty());
 }
 
 //==============================================================================

@@ -24,7 +24,7 @@ EngineEditor::EngineEditor (EngineProcessor& engineProcessor,
               &engineProcessor.getChannelNames(),
               &engineProcessor.getInputLevels(), &engineProcessor.getOutputLevels(),
               &engineProcessor.getInputLinkSend(), &engineProcessor.getUiSettings()),
-      browserModel (engineProcessor.getModuleFactory(), browserContext)
+      browserModel (engineProcessor.getModuleFactory(), browserContext, browserWorker)
 {
     // Push-3-Design app-weit: Jost + dunkle Kacheln auch in PopupMenus,
     // Dialogen und dem Settings-Fenster (CLAUDE.md 10)

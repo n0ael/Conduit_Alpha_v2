@@ -84,7 +84,26 @@ Verzeichnisse unter Dokumente/Conduit (+ Captures aus CaptureSettings).
   Ohr-Check beim nächsten manuellen Test empfohlen. Smoke-Lektion:
   Ctrl+Z via keybd_event erreicht den Editor nicht, wenn der Fokus auf
   der Browser-Liste liegt — Undo-Beleg über die Undo-Kachel.
-- **Offen:** M4 Suche →
+- **M4 (Suche + Hintergrund-Index):** `BrowserSearchIndex` — exakte,
+  case-insensitive Substring-Suche über Name/Kategorie/Tags; der BUILD
+  läuft auf dem geteilten `browserWorker`-Pool (1 Thread, Member des
+  EngineEditor VOR Model/Panel — stirbt zuletzt und joint Jobs), Ergebnis
+  via callAsync mit Generation-Zähler (jüngster Build gewinnt) +
+  Alive-Flag (Destruktion während Job). query() nur Message Thread.
+  Suchfeld ganz UNTEN im Panel (Daumen), Lupe links, 120-ms-Debounce
+  (juce::Timer), Escape löscht, Return committet sofort; Suchmodus =
+  flache Trefferliste mit Kategorie rechtsbündig dim (Row.secondary),
+  Breadcrumb „Suche", goBack löscht die Suche; Empty-State „Keine
+  Treffer"; Kontext-Filter greift auch hier (Modul-Treffer nur wenn
+  MODULE sichtbar). **Test-Lektionen:** (1) runDispatchLoopUntil
+  existiert mit JUCE_MODAL_LOOPS_PERMITTED=0 NICHT — der Index hat einen
+  injizierbaren Dispatcher (Tests/Core/Browser/TestDispatcher.h pumpt
+  eine Queue); (2) Rigs müssen die Factory VOR der Model-Konstruktion
+  registrieren (RegisteredFactory-Wrapper) — der Index wird im Model-Ctor
+  gebaut und sähe sonst eine leere Factory. 6 neue Tests (380/20502,
+  Debug + ASan); Smoke: browser_m4_search_*.png („tape" → 8 Treffer über
+  Name/Tags inkl. Kategorien-Spalte, „tapexxx" → Empty-State).
+- **Offen:**
   M5 TouchKeyboard (UiSettings::softKeyboardEnabled, Linux an/Desktop aus)
   → M6 PROJEKTE/AUDIO-Daten + Abschlussbericht.
 

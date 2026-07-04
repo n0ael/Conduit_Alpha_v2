@@ -5,18 +5,26 @@
 
 namespace
 {
+/** Factory MIT Registrierung VOR der Model-Konstruktion (Index-Build). */
+struct RegisteredFactory
+{
+    RegisteredFactory() { conduit::registerDefaultModules (factory); }
+    conduit::ModuleFactory factory;
+};
+
 struct PanelRig
 {
     PanelRig()
     {
-        conduit::registerDefaultModules (factory);
         panel.setSize (conduit::BrowserPanel::dockWidth, 600);
     }
 
     juce::ScopedJuceInitialiser_GUI juceRuntime;
-    conduit::ModuleFactory factory;
+    RegisteredFactory registered;
+    conduit::ModuleFactory& factory = registered.factory;
     conduit::BrowserContextProvider context;
-    conduit::BrowserModel model { factory, context };
+    juce::ThreadPool worker { juce::ThreadPoolOptions{}.withNumberOfThreads (1) };
+    conduit::BrowserModel model { factory, context, worker };
     conduit::BrowserPanel panel { model };
 };
 } // namespace

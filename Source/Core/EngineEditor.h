@@ -119,8 +119,10 @@ private:
     PageHost pageHost { canvas, looperPage };
 
     // Browser-Panel (rechts angedockt): Kontext ← selectPage, Modell hält
-    // seinen EIGENEN ValueTree (nie im Patch) — Reihenfolge: Provider vor
-    // Modell vor Panel (Referenzen)
+    // seinen EIGENEN ValueTree (nie im Patch) — Reihenfolge: Worker-Pool
+    // VOR Provider/Modell/Panel (der Pool stirbt zuletzt und joint dabei
+    // laufende Index-/Scan-Jobs; Ergebnisse verwirft das Alive-Flag)
+    juce::ThreadPool browserWorker { juce::ThreadPoolOptions{}.withNumberOfThreads (1) };
     BrowserContextProvider browserContext;
     BrowserModel browserModel;   // Init in der Ctor-Liste (braucht EngineProcessor-Definition)
     BrowserPanel browserPanel { browserModel };

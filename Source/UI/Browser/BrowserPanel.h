@@ -17,8 +17,9 @@ namespace conduit
 
     Aufbau (oben → unten): Breadcrumb-Header (Zurück-Pfeil + Pfad, 44 px) ·
     virtualisierte Liste (juce::ListBox mit wiederverwendeten
-    BrowserListRow-Komponenten, 44-px-Zeilen) · [Suchfeld folgt in M4,
-    TouchKeyboard in M5].
+    BrowserListRow-Komponenten, 44-px-Zeilen) · Suchfeld ganz UNTEN
+    (Daumen-Erreichbarkeit; Live-Filter mit ~120 ms Debounce über den
+    Hintergrund-Index, Escape löscht) · [TouchKeyboard folgt in M5].
 
     Das Panel kennt weder GraphManager noch Engine — Navigation macht das
     BrowserModel, Aktions-Zeilen laufen über die std::function-Hooks
@@ -29,7 +30,8 @@ namespace conduit
     (ledOrange, nur Selektion/LED), keine Hover-Pflicht (Touch!).
 */
 class BrowserPanel final : public juce::Component,
-                           private juce::ListBoxModel
+                           private juce::ListBoxModel,
+                           private juce::Timer   // Such-Debounce (~120 ms)
 {
 public:
     explicit BrowserPanel (BrowserModel& modelToUse);
@@ -39,6 +41,8 @@ public:
     static constexpr int dockWidth    = 320;
     static constexpr int rowHeight    = 44;   // Touch-Target-Regel (CLAUDE.md 10)
     static constexpr int headerHeight = 44;
+    static constexpr int searchHeight = 44;
+    static constexpr int searchDebounceMs = 120;
 
     /** Öffnet/schließt mit Slide-Animation; Öffnen navigiert zum
         Startbereich der aktiven Page (BrowserContextProvider). */
@@ -70,9 +74,13 @@ public:
     /** Test-Zugriff (read-only Verwendung). */
     [[nodiscard]] juce::ListBox& getListBox() noexcept { return list; }
     [[nodiscard]] push::IconTile& getBackTile() noexcept { return backTile; }
+    [[nodiscard]] juce::TextEditor& getSearchField() noexcept { return searchField; }
 
     /** Test-Seam: Tap auf Zeile index (derselbe Pfad wie die Row-Geste). */
     void activateRowForTest (int rowIndex) { handleRowActivated (rowIndex); }
+
+    /** Test-Seam: Debounce sofort auslösen (statt 120 ms zu warten). */
+    void flushSearchDebounceForTest() { timerCallback(); }
 
 private:
     // ListBoxModel — Zeilen sind Komponenten (refreshComponentForRow),
@@ -81,6 +89,9 @@ private:
     void paintListBoxItem (int, juce::Graphics&, int, int, bool) override {}
     juce::Component* refreshComponentForRow (int rowNumber, bool isRowSelected,
                                              juce::Component* existingComponentToUpdate) override;
+
+    // juce::Timer — Such-Debounce
+    void timerCallback() override;
 
     void handleRowActivated (int rowIndex);
     void refreshFromModel();
@@ -91,6 +102,8 @@ private:
     push::IconTile backTile { push::Icon::chevronLeft, "browserBack" };
     juce::Label breadcrumbLabel;
     juce::ListBox list;
+    juce::TextEditor searchField;
+    juce::Rectangle<int> searchIconArea;   // Lupe links neben dem Feld (paint)
 
     AnimatedValue slide { *this };
     bool open = false;

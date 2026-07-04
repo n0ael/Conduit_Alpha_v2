@@ -6,6 +6,7 @@
 #include <juce_data_structures/juce_data_structures.h>
 
 #include "BrowserContextProvider.h"
+#include "BrowserSearchIndex.h"
 #include "Modules/ModuleFactory.h"
 
 namespace conduit
@@ -60,9 +61,15 @@ public:
         juce::String label;
         juce::String id;      // Section-Name, "branch:Kategorie" oder factoryKey
         int indent = 0;       // eingerückte Ebene (Kategorien unter Ast-Headern)
+        juce::String secondary;   // rechtsbündig dim: Kategorie (Suche), Dauer/Format (M6)
     };
 
-    BrowserModel (ModuleFactory& factoryToUse, BrowserContextProvider& contextToUse);
+    /** worker = geteilter 1-Thread-Pool des Editors (Index-Build M4,
+        Verzeichnis-Scans M6); dispatcher = Test-Seam des Suchindex
+        (leer = MessageManager::callAsync). */
+    BrowserModel (ModuleFactory& factoryToUse, BrowserContextProvider& contextToUse,
+                  juce::ThreadPool& workerToUse,
+                  BrowserSearchIndex::Dispatcher dispatcherToUse = {});
 
     //==========================================================================
     // Navigation [Message Thread]
@@ -82,7 +89,16 @@ public:
     /** Klick auf Zeile index: Navigations-Zeilen (section/category)
         verarbeitet das Modell und liefert true; alles andere false —
         der Aufrufer (Panel) behandelt Aktions-Zeilen über seine Hooks. */
-    bool activateRow (int index);
+    bool activateRow (int rowIndex);
+
+    //==========================================================================
+    // Suche (M4) — Debouncing macht das Panel (~120 ms)
+
+    /** Nicht-leerer Text schaltet in den Suchmodus (flache Trefferliste
+        über die sichtbaren Bereiche); leerer Text zurück zur Navigation. */
+    void setSearchText (const juce::String& text);
+    [[nodiscard]] juce::String getSearchText() const;
+    [[nodiscard]] bool isSearching() const { return getSearchText().isNotEmpty(); }
 
     [[nodiscard]] const std::vector<Row>& rows() const noexcept { return visibleRows; }
 
@@ -95,7 +111,9 @@ public:
 private:
     void handleContextChanged();
     void rebuildRows();
+    void rebuildIndexAsync();
 
+    void buildSearchRows();
     void buildOverviewRows();
     void buildModulesRootRows();
     void buildModuleListRows (const juce::String& branchKey,
@@ -111,6 +129,7 @@ private:
 
     ModuleFactory& factory;
     BrowserContextProvider& context;
+    BrowserSearchIndex index;
 
     std::vector<Row> visibleRows;
 

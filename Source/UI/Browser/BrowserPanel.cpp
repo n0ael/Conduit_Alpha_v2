@@ -33,6 +33,22 @@ BrowserPanel::BrowserPanel (BrowserModel& modelToUse)
     list.getViewport()->setScrollOnDragMode (juce::Viewport::ScrollOnDragMode::nonHover);
     addAndMakeVisible (list);
 
+    // Suchfeld ganz unten (Daumen-Erreichbarkeit) — Live-Filter mit
+    // Debounce; Escape löscht, Return committet sofort
+    searchField.setTextToShowWhenEmpty ("Suchen", push::colours::textDim);
+    searchField.setColour (juce::TextEditor::backgroundColourId, push::colours::tile);
+    searchField.setColour (juce::TextEditor::outlineColourId, push::colours::outline);
+    searchField.setColour (juce::TextEditor::focusedOutlineColourId, push::colours::textDim);
+    searchField.setColour (juce::TextEditor::textColourId, push::colours::text);
+    searchField.onTextChange = [this] { startTimer (searchDebounceMs); };
+    searchField.onReturnKey  = [this] { timerCallback(); };
+    searchField.onEscapeKey  = [this]
+    {
+        searchField.setText ({}, juce::dontSendNotification);
+        timerCallback();
+    };
+    addAndMakeVisible (searchField);
+
     model.onRowsChanged = [this] { refreshFromModel(); };
 
     slide.onUpdate = [this] (float value)
@@ -87,6 +103,13 @@ void BrowserPanel::paint (juce::Graphics& g)
     g.setColour (push::colours::outline);
     g.fillRect (0, 0, 1, getHeight());
     g.fillRect (0, headerHeight - 1, getWidth(), 1);
+
+    // Oberkante der Suchzeile + Lupe
+    g.fillRect (0, getHeight() - searchHeight, getWidth(), 1);
+    if (! searchIconArea.isEmpty())
+        push::draw (g, push::Icon::search,
+                    searchIconArea.withSizeKeepingCentre (20, 20).toFloat(),
+                    push::colours::textDim);
 }
 
 void BrowserPanel::resized()
@@ -97,6 +120,12 @@ void BrowserPanel::resized()
     auto header = bounds.removeFromTop (headerHeight);
     backTile.setBounds (header.removeFromLeft (headerHeight).reduced (4));
     breadcrumbLabel.setBounds (header.reduced (6, 0));
+
+    // Suchzeile ganz unten: Lupe links, Feld daneben
+    auto searchRow = bounds.removeFromBottom (searchHeight).reduced (8, 6);
+    searchIconArea = searchRow.removeFromLeft (28);
+    searchField.setBounds (searchRow);
+    searchField.applyFontToAllText (push::scaledFont (15.0f));
 
     list.setBounds (bounds);
 }
@@ -129,6 +158,12 @@ juce::Component* BrowserPanel::refreshComponentForRow (int rowNumber, bool isRow
 
     row->update (rows[(size_t) rowNumber], rowNumber, isRowSelected);
     return row;
+}
+
+void BrowserPanel::timerCallback()
+{
+    stopTimer();
+    model.setSearchText (searchField.getText());
 }
 
 void BrowserPanel::handleRowActivated (int rowIndex)
@@ -166,6 +201,11 @@ void BrowserPanel::handleRowActivated (int rowIndex)
 //==============================================================================
 void BrowserPanel::refreshFromModel()
 {
+    // Modell kann die Suche selbst löschen (goBack) — Feld nachziehen,
+    // ohne den Debounce erneut anzustoßen
+    if (searchField.getText().trim() != model.getSearchText())
+        searchField.setText (model.getSearchText(), juce::dontSendNotification);
+
     list.deselectAllRows();
     list.updateContent();
     updateHeader();

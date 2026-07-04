@@ -7,6 +7,7 @@ namespace
 {
     const juce::Identifier propSection ("section");
     const juce::Identifier propCategory ("category");
+    const juce::Identifier propSearch ("searchText");
 
     constexpr auto sectionProjects = "projects";
     constexpr auto sectionAudio    = "audio";
@@ -64,11 +65,35 @@ BrowserContextProvider::Section sectionFromString (const juce::String& name)
 
 //==============================================================================
 BrowserModel::BrowserModel (ModuleFactory& factoryToUse,
-                            BrowserContextProvider& contextToUse)
-    : factory (factoryToUse), context (contextToUse)
+                            BrowserContextProvider& contextToUse,
+                            juce::ThreadPool& workerToUse,
+                            BrowserSearchIndex::Dispatcher dispatcherToUse)
+    : factory (factoryToUse), context (contextToUse),
+      index (workerToUse, std::move (dispatcherToUse))
 {
     context.onContextChanged = [this] { handleContextChanged(); };
+
+    // Treffer laufen ein, sobald der Hintergrund-Build publiziert hat
+    index.onIndexReady = [this]
+    {
+        if (isSearching())
+            rebuildRows();
+    };
+
+    rebuildIndexAsync();
     rebuildRows();
+}
+
+void BrowserModel::rebuildIndexAsync()
+{
+    std::vector<BrowserSearchIndex::Source> sources;
+
+    for (const auto& descriptor : factory.getDescriptors())
+        sources.push_back ({ descriptor.id, descriptor.displayName,
+                             descriptor.category,
+                             descriptor.tags.joinIntoString (" ") });
+
+    index.rebuildAsync (std::move (sources));
 }
 
 //==============================================================================
@@ -92,6 +117,13 @@ void BrowserModel::openSection (BrowserContextProvider::Section section)
 
 void BrowserModel::goBack()
 {
+    // Zurück aus der Suche = Suche löschen (Navigation bleibt stehen)
+    if (isSearching())
+    {
+        setSearchText ({});
+        return;
+    }
+
     if (currentCategoryId().isNotEmpty())
     {
         setNavigation (currentSectionName(), {});
@@ -104,11 +136,14 @@ void BrowserModel::goBack()
 
 bool BrowserModel::canGoBack() const
 {
-    return currentSectionName().isNotEmpty();
+    return isSearching() || currentSectionName().isNotEmpty();
 }
 
 juce::String BrowserModel::breadcrumbText() const
 {
+    if (isSearching())
+        return "Suche";
+
     const auto section = currentSectionName();
 
     if (section.isEmpty())
@@ -138,12 +173,12 @@ juce::String BrowserModel::breadcrumbText() const
     return crumb + arrow + label;
 }
 
-bool BrowserModel::activateRow (int index)
+bool BrowserModel::activateRow (int rowIndex)
 {
-    if (index < 0 || index >= (int) visibleRows.size())
+    if (rowIndex < 0 || rowIndex >= (int) visibleRows.size())
         return false;
 
-    const auto& row = visibleRows[(size_t) index];
+    const auto& row = visibleRows[(size_t) rowIndex];
 
     switch (row.kind)
     {
@@ -186,6 +221,45 @@ void BrowserModel::handleContextChanged()
     rebuildRows();  // Übersicht kann Zeilen dazubekommen/verlieren
 }
 
+void BrowserModel::setSearchText (const juce::String& text)
+{
+    const auto trimmed = text.trim();
+
+    if (getSearchText() == trimmed)
+        return;
+
+    state.setProperty (propSearch, trimmed, nullptr);
+    rebuildRows();
+}
+
+juce::String BrowserModel::getSearchText() const
+{
+    return state.getProperty (propSearch).toString();
+}
+
+void BrowserModel::buildSearchRows()
+{
+    // Flache Trefferliste über die sichtbaren Bereiche — M4: Module
+    // (nur wenn MODULE im Kontext sichtbar ist), M6 ergänzt Dateien
+    if (context.isSectionVisible (BrowserContextProvider::Section::modules))
+    {
+        for (const auto& itemId : index.query (getSearchText()))
+        {
+            const auto descriptor = factory.getDescriptor (itemId);
+            if (descriptor.id.isEmpty())
+                continue;
+
+            visibleRows.push_back ({ Row::Kind::module, Icon::none,
+                                     descriptor.displayName, descriptor.id, 0,
+                                     descriptor.category });
+        }
+    }
+
+    if (visibleRows.empty())
+        visibleRows.push_back ({ Row::Kind::hint, Icon::none,
+                                 "Keine Treffer", {}, 0, {} });
+}
+
 void BrowserModel::rebuildRows()
 {
     visibleRows.clear();
@@ -193,7 +267,9 @@ void BrowserModel::rebuildRows()
     const auto section  = currentSectionName();
     const auto category = currentCategoryId();
 
-    if (section.isEmpty())
+    if (isSearching())
+        buildSearchRows();
+    else if (section.isEmpty())
         buildOverviewRows();
     else if (section == sectionModules && category.isEmpty())
         buildModulesRootRows();

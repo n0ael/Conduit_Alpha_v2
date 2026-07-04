@@ -116,6 +116,7 @@ set(CONDUIT_CPP_SOURCES
     Source/Core/Capture/BufferPool.cpp
     Source/Core/Capture/CaptureChannel.cpp
     Source/Core/Capture/CaptureService.cpp
+    Source/Core/Looper/LooperWaveformTap.cpp
     Source/Core/Capture/CaptureSettings.cpp
     Source/Core/Capture/CaptureWriter.cpp
     Source/Core/Capture/InputMeter.cpp
@@ -207,6 +208,7 @@ set(CONDUIT_CPP_SOURCES
     Source/UI/NodeComponent.cpp
     Source/UI/OscSettingsComponent.cpp
     Source/UI/LooperPage.cpp
+    Source/UI/LooperWaveformStrip.cpp
     Source/UI/PageHost.cpp
     Source/UI/ParameterPanel.cpp
     Source/UI/PortComponent.cpp
@@ -462,6 +464,7 @@ if(CONDUIT_BUILD_TESTS)
         Tests/Core/LooperMathTests.cpp
         Tests/Core/BarSampleAnchorsTests.cpp
         Tests/Core/LooperSourceTests.cpp
+        Tests/Core/LooperWaveformTapTests.cpp
         Tests/Core/MasterTapTests.cpp
         Tests/Core/MeterSettingsTests.cpp
         Tests/Core/MetronomeTests.cpp
@@ -483,6 +486,7 @@ if(CONDUIT_BUILD_TESTS)
         Tests/UI/LinkAudioSendPanelTests.cpp
         Tests/UI/OscSettingsComponentTests.cpp
         Tests/UI/LooperPageTests.cpp
+        Tests/UI/LooperWaveformStripTests.cpp
         Tests/UI/PageHostTests.cpp
         Tests/UI/PushDesignTests.cpp
         Tests/UI/SequencerControlPanelTests.cpp
@@ -516,6 +520,7 @@ if(CONDUIT_BUILD_TESTS)
         Source/Core/Capture/BufferPool.cpp
         Source/Core/Capture/CaptureChannel.cpp
         Source/Core/Capture/CaptureService.cpp
+        Source/Core/Looper/LooperWaveformTap.cpp
         Source/Core/Capture/CaptureSettings.cpp
         Source/Core/Capture/CaptureWriter.cpp
         Source/Core/Capture/InputMeter.cpp
@@ -607,7 +612,8 @@ if(CONDUIT_BUILD_TESTS)
         Source/UI/ModuleBrowser.cpp
         Source/UI/OscSettingsComponent.cpp
         Source/UI/LooperPage.cpp
-    Source/UI/PageHost.cpp
+        Source/UI/LooperWaveformStrip.cpp
+        Source/UI/PageHost.cpp
         Source/UI/ParameterPanel.cpp
         Source/UI/PortComponent.cpp
         Source/UI/PushIcons.cpp

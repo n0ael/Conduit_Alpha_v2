@@ -235,6 +235,9 @@ void EngineProcessor::applyLooperSourceArming()
     captureService.setChannelArmed (looperLeftIndex, true);
     if (looperRightIndex != looperLeftIndex)
         captureService.setChannelArmed (looperRightIndex, true);
+
+    // Waveform-Binner folgt der Quelle (Reset + Backfill im Audio Thread, B4)
+    looperWaveformTap.setSource (looperLeftIndex, looperRightIndex);
 }
 
 void EngineProcessor::rebuildInputSends()
@@ -413,7 +416,9 @@ void EngineProcessor::prepareToPlay (double sampleRate, int samplesPerBlock)
     barAnchors.reset();  // SampleClock-Reset invalidiert alle Anker-Positionen
 
     // Looper-Quelle neu auflösen: der frische Puffersatz vergibt die
-    // Capture-Indizes der virtuellen Slots neu (B3)
+    // Capture-Indizes der virtuellen Slots neu (B3); der Waveform-Binner
+    // verwirft seine Bins (SampleClock-Reset, B4)
+    looperWaveformTap.prepare();
     applyLooperSourceArming();
     inputLevels.prepare  (sampleRate, getTotalNumInputChannels());
     outputLevels.prepare (sampleRate, getTotalNumOutputChannels());
@@ -513,6 +518,15 @@ void EngineProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::Midi
             captureService.writeVirtualChannel (masterTapRight,
                                                 buffer.getReadPointer (1),
                                                 buffer.getNumSamples());
+
+        // Waveform-Binner der Looper-Page (B4): NACH dem Master-Tap-Write
+        // sind alle Quelltypen (Hardware/Modul-Taps/Master) für diesen
+        // Block vollständig im Ring
+        const auto clockNow = captureService.getSampleClock().now();
+        const auto blockSamples = static_cast<std::uint64_t> (buffer.getNumSamples());
+        if (clockNow >= blockSamples)
+            looperWaveformTap.process (clockBus.current, captureService,
+                                       clockNow - blockSamples, buffer.getNumSamples());
     }
 
     // Metronom NACH dem Fader (Click faded bei Graph-Swaps nicht mit) und

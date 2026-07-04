@@ -147,6 +147,18 @@ EngineEditor::EngineEditor (EngineProcessor& engineProcessor,
     { engine.setLooperSource (sourceKey); };
     rebuildLooperSources();
 
+    // Waveform-Strip (B4): Bins vom Engine-Tap (Konsumentenrolle exklusiv
+    // beim Strip), Beat-Achse von der LinkClock (inkl. Clock-Offset —
+    // dieselbe Basis wie die Audio-Seite)
+    looperPage.getStrip().setDataSource (&engine.getLooperWaveformTap());
+    looperPage.getStrip().getBeatNow = [this] { return linkClock.getBeatPosition(); };
+    looperPage.getStrip().onSegmentClicked = [this] (int bars)
+    {
+        // Commit kommt in Baustein B5 — bis dahin zeigt der Klick nur an
+        captureToast.show ("Commit (" + juce::String (bars)
+                           + (bars == 1 ? " Bar" : " Bars") + ") — Baustein B5");
+    };
+
     transportBar.setBrowserItems (buildBrowserItems());
 
     // Metronom-Ziel-Paare fürs Link-Menü: Labels aus den ChannelNames,

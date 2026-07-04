@@ -6,6 +6,7 @@
 #include "Capture/LevelMeter.h"
 #include "ChannelNames.h"
 #include "Looper/BarSampleAnchors.h"
+#include "Looper/LooperWaveformTap.h"
 #include "Metronome.h"
 #include "GraphFader.h"
 #include "GraphManager.h"
@@ -170,6 +171,10 @@ public:
     [[nodiscard]] int getLooperLeftIndex() const noexcept  { return looperLeftIndex; }
     [[nodiscard]] int getLooperRightIndex() const noexcept { return looperRightIndex; }
 
+    /** Waveform-Datenpfad der Looper-Page (B4): der LooperWaveformStrip
+        holt die Bins per pop() ab (Konsumentenrolle exklusiv). */
+    [[nodiscard]] LooperWaveformTap& getLooperWaveformTap() noexcept { return looperWaveformTap; }
+
     /** OSC-Send-Pfad (7.3): Ziel-Host/Port/Enable (App-Zustand, Settings-UI)
         und der Snapshot-Diff-Sender selbst. */
     [[nodiscard]] OscSendSettings& getOscSendSettings() noexcept;
@@ -274,6 +279,10 @@ private:
     // (nur Message Thread; −1 = nicht auflösbar, z. B. vor prepare)
     int looperLeftIndex  = -1;
     int looperRightIndex = -1;
+
+    // Waveform-Binner der Looper-Page (B4): läuft am Block-Ende nach dem
+    // Master-Tap-Write; die Quelle speist applyLooperSourceArming
+    LooperWaveformTap looperWaveformTap;
 
     // Sicht-Metering (Ableton-Style) für die audio_in/audio_out-Kacheln —
     // getrennt vom capture-InputMeter; processBlock speist beide.

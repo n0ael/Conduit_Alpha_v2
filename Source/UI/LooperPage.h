@@ -5,6 +5,7 @@
 
 #include <juce_gui_basics/juce_gui_basics.h>
 
+#include "LooperWaveformStrip.h"
 #include "PushTiles.h"
 
 namespace conduit
@@ -17,7 +18,7 @@ namespace conduit
 
     Endlesss-Muster: der Looper nimmt immer auf (Capture-Ring), die Page
     zeigt die letzten 8 Takte der gewählten Quelle als gestauchte Wellenform
-    (Strip kommt in Baustein B4) — ein Klick auf ein Segment committet
+    (LooperWaveformStrip, B4) — ein Klick auf ein Segment committet
     rückwirkend die letzten 8/4/2/1 Takte (Baustein B5).
 
     Wie die TransportBar besitzt die Page NUR UI-Zustand: Aktionen laufen
@@ -59,6 +60,7 @@ public:
     // Test-/Editor-Zugriff
     [[nodiscard]] juce::ComboBox& getSourceCombo() noexcept { return sourceCombo; }
     [[nodiscard]] push::TextTile& getStopTile() noexcept { return stopTile; }
+    [[nodiscard]] LooperWaveformStrip& getStrip() noexcept { return strip; }
 
 private:
     juce::Label sourceCaption;
@@ -68,9 +70,9 @@ private:
 
     std::vector<Source> currentSources;
 
-    // Platzhalter des Waveform-Strips (Baustein B4) — Fläche + Segment-
-    // Beschriftung, damit das Layout der Page schon steht
-    juce::Rectangle<int> stripArea;
+    // Gestauchte Wellenform der letzten 8 Takte (B4) — Segment-Klicks
+    // verdrahtet der Editor über strip.onSegmentClicked
+    LooperWaveformStrip strip;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (LooperPage)
 };

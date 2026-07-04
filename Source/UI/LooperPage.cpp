@@ -1,6 +1,5 @@
 #include "LooperPage.h"
 
-#include "Core/Looper/LooperMath.h"
 #include "PushLookAndFeel.h"
 
 namespace conduit
@@ -32,6 +31,8 @@ LooperPage::LooperPage()
     statusLabel.setFont (push::scaledFont (15.0f));
     statusLabel.setJustificationType (juce::Justification::centredLeft);
     addAndMakeVisible (statusLabel);
+
+    addAndMakeVisible (strip);
 }
 
 //==============================================================================
@@ -70,39 +71,6 @@ void LooperPage::setStatus (const juce::String& statusText)
 void LooperPage::paint (juce::Graphics& g)
 {
     g.fillAll (push::colours::background);
-
-    // Platzhalter des Waveform-Strips (B4): Kachel-Fläche + die vier
-    // Segment-Beschriftungen des Endlesss-Layouts
-    if (! stripArea.isEmpty())
-    {
-        const auto strip = stripArea.toFloat();
-        g.setColour (push::colours::tile);
-        g.fillRoundedRectangle (strip, 6.0f);
-
-        const auto segmentWidth = strip.getWidth() / (float) looper::numSegments;
-        g.setColour (push::colours::textDim.withAlpha (0.4f));
-        for (int i = 1; i < looper::numSegments; ++i)
-            g.drawVerticalLine ((int) (strip.getX() + segmentWidth * (float) i),
-                                strip.getY() + 8.0f, strip.getBottom() - 28.0f);
-
-        g.setColour (push::colours::textDim);
-        g.setFont (push::scaledFont (15.0f));
-        for (int i = 0; i < looper::numSegments; ++i)
-        {
-            const auto bars = looper::barsForSegment (i);
-            const auto label = juce::String (bars) + (bars == 1 ? " Bar" : " Bars");
-            g.drawText (label,
-                        juce::Rectangle<float> (strip.getX() + segmentWidth * (float) i,
-                                                strip.getBottom() - 26.0f,
-                                                segmentWidth, 20.0f),
-                        juce::Justification::centred);
-        }
-
-        g.setFont (push::scaledFont (14.0f));
-        g.drawText (juce::String::fromUTF8 ("Wellenform — Baustein B4"),
-                    strip.withTrimmedBottom (28.0f),
-                    juce::Justification::centred);
-    }
 }
 
 void LooperPage::resized()
@@ -119,7 +87,7 @@ void LooperPage::resized()
     bounds.removeFromTop (12);
 
     // Waveform-Strip: volle Breite, großzügige Höhe (Segment-Klick = Commit)
-    stripArea = bounds.removeFromTop (juce::jmax (120, bounds.getHeight() / 2));
+    strip.setBounds (bounds.removeFromTop (juce::jmax (120, bounds.getHeight() / 2)));
 
     bounds.removeFromTop (8);
     statusLabel.setBounds (bounds.removeFromTop (24));

@@ -1,4 +1,5 @@
 #include <algorithm>
+#include <cmath>
 #include <map>
 #include <memory>
 #include <vector>
@@ -66,17 +67,26 @@ struct WaveformRig
                     data[i] = level;
             }
 
-            service.processInputTap (buffer, 2);
+            processOneBlock();
+        }
+    }
 
-            conduit::ClockState clock;
-            clock.bpm = testBpm;
-            clock.beatAtBlockStart = beat;
-            clock.sampleRate = testSampleRate;
+    /** Stereo-Sinus mit fortlaufender Phase (Spektrum-Tests). */
+    void feedSine (double freqHz, float amplitude, int blocks)
+    {
+        for (int b = 0; b < blocks; ++b)
+        {
+            for (int i = 0; i < blockSize; ++i)
+            {
+                const auto value = amplitude * static_cast<float> (
+                    std::sin (juce::MathConstants<double>::twoPi * freqHz
+                              * (sinePhaseSamples + i) / testSampleRate));
+                buffer.setSample (0, i, value);
+                buffer.setSample (1, i, value);
+            }
+            sinePhaseSamples += blockSize;
 
-            const auto clockNow = service.getSampleClock().now();
-            tap.process (clock, service, clockNow - blockSize, blockSize);
-
-            beat += (testBpm / (60.0 * testSampleRate)) * blockSize;
+            processOneBlock();
         }
     }
 
@@ -90,12 +100,38 @@ struct WaveformRig
         return bins;
     }
 
+    /** Alle wartenden Spektral-Spalten abholen (jüngste gewinnt). */
+    std::map<std::int64_t, LooperWaveformTap::SpectralColumn> drainSpectrum()
+    {
+        std::map<std::int64_t, LooperWaveformTap::SpectralColumn> columns;
+        LooperWaveformTap::SpectralColumn column;
+        while (tap.popSpectrum (column))
+            columns[column.index] = column;
+        return columns;
+    }
+
+    void processOneBlock()
+    {
+        service.processInputTap (buffer, 2);
+
+        conduit::ClockState clock;
+        clock.bpm = testBpm;
+        clock.beatAtBlockStart = beat;
+        clock.sampleRate = testSampleRate;
+
+        const auto clockNow = service.getSampleClock().now();
+        tap.process (clock, service, clockNow - blockSize, blockSize);
+
+        beat += (testBpm / (60.0 * testSampleRate)) * blockSize;
+    }
+
     juce::ScopedJuceInitialiser_GUI juceRuntime;
     TempCaptureSettings temp;
     CaptureService service { *temp.settings };
     LooperWaveformTap tap;
     juce::AudioBuffer<float> buffer { 2, blockSize };
     double beat = 0.0;
+    std::int64_t sinePhaseSamples = 0;
 };
 
 } // namespace
@@ -243,4 +279,116 @@ TEST_CASE ("LooperWaveformTap: process ist allocation-free (RT-Audit)", "[looper
 
     if (conduit::rt::isHookActive())
         REQUIRE (conduit::rt::getAllocationViolations() == violationsBefore);
+}
+
+//==============================================================================
+TEST_CASE ("LooperWaveformTap: Sinus → Energie im erwarteten Band, lückenlose Spalten", "[looper][spectrum]")
+{
+    WaveformRig rig;
+    rig.tap.setSource (0, 1);
+    rig.service.setChannelArmed (0, true);
+    rig.service.setChannelArmed (1, true);
+
+    // 1 kHz @ −6 dB — Gate öffnet per Arming, RAM-Wächter publiziert
+    rig.feedSine (1000.0, 0.5f, 3);
+    rig.service.runRamGuard();
+    rig.feedSine (1000.0, 0.5f, 200);  // ~4 Beats = 64 Spalten
+
+    const auto columns = rig.drainSpectrum();
+    REQUIRE (! columns.empty());
+
+    conduit::looper::SpectrumBands bands;
+    bands.compute (testSampleRate);
+    const auto expectedBand = bands.bandForFrequency (1000.0, testSampleRate);
+    REQUIRE (expectedBand > 0);
+
+    // Ab Beat 2 (Spalte 32) trägt jedes FFT-Fenster garantiert nur Sinus
+    std::int64_t previous = -1;
+    int checked = 0;
+    for (const auto& [index, column] : columns)
+    {
+        if (index < 32 || index >= 60)
+            continue;
+
+        if (previous >= 0)
+            REQUIRE (index == previous + 1);  // lückenlos über Blockgrenzen
+        previous = index;
+
+        // −6 dB minus Hann-Scalloping (≤ ~1.5 dB) → Pegel deutlich > 0.8
+        REQUIRE (column.bands[(std::size_t) expectedBand] > 0.8f);
+
+        // Entfernte Bänder bleiben leise (Hann-Sidelobes + dB-Floor)
+        for (int b = 0; b < conduit::looper::spectrumBands; ++b)
+            if (std::abs (b - expectedBand) >= 4)
+                REQUIRE (column.bands[(std::size_t) b] < 0.5f);
+
+        ++checked;
+    }
+
+    REQUIRE (checked > 20);
+}
+
+TEST_CASE ("LooperWaveformTap: ohne lesbare Quelle kommen Null-Spalten", "[looper][spectrum]")
+{
+    WaveformRig rig;
+    rig.tap.setSource (0, 1);
+
+    // Nicht gearmt + Stille: Gate bleibt zu → Loch = Stille (Klassendoku)
+    rig.feed (0.0f, 100);
+
+    const auto columns = rig.drainSpectrum();
+    REQUIRE (! columns.empty());
+
+    for (const auto& [index, column] : columns)
+        for (const auto level : column.bands)
+            REQUIRE (juce::exactlyEqual (level, 0.0f));
+}
+
+TEST_CASE ("LooperWaveformTap: Quellwechsel → Spektral-Backfill, Budget pro Block", "[looper][spectrum]")
+{
+    WaveformRig rig;
+
+    // ~4 Beats Sinus aufnehmen, während der Binner noch KEINE Quelle hat
+    rig.service.setChannelArmed (0, true);
+    rig.service.setChannelArmed (1, true);
+    rig.feedSine (1000.0, 0.5f, 3);
+    rig.service.runRamGuard();
+    rig.feedSine (1000.0, 0.5f, 200);
+    rig.drainSpectrum();  // Null-Spalten der quellenlosen Phase verwerfen
+
+    conduit::looper::SpectrumBands bands;
+    bands.compute (testSampleRate);
+    const auto expectedBand = bands.bandForFrequency (1000.0, testSampleRate);
+
+    // Quellwechsel: Reset + Backfill rückwärts
+    rig.tap.setSource (0, 1);
+    rig.feedSine (1000.0, 0.5f, 1);
+
+    // Budget-Treue: 32768 Samples/Block ÷ 4096 (Stereo-Fenster) = 8
+    // Backfill-Spalten plus höchstens eine Live-Spalte
+    const auto afterOne = rig.drainSpectrum();
+    int dataColumns = 0;
+    for (const auto& [index, column] : afterOne)
+        if (column.bands[(std::size_t) expectedBand] > 0.5f)
+            ++dataColumns;
+    REQUIRE (dataColumns > 0);
+    REQUIRE (dataColumns <= 10);
+
+    // Nach genügend Blöcken ist die Historie nachgefüllt: die Spalten der
+    // Beats 2..3.5 (Indizes 32..56) tragen wieder das 1-kHz-Band
+    rig.feedSine (1000.0, 0.5f, 80);
+    auto all = rig.drainSpectrum();
+    for (const auto& [index, column] : afterOne)
+        all[index] = column;
+
+    int filled = 0;
+    for (std::int64_t index = 32; index < 56; ++index)
+    {
+        const auto found = all.find (index);
+        if (found != all.end()
+            && found->second.bands[(std::size_t) expectedBand] > 0.8f)
+            ++filled;
+    }
+
+    REQUIRE (filled > 20);
 }

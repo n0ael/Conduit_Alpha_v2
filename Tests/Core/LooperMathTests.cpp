@@ -140,3 +140,51 @@ TEST_CASE ("LooperMath: loopPhaseBeats — beat-abgeleitete Phase ohne Drift", "
     REQUIRE (lm::loopPhaseBeats (10.0, 8.0, 0.0) == Approx (0.0));
     REQUIRE (lm::loopPhaseBeats (10.0, 8.0, -4.0) == Approx (0.0));
 }
+
+//==============================================================================
+TEST_CASE ("LooperMath: SpectrumBands — log-Bänder, strikt monoton, DC-frei", "[looper][spectrum]")
+{
+    for (double sampleRate : { 44100.0, 48000.0, 96000.0, 192000.0 })
+    {
+        lm::SpectrumBands bands;
+        bands.compute (sampleRate);
+
+        const auto nyquistBin = lm::spectrumFftSize / 2;
+
+        // DC bleibt außen vor, letzte Grenze ≤ Nyquist-Bin
+        REQUIRE (bands.edges.front() >= 1);
+        REQUIRE (bands.edges.back() <= nyquistBin);
+
+        // Strikt monoton → jedes Band trägt mindestens einen Bin,
+        // lückenlos (Band b endet, wo b+1 beginnt)
+        for (int b = 0; b < lm::spectrumBands; ++b)
+            REQUIRE (bands.edges[(std::size_t) b + 1] > bands.edges[(std::size_t) b]);
+
+        // Referenzfrequenzen liegen in genau einem Band, aufsteigend
+        const auto low  = bands.bandForFrequency (100.0, sampleRate);
+        const auto mid  = bands.bandForFrequency (1000.0, sampleRate);
+        const auto high = bands.bandForFrequency (10000.0, sampleRate);
+        REQUIRE (low >= 0);
+        REQUIRE (mid > low);
+        REQUIRE (high > mid);
+        REQUIRE (high < lm::spectrumBands);
+    }
+}
+
+TEST_CASE ("LooperMath: spectrumLevel — dB-Mapping mit Floor und Clamp", "[looper][spectrum]")
+{
+    const auto fullScale = static_cast<float> (lm::spectrumFftSize) * 0.25f;
+
+    // Full-Scale-Sinus (Hann-Referenz) = 0 dB → 1.0; Übersteuerung clampt
+    REQUIRE (lm::spectrumLevel (fullScale) == Approx (1.0f));
+    REQUIRE (lm::spectrumLevel (fullScale * 4.0f) == Approx (1.0f));
+
+    // −66 dB = Floor → 0; Stille → 0
+    REQUIRE (lm::spectrumLevel (fullScale * std::pow (10.0f, -66.0f / 20.0f))
+             == Approx (0.0f).margin (1.0e-4));
+    REQUIRE (lm::spectrumLevel (0.0f) == Approx (0.0f));
+
+    // −6 dB (Amplitude 0.5) ≈ 0.909, monoton dazwischen
+    REQUIRE (lm::spectrumLevel (fullScale * 0.5f) == Approx (0.9088f).margin (1.0e-3));
+    REQUIRE (lm::spectrumLevel (fullScale * 0.5f) > lm::spectrumLevel (fullScale * 0.1f));
+}

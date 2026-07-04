@@ -1,6 +1,7 @@
 #pragma once
 
 #include <algorithm>
+#include <array>
 #include <cmath>
 #include <cstdint>
 
@@ -148,5 +149,77 @@ struct CommitRange
         phase += loopLengthBeats;
     return phase;
 }
+
+//==============================================================================
+/** Spektrum-View (S1): STFT-Raster und Band-Layout der Spektrogramm-Ansicht
+    des Waveform-Strips. Eine Spektral-Spalte deckt 1/spectrumColumnsPerBeat
+    Beat (1/64-Note — gröber als die 32 Waveform-Bins, jede Spalte trägt
+    eine volle FFT); ihr Analysefenster sind die LETZTEN spectrumFftSize
+    Samples bis zum Spalten-Ende (Hop < Fenster = normale STFT-Überlappung,
+    zeitliche Unschärfe ~43 ms @48 k — für eine Übersichts-Anzeige korrekt). */
+constexpr int    spectrumColumnsPerBeat = 16;
+constexpr int    spectrumBands    = 64;
+constexpr int    spectrumFftOrder = 11;
+constexpr int    spectrumFftSize  = 1 << spectrumFftOrder;  // 2048
+constexpr double spectrumMinHz    = 35.0;
+constexpr float  spectrumFloorDb  = -66.0f;
+
+/** Magnitude (performFrequencyOnlyForwardTransform, Hann-Fenster) →
+    normalisierter Pegel 0..1 über dB-Mapping spectrumFloorDb..0 dB.
+    Referenz 0 dB = Full-Scale-Sinus: Peak-Magnitude = Amplitude ·
+    fftSize/2 · 0.5 (kohärenter Hann-Gain) = fftSize/4. */
+[[nodiscard]] inline float spectrumLevel (float magnitude) noexcept
+{
+    const auto amplitude = magnitude / (static_cast<float> (spectrumFftSize) * 0.25f);
+    if (amplitude <= 0.0f)
+        return 0.0f;
+
+    const auto db = 20.0f * std::log10 (amplitude);
+    return std::clamp ((db - spectrumFloorDb) / -spectrumFloorDb, 0.0f, 1.0f);
+}
+
+/** Log-verteilte Band-Grenzen als FFT-Bin-Indizes (pure, JUCE-frei):
+    Band b deckt die Magnitude-Bins [edges[b], edges[b+1]) — strikt
+    monoton (jedes Band trägt ≥ 1 Bin), DC (Bin 0) bleibt außen vor,
+    edges[spectrumBands] ≤ Nyquist-Bin. Im tiefen Bereich, wo die
+    Log-Verteilung mehrere Bänder auf denselben Bin legen würde, erzwingt
+    die Monotonie eine quasi-lineare Auffächerung (Standard-Verhalten).
+    compute() läuft auf dem Message Thread (prepare, Audio steht). */
+struct SpectrumBands
+{
+    std::array<int, static_cast<std::size_t> (spectrumBands + 1)> edges {};
+
+    void compute (double sampleRate) noexcept
+    {
+        const auto nyquistBin = spectrumFftSize / 2;
+        const auto fMin = spectrumMinHz;
+        const auto fMax = std::max (fMin * 2.0, sampleRate * 0.5);
+
+        int previous = 0;
+        for (int b = 0; b <= spectrumBands; ++b)
+        {
+            const auto hz = fMin * std::pow (fMax / fMin,
+                                             static_cast<double> (b) / spectrumBands);
+            auto bin = static_cast<int> (std::lround (hz * spectrumFftSize / sampleRate));
+
+            // strikt monoton nach oben, nach unten genug Platz für die
+            // restlichen Grenzen lassen (jede weitere braucht +1)
+            bin = std::clamp (bin, previous + 1, nyquistBin - (spectrumBands - b));
+            edges[static_cast<std::size_t> (b)] = bin;
+            previous = bin;
+        }
+    }
+
+    /** Band, das die Frequenz enthält (Tests) — −1 außerhalb. */
+    [[nodiscard]] int bandForFrequency (double hz, double sampleRate) const noexcept
+    {
+        const auto bin = static_cast<int> (std::lround (hz * spectrumFftSize / sampleRate));
+        for (int b = 0; b < spectrumBands; ++b)
+            if (bin >= edges[static_cast<std::size_t> (b)]
+                && bin < edges[static_cast<std::size_t> (b + 1)])
+                return b;
+        return -1;
+    }
+};
 
 } // namespace conduit::looper

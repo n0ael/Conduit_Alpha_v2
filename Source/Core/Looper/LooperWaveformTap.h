@@ -5,6 +5,7 @@
 #include <cstdint>
 
 #include <juce_core/juce_core.h>
+#include <juce_dsp/juce_dsp.h>
 
 #include "Core/Capture/CaptureService.h"
 #include "Interfaces/IClockSource.h"
@@ -49,8 +50,22 @@ namespace conduit
     Tempo-Wechsel eine dokumentierte Anzeige-Näherung (der Commit in B5
     bleibt über die BarSampleAnchors exakt).
 
+    Spektrum-View (S1): ZWEITER Ausgabepfad im selben process() — gleiche
+    Quelle, gleiche Reset-/Backfill-Logik, eigener Raster-Cursor + eigene
+    SPSC-Queue. Pro Spektral-Spalte (1/16 Beat, looper::spectrumColumnsPer-
+    Beat) werden die LETZTEN spectrumFftSize Samples bis zum Spalten-Ende
+    gelesen (L/R gemittelt, Mono), Hann-gefenstert und via juce::dsp::FFT
+    (Ordnung 11, Engine im Konstruktor gebaut — perform ist allocation-
+    free) auf looper::spectrumBands log-verteilte Bänder reduziert
+    (Band-Wert = Maximum der Magnitude-Bins, dB-normalisiert 0..1,
+    looper::spectrumLevel). Kosten ~32 FFTs/s @120 BPM — deshalb bewusst
+    ALWAYS-ON: der View-Wechsel in der UI ist instant mit voller Historie.
+    Spektral-Backfill hat ein EIGENES Sample-Budget (jede Spalte liest ein
+    volles Fenster; volle 512 Spalten in < 1 s nach Quellwechsel).
+
     Threading: process() NUR Audio Thread; setSource()/prepare() Message
-    Thread (Atomics bzw. Audio steht); pop() exklusiv beim UI-Konsumenten.
+    Thread (Atomics bzw. Audio steht); pop()/popSpectrum() exklusiv beim
+    UI-Konsumenten.
 */
 class LooperWaveformTap
 {
@@ -58,6 +73,9 @@ public:
     static constexpr int binsPerBeat = 32;
     static constexpr int historyBins = looper::maxBars
                                        * static_cast<int> (looper::quantumBeats) * binsPerBeat;  // 1024
+    static constexpr int spectrumHistoryColumns
+        = looper::maxBars * static_cast<int> (looper::quantumBeats)
+          * looper::spectrumColumnsPerBeat;  // 512
 
     struct Bin
     {
@@ -66,15 +84,27 @@ public:
         float maxValue = 0.0f;
     };
 
-    LooperWaveformTap() = default;
-
-    /** [Message Thread, Audio steht — prepareToPlay] verwirft alle Bins;
-        der nächste process()-Block setzt neu auf (inkl. Backfill). */
-    void prepare() noexcept
+    struct SpectralColumn
     {
+        std::int64_t index = 0;   // Spalten-Raster: [index, index+1)/spectrumColumnsPerBeat
+        std::array<float, static_cast<std::size_t> (looper::spectrumBands)> bands {};  // 0..1
+    };
+
+    LooperWaveformTap();
+
+    /** [Message Thread, Audio steht — prepareToPlay] verwirft Bins und
+        Spektral-Spalten, berechnet die Band-Grenzen für die sampleRate
+        neu; der nächste process()-Block setzt neu auf (inkl. Backfill). */
+    void prepare (double sampleRate) noexcept
+    {
+        bands.compute (sampleRate);
         sourceVersion.fetch_add (1, std::memory_order_release);
-        Bin discarded;
-        while (queue.pop (discarded)) {}  // Konsument steht (Audio steht, UI folgt)
+
+        // Konsument steht (Audio steht, UI folgt)
+        Bin discardedBin;
+        while (queue.pop (discardedBin)) {}
+        SpectralColumn discardedColumn;
+        while (spectrumQueue.pop (discardedColumn)) {}
     }
 
     /** [Message Thread] Capture-Indizes der Quelle (−1 = keine; Mono =
@@ -96,6 +126,9 @@ public:
     /** [UI-Thread, VBlank — Konsumentenrolle exklusiv] */
     bool pop (Bin& bin) noexcept { return queue.pop (bin); }
 
+    /** [UI-Thread, VBlank — Konsumentenrolle exklusiv] Spektral-Spalten. */
+    bool popSpectrum (SpectralColumn& column) noexcept { return spectrumQueue.pop (column); }
+
 private:
     /** Bin lesen (beide Quellseiten, min/max zusammengefasst) und pushen.
         Liefert die gelesene Sample-Zahl (Backfill-Budget). */
@@ -103,11 +136,27 @@ private:
                  double beatStart, double beatsPerSample,
                  std::uint64_t blockStartSample) noexcept;
 
+    /** Spektral-Spalte: Fenster lesen (Mono-Mix), FFT, Bänder pushen.
+        Liefert die budgetierte Sample-Zahl (0 vor Signalbeginn). */
+    int emitSpectrumColumn (std::int64_t columnIndex, const CaptureService& capture,
+                            double beatStart, double beatsPerSample,
+                            std::uint64_t blockStartSample) noexcept;
+
     static constexpr int backfillBudgetSamples = 16384;
+    static constexpr int spectrumBackfillBudgetSamples = 32768;  // 8–16 Spalten/Block
     static constexpr int scratchSamples = 8192;  // 1/32 Beat bis ~11 BPM
 
     SpscQueue<Bin> queue { 8192 };
+    SpscQueue<SpectralColumn> spectrumQueue { 1024 };
     std::array<float, static_cast<std::size_t> (scratchSamples)> scratch {};
+
+    // FFT-Zubehör (Konstruktion/compute nur MT bei stehendem Audio;
+    // perform/Lesen nur Audio Thread — allocation-free, Klassendoku)
+    juce::dsp::FFT fft { looper::spectrumFftOrder };
+    std::array<float, static_cast<std::size_t> (looper::spectrumFftSize)> window {};
+    std::array<float, static_cast<std::size_t> (2 * looper::spectrumFftSize)> fftData {};
+    std::array<float, static_cast<std::size_t> (looper::spectrumFftSize)> spectrumScratch {};
+    looper::SpectrumBands bands;
 
     // Message → Audio
     std::atomic<int> sourceLeft  { -1 };
@@ -119,6 +168,9 @@ private:
     std::int64_t nextBin = 0;        // nächster live abzuschließender Bin
     std::int64_t backfillBin = -1;   // rückwärts laufender Backfill-Cursor
     std::int64_t backfillOldest = 0; // ältester Bin des Backfill-Fensters
+    std::int64_t nextColumn = 0;             // Spektral-Pendants zu den Bin-Cursorn
+    std::int64_t backfillColumn = -1;
+    std::int64_t backfillColumnOldest = 0;
     double previousBeatEnd = 0.0;
     bool beatValid = false;
 

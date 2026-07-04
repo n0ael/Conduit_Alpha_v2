@@ -431,7 +431,7 @@ void EngineProcessor::prepareToPlay (double sampleRate, int samplesPerBlock)
     // Looper-Quelle neu auflösen: der frische Puffersatz vergibt die
     // Capture-Indizes der virtuellen Slots neu (B3); Waveform-Binner und
     // Loop-Playback verwerfen ihren Stand (SampleClock-Reset, B4/B5)
-    looperWaveformTap.prepare();
+    looperWaveformTap.prepare (sampleRate);
     looperEngine.prepare (sampleRate);
     applyLooperSourceArming();
     inputLevels.prepare  (sampleRate, getTotalNumInputChannels());

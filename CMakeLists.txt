@@ -413,6 +413,7 @@ target_link_libraries(Conduit
     PRIVATE
         ConduitAssets
         juce::juce_audio_utils
+        juce::juce_dsp
         juce::juce_osc
         Ableton::Link
     PUBLIC
@@ -656,6 +657,7 @@ if(CONDUIT_BUILD_TESTS)
             juce::juce_audio_formats
             juce::juce_audio_processors
             juce::juce_audio_utils
+            juce::juce_dsp
             juce::juce_osc
             Ableton::Link
         PUBLIC

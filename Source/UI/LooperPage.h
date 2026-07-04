@@ -50,6 +50,16 @@ public:
         persistiert den Schlüssel. */
     std::function<void (const juce::String& sourceKey)> onSourceSelected;
 
+    /** [Editor] Ausgabe-Paar-Liste neu aufbauen (B6): Labels der Stereo-
+        Paare (Kanäle 2n/2n+1, ChannelNames — Muster Metronom-Ausgang im
+        Link-Menü); selectedPair = persistierter looperAnchor (out of
+        range → auf die Liste geclampt, ohne Notification). */
+    void setOutputPairs (const juce::StringArray& pairLabels, int selectedPair);
+
+    /** Klick-Auswahl des Ausgabe-Paars — der Editor routet die Engine um
+        und persistiert den Anker. */
+    std::function<void (int pairIndex)> onOutputPairSelected;
+
     /** Stop-Kachel (B5) — der Editor beendet das Loop-Playback; die Kachel
         ist nur bei laufendem Loop enabled (Editor-Timer). */
     std::function<void()> onStop;
@@ -63,12 +73,15 @@ public:
 
     // Test-/Editor-Zugriff
     [[nodiscard]] juce::ComboBox& getSourceCombo() noexcept { return sourceCombo; }
+    [[nodiscard]] juce::ComboBox& getOutputCombo() noexcept { return outputCombo; }
     [[nodiscard]] push::TextTile& getStopTile() noexcept { return stopTile; }
     [[nodiscard]] LooperWaveformStrip& getStrip() noexcept { return strip; }
 
 private:
     juce::Label sourceCaption;
     juce::ComboBox sourceCombo;
+    juce::Label outputCaption;
+    juce::ComboBox outputCombo;
     push::TextTile stopTile { "Stop", push::colours::ledRed };
     juce::Label statusLabel;
 

@@ -74,6 +74,11 @@ private:
     [[nodiscard]] std::vector<LooperPage::Source> buildLooperSources();
     void rebuildLooperSources();
 
+    /** Labels der Hardware-Ausgangs-Paare (Kanäle 2n/2n+1) aus dem
+        audio_out-Tree-Node + ChannelNames — Metronom-Ausgang (Link-Menü)
+        und Looper-Output-Selektor (B6) teilen sich die Liste. */
+    [[nodiscard]] juce::StringArray buildOutputPairNames();
+
     EngineProcessor& engine;
     juce::ValueTree rootState;  // ref-counted Handle, read/listen-only
     juce::UndoManager& undoManager;

@@ -169,28 +169,13 @@ EngineEditor::EngineEditor (EngineProcessor& engineProcessor,
 
     // Metronom-Ziel-Paare fürs Link-Menü: Labels aus den ChannelNames,
     // Kanalzahl aus dem audio_out-Tree-Node (folgt der Hardware)
-    transportBar.metronomeTargetNames = [this]
-    {
-        auto nodesTree = rootState.getChildWithName (id::nodes);
-        auto outNode = nodesTree.getChildWithProperty (id::factoryId, juce::String (audioOutputModuleId));
-        if (! outNode.isValid())
-            outNode = nodesTree.getChildWithProperty (id::moduleId, juce::String (audioOutputModuleId));
+    transportBar.metronomeTargetNames = [this] { return buildOutputPairNames(); };
 
-        const auto channels = outNode.isValid()
-                            ? (int) outNode.getProperty (id::numInputChannels, 2) : 2;
-
-        juce::StringArray names;
-        auto& labels = engine.getChannelNames();
-
-        for (int channel = 0; channel + 1 < channels; channel += 2)
-            names.add (labels.getLabel (ChannelNames::Direction::output, channel)
-                       + " / " + labels.getLabel (ChannelNames::Direction::output, channel + 1));
-
-        if (names.isEmpty())
-            names.add ("Kanal 1 / 2");
-
-        return names;
-    };
+    // Ausgabe-Paar des Loop-Playbacks (B6): dieselbe Paar-Liste (Befüllung
+    // übernimmt rebuildLooperSources oben); Auswahl persistiert looperAnchor
+    // und routet die Engine sofort um
+    looperPage.onOutputPairSelected = [this] (int pairIndex)
+    { engine.setLooperAnchor (pairIndex); };
 
     // -- Capture-Panel + Toast ------------------------------------------------
     capturePanel.setVisible (false);
@@ -381,6 +366,33 @@ void EngineEditor::rebuildLooperSources()
 {
     looperPage.setSources (buildLooperSources(),
                            engine.getTransportSettings().getLooperSource());
+
+    // Ausgabe-Paare hängen an denselben Broadcasts (ChannelNames/Hardware)
+    looperPage.setOutputPairs (buildOutputPairNames(),
+                               engine.getTransportSettings().getLooperAnchor());
+}
+
+juce::StringArray EngineEditor::buildOutputPairNames()
+{
+    auto nodesTree = rootState.getChildWithName (id::nodes);
+    auto outNode = nodesTree.getChildWithProperty (id::factoryId, juce::String (audioOutputModuleId));
+    if (! outNode.isValid())
+        outNode = nodesTree.getChildWithProperty (id::moduleId, juce::String (audioOutputModuleId));
+
+    const auto channels = outNode.isValid()
+                        ? (int) outNode.getProperty (id::numInputChannels, 2) : 2;
+
+    juce::StringArray names;
+    auto& labels = engine.getChannelNames();
+
+    for (int channel = 0; channel + 1 < channels; channel += 2)
+        names.add (labels.getLabel (ChannelNames::Direction::output, channel)
+                   + " / " + labels.getLabel (ChannelNames::Direction::output, channel + 1));
+
+    if (names.isEmpty())
+        names.add ("Kanal 1 / 2");
+
+    return names;
 }
 
 //==============================================================================

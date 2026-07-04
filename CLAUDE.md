@@ -626,7 +626,8 @@ Plattform-spezifisches Setup in `initAudio()` und CMake ist explizit erlaubt.
   beliebig auflösungs-/DPI-fähig, keine Bitmaps. Bausteine: IconTile/
   TextTile/ValueTile (`PushTiles`).
 - **TransportBar** ersetzt die Modul-Button-Toolbar komplett: Play (Link
-  Start/Stop-Sync), Tape (oo — künftige Looper-Page), Capture ⛶
+  Start/Stop-Sync), Tape (oo — Retro-Looper-Page, LED = Page offen ODER
+  Loop spielt), Capture ⛶
   (Shift-Klick = Kanal-Panel), Fixed Length/Automate (persistierte
   Looper-Toggles), Tap-Tempo als Monitor (M4L-„TAP and CHANGE"-Modell:
   endloses Tappen misst NUR, Set-Kachel committet zur Session; Tap halten
@@ -646,6 +647,33 @@ Plattform-spezifisches Setup in `initAudio()` und CMake ist explizit erlaubt.
   GraphFader auf ein wählbares Stereo-Paar; Beat-Grenzen sample-genau
   (floor-Überquerung, Muster 4.5), Downbeat oktavhöher, Disable lässt den
   Tail ausklingen. Bewusst kein isPlaying-Gate (Conduit läuft frei).
+- **Retro-Looper** (`Source/Core/Looper` + `Source/UI/LooperPage`, Stand
+  07/2026 — Endlesss-Muster auf Capture-Audio-Basis, MVP = ein Loop):
+  - Immer aufnehmend: Quelle = Capture-Kanal („master" = Master-Output-Tap
+    master_l/_r nach dem GraphFader | „hw:{paar}" | „tap:{name}"), Arming
+    (`CaptureService::setChannelArmed`) hält das Gate zwangsweise offen.
+    Quelle + Ausgabe-Paar persistiert in TransportSettings
+    (looperSource/looperAnchor).
+  - `BarSampleAnchors` [Audio]: Taktgrenzen sample-genau als gepackte
+    64-bit-Atomics (16 Bit bar-Tag + 48 Bit Sample-Position — Paar in EINEM
+    Wort, sonst Slot-Reuse-Race); Grenze 0 wird nie überquert → Commit
+    braucht bars+1 Grenzen.
+  - Commit [MT] = letzte 8/4/2/1 KOMPLETTE Takte via Segment-Klick auf den
+    gestauchten Waveform-Strip (Dichte verdoppelt sich an den
+    Segment-Grenzen; beat-indizierte Min/Max-Bins, binsPerBeat 32); Kopie
+    über das zählerbasierte Export-Halte-Protokoll, Wrap-Crossfade liest
+    einen Lead-in VOR dem Loop-Start (5 ms equal-power).
+  - Playback (`LooperEngine`, Engine-Level wie Metronom, bewusst ohne
+    EngineProcessor-Abhängigkeit — späteres LooperModule hostet dieselbe
+    Klasse): Phase beat-abgeleitet [B−L, B) → Start sofort phasenstarr,
+    kein Drift; 2 Voices × 60 s (~46 MB @48 kHz), Re-Commit/Stop mit
+    5-ms-Voice-Fades. Session- ≠ Aufnahme-Tempo ⇒ Varispeed (MVP-Grenze).
+  - **Playhead-Lektion (3.1 bestätigt):** beatAtBlockStart ist
+    Wall-Clock-basiert und jittert um den Callback-Scheduling-Versatz —
+    NIE direkt als Lese-Basis nutzen (hörbare Körnung). LooperEngine führt
+    einen sample-kontinuierlichen Playhead: Messung aus SampleClock +
+    jüngstem Takt-Anker, Korrektur slew-limitiert (0.2 % Varispeed), Snap
+    nur bei echten Beat-Sprüngen.
 
 - Touch-first Design: `setAcceptsTouchEvents(true)`
 - Minimale Touch-Target-Größe: 44px
@@ -692,7 +720,7 @@ Plattform-spezifisches Setup in `initAudio()` und CMake ist explizit erlaubt.
 | Euclid-/Turing-Module | v2.x | v1-Engines als Referenz (Launch-Quant, parametrischer Swing, Scale-Quantize) |
 | Push-3-Transport-Header (TransportBar, Metronom, globaler Swing) | v2.0 | erledigt 07/2026 — 10.0 |
 | FX-Chassis-Standard (I/O-Gains+Meter, CV/Parameter, Link-Send, Dev-Modus, Kurven, Control-Links, Defaults) | v2.0 | erledigt 07/2026 — 4.6 |
-| Looper-Page (Rückwärts-Looper, Endless-Stil) | v2.x | Tape-Kachel + Automate/Fixed Length + Capture-Audio als Grundstein |
+| Looper-Page (Retro-Looper, Endlesss-Stil, MVP ein Loop) | v2.0 | erledigt 07/2026 — 10.0; Multi-Layer/Riff-Historie + LooperModule später |
 | Mixer-Page | v2.x | ∥∥-Icon, Channel-Strips (Capture-Buttons wandern dorthin) |
 | Grid-Page (AbletonOSC-Remote) | v2.x | Ω-Icon, Remote-Steuerung von Live |
 | Clip-Page (Fugue-Machine-Sequencer) | v2.x | ▷▭-Icon, immer aktiv, CV- UND MIDI-Ziele |

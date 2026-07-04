@@ -176,6 +176,12 @@ juce::Result EngineProcessor::commitLooper (int bars)
                                 looperLeftIndex, looperRightIndex, barAnchors);
 }
 
+void EngineProcessor::setLooperAnchor (int pairIndex)
+{
+    transportSettings.setLooperAnchor (pairIndex);
+    looperEngine.setAnchor (transportSettings.getLooperAnchor());
+}
+
 //==============================================================================
 void EngineProcessor::setLooperSource (const juce::String& sourceKey)
 {

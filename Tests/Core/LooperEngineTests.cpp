@@ -303,6 +303,31 @@ TEST_CASE ("LooperEngine: Re-Commit wechselt glitch-frei, Stop blendet aus", "[l
     REQUIRE (rig.engine.getLoopBars() == 0);
 }
 
+TEST_CASE ("LooperEngine: Anker-Routing — OOB-Paar schreibt nicht, Rückkehr spielt weiter", "[looper]")
+{
+    EngineRig rig;
+    rig.signal = [] (std::uint64_t) { return 0.4f; };
+
+    rig.feedBars (2.5);
+    REQUIRE (rig.engine.commit (1, rig.service, 0, 1, rig.anchors).wasOk());
+    rig.feedBlocks (2);  // Fade-In vorbei
+    REQUIRE (std::abs (rig.output.getSample (0, 100) - 0.4f) < 1.0e-3f);
+
+    // Anker-Paar 3 = Kanäle 6/7, der Testbuffer hat 2 → kein Write, aber
+    // die Voice läuft weiter (Gerätewechsel lässt keine Zombies zurück)
+    rig.engine.setAnchor (3);
+    rig.feedBlocks (2);
+    REQUIRE (rig.output.getMagnitude (0, blockSize) < 1.0e-6f);
+    REQUIRE (rig.output.getMagnitude (1, blockSize) < 1.0e-6f);
+    REQUIRE (rig.engine.isPlaying());
+
+    // Zurück auf Paar 0: der Loop ist sofort wieder da (Gain stand voll)
+    rig.engine.setAnchor (0);
+    rig.feedBlocks (1);
+    REQUIRE (std::abs (rig.output.getSample (0, 100) - 0.4f) < 1.0e-3f);
+    REQUIRE (std::abs (rig.output.getSample (1, 100) - 0.4f) < 1.0e-3f);
+}
+
 TEST_CASE ("LooperEngine: Fehlerfälle — Historie, Quelle, Länge", "[looper]")
 {
     EngineRig rig;

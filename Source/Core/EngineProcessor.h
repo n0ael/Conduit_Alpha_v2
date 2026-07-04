@@ -184,6 +184,11 @@ public:
     /** [Message Thread] Loop-Playback mit 5-ms-Fade beenden. */
     void stopLooper() noexcept { looperEngine.stop(); }
 
+    /** Ausgabe-Paar des Loop-Playbacks (B6) [Message Thread]: persistiert
+        looperAnchor (Clamp in den Settings) und routet die Engine sofort
+        auf die Kanäle 2n/2n+1. */
+    void setLooperAnchor (int pairIndex);
+
     /** Status fürs UI (Tape-LED, Stop-Kachel, Statuszeile). */
     [[nodiscard]] const LooperEngine& getLooperEngine() const noexcept { return looperEngine; }
 

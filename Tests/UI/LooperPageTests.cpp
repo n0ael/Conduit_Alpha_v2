@@ -42,6 +42,26 @@ TEST_CASE ("LooperPage: Quellen-Liste, persistierte Auswahl und Klick-Callback",
         REQUIRE (selectedKey == "hw:0");
     }
 
+    SECTION ("Output-Paare (B6): Anker vorausgewählt, OOB geclampt, Klick meldet Index")
+    {
+        const juce::StringArray pairs { "Out 1 / Out 2", "Out 3 / Out 4" };
+        int selectedPair = -1;
+        page.onOutputPairSelected = [&] (int pair) { selectedPair = pair; };
+
+        page.setOutputPairs (pairs, 1);
+        REQUIRE (page.getOutputCombo().getNumItems() == 2);
+        REQUIRE (page.getOutputCombo().getSelectedItemIndex() == 1);
+        REQUIRE (selectedPair == -1);  // Anzeige ≠ User-Klick
+
+        // Gerätewechsel: persistierter Anker jenseits der Paar-Liste
+        page.setOutputPairs (pairs, 7);
+        REQUIRE (page.getOutputCombo().getSelectedItemIndex() == 1);
+        REQUIRE (selectedPair == -1);
+
+        page.getOutputCombo().setSelectedItemIndex (0, juce::sendNotificationSync);
+        REQUIRE (selectedPair == 0);
+    }
+
     SECTION ("Stop-Kachel: initial disabled (kein Loop), Klick meldet onStop")
     {
         REQUIRE_FALSE (page.getStopTile().isEnabled());

@@ -13,6 +13,8 @@ LooperPage::LooperPage()
     addAndMakeVisible (sourceCaption);
 
     sourceCombo.setTextWhenNothingSelected ("Quelle wählen …");
+    sourceCombo.setTooltip (juce::String::fromUTF8 (
+        "Looper-Quelle — der Capture-Kanal bleibt dauerhaft scharf (immer aufnehmend)"));
     sourceCombo.onChange = [this]
     {
         const auto index = sourceCombo.getSelectedItemIndex();
@@ -21,6 +23,23 @@ LooperPage::LooperPage()
             onSourceSelected (currentSources[(size_t) index].key);
     };
     addAndMakeVisible (sourceCombo);
+
+    // Ausgabe-Paar (B6): Loop-Playback auf Kanäle 2n/2n+1 (Muster
+    // Metronom-Ausgang im Link-Menü), persistiert als looperAnchor
+    outputCaption.setText ("Output", juce::dontSendNotification);
+    outputCaption.setColour (juce::Label::textColourId, push::colours::textDim);
+    outputCaption.setFont (push::scaledFont (13.0f));
+    addAndMakeVisible (outputCaption);
+
+    outputCombo.setTooltip (juce::String::fromUTF8 (
+        "Ausgabe-Paar des Loop-Playbacks (Stereo-Kanäle des Interfaces)"));
+    outputCombo.onChange = [this]
+    {
+        const auto index = outputCombo.getSelectedItemIndex();
+        if (onOutputPairSelected != nullptr && index >= 0)
+            onOutputPairSelected (index);
+    };
+    addAndMakeVisible (outputCombo);
 
     // Stop (B5): enabled nur bei laufendem Loop (Editor-Timer)
     stopTile.setEnabled (false);
@@ -66,6 +85,21 @@ void LooperPage::setSources (std::vector<Source> sources, const juce::String& se
         sourceCombo.setSelectedId (selectedItemId, juce::dontSendNotification);
 }
 
+void LooperPage::setOutputPairs (const juce::StringArray& pairLabels, int selectedPair)
+{
+    outputCombo.clear (juce::dontSendNotification);
+
+    for (int pair = 0; pair < pairLabels.size(); ++pair)
+        outputCombo.addItem (pairLabels[pair], pair + 1);  // Ids 1-basiert
+
+    // Out-of-range-Anker (Gerätewechsel) → erstes Paar als Anzeige, bewusst
+    // OHNE Notification: die Persistenz ändert nur der User-Klick
+    if (! pairLabels.isEmpty())
+        outputCombo.setSelectedId (
+            juce::jlimit (0, pairLabels.size() - 1, selectedPair) + 1,
+            juce::dontSendNotification);
+}
+
 void LooperPage::setStatus (const juce::String& statusText)
 {
     if (statusLabel.getText() != statusText)
@@ -82,10 +116,13 @@ void LooperPage::resized()
 {
     auto bounds = getLocalBounds().reduced (16);
 
-    // Kopfzeile: Source-Caption + Selektor + Stop (Touch-Ziele ≥ 44 px)
+    // Kopfzeile: Source + Output-Paar + Stop (Touch-Ziele ≥ 44 px)
     auto header = bounds.removeFromTop (44);
     sourceCaption.setBounds (header.removeFromLeft (64));
     sourceCombo.setBounds (header.removeFromLeft (280).reduced (0, 4));
+    header.removeFromLeft (12);
+    outputCaption.setBounds (header.removeFromLeft (64));
+    outputCombo.setBounds (header.removeFromLeft (220).reduced (0, 4));
     header.removeFromLeft (12);
     stopTile.setBounds (header.removeFromLeft (88));
 

@@ -1,6 +1,6 @@
 # Conduit Alpha — Projektstatus
 
-> Letzte Aktualisierung: 2026-07-03 | wird nach jedem Meilenstein gepflegt
+> Letzte Aktualisierung: 2026-07-04 | wird nach jedem Meilenstein gepflegt
 > Architektur-Referenz: [CLAUDE.md](CLAUDE.md) | Repo: n0ael/Conduit_Alpha_v2
 
 ## Fundament (steht komplett)
@@ -15,6 +15,56 @@
 - **CI:** GitHub Actions (Ubuntu) mit TSan + ASan bei jedem Push auf master; lokal ASan via MSVC-Preset
 
 ## Aktueller Meilenstein (Juli 2026 — in Arbeit)
+
+**Retro-Looper (Endlesss-Stil) auf Capture-Audio-Basis — FERTIG (04.07.2026, Bausteine B1–B6):**
+
+- **Konzept (User-Entscheidungen 07/2026):** der Looper nimmt immer auf (Capture-Ring),
+  ein Klick auf den 4-Segment-Waveform-Strip (8|4|2|1 Bars, Dichte verdoppelt sich an
+  den Segment-Grenzen — der Endlesss-Effekt) committet rückwirkend die letzten N
+  KOMPLETTEN Takte und spielt sie SOFORT phasenstarr. Playback Engine-Level (Muster
+  Metronom, patchbares LooperModule später — LooperEngine bewusst ohne
+  EngineProcessor-Abhängigkeit), Quelle = Capture-Kanal ODER neuer Master-Output-Tap,
+  MVP = ein Loop (Multi-Layer/Riff-Historie später).
+- **B1 Fundament:** `LooperMath.h` (pure: Segment-/Pixel-/Beat-Arithmetik,
+  commitRangeForBars — braucht bars+1 Grenzen, Grenze 0 wird nie überquert;
+  loopPhaseBeats), `BarSampleAnchors` (Taktgrenzen sample-genau, floor-Muster 4.5;
+  pro Slot EIN gepacktes 64-bit-Atomic 16-bit-bar-Tag + 48-bit-Position — der
+  Zwei-Atomics-Ansatz hatte einen echten Slot-Reuse-Race, per Stress-Test gefunden),
+  Capture-Arming (`setChannelArmed` + `CaptureGate::forceOpen` hält das Gate der
+  Looper-Quelle garantiert offen).
+- **B2 Master-Output-Tap:** virtuelle Kanäle `master_l`/`master_r` direkt nach dem
+  GraphFader, VOR Looper-Mix/Metronom (Rohmaterial, strukturell feedback-frei);
+  CapturePanel zeigt die Master-Spur automatisch.
+- **B3 Looper-Page:** Tape-Kachel (oo) toggelt die 5. Page; Quell-Selektor
+  („master" | „hw:{paar}" | „tap:{name}", Labels aus ChannelNames, Liste folgt
+  Tap-/Label-Broadcasts); Persistenz looperSource/looperAnchor in TransportSettings.
+  Nebenbei: `EngineProcessor(settingsFolder)`-Ctor + `ScopedSettingsFolder` —
+  Engine-Tests fassen die echten User-Settings nicht mehr an.
+- **B4 Waveform-Datenpfad:** `LooperWaveformTap` [Audio, Block-Ende]: beat-indizierte
+  Min/Max-Bins (binsPerBeat 32 — Tempo-Wechsel trivial, Segment-Stauchung reine
+  Beat-Arithmetik), SPSC zur UI, Gate-Löcher = Null-Bins, budgetierter Backfill;
+  `LooperWaveformStrip`: VBlank-Scroll, Spalten-Aggregation über die
+  Segment-Kompression, Klick → Commit.
+- **B5 LooperEngine (Commit + Playback + Stop):** Commit [MT] über das zählerbasierte
+  Export-Halte-Protokoll in den inaktiven Voice-Buffer (2 Voices × Stereo × 60 s,
+  ~46 MB @48 kHz); Wrap-Crossfade liest einen Lead-in VOR dem Loop-Start (5 ms
+  equal-power, landet exakt auf dem Loop-Start-Sample); Re-Commit/Stop mit
+  Voice-Fades; Varispeed bei Session- ≠ Aufnahme-Tempo (dokumentierte MVP-Grenze).
+  **Ohr-Abnahme fand den Wall-Clock-Jitter-Bug:** beatAtBlockStart (Link-micros()
+  beim Callback-Eintritt) jitterte den Lesekopf um Dutzende Samples pro Blockgrenze
+  (körnige „falsche Samplerate"-Verzerrung — Export war sauber, nur Live-Playback
+  betroffen; exakt Plan-Risiko 1 / CLAUDE.md-3.1-Lektion). Fix: sample-kontinuierlicher
+  Beat-Playhead — Messung jitter-frei aus SampleClock + jüngstem Takt-Anker (dieselben
+  Anker wie der Schnitt → Phase deckungsgleich per Konstruktion), Korrektur
+  slew-limitiert (0.2 % Varispeed), Snap nur bei echten Beat-Sprüngen. Regressionstest
+  simuliert ±1 ms Clock-Jitter.
+- **B6 Politur:** Ausgabe-Paar-Selektor auf der Page (Muster Metronom-Ausgang,
+  gemeinsamer `buildOutputPairNames`), `setLooperAnchor`-Fassade (Persistenz +
+  Live-Routing), OOB-Anker = kein Write, aber Fades laufen weiter (keine Zombie-Voices
+  bei Gerätewechsel); CLAUDE.md 10.0-Looper-Abschnitt + Roadmap.
+- **Verifikation:** ConduitTests 339 Fälle / 15508 Assertions grün, Debug UND ASan;
+  CI (TSan + ASan Ubuntu) grün für B1–B5; akustische User-Abnahme gegen das Metronom
+  („klingt sauber") nach dem Playhead-Fix.
 
 **Airwindows-Massen-Port: 54 neue FX-Module (alle Airwindows-Consolidated-Favoriten des Users):**
 

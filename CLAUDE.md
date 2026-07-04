@@ -52,7 +52,7 @@ Denke in Architektur und Modulen, bevor du Code schreibst. Liefere Code-Snippets
 
 | Parameter | Zielwert | Fallback |
 |---|---|---|
-| Buffer Size | 128 Samples (warnfrei 64–256) | — |
+| Buffer Size | 32–128 Samples (Warnung erst > 256; Untergrenze beurteilt der XRun-Zähler live, keine starre Schwelle) | — |
 | Sample Rate | 48 000 Hz | 44 100 Hz |
 | Audio-Callback RTL | < 2 ms intern | — |
 | Glass-to-Sound | < 10 ms gesamt | — |

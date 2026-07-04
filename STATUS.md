@@ -72,6 +72,13 @@
   Debug-Build (unoptimiert) + Peak-Semantik + Spektrum-FFT-Block; der
   **Release-Build zeigt 2 % / 0 XRuns** — auf Ableton-Niveau, kein
   Code-Übeltäter. CPU-Vergleiche künftig nur im Release-Build.
+- **Buffer-Untergrenze wieder entfernt (04.07.2026 abends):** der
+  Release-Build fährt beim User sogar **32 Samples XRun-frei** — die
+  statische Unter-64-Warnung vom Nachmittag war damit schon wieder
+  überholt (sie hing an der Debug-Messung). Neue Regel: computeWarning
+  warnt nur noch über 256 (Latenz) und bei falscher Rate; ob ein kleiner
+  Buffer trägt, beurteilt der **XRun-Zähler live** — die bessere,
+  maschinen- und build-gerechte Instanz. Erststart-Default bleibt 128.
 
 **Looper Spektrum-View — FERTIG (04.07.2026, Bausteine S1–S2):**
 

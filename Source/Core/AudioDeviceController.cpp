@@ -36,19 +36,21 @@ AudioDeviceController::~AudioDeviceController()
 //==============================================================================
 juce::String AudioDeviceController::computeWarning (double sampleRate, int bufferSize)
 {
-    // Latenz-Ziele (CLAUDE.md 3.2): 48/44.1 kHz, Buffer 64–256 Samples.
-    // Feld-Lektion 04.07.2026: 32 Samples rissen Callback-Deadlines
-    // (Beat-Achsen-Rutscher → Looper-Re-Syncs) — unter 64 warnt die UI
-    // deshalb genauso wie über 256 (spürbare Latenz).
+    // Latenz-Ziele (CLAUDE.md 3.2): 48/44.1 kHz, Buffer bis 256 Samples.
+    // KEINE statische Untergrenze (User-Entscheidung 04.07.2026 abends):
+    // ob ein kleiner Buffer trägt, hängt an Maschine UND Build (Debug riss
+    // bei 32 Deadlines, Release läuft sie locker) — das beurteilt der
+    // XRun-Zähler des CallbackTimingMonitor live, nicht eine feste Zahl.
+    // Über 256 bleibt die Warnung: spürbare Latenz ist build-unabhängig.
     const bool rateOk   = juce::approximatelyEqual (sampleRate, 48000.0)
                        || juce::approximatelyEqual (sampleRate, 44100.0);
-    const bool bufferOk = bufferSize >= 64 && bufferSize <= 256;
+    const bool bufferOk = bufferSize <= 256;
 
     if (rateOk && bufferOk)
         return {};
 
     return juce::String (sampleRate, 0) + " Hz / "
-               + juce::String (bufferSize) + " Samples (Ziel: 48000 Hz / 64-256)";
+               + juce::String (bufferSize) + " Samples (Ziel: 48000 Hz / max. 256)";
 }
 
 //==============================================================================

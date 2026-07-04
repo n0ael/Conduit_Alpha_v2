@@ -437,6 +437,7 @@ void EngineProcessor::prepareToPlay (double sampleRate, int samplesPerBlock)
     inputLevels.prepare  (sampleRate, getTotalNumInputChannels());
     outputLevels.prepare (sampleRate, getTotalNumOutputChannels());
     inputLinkSend.prepare (samplesPerBlock);
+    timingMonitor.prepare (sampleRate);  // frische XRun-/Load-Diagnose
 }
 
 void EngineProcessor::releaseResources()
@@ -460,6 +461,10 @@ void EngineProcessor::releaseResources()
 void EngineProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::MidiBuffer& midiMessages)
 {
     juce::ScopedNoDenormals noDenormals;
+
+    // Timing-Diagnose (Dev-Modus): Gap-/Load-Messung umschließt den
+    // gesamten Callback — beginBlock vor allem anderen
+    timingMonitor.beginBlock();
 
     // Callback-aktiv-Marker für den Consumer-Wechsel-Guard in
     // releaseResources() — Eintritt hier, Austritt am Ende des Blocks
@@ -564,6 +569,7 @@ void EngineProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::Midi
         outputLevels.process (buffer, getTotalNumOutputChannels());
     }
 
+    timingMonitor.endBlock (buffer.getNumSamples());
     audioCallbackActive.store (false, std::memory_order_release);
 }
 

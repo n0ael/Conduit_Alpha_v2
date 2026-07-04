@@ -446,6 +446,7 @@ if(CONDUIT_BUILD_TESTS)
     set(CONDUIT_TEST_CPP_SOURCES
         Tests/Core/AirwindowsModuleTests.cpp
         Tests/Core/AudioDeviceControllerTests.cpp
+        Tests/Core/CallbackTimingMonitorTests.cpp
         Tests/Core/CaptureBufferTests.cpp
         Tests/Core/CaptureGateTests.cpp
         Tests/Core/CaptureMeterTests.cpp

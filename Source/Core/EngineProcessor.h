@@ -2,6 +2,7 @@
 
 #include <juce_audio_processors/juce_audio_processors.h>
 
+#include "CallbackTimingMonitor.h"
 #include "Capture/CaptureService.h"
 #include "Capture/LevelMeter.h"
 #include "ChannelNames.h"
@@ -192,6 +193,9 @@ public:
     /** Status fürs UI (Tape-LED, Stop-Kachel, Statuszeile). */
     [[nodiscard]] const LooperEngine& getLooperEngine() const noexcept { return looperEngine; }
 
+    /** Callback-Timing-Diagnose (XRuns/Load) für die Dev-Modus-Anzeige. */
+    [[nodiscard]] CallbackTimingMonitor& getTimingMonitor() noexcept { return timingMonitor; }
+
     /** OSC-Send-Pfad (7.3): Ziel-Host/Port/Enable (App-Zustand, Settings-UI)
         und der Snapshot-Diff-Sender selbst. */
     [[nodiscard]] OscSendSettings& getOscSendSettings() noexcept;
@@ -304,6 +308,10 @@ private:
     // Loop-Playback (B5): nach Master-Tap/Binner, vor dem Metronom auf
     // das Anker-Paar der TransportSettings (looperAnchor)
     LooperEngine looperEngine;
+
+    // Callback-Timing-Diagnose (Dev-Modus): XRun-/Load-Messung um den
+    // gesamten processBlock — begin als erste, end als letzte Operation
+    CallbackTimingMonitor timingMonitor;
 
     // Sicht-Metering (Ableton-Style) für die audio_in/audio_out-Kacheln —
     // getrennt vom capture-InputMeter; processBlock speist beide.

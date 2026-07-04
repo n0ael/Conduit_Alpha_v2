@@ -51,8 +51,18 @@
   darüber spürbare Latenz), Erststart-Default 48 kHz / **128** statt 32
   (AudioDeviceController + Tests + CLAUDE.md 3.2 nachgezogen). Der Snap-Declick
   bleibt wichtig: Re-Syncs durch Link-Peer-Flapping/USB gibt es auch ohne
-  Underruns — jetzt als ~20-ms-Dip statt Klick. Nächste Diagnose-Stufe (bei
-  Bedarf): XRun-/Callback-Timing-Zähler in der App.
+  Underruns — jetzt als ~20-ms-Dip statt Klick.
+- **XRun-/Callback-Timing-Zähler — umgesetzt (04.07.2026, User-Auftrag):**
+  `CallbackTimingMonitor` (Source/Core, header-only, tick-injizierte
+  Kernlogik → 7 Unit-Tests): misst um den GESAMTEN processBlock (a) den
+  Start-zu-Start-Gap aufeinanderfolgender Callbacks — Gap > 2× Blockdauer
+  = XRun/Deadline-Riss — und (b) die Rechenzeit als Peak-Load in ‰ des
+  Block-Budgets (peak-hold, UI konsumiert pro Tick). QPC-Wall-Clock als
+  dokumentierte 3.1-Ausnahme (nur Diagnose, nie Zeitbasis). Anzeige:
+  TransportBar-Label „DSP x % · N XRuns" rechts neben der Setup-Warnung.
+  **Beide Diagnose-Anzeigen (XRuns/Load + Looper-Re-Syncs) sind an den
+  Dev-Modus gekoppelt** (UiSettings::devMode, Settings-Tab „Oberfläche") —
+  Dev-Modus aus = cleane Oberfläche, Zähler laufen intern weiter.
 
 **Looper Spektrum-View — FERTIG (04.07.2026, Bausteine S1–S2):**
 

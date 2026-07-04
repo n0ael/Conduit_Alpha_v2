@@ -600,6 +600,10 @@ void EngineEditor::timerCallback()
     if (capturePanel.isVisible())
         capturePanel.refresh();
 
+    // Diagnose-Anzeigen (Re-Syncs, XRuns/Load) nur im Dev-Modus —
+    // User-Entscheidung 04.07.2026
+    const auto devMode = engine.getUiSettings().isDevModeEnabled();
+
     // Looper-Status (B5): Tape-LED (Page offen ODER Loop spielt), Stop-
     // Kachel und Statuszeile der Looper-Page
     {
@@ -618,7 +622,7 @@ void EngineEditor::timerCallback()
 
             // Diagnose: Playhead-Re-Syncs (Duck-Snaps) — häufen sie sich,
             // wackelt die Link-Achse oder der Audio-Callback (Engine-Doku)
-            if (const auto snaps = looper.getSnapCount(); snaps > 0)
+            if (const auto snaps = looper.getSnapCount(); devMode && snaps > 0)
                 looperStatus << juce::String::fromUTF8 (" · ") << juce::String (snaps)
                              << (snaps == 1 ? " Re-Sync" : " Re-Syncs");
 
@@ -629,6 +633,24 @@ void EngineEditor::timerCallback()
             looperPage.setStatus (juce::String::fromUTF8 (
                 "bereit — Segment-Klick committet die letzten 8/4/2/1 Takte"));
         }
+    }
+
+    // Callback-Timing (Dev-Modus): Peak-Load des letzten UI-Intervalls +
+    // XRuns seit Geräte-Start — trennt "PC überlastet" von "Code-Problem"
+    if (devMode)
+    {
+        auto& timing = engine.getTimingMonitor();
+        const auto loadPercent = (timing.consumePeakLoadPermille() + 5u) / 10u;
+        const auto xruns = timing.getXrunCount();
+
+        transportBar.setDevStatusText ("DSP " + juce::String (loadPercent)
+                                       + juce::String::fromUTF8 (" % · ")
+                                       + juce::String (xruns)
+                                       + (xruns == 1 ? " XRun" : " XRuns"));
+    }
+    else
+    {
+        transportBar.setDevStatusText ({});
     }
 
     // audioSetupWarning folgt dem Controller (setzt/löscht bei Gerätewechsel)

@@ -252,13 +252,16 @@ TransportBar::TransportBar (juce::ValueTree rootTree, LinkClock& linkClockToUse,
     warningLabel.setColour (juce::Label::textColourId, push::colours::ledOrange);
     warningLabel.setJustificationType (juce::Justification::centredRight);
 
+    devStatusLabel.setColour (juce::Label::textColourId, push::colours::textDim);
+    devStatusLabel.setJustificationType (juce::Justification::centredRight);
+
     for (auto* component : std::initializer_list<juce::Component*> {
              &playTile, &tapeTile, &captureTile, &fixedLengthTile, &automateTile,
              &tapTile, &setTile, &nudgeDownTile, &nudgeUpTile,
              &metronomeTile, &tempoTile, &positionTile, &swingTile, &linkTile,
              &plusTile, &undoTile, &saveTile, &gearTile,
              &scaleToggleTile, &rootCombo, &scaleCombo, &browserPanelTile,
-             &warningLabel })
+             &warningLabel, &devStatusLabel })
         addAndMakeVisible (component);
 
     refresh();  // LED-Zustände sofort (Play/Looper-Toggles aus Settings)
@@ -364,6 +367,20 @@ void TransportBar::setWarningText (const juce::String& warning)
 
     warningLabel.setText (warning, juce::dontSendNotification);
     resized();
+}
+
+void TransportBar::setDevStatusText (const juce::String& statusText)
+{
+    if (devStatusLabel.getText() == statusText)
+        return;
+
+    // Layout nur beim Ein-/Ausblenden neu — reine Textwechsel repainten selbst
+    const auto visibilityChanged = devStatusLabel.getText().isEmpty()
+                                != statusText.isEmpty();
+    devStatusLabel.setText (statusText, juce::dontSendNotification);
+
+    if (visibilityChanged)
+        resized();
 }
 
 juce::String TransportBar::formatPosition (double beatPosition)
@@ -544,7 +561,13 @@ void TransportBar::resized()
     for (auto page = (int) pageTiles.size(); --page >= 0;)
         placeRight (*pageTiles[(size_t) page], tile, page == 0 ? 14 : 6);
 
-    // Rest der Mitte: Audio-Setup-Warnung (9.1), rechtsbündig
+    // Rest der Mitte: Dev-Diagnose ganz rechts (nur wenn Text da),
+    // daneben die Audio-Setup-Warnung (9.1), beide rechtsbündig
+    if (devStatusLabel.getText().isNotEmpty())
+        devStatusLabel.setBounds (bounds.removeFromRight (juce::jmin (200, bounds.getWidth())));
+    else
+        devStatusLabel.setBounds ({});
+
     warningLabel.setBounds (bounds);
 }
 

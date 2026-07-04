@@ -74,6 +74,10 @@ public:
     void setCaptureStatus (bool recording, bool held, bool exporting);
     void setWarningText (const juce::String& warning);
 
+    /** Dev-Modus-Diagnose rechts neben der Warnung („DSP x % · N XRuns") —
+        leerer String blendet aus (Editor gatet über UiSettings::devMode). */
+    void setDevStatusText (const juce::String& statusText);
+
     /** Tape-LED (rot): Looper-Page offen ODER Loop spielt (B5). */
     void setLooperStatus (bool pageOpen, bool playing);
 
@@ -188,6 +192,7 @@ private:
                                       push::colours::ledOrange };
 
     juce::Label warningLabel;
+    juce::Label devStatusLabel;   // Dev-Modus: „DSP x % · N XRuns" (Timing-Monitor)
 
     std::vector<ModuleBrowser::Item> browserItems;
     int selectedPage = pageDevice;

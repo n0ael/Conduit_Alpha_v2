@@ -678,7 +678,15 @@ Plattform-spezifisches Setup in `initAudio()` und CMake ist explizit erlaubt.
     Snap war ein Splice-Klick): Snap erst nach snapConfirmBlocks Blöcken,
     dann Duck-Declick (5-ms-Rampe auf 0 → Sprung unter Stille → zurück);
     snapCount als Diagnose in der Looper-Statuszeile („N Re-Syncs" —
-    häuft er sich, wackelt Link-Achse oder Audio-Callback).
+    häuft er sich, wackelt Link-Achse oder Audio-Callback; Anzeige nur
+    im Dev-Modus, UiSettings::devMode).
+  - **Callback-Timing-Diagnose** (`Source/Core/CallbackTimingMonitor`,
+    Dev-Modus): XRun-Zähler (Callback-Start-Gap > 2× Blockdauer =
+    Deadline-Riss) + Peak-Load in ‰ des Block-Budgets, gemessen um den
+    GESAMTEN processBlock (QPC-Wall-Clock als dokumentierte 3.1-Ausnahme,
+    NUR Diagnose, nie Zeitbasis). TransportBar zeigt „DSP x % · N XRuns"
+    rechts neben der Setup-Warnung — trennt „PC überlastet" von
+    „Code-Problem", bevor der Looper re-syncen muss.
   - **Spektrum-View:** der Strip schaltet per Spectrum-Kachel (persistiert
     als looperSpectrum, TransportSettings) auf ein Spektrogramm um —
     zweiter always-on Tap-Pfad (FFT 2048/Hann, 64 Log-Bänder via

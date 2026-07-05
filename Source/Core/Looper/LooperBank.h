@@ -10,6 +10,7 @@
 
 #include "BarSampleAnchors.h"
 #include "Core/Capture/CaptureService.h"
+#include "Core/Capture/LevelMeter.h"
 #include "Interfaces/IClockSource.h"
 #include "LooperClip.h"
 #include "LooperClipMath.h"
@@ -21,14 +22,11 @@ namespace conduit
 
 //==============================================================================
 /**
-    Multi-Looper-Playback des Looper-Vollausbaus (M2) — Nachfolger der
+    Multi-Looper-Playback des Looper-Vollausbaus (M2/M3) — Nachfolger der
     LooperEngine (Retro-Looper B5, git-Historie), deren Playhead/Wrap-
     Crossfade/Commit-Pfad hier 1:1 weiterleben. Herleitungen (Wall-Clock-
     Jitter-Lektion, Snap-Declick, Duck, Lead-in) stehen in CLAUDE.md 10.0
-    „Retro-Looper" und den Kommentaren unten. Engine-Level wie das Metronom,
-    bewusst OHNE EngineProcessor-Abhängigkeit (nur ClockState +
-    CaptureService + BarSampleAnchors + AudioBuffer per Parameter) — das
-    spätere patchbare LooperModule hostet dieselbe Klasse.
+    „Retro-Looper" und den Kommentaren unten.
 
     Struktur: bis zu maxLoopers × maxTracks TrackPlayer, jeder mit
     voicesPerTrack Crossfade-Voices. Voices REFERENZIEREN LooperClips
@@ -37,8 +35,9 @@ namespace conduit
 
     Threading (strikt, CLAUDE.md 3.1):
       - Voices/Playhead sind AUDIO-only-Zustand; der MT fasst sie nie an.
-      - MT → Audio: SpscQueue<ClipCommand> (activate/deleteClip/stopTrack)
-        + Atomics (stopAll, anchor). Clips sind beim Push fertig gebaut.
+      - MT → Audio: SpscQueue<ClipCommand> (activate/start/retrigger/
+        stopTrack/deleteClip) + Atomics (stopAll, anchor, Track-Mix).
+        Clips sind beim Push fertig gebaut.
       - Audio → MT: SpscQueue<LooperClip*> (Retire-Quittungen). Ein
         deleteClip wandert IMMER durch den Audio-Thread: erst wenn der die
         Quittung pusht, ist garantiert keine Voice-Referenz mehr da —
@@ -48,15 +47,29 @@ namespace conduit
         Retire-Queue Luft für alle denkbaren Quittungen des Blocks hat —
         Überschuss wartet einen Block, nichts geht verloren.
 
+    M3 — Clip-Verhalten & Track-Mix:
+      - Quantisierte Aktionen (Start/Retrigger/Stop) parken als Pending-
+        Action pro Track; der Audio-Thread erkennt die Grid-Überquerung
+        auf dem PLAYHEAD-Beat (Muster 4.5, gridCrossingOffset) und führt
+        sample-genau am Intra-Block-Offset aus. qBeats 0 = Blockanfang.
+        Start ist phasenstarr (Anker bleibt), Retrigger setzt den Anker
+        auf den Grid-Beat (Phase 0 am Launch-Punkt).
+      - Clip-Parameter (Rate/Reverse/×2÷2/Fenster/Reset-Sync) laufen über
+        das Staged/Active-Protokoll des LooperClip: Audio wendet mit
+        seinem exakten Playhead positions-kontinuierlich an; inhärente
+        Lese-Sprünge (÷2 „erste Hälfte" aus der zweiten, Reset-Sync)
+        duckt ein 5-ms-Splice-Dip pro Clip.
+      - Track-Mix: Voices rendern in einen preallozierten Stereo-Scratch;
+        danach Gain (5-ms-Slew) + Equal-Power-Pan + effektives Mute
+        (MT-berechnet aus Mute/Solo/Solo-Scope) → Post-Fader-LevelMeter →
+        additiv aufs Anker-Paar. Meter laufen auch bei OOB-Anker weiter.
+
     RAM-Konto: right-sized Clips statt Prealloc; die Summe aller lebenden
     Clips (Store + Graveyard) ist auf ramBudgetBytes begrenzt — ein Commit
-    über Budget schlägt sauber fehl (kein OOM im Live-Set). Default 1,5 GB
-    (~250 Clips à 2 Takte @ 120 BPM/48 kHz).
+    über Budget schlägt sauber fehl (kein OOM im Live-Set). Default 1,5 GB.
 
-    M2-Scope: commitAndPlay ersetzt den Clip eines Tracks (Paritäts-
-    verhalten zur LooperEngine, ein Loop pro Track); Slot-/Target-Logik
-    kommt mit dem LooperSessionModel (M4), Quantisierung/Rate/Reverse als
-    Verhalten mit M3 (die Clip-Parameter-Mechanik steht bereits).
+    M4 bringt Slot-/Target-Logik (LooperSessionModel) — die Clip-Edits
+    adressieren bis dahin den aktiven Clip eines Tracks.
 */
 class LooperBank
 {
@@ -67,32 +80,94 @@ public:
 
     static constexpr double maxLoopSeconds   = 60.0;
     static constexpr double crossfadeSeconds = 0.005;
+    static constexpr double mixSlewSeconds   = 0.005;
 
-    // Playhead-Konstanten — Herleitung siehe LooperEngine-Doku (übernommen)
+    // Playhead-Konstanten — Herleitung siehe CLAUDE.md 10.0 (übernommen)
     static constexpr double maxSlewRatio       = 0.002;
     static constexpr double snapThresholdBeats = 0.15;
     static constexpr int    snapConfirmBlocks  = 2;
 
+    // Lese-Sprünge oberhalb dieser Schwelle laufen hinter dem Splice-Duck
+    static constexpr double spliceThresholdSamples = 64.0;
+
+    static constexpr double minRate = 0.25, maxRate = 4.0;   // VARI ±2 Oktaven
     static constexpr std::int64_t defaultRamBudgetBytes = 1'500'000'000;
 
     LooperBank();
 
     /** [Message Thread, Audio steht — prepareToPlay] verwirft alle Clips
         und Voices (SampleRate-Wechsel invalidiert Positionen/Inhalte). */
-    void prepare (double sampleRate);
+    void prepare (double sampleRate, int maxBlockSamples);
 
-    /** [Message Thread] Die letzten `bars` kompletten Takte in den Track
-        committen und sofort phasenstarr abspielen — ersetzt dessen
-        laufenden Clip glitch-frei (Voice-Crossfade). Fehlerfälle: keine
-        Quelle, zu wenig Historie, Anker-Fenster, > maxLoopSeconds,
-        RAM-Budget, Command-Queue voll. */
+    //==========================================================================
+    // Commit & Transport [Message Thread]
+
+    /** Die letzten `bars` kompletten Takte in den Track committen und
+        sofort phasenstarr abspielen — ersetzt dessen laufenden Clip
+        glitch-frei (Voice-Crossfade). Fehlerfälle: keine Quelle, zu wenig
+        Historie, Anker-Fenster, > maxLoopSeconds, RAM-Budget, Queue voll. */
     [[nodiscard]] juce::Result commitAndPlay (int looperIndex, int trackIndex,
                                               int bars, const CaptureService& capture,
                                               int leftIndex, int rightIndex,
                                               const BarSampleAnchors& anchors);
 
-    /** [Message Thread] Alle Tracks mit 5-ms-Fade stoppen (Clips bleiben). */
+    /** Clip des Tracks (wieder) starten — phasenstarr, Anker bleibt.
+        qBeats > 0: an der nächsten Grid-Grenze (sample-genau). */
+    [[nodiscard]] juce::Result startTrack (int looperIndex, int trackIndex,
+                                           double qBeats);
+
+    /** Clip des Tracks neu triggern: Phase 0 am Ausführungspunkt
+        (Anker = Grid-Beat). */
+    [[nodiscard]] juce::Result retriggerTrack (int looperIndex, int trackIndex,
+                                               double qBeats);
+
+    /** Track stoppen (5-ms-Fade ab dem Grid-Punkt). */
+    void stopTrack (int looperIndex, int trackIndex, double qBeats) noexcept;
+
+    /** Alle Tracks sofort stoppen (Clips bleiben). */
     void stopAll() noexcept;
+
+    //==========================================================================
+    // Clip-Edits [Message Thread] — wirken auf den aktiven Clip des Tracks
+
+    /** VARI: Rate 0.25×–4× (geclampt), positions-kontinuierlich. */
+    [[nodiscard]] juce::Result setClipRate (int looperIndex, int trackIndex,
+                                            double rate);
+
+    /** Reverse-Toggle; atBoundary = erst an der Loop-Grenze anwenden. */
+    [[nodiscard]] juce::Result toggleClipReverse (int looperIndex, int trackIndex,
+                                                  bool atBoundary);
+
+    /** ×2 (doubleLength=true) / ÷2 — ändert NUR die Länge L (Clamps:
+        ≥ 1 Takt, ≤ Content). ÷2-Hälfte nach HalveMode. */
+    [[nodiscard]] juce::Result multiplyClipLength (int looperIndex, int trackIndex,
+                                                   bool doubleLength,
+                                                   looper::HalveMode halveMode);
+
+    /** „Reset mit Sync": Rate 1× und Anker zurück aufs Commit-Taktraster. */
+    [[nodiscard]] juce::Result resetClipWithSync (int looperIndex, int trackIndex);
+
+    //==========================================================================
+    // Track-Mix [Message Thread schreibt, Audio liest]
+
+    void setTrackGain (int looperIndex, int trackIndex, float gain01) noexcept;
+    void setTrackPan  (int looperIndex, int trackIndex, float pan) noexcept;
+    void setTrackMute (int looperIndex, int trackIndex, bool muted) noexcept;
+    void setTrackSolo (int looperIndex, int trackIndex, bool solo) noexcept;
+
+    /** Solo-Scope (Menü-Option): false = pro Looper (Default), true = global. */
+    void setSoloScopeGlobal (bool global) noexcept;
+
+    /** Post-Fader-Meter des Tracks (UI liest transient pro Tick). */
+    [[nodiscard]] const LevelMeter& getTrackMeter (int looperIndex,
+                                                   int trackIndex) const noexcept
+    {
+        return trackMeters[static_cast<std::size_t> (juce::jlimit (0, maxLoopers - 1, looperIndex))]
+                          [static_cast<std::size_t> (juce::jlimit (0, maxTracks - 1, trackIndex))];
+    }
+
+    //==========================================================================
+    // Service & Routing
 
     /** [Message Thread] Retire-Quittungen einsammeln und Graveyard-Clips
         freigeben (exportPins beachtet) — vom Editor-Timer und vor jedem
@@ -120,11 +195,26 @@ public:
         return playingFlag.load (std::memory_order_relaxed);
     }
 
+    [[nodiscard]] bool isTrackPlaying (int looperIndex, int trackIndex) const noexcept;
+
     /** Takte des zuletzt committeten Loops (0 = keiner) — Paritäts-API. */
     [[nodiscard]] int getLoopBars() const noexcept
     {
         return isPlaying() ? committedBars.load (std::memory_order_relaxed) : 0;
     }
+
+    /** Aktueller (staged) Parametersatz des aktiven Clips fürs UI —
+        false, wenn der Track keinen Clip trägt. [Message Thread] */
+    struct ClipInfo
+    {
+        double rate = 1.0;
+        double lengthBeats = 0.0;
+        bool reversed = false;
+        int commitBars = 0;
+        std::uint32_t clipId = 0;
+    };
+    [[nodiscard]] bool getClipInfo (int looperIndex, int trackIndex,
+                                    ClipInfo& out) const noexcept;
 
     /** Diagnose: Playhead-Re-Syncs (Duck-Snaps) seit prepare. */
     [[nodiscard]] std::uint32_t getSnapCount() const noexcept
@@ -145,27 +235,46 @@ private:
     //==========================================================================
     struct ClipCommand
     {
-        enum class Type : int { activate = 0, deleteClip, stopTrack };
+        enum class Type : int { activate = 0, start, retrigger, stopTrack, deleteClip };
 
         Type type = Type::activate;
         int looper = 0;
         int track = 0;
         LooperClip* clip = nullptr;
+        double qBeats = 0.0;
     };
 
     // Audio-only: Voice referenziert einen Clip; retireOnEnd = dieser Voice
-    // gehört die Retire-Quittung des Clips (deleteClip-Protokoll)
+    // gehört die Retire-Quittung des Clips (deleteClip-Protokoll).
+    // startOffset/fadeStartOffset sind BLOCK-lokal (sample-genaue Aktionen).
     struct Voice
     {
         LooperClip* clip = nullptr;
         float gain = 0.0f;
         bool fading = false;
         bool retireOnEnd = false;
+        int startOffset = 0;
+        int fadeStartOffset = 0;
+    };
+
+    // Audio-only: geparkte quantisierte Aktion des Tracks (letzte gewinnt)
+    struct PendingAction
+    {
+        enum class Type : int { none = 0, start, retrigger, stop };
+        Type type = Type::none;
+        LooperClip* clip = nullptr;
+        double qBeats = 0.0;
     };
 
     struct TrackPlayer
     {
         std::array<Voice, static_cast<std::size_t> (voicesPerTrack)> voices;
+        PendingAction pending;
+
+        // Mix-Zustand (Audio): geslewte Ist-Werte
+        float currentGain = 1.0f;
+        float currentPan = 0.0f;
+        float currentMuteGain = 1.0f;
     };
 
     // MT-only: Graveyard-Eintrag wartet auf die Audio-Quittung + Pins
@@ -176,31 +285,54 @@ private:
     };
 
     //==========================================================================
-    // [Audio] Kommandos des Blocks übernehmen (Drain-Guard, Klassendoku)
-    void drainCommands() noexcept;
-    void handleActivate (const ClipCommand& command) noexcept;
-    void handleDelete (const ClipCommand& command) noexcept;
-
-    /** [Audio] true, wenn irgendeine Voice den Clip (noch) referenziert. */
-    [[nodiscard]] bool anyVoiceReferences (const LooperClip* clip) const noexcept;
-
-    /** [Audio] Retire-Pflicht eines Clips übergeben (an eine noch
-        referenzierende Voice) oder quittieren (Retire-Queue). false nur
-        bei voller Queue — der Caller parkt bis zum nächsten Block. */
-    bool transferOrRetire (LooperClip* clip) noexcept;
-
-    /** Clip aus dem Store in den Graveyard verschieben [MT]. */
+    // [MT] Helfer
+    [[nodiscard]] LooperClip* activeClipFor (int looperIndex, int trackIndex) const noexcept;
     void moveToGraveyard (LooperClip* clip);
+    void updateEffectiveMutes() noexcept;
+    void refreshPlayingFlag() noexcept;
 
-    /** Kanal chunked in den Clip-Buffer lesen (Export-Halte-Protokoll,
-        1:1 LooperEngine) [MT]. */
+    /** Kompletten Staged-Satz schreiben + Version bumpen [MT]. */
+    static void stageClipParams (LooperClip& clip, double rate, double lengthBeats,
+                                 double windowOffsetBeats, bool reversed,
+                                 bool followPhase, bool atWrap, bool resetGrid) noexcept;
+
+    /** Kanal chunked in den Clip-Buffer lesen (Export-Halte-Protokoll) [MT]. */
     static void readChannelChunked (const CaptureChannel* channel,
                                     std::uint64_t startPosition,
                                     float* dest, int numSamples);
 
-    /** Sample eines Clips an (fraktionaler) Content-Position — linear
-        interpoliert, mit Wrap-Crossfade auf den Lead-in (1:1
-        LooperEngine::renderVoiceSample, nur clip-lokale Maße). [Audio] */
+    //==========================================================================
+    // [Audio] Kommandos, Pending-Actions, Parameter-Anwendung
+    void drainCommands() noexcept;
+    void handleActivate (const ClipCommand& command) noexcept;
+    void handleDelete (const ClipCommand& command) noexcept;
+    [[nodiscard]] bool anyVoiceReferences (const LooperClip* clip) const noexcept;
+    bool transferOrRetire (LooperClip* clip) noexcept;
+
+    /** Pending-Action des Tracks am Grid ausführen (sample-genau). */
+    void executePending (TrackPlayer& player, double blockStartBeat,
+                         double beatStep, int numSamples) noexcept;
+
+    /** Voice für einen (Re-)Start beschaffen (Crossfade/Steal) — Anker
+        des Clips wird hier NICHT angefasst. */
+    void launchVoice (TrackPlayer& player, LooperClip* clip, int startOffset) noexcept;
+
+    /** Staged-Version des Clips anwenden (einmal pro Block, exakter
+        Playhead, Splice-Duck bei Lese-Sprüngen). */
+    void applyClipParams (LooperClip& clip, double blockStartBeat,
+                          double beatStep, int numSamples) noexcept;
+
+    /** Kandidaten-Parametersatz aus dem Staged-Satz berechnen —
+        positions-kontinuierlich, wo möglich. */
+    struct CandidateParams
+    {
+        double anchorBeat = 0.0, rate = 1.0, lengthBeats = 0.0, windowOffsetBeats = 0.0;
+        bool reversed = false;
+        std::uint32_t version = 0;
+    };
+    [[nodiscard]] static CandidateParams computeCandidate (const LooperClip& clip,
+                                                           double playheadBeat) noexcept;
+
     [[nodiscard]] static float renderClipSample (const LooperClip& clip, int channel,
                                                  double contentPosition) noexcept;
 
@@ -214,6 +346,10 @@ private:
     int    snapPendingCount = 0;
     bool   snapDucking = false;
     float  duckGain = 1.0f;
+    std::uint64_t blockCounter = 0;
+
+    // Track-Render-Scratch (prealloziert in prepare, Audio-only)
+    std::vector<float> scratchLeft, scratchRight;
 
     // MT → Audio / Audio → MT
     SpscQueue<ClipCommand> commands { 1024 };
@@ -226,11 +362,32 @@ private:
     std::atomic<std::uint32_t> snapCount { 0 };
     std::atomic<std::int64_t>  ramBytesUsed { 0 };
 
+    // Track-Mix-Ziele [MT schreibt, Audio slewt dorthin]
+    std::array<std::array<std::atomic<float>, static_cast<std::size_t> (maxTracks)>,
+               static_cast<std::size_t> (maxLoopers)> targetGain;
+    std::array<std::array<std::atomic<float>, static_cast<std::size_t> (maxTracks)>,
+               static_cast<std::size_t> (maxLoopers)> targetPan;
+    std::array<std::array<std::atomic<bool>, static_cast<std::size_t> (maxTracks)>,
+               static_cast<std::size_t> (maxLoopers)> effectiveMute;
+
+    // Post-Fader-Meter pro Track
+    std::array<std::array<LevelMeter, static_cast<std::size_t> (maxTracks)>,
+               static_cast<std::size_t> (maxLoopers)> trackMeters;
+
+    // MT-only: Mute/Solo-Rohzustand (effektives Mute wird daraus berechnet)
+    std::array<std::array<bool, static_cast<std::size_t> (maxTracks)>,
+               static_cast<std::size_t> (maxLoopers)> mtMute {};
+    std::array<std::array<bool, static_cast<std::size_t> (maxTracks)>,
+               static_cast<std::size_t> (maxLoopers)> mtSolo {};
+    bool soloScopeGlobal = false;
+
     // MT-only: Clip-Besitz + Buchführung
     std::vector<std::unique_ptr<LooperClip>> store;
     std::vector<Grave> graveyard;
     std::array<std::array<LooperClip*, static_cast<std::size_t> (maxTracks)>,
                static_cast<std::size_t> (maxLoopers)> mtActiveClip {};
+    std::array<std::array<bool, static_cast<std::size_t> (maxTracks)>,
+               static_cast<std::size_t> (maxLoopers)> mtTrackPlaying {};
     std::uint32_t nextClipId = 0;
     std::int64_t ramBudgetBytes = defaultRamBudgetBytes;
 

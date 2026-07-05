@@ -57,7 +57,7 @@ struct BankRig
     BankRig()
     {
         service.prepare (testSampleRate, blockSize, 2);
-        bank.prepare (testSampleRate);
+        bank.prepare (testSampleRate, blockSize);
         service.setChannelArmed (0, true);
         service.setChannelArmed (1, true);
 
@@ -491,6 +491,492 @@ TEST_CASE ("LooperBank: process ist allocation-free (RT-Audit)", "[looper]")
 
     if (conduit::rt::isHookActive())
         REQUIRE (conduit::rt::getAllocationViolations() == violationsBefore);
+}
+
+//==============================================================================
+// M3 — Quantisierung, Rate/Reverse/÷2, Track-Mix
+
+TEST_CASE ("LooperBank: quantisierter Start landet sample-genau auf der Taktgrenze", "[looper]")
+{
+    BankRig rig;
+    rig.signal = [] (std::uint64_t) { return 0.4f; };
+
+    rig.feedBars (2.5);
+    REQUIRE (rig.commit (1).wasOk());
+    rig.feedBlocks (4);
+
+    // Stoppen, Stille abwarten
+    rig.bank.stopTrack (0, 0, 0.0);
+    rig.feedBlocks (3);
+    REQUIRE (rig.output.getMagnitude (0, blockSize) < 1.0e-6f);
+
+    // Quantisierter Start (1 Takt): bis zur nächsten Grenze bleibt es still
+    REQUIRE (rig.bank.startTrack (0, 0, 4.0).wasOk());
+
+    const auto beatsPerSample = 120.0 / (60.0 * testSampleRate);
+    double foundBeat = -1.0;
+
+    for (int block = 0; block < 300 && foundBeat < 0.0; ++block)
+    {
+        const auto blockStartBeat = rig.beat;
+        rig.feedBlocks (1);
+
+        for (int i = 0; i < blockSize; ++i)
+            if (std::abs (rig.output.getSample (0, i)) > 1.0e-6f)
+            {
+                foundBeat = blockStartBeat + beatsPerSample * i;
+                break;
+            }
+    }
+
+    REQUIRE (foundBeat >= 0.0);
+
+    // Erster hörbarer Sample liegt auf der Taktgrenze (± 2 Samples)
+    const auto beatInBar = foundBeat - std::floor (foundBeat / 4.0) * 4.0;
+    const auto tolerance = 2.0 * beatsPerSample;
+    REQUIRE ((beatInBar < tolerance || beatInBar > 4.0 - tolerance));
+    REQUIRE (rig.bank.isTrackPlaying (0, 0));
+}
+
+TEST_CASE ("LooperBank: quantisierter Stop endet an der Taktgrenze (+ Fade)", "[looper]")
+{
+    BankRig rig;
+    rig.signal = [] (std::uint64_t) { return 0.4f; };
+
+    rig.feedBars (2.5);
+    REQUIRE (rig.commit (1).wasOk());
+    rig.feedBlocks (4);
+
+    rig.bank.stopTrack (0, 0, 4.0);
+    REQUIRE_FALSE (rig.bank.isTrackPlaying (0, 0));
+
+    const auto beatsPerSample = 120.0 / (60.0 * testSampleRate);
+    double lastAudibleBeat = -1.0;
+
+    for (int block = 0; block < 300; ++block)
+    {
+        const auto blockStartBeat = rig.beat;
+        rig.feedBlocks (1);
+
+        bool silent = true;
+        for (int i = 0; i < blockSize; ++i)
+            if (std::abs (rig.output.getSample (0, i)) > 1.0e-6f)
+            {
+                lastAudibleBeat = blockStartBeat + beatsPerSample * i;
+                silent = false;
+            }
+
+        if (silent && lastAudibleBeat >= 0.0)
+            break;
+    }
+
+    REQUIRE (lastAudibleBeat >= 0.0);
+
+    // Letzter hörbarer Sample: Taktgrenze + 5-ms-Fade (240 Samples)
+    const auto beatInBar = lastAudibleBeat - std::floor (lastAudibleBeat / 4.0) * 4.0;
+    REQUIRE (beatInBar < (240.0 + 4.0) * beatsPerSample);
+}
+
+TEST_CASE ("LooperBank: Retrigger setzt die Phase auf den Ausführungspunkt", "[looper]")
+{
+    BankRig rig;
+
+    // Sägezahn mit 1-Beat-Periode: Content-Beat x ↦ 0.5·frac(x)
+    rig.signal = [] (std::uint64_t pos)
+    { return 0.5f * static_cast<float> (pos % 24000) / 24000.0f; };
+
+    rig.feedBars (2.5);
+    REQUIRE (rig.commit (1).wasOk());
+    rig.feedBlocks (4);
+
+    // Retrigger sofort: Anker = Blockanfangs-Beat des Ausführungsblocks
+    REQUIRE (rig.bank.retriggerTrack (0, 0, 0.0).wasOk());
+    const auto retriggerBeat = rig.beat;   // Kommando greift im nächsten Block
+    rig.feedBlocks (2);                    // Fade-In vorbei
+
+    int checked = 0;
+    for (int block = 0; block < 40; ++block)
+    {
+        const auto blockStartBeat = rig.beat;
+        rig.feedBlocks (1);
+
+        for (int i = 0; i < blockSize; i += 11)
+        {
+            const auto beatAt = blockStartBeat + (120.0 / (60.0 * testSampleRate)) * i;
+            const auto phase = beatAt - retriggerBeat
+                             - std::floor ((beatAt - retriggerBeat) / 4.0) * 4.0;
+
+            const auto fracPhase = phase - std::floor (phase);
+            if (fracPhase < 0.05 || fracPhase > 0.95)
+                continue;  // Sägezahn-Sprung
+            if (phase > 3.98)
+                continue;  // Wrap-Zone
+
+            const auto expected = 0.5f * static_cast<float> (fracPhase);
+            REQUIRE (std::abs (rig.output.getSample (0, i) - expected) < 6.0e-3f);
+            ++checked;
+        }
+    }
+
+    REQUIRE (checked > 1'000);
+}
+
+TEST_CASE ("LooperBank: Reset mit Sync stellt die bar-gelockte Phase wieder her", "[looper]")
+{
+    BankRig rig;
+    rig.signal = [] (std::uint64_t pos)
+    { return 0.5f * static_cast<float> (pos % 24000) / 24000.0f; };
+
+    rig.feedBars (2.5);
+    REQUIRE (rig.commit (1).wasOk());
+    rig.feedBlocks (4);
+
+    // Phase per Retrigger mitten im Takt verstellen
+    while (rig.beat - std::floor (rig.beat / 4.0) * 4.0 < 1.3
+           || rig.beat - std::floor (rig.beat / 4.0) * 4.0 > 1.8)
+        rig.feedBlocks (1);
+    REQUIRE (rig.bank.retriggerTrack (0, 0, 0.0).wasOk());
+    rig.feedBlocks (4);
+
+    // Reset mit Sync → nach Splice-Duck (~2 Blöcke) wieder 0.5·frac(beat)
+    REQUIRE (rig.bank.resetClipWithSync (0, 0).wasOk());
+    rig.feedBlocks (6);
+
+    int checked = 0;
+    for (int block = 0; block < 30; ++block)
+    {
+        const auto blockStartBeat = rig.beat;
+        rig.feedBlocks (1);
+
+        for (int i = 0; i < blockSize; i += 13)
+        {
+            const auto beatAt = blockStartBeat + (120.0 / (60.0 * testSampleRate)) * i;
+            const auto fracBeat = beatAt - std::floor (beatAt);
+            const auto beatInBar = beatAt - std::floor (beatAt / 4.0) * 4.0;
+            if (fracBeat < 0.05 || fracBeat > 0.95 || beatInBar > 3.98)
+                continue;
+
+            const auto expected = 0.5f * static_cast<float> (fracBeat);
+            REQUIRE (std::abs (rig.output.getSample (0, i) - expected) < 6.0e-3f);
+            ++checked;
+        }
+    }
+
+    REQUIRE (checked > 700);
+}
+
+TEST_CASE ("LooperBank: VARI-Rate — klickfreier Wechsel, halbe Rate = halbe Frequenz", "[looper]")
+{
+    BankRig rig;
+
+    // 100-Hz-Sinus (Periode 480 Samples), bar-synchron (200 Perioden/Takt)
+    rig.signal = [] (std::uint64_t pos)
+    {
+        return 0.5f * static_cast<float> (
+            std::sin (juce::MathConstants<double>::twoPi
+                      * static_cast<double> (pos) / 480.0));
+    };
+
+    rig.feedBars (2.5);
+    REQUIRE (rig.commit (1).wasOk());
+    rig.feedBlocks (2);
+
+    const auto countZeroCrossings = [&] (int blocks)
+    {
+        int crossings = 0;
+        float previous = rig.output.getSample (0, blockSize - 1);
+        for (int block = 0; block < blocks; ++block)
+        {
+            rig.feedBlocks (1);
+            for (int i = 0; i < blockSize; ++i)
+            {
+                const auto sample = rig.output.getSample (0, i);
+                if ((previous < 0.0f && sample >= 0.0f) || (previous > 0.0f && sample <= 0.0f))
+                    ++crossings;
+                previous = sample;
+            }
+        }
+        return crossings;
+    };
+
+    const auto fullRate = countZeroCrossings (200);   // 1 Takt
+
+    // Rate 0.5×: positions-kontinuierlich (kein Klick) und halbe Frequenz
+    ContinuityMonitor monitor;
+    REQUIRE (rig.bank.setClipRate (0, 0, 0.5).wasOk());
+    for (int block = 0; block < 4; ++block)
+    {
+        rig.feedBlocks (1);
+        monitor.observe (rig.output, blockSize);
+    }
+    REQUIRE (monitor.maxDelta < 0.02f);
+
+    const auto halfRate = countZeroCrossings (200);
+    REQUIRE (halfRate > fullRate * 4 / 10);
+    REQUIRE (halfRate < fullRate * 6 / 10);
+}
+
+TEST_CASE ("LooperBank: Reverse — sofort dreht die Richtung, Boundary-Modus wartet", "[looper]")
+{
+    BankRig rig;
+
+    // Sägezahn: vorwärts = viele kleine POSITIVE Deltas, rückwärts = negative
+    rig.signal = [] (std::uint64_t pos)
+    { return 0.5f * static_cast<float> (pos % 24000) / 24000.0f; };
+
+    rig.feedBars (2.5);
+    REQUIRE (rig.commit (1).wasOk());
+    rig.feedBlocks (4);
+
+    const auto rampDeltaBalance = [&] (int blocks)
+    {
+        int positive = 0, negative = 0;
+        float previous = 0.0f;
+        bool hasPrevious = false;
+        for (int block = 0; block < blocks; ++block)
+        {
+            rig.feedBlocks (1);
+            for (int i = 0; i < blockSize; ++i)
+            {
+                const auto sample = rig.output.getSample (0, i);
+                if (hasPrevious)
+                {
+                    const auto delta = sample - previous;
+                    if (std::abs (delta) < 0.1f)
+                    {
+                        if (delta > 1.0e-7f)  ++positive;
+                        if (delta < -1.0e-7f) ++negative;
+                    }
+                }
+                previous = sample;
+                hasPrevious = true;
+            }
+        }
+        return positive - negative;
+    };
+
+    REQUIRE (rampDeltaBalance (50) > 10'000);   // vorwärts
+
+    SECTION ("sofort: Richtung dreht im nächsten Block")
+    {
+        REQUIRE (rig.bank.toggleClipReverse (0, 0, false).wasOk());
+        rig.feedBlocks (2);
+        REQUIRE (rampDeltaBalance (50) < -10'000);
+
+        // Zurück: wieder vorwärts
+        REQUIRE (rig.bank.toggleClipReverse (0, 0, false).wasOk());
+        rig.feedBlocks (2);
+        REQUIRE (rampDeltaBalance (50) > 10'000);
+    }
+
+    SECTION ("an der Loop-Grenze: bis zum Wrap bleibt es vorwärts")
+    {
+        // Kurz nach einer Taktgrenze togglen → fast ein ganzer Takt vorwärts
+        while (rig.beat - std::floor (rig.beat / 4.0) * 4.0 > 0.4)
+            rig.feedBlocks (1);
+        REQUIRE (rig.bank.toggleClipReverse (0, 0, true).wasOk());
+
+        // Die nächsten ~2 Beats: noch vorwärts
+        REQUIRE (rampDeltaBalance (100) > 5'000);
+
+        // Nach dem Wrap (restlicher Takt + Reserve): rückwärts
+        rig.feedBars (1.0);
+        REQUIRE (rampDeltaBalance (50) < -10'000);
+    }
+}
+
+TEST_CASE ("LooperBank: ×2/÷2 ändern nur L — Fenster-Wahl erste/aktuelle Hälfte", "[looper]")
+{
+    BankRig rig;
+
+    // Sägezahn mit 2-TAKT-Periode: Content-Beat x ∈ [0, 8) ↦ 0.5·x/8 —
+    // erste und zweite Content-Hälfte sind damit unterscheidbar
+    rig.signal = [] (std::uint64_t pos)
+    { return 0.5f * static_cast<float> (pos % 192000) / 192000.0f; };
+
+    rig.feedBars (4.5);
+    REQUIRE (rig.commit (2).wasOk());
+    rig.feedBlocks (4);
+
+    const auto sampleMidBar = [&]() -> float
+    {
+        // Mitte des nächsten Takts abgreifen (weit weg von Wrap + Periodensprung)
+        while (rig.beat - std::floor (rig.beat / 4.0) * 4.0 > 0.5)
+            rig.feedBlocks (1);
+        while (rig.beat - std::floor (rig.beat / 4.0) * 4.0 < 1.9)
+            rig.feedBlocks (1);
+        return rig.output.getSample (0, blockSize / 2);
+    };
+
+    SECTION ("÷2 erste Hälfte: nur Werte der ersten Content-Hälfte")
+    {
+        REQUIRE (rig.bank.multiplyClipLength (0, 0, false,
+                                              conduit::looper::HalveMode::firstHalf).wasOk());
+        rig.feedBlocks (6);  // ggf. Splice-Duck abwarten
+
+        for (int bar = 0; bar < 4; ++bar)
+        {
+            const auto value = sampleMidBar();
+            // Erste Hälfte des Contents: Beats [0, 4) → Werte 0 … 0.25
+            REQUIRE (value < 0.26f);
+        }
+    }
+
+    SECTION ("÷2 aktuelle Hälfte aus der zweiten: Werte der zweiten Content-Hälfte")
+    {
+        // In die zweite Content-Hälfte laufen (Phase ∈ [4, 8))
+        while (rig.beat - std::floor (rig.beat / 8.0) * 8.0 < 5.0)
+            rig.feedBlocks (1);
+
+        REQUIRE (rig.bank.multiplyClipLength (0, 0, false,
+                                              conduit::looper::HalveMode::currentHalf).wasOk());
+        rig.feedBlocks (6);
+
+        for (int bar = 0; bar < 4; ++bar)
+        {
+            const auto value = sampleMidBar();
+            // Zweite Hälfte: Beats [4, 8) → Werte 0.25 … 0.5
+            REQUIRE (value > 0.24f);
+        }
+    }
+
+    SECTION ("×2 nach ÷2 stellt den vollen Loop wieder her")
+    {
+        REQUIRE (rig.bank.multiplyClipLength (0, 0, false,
+                                              conduit::looper::HalveMode::firstHalf).wasOk());
+        rig.feedBlocks (6);
+        REQUIRE (rig.bank.multiplyClipLength (0, 0, true,
+                                              conduit::looper::HalveMode::firstHalf).wasOk());
+        rig.feedBlocks (6);
+
+        // Voller 2-Takt-Loop: Werte erreichen wieder > 0.26 (zweite Hälfte)
+        float maxValue = 0.0f;
+        for (int bar = 0; bar < 4; ++bar)
+            maxValue = juce::jmax (maxValue, sampleMidBar());
+        REQUIRE (maxValue > 0.26f);
+
+        // ×2 über den Content hinaus clampt (Info bleibt 8 Beats)
+        REQUIRE (rig.bank.multiplyClipLength (0, 0, true,
+                                              conduit::looper::HalveMode::firstHalf).wasOk());
+        LooperBank::ClipInfo info;
+        REQUIRE (rig.bank.getClipInfo (0, 0, info));
+        REQUIRE (info.lengthBeats == 8.0);
+    }
+}
+
+TEST_CASE ("LooperBank: Track-Mix — Gain, Pan (Balance), Mute, Solo-Scope", "[looper]")
+{
+    BankRig rig;
+    rig.signal = [] (std::uint64_t) { return 0.4f; };
+
+    rig.feedBars (2.5);
+    REQUIRE (rig.commit (1, 0, 0).wasOk());
+    rig.feedBlocks (4);
+
+    SECTION ("Gain 0.5 halbiert den Pegel (nach 5-ms-Slew)")
+    {
+        rig.bank.setTrackGain (0, 0, 0.5f);
+        rig.feedBlocks (3);
+        REQUIRE (std::abs (rig.output.getSample (0, 100) - 0.2f) < 5.0e-3f);
+    }
+
+    SECTION ("Pan −1: links Unity, rechts still (Balance-Gesetz)")
+    {
+        rig.bank.setTrackPan (0, 0, -1.0f);
+        rig.feedBlocks (3);
+        REQUIRE (std::abs (rig.output.getSample (0, 100) - 0.4f) < 5.0e-3f);
+        REQUIRE (std::abs (rig.output.getSample (1, 100)) < 5.0e-3f);
+    }
+
+    SECTION ("Mute → Stille, Unmute → zurück")
+    {
+        rig.bank.setTrackMute (0, 0, true);
+        rig.feedBlocks (3);
+        REQUIRE (rig.output.getMagnitude (0, blockSize) < 1.0e-3f);
+
+        rig.bank.setTrackMute (0, 0, false);
+        rig.feedBlocks (3);
+        REQUIRE (std::abs (rig.output.getSample (0, 100) - 0.4f) < 5.0e-3f);
+    }
+
+    SECTION ("Solo-Scope: pro Looper vs. global")
+    {
+        // Drei Tracks: Looper 0/Track 0+1, Looper 1/Track 0 — Summe 1.2
+        REQUIRE (rig.commit (1, 0, 1).wasOk());
+        REQUIRE (rig.commit (1, 1, 0).wasOk());
+        rig.feedBlocks (4);
+        REQUIRE (std::abs (rig.output.getSample (0, 100) - 1.2f) < 1.0e-2f);
+
+        // Solo (0,1), Scope pro Looper: (0,0) stumm, Looper 1 läuft weiter
+        rig.bank.setTrackSolo (0, 1, true);
+        rig.feedBlocks (3);
+        REQUIRE (std::abs (rig.output.getSample (0, 100) - 0.8f) < 1.0e-2f);
+
+        // Scope global: auch Looper 1 stumm → nur der Solo-Track bleibt
+        rig.bank.setSoloScopeGlobal (true);
+        rig.feedBlocks (3);
+        REQUIRE (std::abs (rig.output.getSample (0, 100) - 0.4f) < 1.0e-2f);
+
+        // Solo weg → alles zurück
+        rig.bank.setTrackSolo (0, 1, false);
+        rig.feedBlocks (3);
+        REQUIRE (std::abs (rig.output.getSample (0, 100) - 1.2f) < 1.0e-2f);
+    }
+
+    SECTION ("Post-Fader-Meter folgt dem Fader")
+    {
+        rig.feedBlocks (20);   // RMS-Fenster (150 ms) füllen
+        REQUIRE (rig.bank.getTrackMeter (0, 0).getPeak (0) > 0.35f);
+        REQUIRE (rig.bank.getTrackMeter (0, 0).getRms (0) > 0.3f);
+
+        // Fader zu → RMS fällt (Peak hat 1,5-s-Ballistik, dauert länger)
+        rig.bank.setTrackGain (0, 0, 0.0f);
+        rig.feedBlocks (100);   // RMS fällt mit exp(−t/0.3 s) → ~0.014 nach 1 s
+        REQUIRE (rig.bank.getTrackMeter (0, 0).getRms (0) < 0.05f);
+    }
+}
+
+TEST_CASE ("LooperBank: 16 Tracks parallel — beschränkt und allocation-free", "[looper]")
+{
+    BankRig rig;
+    rig.signal = [] (std::uint64_t) { return 0.4f; };
+
+    rig.feedBars (2.5);
+    for (int l = 0; l < LooperBank::maxLoopers; ++l)
+        for (int t = 0; t < LooperBank::maxTracks; ++t)
+            REQUIRE (rig.commit (1, l, t).wasOk());
+
+    rig.feedBlocks (4);
+    REQUIRE (std::abs (rig.output.getSample (0, 100) - 16.0f * 0.4f) < 0.05f);
+
+    const auto violationsBefore = conduit::rt::getAllocationViolations();
+    {
+        const conduit::rt::ScopedRealtimeSection rtAudit;
+        rig.feedBlocks (64);
+    }
+    if (conduit::rt::isHookActive())
+        REQUIRE (conduit::rt::getAllocationViolations() == violationsBefore);
+
+    // Aktionen auf allen Tracks bleiben beschränkt
+    for (int l = 0; l < LooperBank::maxLoopers; ++l)
+        rig.bank.stopTrack (l, 2, 0.0);
+    rig.feedBlocks (3);
+    REQUIRE (std::abs (rig.output.getSample (0, 100) - 12.0f * 0.4f) < 0.05f);
+}
+
+TEST_CASE ("LooperBank: Aktionen ohne Clip schlagen sauber fehl", "[looper]")
+{
+    BankRig rig;
+    rig.feedBars (1.5);
+
+    REQUIRE (rig.bank.startTrack (0, 0, 0.0).failed());
+    REQUIRE (rig.bank.retriggerTrack (0, 0, 0.0).failed());
+    REQUIRE (rig.bank.setClipRate (0, 0, 2.0).failed());
+    REQUIRE (rig.bank.toggleClipReverse (0, 0, false).failed());
+    REQUIRE (rig.bank.resetClipWithSync (0, 0).failed());
+
+    LooperBank::ClipInfo info;
+    REQUIRE_FALSE (rig.bank.getClipInfo (0, 0, info));
 }
 
 //==============================================================================

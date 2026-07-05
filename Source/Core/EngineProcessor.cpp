@@ -434,7 +434,7 @@ void EngineProcessor::prepareToPlay (double sampleRate, int samplesPerBlock)
     // Capture-Indizes der virtuellen Slots neu (B3); Waveform-Binner und
     // Loop-Playback verwerfen ihren Stand (SampleClock-Reset, B4/B5)
     looperWaveformTap.prepare (sampleRate);
-    looperBank.prepare (sampleRate);
+    looperBank.prepare (sampleRate, samplesPerBlock);
     applyLooperSourceArming();
     inputLevels.prepare  (sampleRate, getTotalNumInputChannels());
     outputLevels.prepare (sampleRate, getTotalNumOutputChannels());

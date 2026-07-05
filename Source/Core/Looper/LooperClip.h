@@ -10,8 +10,8 @@ namespace conduit
 
 //==============================================================================
 /**
-    Ein committeter Loop-Clip des Looper-Vollausbaus (M2) — right-sized beim
-    Commit allokiert (Message Thread), per Pointer an den Audio-Thread
+    Ein committeter Loop-Clip des Looper-Vollausbaus (M2/M3) — right-sized
+    beim Commit allokiert (Message Thread), per Pointer an den Audio-Thread
     gereicht (LooperBank-Command-Queue), nie auf dem Audio-Thread freigegeben
     (Retire-Queue → serviceMessageThread).
 
@@ -19,18 +19,26 @@ namespace conduit
     Lead-in (Material VOR dem Loop-Start, fürs Wrap-Blending),
     [crossfadeSamples, crossfadeSamples + numContentSamples) = der Content.
 
-    Feld-Klassen:
-      - KONSTANT ab Commit (MT schreibt vor der Publikation, danach read-only
-        auf beiden Threads): buffer, numContentSamples, crossfadeSamples,
-        contentBeats, samplesPerBeatRecorded, commitStartSample, clipId,
-        commitBars.
-      - MUTABEL (MT schreibt, Audio liest blockkonstant am Blockanfang):
-        anchorBeat/lengthBeats/rate/reversed/windowOffsetBeats — die
-        Clip-Phase-Parameter (LooperClipMath). paramVersion inkrementiert
-        der MT NACH einem zusammengehörigen Update; der Audio-Thread
-        re-ankert phasen-kontinuierlich, wenn sich die Version ändert (M3).
-      - exportPins: Save-Geste (M9) hält den Clip am Leben — die Freigabe
-        eines Graveyard-Clips wartet, bis der Zähler 0 ist.
+    Parameter-Modell (M3, Plan-Entscheidung): STAGED vs. ACTIVE.
+
+      - STAGED [MT schreibt]: die Nutzer-Intention (Rate, Länge, Fenster,
+        Reverse + Interpretations-Flags). Jede Stage-Operation schreibt den
+        KOMPLETTEN Satz und inkrementiert paramVersion (release) — die
+        Flags beschreiben, wie der Satz anzuwenden ist, und bleiben Teil
+        des Satzes (kein One-Shot-Race).
+      - ACTIVE [nur Audio]: die klingenden Parameter. Der Audio-Thread
+        wendet eine neue Version am Blockanfang mit SEINEM exakten
+        Playhead positions-kontinuierlich an (geschlossene Formel,
+        LooperClipMath) — racefrei, kein MT-Schätzwert. Erzeugt die
+        Anwendung einen inhärenten Lese-Sprung (z. B. ÷2 „erste Hälfte"
+        aus der zweiten), wird sie hinter einem 5-ms-Splice-Duck
+        ausgeführt (Dip statt Klick, Muster Snap-Declick).
+      - activeAnchorBeat gehört dem Audio-Thread: Retrigger setzt ihn auf
+        den Ausführungs-Beat (Phase 0 am Launch-Punkt), Start lässt ihn
+        stehen (phasenstarr, Endlesss-Gefühl).
+
+    exportPins: Save-Geste (M9) hält den Clip am Leben — die Freigabe
+    eines Graveyard-Clips wartet, bis der Zähler 0 ist.
 */
 struct LooperClip
 {
@@ -38,23 +46,48 @@ struct LooperClip
 
     juce::AudioBuffer<float> buffer;
 
-    // Konstant ab Commit
+    //==========================================================================
+    // Konstant ab Commit (MT schreibt vor der Publikation)
     int    numContentSamples = 0;
     int    crossfadeSamples  = 0;
     double contentBeats = 0.0;
     double samplesPerBeatRecorded = 0.0;
     std::uint64_t commitStartSample = 0;
+    double commitEndBeat = 0.0;   // bar-locked Original-Anker („Reset mit Sync")
     std::uint32_t clipId = 0;
     int    commitBars = 0;
 
-    // Mutabel [MT schreibt, Audio liest blockkonstant]
-    std::atomic<double> anchorBeat { 0.0 };
-    std::atomic<double> lengthBeats { 0.0 };
-    std::atomic<double> rate { 1.0 };
-    std::atomic<double> windowOffsetBeats { 0.0 };
-    std::atomic<bool>   reversed { false };
+    //==========================================================================
+    // STAGED [MT → Audio]: Nutzer-Intention, Anwendung am Blockanfang
+    std::atomic<double> stagedRate { 1.0 };
+    std::atomic<double> stagedLengthBeats { 0.0 };
+    std::atomic<double> stagedWindowOffsetBeats { 0.0 };
+    std::atomic<bool>   stagedReversed { false };
+
+    // Interpretations-Flags des Staged-Satzes:
+    std::atomic<bool> windowFollowsPhase { false };  // ÷2 „aktuelle Hälfte": Fenster aus Apply-Phase
+    std::atomic<bool> applyAtWrap { false };         // Reverse-Modus „an der Loop-Grenze"
+    std::atomic<bool> resetAnchorToGrid { false };   // „Reset mit Sync": Anker → commitEndBeat
+
     std::atomic<std::uint32_t> paramVersion { 0 };
 
+    //==========================================================================
+    // ACTIVE [nur Audio-Thread]
+    double activeAnchorBeat = 0.0;
+    double activeRate = 1.0;
+    double activeLengthBeats = 0.0;
+    double activeWindowOffsetBeats = 0.0;
+    bool   activeReversed = false;
+    std::uint32_t appliedVersion = 0;
+
+    // Splice-Duck (Audio): Dip vor Anwendungen mit Lese-Sprung
+    bool  splicePending = false;
+    float spliceGain = 1.0f;
+    float spliceStartGain = 1.0f;   // Block-Snapshot fürs Rendering
+    float spliceStep = 0.0f;
+    std::uint64_t lastSeenBlock = 0;  // Param-Apply genau einmal pro Block
+
+    //==========================================================================
     // Save-Geste (M9): > 0 = Export liest gerade aus dem Buffer
     std::atomic<int> exportPins { 0 };
 

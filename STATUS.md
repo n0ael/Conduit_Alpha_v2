@@ -49,6 +49,36 @@ modul-ready).
   EngineProcessor committet auf Looper 0/Track 0 (Paritätsverhalten).
   Tests portiert + neu: Retire-Protokoll (RAM fällt nach Re-Commit auf
   einen Clip zurück), RAM-Budget, Handoff-Stress. 404 Fälle grün.
+- **M3 (fertig, 05.07.2026):** Clip-Verhalten + Track-Mix.
+  - **Quantisierte Aktionen** (Start/Retrigger/Stop pro Track): parken als
+    Pending-Action, der Audio-Thread erkennt die Grid-Überquerung auf dem
+    PLAYHEAD-Beat (gridCrossingOffset) und führt sample-genau am
+    Intra-Block-Offset aus. Start = phasenstarr (Anker bleibt, Endlesss-
+    Gefühl), Retrigger = Anker auf den exakten Grid-Beat (Phase 0 am
+    Launch-Punkt). qBeats 0 = sofort am Blockanfang.
+  - **Staged/Active-Parameterprotokoll** (LooperClip): MT staged den
+    kompletten Satz (Rate/Länge/Fenster/Reverse + Interpretations-Flags) +
+    paramVersion; der Audio-Thread wendet am Blockanfang mit SEINEM
+    exakten Playhead positions-kontinuierlich an (geschlossene Form in
+    computeCandidate subsumiert Rate-Re-Anker, Reverse-Spiegelung,
+    Fenster-Shift). Inhärente Lese-Sprünge (÷2 „erste Hälfte" aus der
+    zweiten, Reset-mit-Sync) laufen hinter einem 5-ms-Splice-Duck pro
+    Clip (Dip statt Klick). Reverse-Modus „an der Loop-Grenze" wartet
+    auf den Wrap-Block.
+  - **Clip-Edits (MT-API):** setClipRate (0.25×–4×), toggleClipReverse
+    (sofort/Boundary), multiplyClipLength (×2/÷2, nur L, Clamps ≥ 1 Takt
+    ≤ Content — ×2 liest weiter in den committeten Content),
+    resetClipWithSync (Rate 1 + Anker → Commit-Raster).
+  - **Track-Mix:** Voices rendern in preallozierten Stereo-Scratch →
+    Gain (5-ms-Slew) + Balance-Pan (Mitte = Unity, equal-power zur Seite)
+    + effektives Mute (MT-berechnet aus Mute/Solo/Solo-Scope pro Looper
+    oder global) → Post-Fader-LevelMeter pro Track → additiv aufs
+    Anker-Paar. Meter laufen auch bei OOB-Anker weiter.
+  - Tests: Grid-Landung sample-genau (Start + Stop), Retrigger-Phase,
+    Reset-mit-Sync, VARI (klickfrei + halbe Frequenz via Zero-Crossings),
+    Reverse-Richtungsstatistik (sofort/Boundary), ÷2-Hälften mit
+    2-Takt-Content, ×2-Restore + Content-Clamp, Mix (Gain/Pan/Mute/
+    Solo-Scopes/Meter), 16 Tracks parallel + RT-Audit. 414 Fälle grün.
 
 ---
 

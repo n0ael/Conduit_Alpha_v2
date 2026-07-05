@@ -11,14 +11,28 @@ LooperBank::LooperBank()
     // beim Live-Hämmern von Commits)
     store.reserve (256);
     graveyard.reserve (256);
+
+    for (auto& looper : targetGain)
+        for (auto& gain : looper)
+            gain.store (1.0f, std::memory_order_relaxed);
+    for (auto& looper : targetPan)
+        for (auto& pan : looper)
+            pan.store (0.0f, std::memory_order_relaxed);
+    for (auto& looper : effectiveMute)
+        for (auto& mute : looper)
+            mute.store (false, std::memory_order_relaxed);
 }
 
 //==============================================================================
-void LooperBank::prepare (double sampleRate)
+void LooperBank::prepare (double sampleRate, int maxBlockSamples)
 {
     preparedSampleRate = sampleRate > 0.0 ? sampleRate : 48000.0;
     crossfadeSamples = juce::jmax (1, (int) std::lround (crossfadeSeconds * preparedSampleRate));
     maxLoopSamples   = (int) std::lround (maxLoopSeconds * preparedSampleRate);
+
+    const auto scratchSize = static_cast<std::size_t> (juce::jmax (16, maxBlockSamples));
+    scratchLeft.assign (scratchSize, 0.0f);
+    scratchRight.assign (scratchSize, 0.0f);
 
     // Audio steht (prepareToPlay) — die SPSC-Rollen dürfen hier einmalig
     // vom MT übernommen werden: Queues leeren, Voices direkt zurücksetzen
@@ -33,8 +47,18 @@ void LooperBank::prepare (double sampleRate)
 
     for (auto& looper : players)
         for (auto& track : looper)
+        {
             for (auto& voice : track.voices)
                 voice = Voice {};
+            track.pending = PendingAction {};
+            track.currentGain = 1.0f;
+            track.currentPan = 0.0f;
+            track.currentMuteGain = 1.0f;
+        }
+
+    for (std::size_t l = 0; l < static_cast<std::size_t> (maxLoopers); ++l)
+        for (std::size_t t = 0; t < static_cast<std::size_t> (maxTracks); ++t)
+            trackMeters[l][t].prepare (preparedSampleRate, 2);
 
     // Alle Clips verwerfen (SampleRate-Wechsel invalidiert Inhalte);
     // export-gepinnte bleiben im Graveyard, bis der Writer fertig ist
@@ -45,7 +69,8 @@ void LooperBank::prepare (double sampleRate)
 
     std::erase_if (graveyard, [] (const Grave& grave)
     {
-        return grave.clip->exportPins.load (std::memory_order_acquire) <= 0;
+        return grave.clip == nullptr
+            || grave.clip->exportPins.load (std::memory_order_acquire) <= 0;
     });
     for (auto& grave : graveyard)
         grave.audioReleased = true;
@@ -57,6 +82,8 @@ void LooperBank::prepare (double sampleRate)
 
     for (auto& looper : mtActiveClip)
         looper.fill (nullptr);
+    for (auto& looper : mtTrackPlaying)
+        looper.fill (false);
 
     playingFlag.store (false, std::memory_order_relaxed);
     committedBars.store (0, std::memory_order_relaxed);
@@ -67,6 +94,7 @@ void LooperBank::prepare (double sampleRate)
     snapPendingCount = 0;
     snapDucking = false;
     duckGain = 1.0f;
+    blockCounter = 0;
 }
 
 //==============================================================================
@@ -122,7 +150,7 @@ juce::Result LooperBank::commitAndPlay (int looperIndex, int trackIndex, int bar
     clip->buffer.clear();
 
     // Lead-in beginnt crossfadeSamples VOR dem Loop-Start; am Session-
-    // Anfang fehlt er ggf. → der unlesbare Teil bleibt Stille (1:1 Engine)
+    // Anfang fehlt er ggf. → der unlesbare Teil bleibt Stille
     const auto leadIn = static_cast<std::uint64_t> (crossfadeSamples);
     const auto readStart = startSample >= leadIn ? startSample - leadIn : 0;
     const auto padMissing = static_cast<int> (leadIn - (startSample - readStart));
@@ -138,14 +166,21 @@ juce::Result LooperBank::commitAndPlay (int looperIndex, int trackIndex, int bar
     clip->contentBeats = range.lengthBeats();
     clip->samplesPerBeatRecorded = static_cast<double> (numLoopSamples) / range.lengthBeats();
     clip->commitStartSample = startSample;
+    clip->commitEndBeat = range.endBeat();
     clip->clipId = ++nextClipId;
     clip->commitBars = bars;
 
-    clip->anchorBeat.store (range.endBeat(), std::memory_order_relaxed);
-    clip->lengthBeats.store (range.lengthBeats(), std::memory_order_relaxed);
-    clip->rate.store (1.0, std::memory_order_relaxed);
-    clip->windowOffsetBeats.store (0.0, std::memory_order_relaxed);
-    clip->reversed.store (false, std::memory_order_relaxed);
+    // Staged UND Active identisch initialisieren (Audio kennt den Clip
+    // noch nicht — die einzige legale MT-Schreibstelle der Active-Felder)
+    clip->stagedRate.store (1.0, std::memory_order_relaxed);
+    clip->stagedLengthBeats.store (range.lengthBeats(), std::memory_order_relaxed);
+    clip->stagedWindowOffsetBeats.store (0.0, std::memory_order_relaxed);
+    clip->stagedReversed.store (false, std::memory_order_relaxed);
+    clip->activeAnchorBeat = range.endBeat();
+    clip->activeRate = 1.0;
+    clip->activeLengthBeats = range.lengthBeats();
+    clip->activeWindowOffsetBeats = 0.0;
+    clip->activeReversed = false;
 
     auto* raw = clip.get();
     const auto l = static_cast<std::size_t> (looperIndex);
@@ -156,20 +191,288 @@ juce::Result LooperBank::commitAndPlay (int looperIndex, int trackIndex, int bar
     if (auto* old = mtActiveClip[l][t])
     {
         moveToGraveyard (old);
-        commands.push ({ ClipCommand::Type::deleteClip, looperIndex, trackIndex, old });
+        commands.push ({ ClipCommand::Type::deleteClip, looperIndex, trackIndex, old, 0.0 });
     }
 
     store.push_back (std::move (clip));
     mtActiveClip[l][t] = raw;
     ramBytesUsed.fetch_add (newBytes, std::memory_order_relaxed);
 
-    commands.push ({ ClipCommand::Type::activate, looperIndex, trackIndex, raw });
+    commands.push ({ ClipCommand::Type::activate, looperIndex, trackIndex, raw, 0.0 });
 
     committedBars.store (bars, std::memory_order_relaxed);
-    playingFlag.store (true, std::memory_order_relaxed);
+    mtTrackPlaying[l][t] = true;
+    refreshPlayingFlag();
     return juce::Result::ok();
 }
 
+//==============================================================================
+LooperClip* LooperBank::activeClipFor (int looperIndex, int trackIndex) const noexcept
+{
+    if (looperIndex < 0 || looperIndex >= maxLoopers
+        || trackIndex < 0 || trackIndex >= maxTracks)
+        return nullptr;
+
+    return mtActiveClip[static_cast<std::size_t> (looperIndex)]
+                       [static_cast<std::size_t> (trackIndex)];
+}
+
+juce::Result LooperBank::startTrack (int looperIndex, int trackIndex, double qBeats)
+{
+    auto* clip = activeClipFor (looperIndex, trackIndex);
+    if (clip == nullptr)
+        return juce::Result::fail ("Kein Clip auf diesem Track");
+
+    if (! commands.push ({ ClipCommand::Type::start, looperIndex, trackIndex, clip, qBeats }))
+        return juce::Result::fail ("Looper-Kommando-Queue voll");
+
+    mtTrackPlaying[static_cast<std::size_t> (looperIndex)]
+                  [static_cast<std::size_t> (trackIndex)] = true;
+    refreshPlayingFlag();
+    return juce::Result::ok();
+}
+
+juce::Result LooperBank::retriggerTrack (int looperIndex, int trackIndex, double qBeats)
+{
+    auto* clip = activeClipFor (looperIndex, trackIndex);
+    if (clip == nullptr)
+        return juce::Result::fail ("Kein Clip auf diesem Track");
+
+    if (! commands.push ({ ClipCommand::Type::retrigger, looperIndex, trackIndex, clip, qBeats }))
+        return juce::Result::fail ("Looper-Kommando-Queue voll");
+
+    mtTrackPlaying[static_cast<std::size_t> (looperIndex)]
+                  [static_cast<std::size_t> (trackIndex)] = true;
+    refreshPlayingFlag();
+    return juce::Result::ok();
+}
+
+void LooperBank::stopTrack (int looperIndex, int trackIndex, double qBeats) noexcept
+{
+    if (looperIndex < 0 || looperIndex >= maxLoopers
+        || trackIndex < 0 || trackIndex >= maxTracks)
+        return;
+
+    commands.push ({ ClipCommand::Type::stopTrack, looperIndex, trackIndex, nullptr, qBeats });
+    mtTrackPlaying[static_cast<std::size_t> (looperIndex)]
+                  [static_cast<std::size_t> (trackIndex)] = false;
+    refreshPlayingFlag();
+}
+
+void LooperBank::stopAll() noexcept
+{
+    stopAllRequested.store (true, std::memory_order_release);
+    for (auto& looper : mtTrackPlaying)
+        looper.fill (false);
+    playingFlag.store (false, std::memory_order_relaxed);
+}
+
+void LooperBank::refreshPlayingFlag() noexcept
+{
+    bool any = false;
+    for (const auto& looper : mtTrackPlaying)
+        for (const auto playing : looper)
+            any = any || playing;
+    playingFlag.store (any, std::memory_order_relaxed);
+}
+
+bool LooperBank::isTrackPlaying (int looperIndex, int trackIndex) const noexcept
+{
+    if (looperIndex < 0 || looperIndex >= maxLoopers
+        || trackIndex < 0 || trackIndex >= maxTracks)
+        return false;
+
+    return mtTrackPlaying[static_cast<std::size_t> (looperIndex)]
+                         [static_cast<std::size_t> (trackIndex)];
+}
+
+bool LooperBank::getClipInfo (int looperIndex, int trackIndex, ClipInfo& out) const noexcept
+{
+    const auto* clip = activeClipFor (looperIndex, trackIndex);
+    if (clip == nullptr)
+        return false;
+
+    out.rate = clip->stagedRate.load (std::memory_order_relaxed);
+    out.lengthBeats = clip->stagedLengthBeats.load (std::memory_order_relaxed);
+    out.reversed = clip->stagedReversed.load (std::memory_order_relaxed);
+    out.commitBars = clip->commitBars;
+    out.clipId = clip->clipId;
+    return true;
+}
+
+//==============================================================================
+// Clip-Edits [MT] — jede Operation schreibt den KOMPLETTEN Staged-Satz
+
+void LooperBank::stageClipParams (LooperClip& clip, double rate, double lengthBeats,
+                                  double windowOffsetBeats, bool reversed,
+                                  bool followPhase, bool atWrap, bool resetGrid) noexcept
+{
+    clip.stagedRate.store (rate, std::memory_order_relaxed);
+    clip.stagedLengthBeats.store (lengthBeats, std::memory_order_relaxed);
+    clip.stagedWindowOffsetBeats.store (windowOffsetBeats, std::memory_order_relaxed);
+    clip.stagedReversed.store (reversed, std::memory_order_relaxed);
+    clip.windowFollowsPhase.store (followPhase, std::memory_order_relaxed);
+    clip.applyAtWrap.store (atWrap, std::memory_order_relaxed);
+    clip.resetAnchorToGrid.store (resetGrid, std::memory_order_relaxed);
+    clip.paramVersion.fetch_add (1, std::memory_order_release);
+}
+
+juce::Result LooperBank::setClipRate (int looperIndex, int trackIndex, double rate)
+{
+    auto* clip = activeClipFor (looperIndex, trackIndex);
+    if (clip == nullptr)
+        return juce::Result::fail ("Kein Clip auf diesem Track");
+
+    stageClipParams (*clip,
+                     juce::jlimit (minRate, maxRate, rate),
+                     clip->stagedLengthBeats.load (std::memory_order_relaxed),
+                     clip->stagedWindowOffsetBeats.load (std::memory_order_relaxed),
+                     clip->stagedReversed.load (std::memory_order_relaxed),
+                     false, false, false);
+    return juce::Result::ok();
+}
+
+juce::Result LooperBank::toggleClipReverse (int looperIndex, int trackIndex, bool atBoundary)
+{
+    auto* clip = activeClipFor (looperIndex, trackIndex);
+    if (clip == nullptr)
+        return juce::Result::fail ("Kein Clip auf diesem Track");
+
+    stageClipParams (*clip,
+                     clip->stagedRate.load (std::memory_order_relaxed),
+                     clip->stagedLengthBeats.load (std::memory_order_relaxed),
+                     clip->stagedWindowOffsetBeats.load (std::memory_order_relaxed),
+                     ! clip->stagedReversed.load (std::memory_order_relaxed),
+                     false, atBoundary, false);
+    return juce::Result::ok();
+}
+
+juce::Result LooperBank::multiplyClipLength (int looperIndex, int trackIndex,
+                                             bool doubleLength, looper::HalveMode halveMode)
+{
+    auto* clip = activeClipFor (looperIndex, trackIndex);
+    if (clip == nullptr)
+        return juce::Result::fail ("Kein Clip auf diesem Track");
+
+    const auto currentLength = clip->stagedLengthBeats.load (std::memory_order_relaxed);
+    auto window = clip->stagedWindowOffsetBeats.load (std::memory_order_relaxed);
+
+    // Clamps: ≥ 1 Takt, ≤ Content (×2 liest weiter in den committeten
+    // Content — Inhalt wächst NICHT, User-Entscheidung „nur L ändern")
+    const auto newLength = juce::jlimit (looper::quantumBeats, clip->contentBeats,
+                                         doubleLength ? currentLength * 2.0
+                                                      : currentLength * 0.5);
+    if (juce::exactlyEqual (newLength, currentLength))
+        return juce::Result::ok();
+
+    bool followPhase = false;
+    if (doubleLength)
+    {
+        // Fenster ggf. nach vorn schieben, damit window + L in den Content passt
+        window = juce::jlimit (0.0, juce::jmax (0.0, clip->contentBeats - newLength), window);
+    }
+    else if (halveMode == looper::HalveMode::currentHalf)
+    {
+        // Fenster folgt der Apply-Phase — der Audio-Thread berechnet den
+        // Offset mit SEINEM Playhead (windowFollowsPhase, LooperClip-Doku)
+        followPhase = true;
+    }
+
+    stageClipParams (*clip,
+                     clip->stagedRate.load (std::memory_order_relaxed),
+                     newLength, window,
+                     clip->stagedReversed.load (std::memory_order_relaxed),
+                     followPhase, false, false);
+    return juce::Result::ok();
+}
+
+juce::Result LooperBank::resetClipWithSync (int looperIndex, int trackIndex)
+{
+    auto* clip = activeClipFor (looperIndex, trackIndex);
+    if (clip == nullptr)
+        return juce::Result::fail ("Kein Clip auf diesem Track");
+
+    stageClipParams (*clip,
+                     1.0,
+                     clip->stagedLengthBeats.load (std::memory_order_relaxed),
+                     clip->stagedWindowOffsetBeats.load (std::memory_order_relaxed),
+                     clip->stagedReversed.load (std::memory_order_relaxed),
+                     false, false, true);
+    return juce::Result::ok();
+}
+
+//==============================================================================
+// Track-Mix [MT]
+
+void LooperBank::setTrackGain (int looperIndex, int trackIndex, float gain01) noexcept
+{
+    if (looperIndex < 0 || looperIndex >= maxLoopers
+        || trackIndex < 0 || trackIndex >= maxTracks)
+        return;
+
+    targetGain[static_cast<std::size_t> (looperIndex)][static_cast<std::size_t> (trackIndex)]
+        .store (juce::jlimit (0.0f, 2.0f, gain01), std::memory_order_relaxed);
+}
+
+void LooperBank::setTrackPan (int looperIndex, int trackIndex, float pan) noexcept
+{
+    if (looperIndex < 0 || looperIndex >= maxLoopers
+        || trackIndex < 0 || trackIndex >= maxTracks)
+        return;
+
+    targetPan[static_cast<std::size_t> (looperIndex)][static_cast<std::size_t> (trackIndex)]
+        .store (juce::jlimit (-1.0f, 1.0f, pan), std::memory_order_relaxed);
+}
+
+void LooperBank::setTrackMute (int looperIndex, int trackIndex, bool muted) noexcept
+{
+    if (looperIndex < 0 || looperIndex >= maxLoopers
+        || trackIndex < 0 || trackIndex >= maxTracks)
+        return;
+
+    mtMute[static_cast<std::size_t> (looperIndex)][static_cast<std::size_t> (trackIndex)] = muted;
+    updateEffectiveMutes();
+}
+
+void LooperBank::setTrackSolo (int looperIndex, int trackIndex, bool solo) noexcept
+{
+    if (looperIndex < 0 || looperIndex >= maxLoopers
+        || trackIndex < 0 || trackIndex >= maxTracks)
+        return;
+
+    mtSolo[static_cast<std::size_t> (looperIndex)][static_cast<std::size_t> (trackIndex)] = solo;
+    updateEffectiveMutes();
+}
+
+void LooperBank::setSoloScopeGlobal (bool global) noexcept
+{
+    soloScopeGlobal = global;
+    updateEffectiveMutes();
+}
+
+void LooperBank::updateEffectiveMutes() noexcept
+{
+    bool anySoloGlobal = false;
+    std::array<bool, static_cast<std::size_t> (maxLoopers)> anySoloInLooper {};
+
+    for (std::size_t l = 0; l < static_cast<std::size_t> (maxLoopers); ++l)
+        for (std::size_t t = 0; t < static_cast<std::size_t> (maxTracks); ++t)
+            if (mtSolo[l][t])
+            {
+                anySoloGlobal = true;
+                anySoloInLooper[l] = true;
+            }
+
+    for (std::size_t l = 0; l < static_cast<std::size_t> (maxLoopers); ++l)
+        for (std::size_t t = 0; t < static_cast<std::size_t> (maxTracks); ++t)
+        {
+            const auto soloActive = soloScopeGlobal ? anySoloGlobal : anySoloInLooper[l];
+            const auto muted = mtMute[l][t] || (soloActive && ! mtSolo[l][t]);
+            effectiveMute[l][t].store (muted, std::memory_order_relaxed);
+        }
+}
+
+//==============================================================================
 void LooperBank::moveToGraveyard (LooperClip* clip)
 {
     for (auto& looper : mtActiveClip)
@@ -234,8 +537,6 @@ void LooperBank::readChannelChunked (const CaptureChannel* channel,
     if (! mutableChannel->tryBeginExportRead())
         return;
 
-    // Chunked: ein Teilbereich mit Loch (Gate war zu) schlägt als Ganzes
-    // fehl — kleinere Chunks begrenzen den Stille-Verschnitt an den Rändern
     constexpr int chunkSamples = 65536;
     for (int offset = 0; offset < numSamples; offset += chunkSamples)
     {
@@ -251,13 +552,8 @@ void LooperBank::readChannelChunked (const CaptureChannel* channel,
 }
 
 //==============================================================================
-void LooperBank::stopAll() noexcept
-{
-    stopAllRequested.store (true, std::memory_order_release);
-    playingFlag.store (false, std::memory_order_relaxed);
-}
+// [Audio] Kommandos & Pending-Actions
 
-//==============================================================================
 bool LooperBank::anyVoiceReferences (const LooperClip* clip) const noexcept
 {
     for (const auto& looper : players)
@@ -271,10 +567,6 @@ bool LooperBank::anyVoiceReferences (const LooperClip* clip) const noexcept
 
 bool LooperBank::transferOrRetire (LooperClip* clip) noexcept
 {
-    // Referenziert eine andere Voice den Clip noch (Retrigger), erbt SIE
-    // die Retire-Pflicht; sonst geht die Quittung an den MT. false nur,
-    // wenn die Retire-Queue voll ist (Caller parkt und versucht es im
-    // nächsten Block erneut).
     for (auto& looper : players)
         for (auto& track : looper)
             for (auto& voice : track.voices)
@@ -287,19 +579,19 @@ bool LooperBank::transferOrRetire (LooperClip* clip) noexcept
     return retired.push (clip);
 }
 
-void LooperBank::handleActivate (const ClipCommand& command) noexcept
+void LooperBank::launchVoice (TrackPlayer& player, LooperClip* clip, int startOffset) noexcept
 {
-    auto& player = players[static_cast<std::size_t> (command.looper)]
-                          [static_cast<std::size_t> (command.track)];
-
-    // Laufende Voices des Tracks ausblenden (Re-Commit-Crossfade)
+    // Laufende Voices des Tracks ausblenden (Crossfade ab startOffset)
     for (auto& voice : player.voices)
-        if (voice.clip != nullptr)
+        if (voice.clip != nullptr && ! voice.fading)
+        {
             voice.fading = true;
+            voice.fadeStartOffset = startOffset;
+        }
 
     // Freie Voice nehmen; sind alle belegt (Doppel-Re-Commit im Fade-
     // Fenster), fällt die leiseste — deren Retire-Pflicht wandert sofort
-    // in die Queue (Drain-Guard hat den Platz reserviert)
+    // weiter (Drain-Guard hat den Queue-Platz reserviert)
     Voice* slot = nullptr;
     for (auto& voice : player.voices)
     {
@@ -315,21 +607,38 @@ void LooperBank::handleActivate (const ClipCommand& command) noexcept
 
     if (slot->clip != nullptr && slot->retireOnEnd)
     {
-        // Gestohlene Voice trug die Retire-Pflicht → Pflicht übergeben
-        // bzw. sofort quittieren (Drain-Guard hat den Queue-Platz reserviert)
         auto* stolen = slot->clip;
         slot->clip = nullptr;
         transferOrRetire (stolen);
     }
 
-    slot->clip = command.clip;
+    slot->clip = clip;
     slot->gain = 0.0f;
     slot->fading = false;
     slot->retireOnEnd = false;
+    slot->startOffset = startOffset;
+    slot->fadeStartOffset = 0;
+}
+
+void LooperBank::handleActivate (const ClipCommand& command) noexcept
+{
+    auto& player = players[static_cast<std::size_t> (command.looper)]
+                          [static_cast<std::size_t> (command.track)];
+
+    // Ein Commit ersetzt den Track-Inhalt — geparkte Aktionen verfallen
+    player.pending = PendingAction {};
+    launchVoice (player, command.clip, 0);
 }
 
 void LooperBank::handleDelete (const ClipCommand& command) noexcept
 {
+    // Geparkte Aktionen auf den gelöschten Clip verfallen (sonst würde
+    // eine Pending-Start-Aktion einen Graveyard-Clip wiederbeleben — UAF)
+    for (auto& looper : players)
+        for (auto& track : looper)
+            if (track.pending.clip == command.clip)
+                track.pending = PendingAction {};
+
     // Über die ganze Matrix suchen (Retrigger kann denselben Clip in
     // mehreren Voices halten); genau EINE Voice erbt die Retire-Pflicht
     bool owner = false;
@@ -341,6 +650,7 @@ void LooperBank::handleDelete (const ClipCommand& command) noexcept
                     continue;
 
                 voice.fading = true;
+                voice.fadeStartOffset = 0;
                 if (! owner)
                 {
                     voice.retireOnEnd = true;
@@ -365,19 +675,203 @@ void LooperBank::drainCommands() noexcept
             || command.track < 0 || command.track >= maxTracks)
             continue;
 
+        auto& player = players[static_cast<std::size_t> (command.looper)]
+                              [static_cast<std::size_t> (command.track)];
+
         switch (command.type)
         {
             case ClipCommand::Type::activate:   handleActivate (command); break;
             case ClipCommand::Type::deleteClip: handleDelete (command); break;
 
+            // Quantisierte Aktionen parken pro Track (letzte gewinnt);
+            // Ausführung sample-genau in executePending
+            case ClipCommand::Type::start:
+                player.pending = { PendingAction::Type::start, command.clip, command.qBeats };
+                break;
+
+            case ClipCommand::Type::retrigger:
+                player.pending = { PendingAction::Type::retrigger, command.clip, command.qBeats };
+                break;
+
             case ClipCommand::Type::stopTrack:
-                for (auto& voice : players[static_cast<std::size_t> (command.looper)]
-                                          [static_cast<std::size_t> (command.track)].voices)
-                    if (voice.clip != nullptr)
-                        voice.fading = true;
+                player.pending = { PendingAction::Type::stop, nullptr, command.qBeats };
                 break;
         }
     }
+}
+
+void LooperBank::executePending (TrackPlayer& player, double blockStartBeat,
+                                 double beatStep, int numSamples) noexcept
+{
+    if (player.pending.type == PendingAction::Type::none)
+        return;
+
+    const auto qBeats = player.pending.qBeats;
+    const auto offset = qBeats <= 0.0
+                      ? 0
+                      : looper::gridCrossingOffset (blockStartBeat, beatStep,
+                                                    numSamples, qBeats);
+    if (offset < 0)
+        return;  // Grid-Grenze liegt hinter diesem Block — weiter warten
+
+    switch (player.pending.type)
+    {
+        case PendingAction::Type::start:
+            launchVoice (player, player.pending.clip, offset);
+            break;
+
+        case PendingAction::Type::retrigger:
+            if (auto* clip = player.pending.clip)
+            {
+                // Anker = exakter Grid-Beat (nicht der sample-gerundete) —
+                // Phase 0 liegt damit mathematisch AUF der Grenze
+                clip->activeAnchorBeat = qBeats > 0.0
+                    ? std::ceil (blockStartBeat / qBeats - 1.0e-9) * qBeats
+                    : blockStartBeat + beatStep * offset;
+                launchVoice (player, clip, offset);
+            }
+            break;
+
+        case PendingAction::Type::stop:
+            for (auto& voice : player.voices)
+                if (voice.clip != nullptr && ! voice.fading)
+                {
+                    voice.fading = true;
+                    voice.fadeStartOffset = offset;
+                }
+            break;
+
+        case PendingAction::Type::none:
+            break;
+    }
+
+    player.pending = PendingAction {};
+}
+
+//==============================================================================
+// [Audio] Clip-Parameter-Anwendung (Staged → Active)
+
+LooperBank::CandidateParams LooperBank::computeCandidate (const LooperClip& clip,
+                                                          double playheadBeat) noexcept
+{
+    CandidateParams candidate;
+    candidate.version = clip.paramVersion.load (std::memory_order_acquire);
+    candidate.rate = juce::jlimit (0.01, 16.0,
+                                   clip.stagedRate.load (std::memory_order_relaxed));
+    candidate.reversed = clip.stagedReversed.load (std::memory_order_relaxed);
+
+    const auto stagedLength = clip.stagedLengthBeats.load (std::memory_order_relaxed);
+    candidate.lengthBeats = stagedLength > 0.0 ? stagedLength : clip.activeLengthBeats;
+
+    // Aktuelle Lese-Position (Beats im Content) unter den ACTIVE-Parametern
+    const auto phaseOld = looper::clipPhaseBeats (playheadBeat, clip.activeAnchorBeat,
+                                                  clip.activeRate, clip.activeLengthBeats);
+    const auto readOld = looper::clipReadBeat (phaseOld, clip.activeLengthBeats,
+                                               clip.activeReversed,
+                                               clip.activeWindowOffsetBeats);
+
+    auto window = clip.stagedWindowOffsetBeats.load (std::memory_order_relaxed);
+    if (clip.windowFollowsPhase.load (std::memory_order_relaxed))
+    {
+        // ÷2 „aktuelle Hälfte": Fenster springt auf die gerade spielende
+        // Hälfte — berechnet aus der Apply-Phase (Lese-Kontinuität)
+        const auto rel = readOld - window;
+        if (rel > 0.0 && candidate.lengthBeats > 0.0)
+            window += std::floor (rel / candidate.lengthBeats) * candidate.lengthBeats;
+    }
+    window = juce::jlimit (0.0, juce::jmax (0.0, clip.contentBeats - candidate.lengthBeats),
+                           window);
+    candidate.windowOffsetBeats = window;
+
+    if (clip.resetAnchorToGrid.load (std::memory_order_relaxed))
+    {
+        // „Reset mit Sync": zurück aufs Commit-Taktraster — Positions-
+        // Sprung gewollt, der Splice-Duck deckt ihn
+        candidate.anchorBeat = clip.commitEndBeat;
+        return candidate;
+    }
+
+    // Positions-Kontinuität: Anker so wählen, dass die Lese-Position im
+    // Apply-Moment exakt stehen bleibt (geschlossene Form — subsumiert
+    // Rate-Wechsel, Reverse-Spiegelung und Fenster-Verschiebungen)
+    auto directed = readOld - window;
+    if (! (directed >= 0.0 && directed < candidate.lengthBeats))
+        directed = looper::wrapBeats (directed, candidate.lengthBeats);
+
+    const auto phase = candidate.reversed
+                     ? looper::wrapBeats (candidate.lengthBeats - directed, candidate.lengthBeats)
+                     : directed;
+    candidate.anchorBeat = playheadBeat - phase / candidate.rate;
+    return candidate;
+}
+
+void LooperBank::applyClipParams (LooperClip& clip, double blockStartBeat,
+                                  double beatStep, int numSamples) noexcept
+{
+    const auto gainStep = 1.0f / static_cast<float> (juce::jmax (1, clip.crossfadeSamples));
+
+    const auto apply = [&] (const CandidateParams& candidate) noexcept
+    {
+        clip.activeAnchorBeat = candidate.anchorBeat;
+        clip.activeRate = candidate.rate;
+        clip.activeLengthBeats = candidate.lengthBeats;
+        clip.activeWindowOffsetBeats = candidate.windowOffsetBeats;
+        clip.activeReversed = candidate.reversed;
+        clip.appliedVersion = candidate.version;
+    };
+
+    if (clip.splicePending)
+    {
+        // Duck unten angekommen → unter der Stille anwenden (frisch
+        // berechnet — Staged kann sich seit dem Einleiten geändert haben)
+        if (clip.spliceGain <= 0.0f)
+        {
+            apply (computeCandidate (clip, blockStartBeat));
+            clip.splicePending = false;
+        }
+    }
+    else if (clip.paramVersion.load (std::memory_order_acquire) != clip.appliedVersion)
+    {
+        bool defer = false;
+        if (clip.applyAtWrap.load (std::memory_order_relaxed))
+        {
+            // Reverse-Modus „an der Loop-Grenze": erst im Wrap-Block anwenden
+            const auto phaseStart = looper::clipPhaseBeats (blockStartBeat,
+                                                            clip.activeAnchorBeat,
+                                                            clip.activeRate,
+                                                            clip.activeLengthBeats);
+            const auto phaseEnd = looper::clipPhaseBeats (
+                blockStartBeat + beatStep * numSamples, clip.activeAnchorBeat,
+                clip.activeRate, clip.activeLengthBeats);
+            defer = phaseEnd >= phaseStart;
+        }
+
+        if (! defer)
+        {
+            const auto candidate = computeCandidate (clip, blockStartBeat);
+
+            const auto posOld = looper::clipReadPosition (
+                blockStartBeat, clip.activeAnchorBeat, clip.activeRate,
+                clip.activeLengthBeats, clip.activeReversed,
+                clip.activeWindowOffsetBeats, clip.samplesPerBeatRecorded);
+            const auto posNew = looper::clipReadPosition (
+                blockStartBeat, candidate.anchorBeat, candidate.rate,
+                candidate.lengthBeats, candidate.reversed,
+                candidate.windowOffsetBeats, clip.samplesPerBeatRecorded);
+
+            if (std::abs (posNew - posOld) <= spliceThresholdSamples)
+                apply (candidate);
+            else
+                clip.splicePending = true;   // Lese-Sprung → hinter den Duck
+        }
+    }
+
+    // Block-Snapshot der Splice-Rampe fürs Rendering
+    clip.spliceStartGain = clip.spliceGain;
+    clip.spliceStep = (clip.splicePending ? -1.0f : 1.0f) * gainStep;
+    clip.spliceGain = juce::jlimit (0.0f, 1.0f,
+                                    clip.spliceGain
+                                        + clip.spliceStep * static_cast<float> (numSamples));
 }
 
 //==============================================================================
@@ -400,12 +894,10 @@ float LooperBank::renderClipSample (const LooperClip& clip, int channel,
 
     const auto zoneStart = static_cast<double> (clip.numContentSamples - fade);
 
-    // Außerhalb der Wrap-Zone: direkter Content-Read
     if (contentPosition < zoneStart || clip.numContentSamples <= fade)
         return readLinear (static_cast<double> (fade) + contentPosition);
 
-    // Wrap-Zone [N−F, N): equal-power vom Content-Ende auf den Lead-in —
-    // bei alpha → 1 landet die Blende exakt auf dem Loop-Start-Sample
+    // Wrap-Zone [N−F, N): equal-power vom Content-Ende auf den Lead-in
     const auto zonePosition = contentPosition - zoneStart;          // [0, F)
     const auto alpha = zonePosition / static_cast<double> (fade);   // 0..1
 
@@ -421,23 +913,29 @@ void LooperBank::process (juce::AudioBuffer<float>& buffer, int numOutputChannel
                           const ClockState& clock, std::uint64_t blockStartSample,
                           const BarSampleAnchors& anchors) noexcept
 {
+    ++blockCounter;
+
     // Stop: alle Voices ausblenden (Clips bleiben im Store)
     if (stopAllRequested.exchange (false, std::memory_order_acq_rel))
         for (auto& looper : players)
             for (auto& track : looper)
+            {
+                track.pending = PendingAction {};
                 for (auto& voice : track.voices)
                     if (voice.clip != nullptr)
                         voice.fading = true;
+            }
 
     drainCommands();
 
     const auto beatsPerSample = clock.beatsPerSample();
     const auto numSamples = buffer.getNumSamples();
-    if (numSamples <= 0 || beatsPerSample <= 0.0)
+    if (numSamples <= 0 || beatsPerSample <= 0.0
+        || numSamples > static_cast<int> (scratchLeft.size()))
         return;
 
-    // Beat-Messung jitter-frei aus der SampleClock (1:1 LooperEngine —
-    // Herleitung dort: Anker-Beat + Sample-Abstand statt Wall-Clock)
+    // Beat-Messung jitter-frei aus der SampleClock (Herleitung CLAUDE.md
+    // 10.0: Anker-Beat + Sample-Abstand statt Wall-Clock)
     auto measuredBeat = clock.beatAtBlockStart;
     {
         const auto latestBar = anchors.latestBoundaryBar();
@@ -459,7 +957,6 @@ void LooperBank::process (juce::AudioBuffer<float>& buffer, int numOutputChannel
     }
     else if (std::abs (measuredBeat - playheadBeat) > snapThresholdBeats)
     {
-        // Snap-Kandidat: erst nach snapConfirmBlocks Blöcken glauben
         if (++snapPendingCount >= snapConfirmBlocks)
             snapDucking = true;
     }
@@ -468,7 +965,6 @@ void LooperBank::process (juce::AudioBuffer<float>& buffer, int numOutputChannel
         snapPendingCount = 0;
     }
 
-    // Duck bei Stille angekommen → Playhead UNTER der Stille umsetzen
     if (snapDucking && duckGain <= 0.0f)
     {
         playheadBeat = measuredBeat;
@@ -477,7 +973,6 @@ void LooperBank::process (juce::AudioBuffer<float>& buffer, int numOutputChannel
         snapCount.fetch_add (1, std::memory_order_relaxed);
     }
 
-    // Slew-limitierte Korrektur (unhörbares Varispeed, 1:1 LooperEngine)
     const auto maxCorrection = maxSlewRatio * beatsPerSample
                              * static_cast<double> (numSamples);
     const auto correction = juce::jlimit (-maxCorrection, maxCorrection,
@@ -497,16 +992,41 @@ void LooperBank::process (juce::AudioBuffer<float>& buffer, int numOutputChannel
                ? buffer.getWritePointer (channelA + 1) : nullptr;
 
     const auto gainStep = 1.0f / static_cast<float> (juce::jmax (1, crossfadeSamples));
+    const auto mixStep = preparedSampleRate > 0.0
+                       ? static_cast<float> (1.0 / (mixSlewSeconds * preparedSampleRate))
+                       : gainStep;
 
-    // Duck-Rampe des Blocks (Snap-Declick): linear innerhalb des Blocks
+    // Duck-Rampe des Blocks (Snap-Declick)
     const auto duckStartGain = duckGain;
     const auto duckStep = (snapDucking ? -1.0f : 1.0f) * gainStep;
     duckGain = juce::jlimit (0.0f, 1.0f,
                              duckGain + duckStep * static_cast<float> (numSamples));
 
-    for (auto& looper : players)
-        for (auto& track : looper)
-            for (auto& voice : track.voices)
+    auto* scratch0 = scratchLeft.data();
+    auto* scratch1 = scratchRight.data();
+
+    for (std::size_t l = 0; l < static_cast<std::size_t> (maxLoopers); ++l)
+        for (std::size_t t = 0; t < static_cast<std::size_t> (maxTracks); ++t)
+        {
+            auto& player = players[l][t];
+
+            executePending (player, blockStartBeat, beatStep, numSamples);
+
+            bool anyVoice = false;
+            for (const auto& voice : player.voices)
+                anyVoice = anyVoice || voice.clip != nullptr;
+            if (! anyVoice)
+                continue;
+
+            for (int i = 0; i < numSamples; ++i)
+            {
+                scratch0[i] = 0.0f;
+                scratch1[i] = 0.0f;
+            }
+
+            //==============================================================
+            // Voices → Scratch (pre-fader)
+            for (auto& voice : player.voices)
             {
                 auto* clip = voice.clip;
                 if (clip == nullptr)
@@ -518,55 +1038,61 @@ void LooperBank::process (juce::AudioBuffer<float>& buffer, int numOutputChannel
                     continue;
                 }
 
-                // Clip-Parameter blockkonstant lesen (MT schreibt Atomics)
-                const auto anchorB = clip->anchorBeat.load (std::memory_order_relaxed);
-                const auto lengthB = clip->lengthBeats.load (std::memory_order_relaxed);
-                const auto rateV   = clip->rate.load (std::memory_order_relaxed);
-                const auto revV    = clip->reversed.load (std::memory_order_relaxed);
-                const auto offsetB = clip->windowOffsetBeats.load (std::memory_order_relaxed);
-                const auto maxPosition = static_cast<double> (clip->numContentSamples) - 1.0e-9;
+                // Staged → Active genau einmal pro Block (exakter Playhead)
+                if (clip->lastSeenBlock != blockCounter)
+                {
+                    clip->lastSeenBlock = blockCounter;
+                    applyClipParams (*clip, blockStartBeat, beatStep, numSamples);
+                }
 
-                if (lengthB <= 0.0)
+                if (clip->activeLengthBeats <= 0.0)
                 {
                     voice.clip = nullptr;
                     continue;
                 }
 
-                const auto fading = voice.fading;
+                const auto maxPosition = static_cast<double> (clip->numContentSamples) - 1.0e-9;
+                const auto spliceStart = clip->spliceStartGain;
+                const auto spliceStep  = clip->spliceStep;
 
-                for (int i = 0; i < numSamples; ++i)
+                for (int i = voice.startOffset; i < numSamples; ++i)
                 {
+                    const auto fadingNow = voice.fading && i >= voice.fadeStartOffset;
+
+                    voice.gain = fadingNow ? juce::jmax (0.0f, voice.gain - gainStep)
+                                           : juce::jmin (1.0f, voice.gain + gainStep);
+
+                    if (voice.gain <= 0.0f && fadingNow)
+                        break;
+
                     const auto beat = blockStartBeat + beatStep * i;
                     const auto position = juce::jlimit (
                         0.0, maxPosition,
-                        looper::clipReadPosition (beat, anchorB, rateV, lengthB,
-                                                  revV, offsetB,
+                        looper::clipReadPosition (beat, clip->activeAnchorBeat,
+                                                  clip->activeRate,
+                                                  clip->activeLengthBeats,
+                                                  clip->activeReversed,
+                                                  clip->activeWindowOffsetBeats,
                                                   clip->samplesPerBeatRecorded));
-
-                    voice.gain = fading ? juce::jmax (0.0f, voice.gain - gainStep)
-                                        : juce::jmin (1.0f, voice.gain + gainStep);
-
-                    if (voice.gain <= 0.0f && fading)
-                        break;
-
-                    // Anker außerhalb der Kanalzahl: Fades trotzdem
-                    // nachführen (Gerätewechsel hinterlässt keine Zombies)
-                    if (outA == nullptr)
-                        continue;
 
                     const auto duck = juce::jlimit (0.0f, 1.0f,
                                                     duckStartGain + duckStep * static_cast<float> (i));
+                    const auto splice = juce::jlimit (0.0f, 1.0f,
+                                                      spliceStart + spliceStep * static_cast<float> (i));
+                    const auto factor = voice.gain * duck * splice;
 
-                    outA[i] += renderClipSample (*clip, 0, position) * voice.gain * duck;
-                    if (outB != nullptr)
-                        outB[i] += renderClipSample (*clip, 1, position) * voice.gain * duck;
+                    scratch0[i] += renderClipSample (*clip, 0, position) * factor;
+                    scratch1[i] += renderClipSample (*clip, 1, position) * factor;
                 }
 
+                voice.startOffset = 0;
+
                 // Voice-Ende: Retire-Pflicht quittieren, sobald keine andere
-                // Voice den Clip mehr referenziert (Retrigger-Schutz);
-                // schlägt der Push fehl, parkt die Voice bis zum nächsten Block
-                if (fading && voice.gain <= 0.0f)
+                // Voice den Clip mehr referenziert (Retrigger-Schutz)
+                if (voice.fading && voice.gain <= 0.0f)
                 {
+                    voice.fadeStartOffset = 0;
+
                     if (voice.retireOnEnd)
                     {
                         auto* toRetire = voice.clip;
@@ -587,7 +1113,55 @@ void LooperBank::process (juce::AudioBuffer<float>& buffer, int numOutputChannel
                     voice.fading = false;
                     voice.retireOnEnd = false;
                 }
+                else
+                {
+                    voice.fadeStartOffset = 0;
+                }
             }
+
+            //==============================================================
+            // Fader-Zug: Gain (5-ms-Slew) + Equal-Power-Pan + Mute →
+            // Post-Fader-Meter → additiv aufs Anker-Paar
+            const auto gainTarget = targetGain[l][t].load (std::memory_order_relaxed);
+            const auto panTarget  = targetPan[l][t].load (std::memory_order_relaxed);
+            const auto muteTarget = effectiveMute[l][t].load (std::memory_order_relaxed)
+                                  ? 0.0f : 1.0f;
+
+            for (int i = 0; i < numSamples; ++i)
+            {
+                player.currentGain += juce::jlimit (-mixStep, mixStep,
+                                                    gainTarget - player.currentGain);
+                player.currentPan  += juce::jlimit (-mixStep, mixStep,
+                                                    panTarget - player.currentPan);
+                player.currentMuteGain += juce::jlimit (-mixStep, mixStep,
+                                                        muteTarget - player.currentMuteGain);
+
+                // Balance-Pan (Stereo-Clips): Mitte = Unity, die abgewandte
+                // Seite fällt equal-power — kein −3-dB-Loch in der Mitte
+                const auto pan = player.currentPan;
+                const auto halfPi = juce::MathConstants<float>::halfPi;
+                const auto gainLeft  = pan > 0.0f ? std::cos (pan * halfPi) : 1.0f;
+                const auto gainRight = pan < 0.0f ? std::cos (-pan * halfPi) : 1.0f;
+                const auto amp = player.currentGain * player.currentMuteGain;
+
+                scratch0[i] *= amp * gainLeft;
+                scratch1[i] *= amp * gainRight;
+            }
+
+            {
+                float* channels[] = { scratch0, scratch1 };
+                const juce::AudioBuffer<float> view (channels, 2, numSamples);
+                trackMeters[l][t].process (view, 2);
+            }
+
+            if (outA != nullptr)
+                for (int i = 0; i < numSamples; ++i)
+                {
+                    outA[i] += scratch0[i];
+                    if (outB != nullptr)
+                        outB[i] += scratch1[i];
+                }
+        }
 }
 
 } // namespace conduit

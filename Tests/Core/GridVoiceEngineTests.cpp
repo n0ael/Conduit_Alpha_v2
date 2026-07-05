@@ -41,13 +41,13 @@ TEST_CASE ("GridVoiceEngine: Pitch-Bend/Pressure/Slide adressieren den richtigen
     REQUIRE (fake.calls.size() == 3);
     REQUIRE (fake.calls[0].kind == grid::FakeVoiceSink::Kind::PitchBend);
     REQUIRE (fake.calls[0].voiceIndex == 0);
-    REQUIRE (fake.calls[0].floatValue == 2.0f);
+    REQUIRE (juce::exactlyEqual (fake.calls[0].floatValue, 2.0f));
     REQUIRE (fake.calls[1].kind == grid::FakeVoiceSink::Kind::Pressure);
     REQUIRE (fake.calls[1].voiceIndex == 0);
-    REQUIRE (fake.calls[1].floatValue == 0.5f);
+    REQUIRE (juce::exactlyEqual (fake.calls[1].floatValue, 0.5f));
     REQUIRE (fake.calls[2].kind == grid::FakeVoiceSink::Kind::Slide);
     REQUIRE (fake.calls[2].voiceIndex == 0);
-    REQUIRE (fake.calls[2].floatValue == 0.5f);
+    REQUIRE (juce::exactlyEqual (fake.calls[2].floatValue, 0.5f));
 }
 
 TEST_CASE ("GridVoiceEngine: unbekannter Finger erzeugt keinen Aufruf", "[grid]")

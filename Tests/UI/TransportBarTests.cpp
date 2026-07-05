@@ -314,3 +314,47 @@ TEST_CASE ("TransportBar: Browser-Toggle feuert den Hook, LED folgt dem Editor",
     rig.bar.setBrowserPanelOpen (false);
     REQUIRE_FALSE (tile.isActive());
 }
+
+//==============================================================================
+TEST_CASE ("TransportBar (M7): Save/Delete nur im Looper-Kontext", "[looper][ui]")
+{
+    TransportBarRig rig;
+    rig.bar.setBounds (0, 0, 1480, 56);
+
+    // Default: Kontext-Kacheln unsichtbar (Session-Save liegt im Browser)
+    REQUIRE_FALSE (rig.bar.getSaveTile().isVisible());
+    REQUIRE_FALSE (rig.bar.getLooperDeleteTile().isVisible());
+    REQUIRE_FALSE (rig.bar.isLooperPageContext());
+
+    rig.bar.setLooperPageContext (true);
+    REQUIRE (rig.bar.getSaveTile().isVisible());
+    REQUIRE (rig.bar.getLooperDeleteTile().isVisible());
+
+    rig.bar.setLooperPageContext (false);
+    REQUIRE_FALSE (rig.bar.getSaveTile().isVisible());
+    REQUIRE_FALSE (rig.bar.getLooperDeleteTile().isVisible());
+}
+
+TEST_CASE ("push::HoldTile: Kurzklick vs. Halten (Gesten-Kern)", "[looper][ui]")
+{
+    TransportBarRig rig;
+    auto& tile = rig.bar.getLooperDeleteTile();
+
+    int holdOn = 0, holdOff = 0, clicks = 0;
+    tile.onHoldChanged = [&] (bool holding) { holding ? ++holdOn : ++holdOff; };
+    tile.onShortClick = [&] { ++clicks; };
+
+    // Kurzklick: Halten beginnt/endet, Klick feuert
+    tile.beginHold();
+    REQUIRE (holdOn == 1);
+    tile.endHold (true);
+    REQUIRE (holdOff == 1);
+    REQUIRE (clicks == 1);
+
+    // Langes Halten: kein Klick
+    tile.beginHold();
+    tile.endHold (false);
+    REQUIRE (holdOn == 2);
+    REQUIRE (holdOff == 2);
+    REQUIRE (clicks == 1);
+}

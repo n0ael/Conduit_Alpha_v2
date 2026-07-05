@@ -76,6 +76,36 @@ private:
 
 //==============================================================================
 /**
+    Text-Kachel mit Halte-Erkennung (Push-Hardware-Muster, M6/M7):
+    Kurzklick (< 350 ms) feuert onShortClick, Drücken/Loslassen meldet
+    onHoldChanged — Basis der TARGET-, DELETE- und SAVE-Gesten
+    („halten + Ziel antippen"). beginHold()/endHold() sind die
+    testbaren Kernpfade der Maus-Handler.
+*/
+class HoldTile : public TextTile
+{
+public:
+    using TextTile::TextTile;
+
+    std::function<void()> onShortClick;
+    std::function<void (bool holding)> onHoldChanged;
+
+    /** [Tests/Maus] Halte-Beginn — meldet onHoldChanged(true). */
+    void beginHold();
+
+    /** [Tests/Maus] Halte-Ende; wasShortClick = unter der Klick-Schwelle
+        losgelassen → zusätzlich onShortClick. */
+    void endHold (bool wasShortClick);
+
+    void mouseDown (const juce::MouseEvent& event) override;
+    void mouseUp (const juce::MouseEvent& event) override;
+
+private:
+    juce::uint32 pressTime = 0;
+};
+
+//==============================================================================
+/**
     Wert-Kachel wie im Ableton-Header (Tempo „120.00", Position „3. 3. 4",
     Swing „12 %"): Wert zentriert, optionale Mini-Caption darüber.
 

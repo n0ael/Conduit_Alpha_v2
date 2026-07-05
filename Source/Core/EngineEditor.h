@@ -136,9 +136,15 @@ private:
     // TARGET-Halten pro Looper (Aktiv-Auswahl statt Launch, Übergabe §2)
     std::array<bool, 4> looperTargetHold {};
 
-    // Doppel-Klick-Bestätigung fürs Looper-Schließen mit Clips (M6-
-    // Zwischenlösung; das Bestätigungs-Overlay kommt in M7)
-    juce::uint32 removeLooperConfirmTime = 0;
+    // M7: Header-Gesten der Looper-Page (Delete/Save halten + Ziel
+    // antippen; Delete optional als Latch — Menü-Option für Nicht-Touch)
+    enum class LooperGesture { none, deleteClips, saveClips };
+    LooperGesture looperGesture = LooperGesture::none;
+    bool looperDeleteLatched = false;
+
+    /** Track entfernen (Delete-Geste auf Header / Long-Press) — nur der
+        letzte Track, nur leer & gestoppt (M4-Entscheidung). */
+    void removeLooperTrack (int looperIndex, int trackIndex);
 
     // Nach Canvas + LooperPage deklariert (hält Referenzen darauf): die
     // Pages hinter den Push-Icons — Device = Canvas, Rest Platzhalter

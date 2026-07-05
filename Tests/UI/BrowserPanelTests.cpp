@@ -142,12 +142,16 @@ TEST_CASE ("Browser-Panel: PROJEKTE-Interim-Zeile feuert den Aktions-Hook",
     juce::String actionId;
     rig.panel.onAction = [&actionId] (const juce::String& id) { actionId = id; };
 
+    // M7: Zeile 0 = Session speichern, Zeile 1 = Preset laden
     rig.panel.activateRowForTest (0);
+    REQUIRE (actionId == "save_preset");
+
+    rig.panel.activateRowForTest (1);
     REQUIRE (actionId == "load_preset");
 
     // Hinweis-Zeile bleibt stumm
     actionId.clear();
-    rig.panel.activateRowForTest (1);
+    rig.panel.activateRowForTest (2);
     REQUIRE (actionId.isEmpty());
 }
 
@@ -264,12 +268,13 @@ TEST_CASE ("Browser-Panel: Projekt-Tap feuert onLoadProject mit der Datei (M6)",
     // PROJEKTE oeffnen; der Scan-Job laeuft im Pool — Ergebnis pumpen
     rig.model.openSection (conduit::BrowserContextProvider::Section::projects);
 
+    // M7: zwei Aktions-Zeilen vor den Dateien
     REQUIRE (rig.dispatcher.pumpUntil ([&rig]
     {
-        return rig.model.rows().size() >= 2
-               && rig.model.rows()[1].kind == conduit::BrowserModel::Row::Kind::file;
+        return rig.model.rows().size() >= 3
+               && rig.model.rows()[2].kind == conduit::BrowserModel::Row::Kind::file;
     }));
-    rig.panel.activateRowForTest (1);
+    rig.panel.activateRowForTest (2);
     REQUIRE (loaded == sessionFile);
 
     base.deleteRecursively();

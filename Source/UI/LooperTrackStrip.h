@@ -82,7 +82,8 @@ public:
     std::function<void (bool solo)> onSoloToggled;
     std::function<void()> onStop;
     std::function<void (int slotIndex)> onSlotTapped;
-    std::function<void()> onHeaderLongPress;             // Track entfernen (M7)
+    std::function<void()> onHeaderLongPress;             // Track entfernen
+    std::function<void()> onHeaderTapped;                // M7: Delete-Geste + Header
 
     //==========================================================================
     // Zustand [Editor]

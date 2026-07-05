@@ -3,35 +3,6 @@
 namespace conduit
 {
 
-namespace
-{
-    constexpr juce::uint32 holdThresholdMs = 350;
-}
-
-//==============================================================================
-void LooperClipControlsRow::HoldTile::mouseDown (const juce::MouseEvent& event)
-{
-    pressTime = juce::Time::getMillisecondCounter();
-    if (onHoldChanged != nullptr)
-        onHoldChanged (true);   // Halte-Modus beginnt mit dem Druck (Push-Gefühl)
-
-    push::TextTile::mouseDown (event);
-}
-
-void LooperClipControlsRow::HoldTile::mouseUp (const juce::MouseEvent& event)
-{
-    const auto heldMs = juce::Time::getMillisecondCounter() - pressTime;
-
-    if (onHoldChanged != nullptr)
-        onHoldChanged (false);
-
-    if (heldMs < holdThresholdMs && getLocalBounds().contains (event.getPosition())
-        && onShortClick != nullptr)
-        onShortClick();
-
-    push::TextTile::mouseUp (event);
-}
-
 //==============================================================================
 LooperClipControlsRow::LooperClipControlsRow()
 {

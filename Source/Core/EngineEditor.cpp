@@ -37,7 +37,46 @@ EngineEditor::EngineEditor (EngineProcessor& engineProcessor,
     // -- TransportBar-Hooks ---------------------------------------------------
     transportBar.onUndo = [this] { undoManager.undo(); };
     transportBar.onRedo = [this] { undoManager.redo(); };
-    transportBar.onSave = [this] { launchPresetChooser (true); };
+
+    // M7: Session-Save liegt im Browser (PROJEKTE → „Session speichern…");
+    // die Save-Kachel der Bar ist die Clip-Save-Geste der Looper-Page.
+    transportBar.getSaveTile().onHoldChanged = [this] (bool holding)
+    {
+        looperGesture = holding ? LooperGesture::saveClips
+                                : (looperDeleteLatched ? LooperGesture::deleteClips
+                                                       : LooperGesture::none);
+        transportBar.getSaveTile().setActive (holding);
+    };
+    transportBar.getSaveTile().onShortClick = [this]
+    {
+        captureToast.show (juce::String::fromUTF8 (
+            "Save halten und Clips antippen — speichert die Clips als Dateien"));
+    };
+
+    // Delete-Geste (Push-Muster): Halten + Clip/Track-Header antippen;
+    // Menü-Option macht die Kachel zum Latch-Toggle (Nicht-Touch)
+    transportBar.getLooperDeleteTile().onHoldChanged = [this] (bool holding)
+    {
+        if (engine.getLooperSettings().isDeleteLatchEnabled())
+            return;   // Latch-Modus: nur der Kurzklick schaltet
+
+        looperGesture = holding ? LooperGesture::deleteClips : LooperGesture::none;
+        transportBar.getLooperDeleteTile().setActive (holding);
+    };
+    transportBar.getLooperDeleteTile().onShortClick = [this]
+    {
+        if (! engine.getLooperSettings().isDeleteLatchEnabled())
+        {
+            captureToast.show (juce::String::fromUTF8 (
+                "Delete halten und Clip antippen (Latch-Modus: ⚙-Menü)"));
+            return;
+        }
+
+        looperDeleteLatched = ! looperDeleteLatched;
+        looperGesture = looperDeleteLatched ? LooperGesture::deleteClips
+                                            : LooperGesture::none;
+        transportBar.getLooperDeleteTile().setActive (looperDeleteLatched);
+    };
 
     transportBar.onSettings = [this]
     {
@@ -123,6 +162,8 @@ EngineEditor::EngineEditor (EngineProcessor& engineProcessor,
     {
         if (actionId == "load_preset")
             launchPresetChooser (false);
+        else if (actionId == "save_preset")   // M7: Session-Save wohnt hier
+            launchPresetChooser (true);
     };
 
     // Datei-Bereiche (M6): Verzeichnisse — Captures aus den CaptureSettings
@@ -172,33 +213,46 @@ EngineEditor::EngineEditor (EngineProcessor& engineProcessor,
         refreshLooperStructure();
     };
 
-    // Looper schließen: enthält er Clips, verlangt ein zweiter Klick
-    // binnen 3 s die Bestätigung (M6-Zwischenlösung — Overlay kommt M7)
+    // Looper schließen: enthält er Clips, fragt ein async Dialog nach
+    // (Übergabe §10.7; kein Modal-Loop — JUCE_MODAL_LOOPS_PERMITTED=0)
     looperPage.onRemoveLooper = [this]
     {
-        auto& settings = engine.getLooperSettings();
         auto& session = engine.getLooperSession();
         const auto last = session.getNumLoopers() - 1;
         if (last < 1)
             return;
 
-        const auto now = juce::Time::getMillisecondCounter();
-        if (session.looperHasClips (last) && now - removeLooperConfirmTime > 3000)
+        const auto removeIt = [this]
         {
-            removeLooperConfirmTime = now;
-            captureToast.show (juce::String::fromUTF8 (
-                "Looper enthält Clips — erneut klicken zum Verwerfen"));
+            auto& looperSession = engine.getLooperSession();
+            if (const auto result = looperSession.removeLastLooper(); result.failed())
+            {
+                captureToast.show (result.getErrorMessage());
+                return;
+            }
+
+            auto& settings = engine.getLooperSettings();
+            settings.setNumLoopers (settings.getNumLoopers() - 1);
+            refreshLooperStructure();
+        };
+
+        if (! session.looperHasClips (last))
+        {
+            removeIt();
             return;
         }
 
-        if (const auto result = session.removeLastLooper(); result.failed())
-        {
-            captureToast.show (result.getErrorMessage());
-            return;
-        }
-
-        settings.setNumLoopers (settings.getNumLoopers() - 1);
-        refreshLooperStructure();
+        juce::AlertWindow::showOkCancelBox (
+            juce::MessageBoxIconType::QuestionIcon,
+            juce::String::fromUTF8 ("Looper schließen"),
+            juce::String::fromUTF8 ("Looper ") + juce::String (last + 1)
+                + juce::String::fromUTF8 (" enthält Clips — schließen und verwerfen?"),
+            juce::String::fromUTF8 ("Schließen"), "Abbrechen", this,
+            juce::ModalCallbackFunction::create ([removeIt] (int result)
+            {
+                if (result != 0)
+                    removeIt();
+            }));
     };
 
     looperPage.onOpenSettings = [this]
@@ -535,26 +589,14 @@ void EngineEditor::wireLooperPanels()
             refreshLooperStructure();
         };
 
-        // Track entfernen (Long-Press auf Header): nur der LETZTE Track
-        // (M4-Entscheidung — Bank-Player sind positional)
-        panel.onTrackHeaderLongPress = [this, l] (int t)
+        // Track entfernen: Long-Press auf Header ODER Delete-Geste +
+        // Header-Tap (M7) — nur der LETZTE Track (M4-Entscheidung,
+        // Bank-Player sind positional)
+        panel.onTrackHeaderLongPress = [this, l] (int t) { removeLooperTrack (l, t); };
+        panel.onTrackHeaderTapped = [this, l] (int t)
         {
-            auto& looperSession = engine.getLooperSession();
-            if (t != looperSession.getNumTracks (l) - 1)
-            {
-                captureToast.show (juce::String::fromUTF8 (
-                    "Nur der letzte Track kann entfernt werden"));
-                return;
-            }
-
-            if (const auto result = looperSession.removeLastTrack (l); result.failed())
-            {
-                captureToast.show (result.getErrorMessage());
-                return;
-            }
-
-            engine.getLooperSettings().setNumTracks (l, looperSession.getNumTracks (l));
-            refreshLooperStructure();
+            if (looperGesture == LooperGesture::deleteClips)
+                removeLooperTrack (l, t);
         };
 
         // ── Clip-Controls (wirken auf den Aktiv-Clip, Übergabe §2) ──────
@@ -640,10 +682,50 @@ void EngineEditor::wireLooperPanels()
     rebuildLooperSources();
 }
 
+void EngineEditor::removeLooperTrack (int looperIndex, int trackIndex)
+{
+    auto& session = engine.getLooperSession();
+
+    if (trackIndex != session.getNumTracks (looperIndex) - 1)
+    {
+        captureToast.show (juce::String::fromUTF8 (
+            "Nur der letzte Track kann entfernt werden"));
+        return;
+    }
+
+    if (const auto result = session.removeLastTrack (looperIndex); result.failed())
+    {
+        captureToast.show (result.getErrorMessage());
+        return;
+    }
+
+    engine.getLooperSettings().setNumTracks (looperIndex,
+                                             session.getNumTracks (looperIndex));
+    refreshLooperStructure();
+}
+
 void EngineEditor::handleLooperSlotTap (int looperIndex, int trackIndex, int slotIndex)
 {
     auto& session = engine.getLooperSession();
     auto& settings = engine.getLooperSettings();
+
+    // M7: Header-Gesten zuerst — Delete/Save halten (bzw. Latch) macht den
+    // Slot-Tap zur Ziel-Auswahl der Geste, nie zum Launch
+    if (looperGesture == LooperGesture::deleteClips)
+    {
+        if (const auto result = session.deleteSlot (looperIndex, trackIndex, slotIndex);
+            result.failed())
+            captureToast.show (result.getErrorMessage());
+        return;
+    }
+
+    if (looperGesture == LooperGesture::saveClips)
+    {
+        if (session.clipAt (looperIndex, trackIndex, slotIndex) != nullptr)
+            captureToast.show (juce::String::fromUTF8 (
+                "Clip-Export als Datei kommt mit M9 (Save-Geste steht)"));
+        return;
+    }
 
     // TARGET wird gehalten → nur Aktiv-Auswahl, kein Launch (Übergabe §2)
     if (looperTargetHold[(size_t) juce::jlimit (0, 3, looperIndex)])
@@ -832,6 +914,18 @@ void EngineEditor::selectPage (int pageIndex)
 {
     pageHost.setPage (pageIndex);
     browserContext.setActivePage (pageIndex);
+
+    // M7: Save/Delete-Kacheln nur im Looper-Kontext; beim Verlassen der
+    // Page verfallen laufende Gesten (auch der Delete-Latch)
+    const auto looperOpen = pageIndex == TransportBar::pageLooper;
+    transportBar.setLooperPageContext (looperOpen);
+    if (! looperOpen)
+    {
+        looperGesture = LooperGesture::none;
+        looperDeleteLatched = false;
+        transportBar.getLooperDeleteTile().setActive (false);
+        transportBar.getSaveTile().setActive (false);
+    }
 }
 
 void EngineEditor::toggleBrowserPanel()

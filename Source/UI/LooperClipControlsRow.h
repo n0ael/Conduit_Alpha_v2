@@ -101,22 +101,6 @@ public:
     void paint (juce::Graphics& g) override;
 
 private:
-    /** TARGET-Kachel mit Halte-Erkennung (Push-Muster). */
-    class HoldTile final : public push::TextTile
-    {
-    public:
-        using push::TextTile::TextTile;
-
-        std::function<void()> onShortClick;
-        std::function<void (bool holding)> onHoldChanged;
-
-        void mouseDown (const juce::MouseEvent& event) override;
-        void mouseUp (const juce::MouseEvent& event) override;
-
-    private:
-        juce::uint32 pressTime = 0;
-    };
-
     void updateRateLabel();
     void knobMoved();
 
@@ -131,7 +115,7 @@ private:
     juce::Label rateLabel;
     push::TextTile rasterTile { "Rast", push::colours::ledCyan };
     push::TextTile syncTile { "Sync" };
-    HoldTile targetTile { "TARGET", push::colours::ledRed };
+    push::HoldTile targetTile { "TARGET", push::colours::ledRed };
     juce::Label activeLabel;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (LooperClipControlsRow)

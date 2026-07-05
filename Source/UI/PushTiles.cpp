@@ -106,6 +106,39 @@ void TextTile::setText (const juce::String& newText)
     repaint();
 }
 
+//==============================================================================
+constexpr juce::uint32 holdTileThresholdMs = 350;
+
+void HoldTile::beginHold()
+{
+    pressTime = juce::Time::getMillisecondCounter();
+    if (onHoldChanged != nullptr)
+        onHoldChanged (true);   // Halte-Modus beginnt mit dem Druck (Push-Muster)
+}
+
+void HoldTile::endHold (bool wasShortClick)
+{
+    if (onHoldChanged != nullptr)
+        onHoldChanged (false);
+
+    if (wasShortClick && onShortClick != nullptr)
+        onShortClick();
+}
+
+void HoldTile::mouseDown (const juce::MouseEvent& event)
+{
+    beginHold();
+    TextTile::mouseDown (event);
+}
+
+void HoldTile::mouseUp (const juce::MouseEvent& event)
+{
+    const auto heldMs = juce::Time::getMillisecondCounter() - pressTime;
+    endHold (heldMs < holdTileThresholdMs
+             && getLocalBounds().contains (event.getPosition()));
+    TextTile::mouseUp (event);
+}
+
 void TextTile::paintButton (juce::Graphics& g, bool isHighlighted, bool isDown)
 {
     const auto bounds = getLocalBounds().toFloat().reduced (0.5f);

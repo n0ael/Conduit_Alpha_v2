@@ -369,11 +369,18 @@ void BrowserModel::buildFileSectionRows (const juce::String& sectionKey)
     if (sectionKey.isEmpty())
         return;
 
-    // PROJEKTE behält den Datei-Dialog als Weg zu beliebigen Pfaden
+    // PROJEKTE behält den Datei-Dialog als Weg zu beliebigen Pfaden.
+    // M7: Session-Save wanderte aus dem Header hierher (die Save-Kachel
+    // der Bar ist jetzt die Clip-Save-Geste der Looper-Page).
     if (sectionKey == "projects")
+    {
+        visibleRows.push_back ({ Row::Kind::action, Icon::none,
+                                 juce::String::fromUTF8 ("Session speichern…"),
+                                 "save_preset", 0, {} });
         visibleRows.push_back ({ Row::Kind::action, Icon::none,
                                  juce::String::fromUTF8 ("Preset laden…"),
                                  "load_preset", 0, {} });
+    }
 
     const auto scanned = fileRowsBySection.find (sectionKey);
 

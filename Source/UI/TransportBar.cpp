@@ -173,7 +173,8 @@ TransportBar::TransportBar (juce::ValueTree rootTree, LinkClock& linkClockToUse,
             onUndo();
     };
 
-    saveTile.onClick = [this] { if (onSave != nullptr) onSave(); };
+    // M7: saveTile ist die Looper-Kontext-Geste (HoldTile) — der Editor
+    // verdrahtet onShortClick/onHoldChanged; Session-Save liegt im Browser.
     gearTile.setTooltip ("Einstellungen");
     gearTile.onClick = [this] { if (onSettings != nullptr) onSettings(); };
 
@@ -257,15 +258,31 @@ TransportBar::TransportBar (juce::ValueTree rootTree, LinkClock& linkClockToUse,
              &playTile, &tapeTile, &captureTile, &fixedLengthTile, &automateTile,
              &tapTile, &setTile, &nudgeDownTile, &nudgeUpTile,
              &metronomeTile, &tempoTile, &positionTile, &swingTile, &linkTile,
-             &undoTile, &saveTile, &gearTile,
+             &undoTile, &gearTile,
              &scaleToggleTile, &rootCombo, &scaleCombo, &browserPanelTile,
              &warningLabel, &dspMeterLabel })
         addAndMakeVisible (component);
+
+    // M7: Kontext-Kacheln der Looper-Page — unsichtbar bis
+    // setLooperPageContext(true)
+    addChildComponent (saveTile);
+    addChildComponent (looperDeleteTile);
 
     refresh();  // LED-Zustände sofort (Play/Looper-Toggles aus Settings)
 }
 
 //==============================================================================
+void TransportBar::setLooperPageContext (bool looperPageOpen)
+{
+    if (looperContext == looperPageOpen)
+        return;
+
+    looperContext = looperPageOpen;
+    saveTile.setVisible (looperPageOpen);
+    looperDeleteTile.setVisible (looperPageOpen);
+    resized();
+}
+
 void TransportBar::setDevTileVisible (bool shouldBeVisible)
 {
     if (devTile.isVisible() == shouldBeVisible)
@@ -542,7 +559,11 @@ void TransportBar::resized()
     if (devTile.isVisible())
         placeRight (devTile, 48);
 
-    placeRight (saveTile,  56);
+    // M7: Save/Delete nur im Looper-Kontext (Halten + Ziel antippen)
+    if (saveTile.isVisible())
+        placeRight (saveTile, 56);
+    if (looperDeleteTile.isVisible())
+        placeRight (looperDeleteTile, 64);
     placeRight (undoTile,  56, 14);
 
     for (auto page = (int) pageTiles.size(); --page >= 0;)

@@ -41,6 +41,7 @@ public:
     std::function<void (int trackIndex, bool solo)> onTrackSolo;
     std::function<void (int trackIndex)> onTrackStop;
     std::function<void (int trackIndex)> onTrackHeaderLongPress;
+    std::function<void (int trackIndex)> onTrackHeaderTapped;   // M7: Delete-Geste
     std::function<void()> onAddTrack;
 
     //==========================================================================

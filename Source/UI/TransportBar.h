@@ -136,6 +136,17 @@ public:
     [[nodiscard]] push::TextTile& getDevTile() noexcept { return devTile; }
     [[nodiscard]] push::IconTile& getScaleToggleTile() noexcept { return scaleToggleTile; }
 
+    //==========================================================================
+    /** M7: Looper-Kontext — Save- und Delete-Kachel erscheinen NUR bei
+        offener Looper-Page (User-Entscheidung 05.07.2026; Session-Save
+        liegt im Browser). Die Gesten-Logik (Halten/Latch) verdrahtet der
+        EngineEditor über die HoldTile-Hooks. */
+    void setLooperPageContext (bool looperPageOpen);
+    [[nodiscard]] bool isLooperPageContext() const noexcept { return looperContext; }
+
+    [[nodiscard]] push::HoldTile& getSaveTile() noexcept { return saveTile; }
+    [[nodiscard]] push::HoldTile& getLooperDeleteTile() noexcept { return looperDeleteTile; }
+
     /** LED des Browser-Toggles = Panel offen (Status kommt vom Editor). */
     void setBrowserPanelOpen (bool isPanelOpen);
 
@@ -175,7 +186,12 @@ private:
     // Rechts: Pages + Aktionen + Skala
     std::vector<std::unique_ptr<push::IconTile>> pageTiles;
     push::TextTile undoTile { "Undo" };
-    push::TextTile saveTile { "Save" };
+
+    // M7: Save/Delete sind KONTEXT-Kacheln der Looper-Page (Halten + Ziel
+    // antippen, Push-Muster); Session-Save wanderte in den Browser.
+    push::HoldTile saveTile { "Save", push::colours::ledGreen };
+    push::HoldTile looperDeleteTile { "Delete", push::colours::ledRed };
+    bool looperContext = false;
     push::IconTile gearTile { push::Icon::gear, "settings" };
     push::TextTile devTile  { "Dev", push::colours::ledOrange };  // nur im Dev Mode
 

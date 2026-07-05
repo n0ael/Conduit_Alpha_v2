@@ -60,6 +60,8 @@ void LooperPanel::wireTrack (LooperTrackStrip& track, int trackIndex)
     { if (onSlotTapped) onSlotTapped (trackIndex, slotIndex); };
     track.onHeaderLongPress = [this, trackIndex]
     { if (onTrackHeaderLongPress) onTrackHeaderLongPress (trackIndex); };
+    track.onHeaderTapped = [this, trackIndex]
+    { if (onTrackHeaderTapped) onTrackHeaderTapped (trackIndex); };
 }
 
 void LooperPanel::setTrackCount (int count)

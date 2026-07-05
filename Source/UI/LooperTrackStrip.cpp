@@ -480,9 +480,13 @@ void LooperTrackStrip::mouseUp (const juce::MouseEvent& event)
     {
         headerPressed = false;
         const auto heldMs = juce::Time::getMillisecondCounter() - headerPressTime;
-        if (heldMs >= longPressMs && headerArea().contains (event.getPosition())
-            && onHeaderLongPress != nullptr)
-            onHeaderLongPress();
+        if (headerArea().contains (event.getPosition()))
+        {
+            if (heldMs >= longPressMs && onHeaderLongPress != nullptr)
+                onHeaderLongPress();
+            else if (heldMs < longPressMs && onHeaderTapped != nullptr)
+                onHeaderTapped();   // M7: Delete-Geste wertet den Tap aus
+        }
     }
 }
 

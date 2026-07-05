@@ -366,16 +366,19 @@ TEST_CASE ("Browser-Modell: PROJEKTE + Captures listen echte Dateien (M6)",
     };
 
     // PROJEKTE betreten -> Scan laeuft im Pool, Ergebnis nach dem Pumpen
+    // (M7: ZWEI Aktions-Zeilen — Session speichern + Preset laden)
     rig.model.openSection (Section::projects);
     REQUIRE (rig.dispatcher.pumpUntil ([&rig]
     {
         const auto& rows = rig.model.rows();
-        return rows.size() >= 2 && rows[1].kind == Row::Kind::file;
+        return rows.size() >= 3 && rows[2].kind == Row::Kind::file;
     }));
 
-    // Zeile 0 = "Preset laden..."-Aktion, danach die Session-Datei
     REQUIRE (rig.model.rows()[0].kind == Row::Kind::action);
-    const auto& fileRow = rig.model.rows()[1];
+    REQUIRE (rig.model.rows()[0].id == "save_preset");
+    REQUIRE (rig.model.rows()[1].kind == Row::Kind::action);
+    REQUIRE (rig.model.rows()[1].id == "load_preset");
+    const auto& fileRow = rig.model.rows()[2];
     REQUIRE (fileRow.label == "mein_set");
     REQUIRE (fileRow.id.startsWith ("project:"));
     REQUIRE (fileRow.id.endsWith ("mein_set.conduit"));
@@ -409,11 +412,12 @@ TEST_CASE ("Browser-Modell: Suche findet gescannte Projekt-Dateien (M6)",
     { return conduit::BrowserModel::Directories { base, {}, {}, {} }; };
 
     // Scan anstossen (PROJEKTE betreten) und Ergebnis abwarten
+    // (M7: zwei Aktions-Zeilen vor den Dateien)
     rig.model.openSection (Section::projects);
     REQUIRE (rig.dispatcher.pumpUntil ([&rig]
     {
         const auto& rows = rig.model.rows();
-        return rows.size() >= 2 && rows[1].kind == Row::Kind::file;
+        return rows.size() >= 3 && rows[2].kind == Row::Kind::file;
     }));
 
     // Suche ueber den Datei-Namen — Treffer ist die Projekt-Zeile

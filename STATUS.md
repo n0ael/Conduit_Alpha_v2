@@ -155,7 +155,26 @@ modul-ready).
     Clips: Doppel-Klick-Bestätigung (Overlay kommt M7).
   - Tests/UI/LooperPageTests komplett neu (Panel-Struktur, Track-Strip-
     Hooks, Slot-Zustände, Controls-Dispatch + VARI-Mapping, Menü →
-    Settings, Kopfzeilen-Hooks). 431 Fälle grün.
+    Settings, Kopfzeilen-Hooks). 431 Fälle grün. User-Smoke mit 4 Loopern
+    bestanden; Feld-Fund Zombie-Zelle nach prepareToPlay →
+    LooperSessionModel::clearAllClips() (im M6-Commit gefixt).
+- **M7 (fertig, 05.07.2026):** Header-Kontext — Delete/Save-Gesten.
+  - **push::HoldTile** (aus der Controls-Row extrahiert): Kurzklick vs.
+    Halten, testbare Kernpfade beginHold/endHold — Basis von TARGET,
+    DELETE und SAVE.
+  - **TransportBar:** setLooperPageContext(bool) — Save- und die neue
+    Delete-Kachel (rot) erscheinen NUR bei offener Looper-Page
+    (selectPage setzt den Kontext; Verlassen beendet Gesten + Latch).
+    Session-Save wanderte in den Browser (PROJEKTE → „Session
+    speichern…", Action save_preset).
+  - **Gesten (EngineEditor):** Delete halten + Clip antippen = Clip
+    löschen; Delete + Track-Header-Tap = letzten Track entfernen;
+    Menü-Option macht Delete zum Latch-Toggle (rot leuchtend,
+    Nicht-Touch). Save halten + Clip antippen = Save-Geste (Export-
+    Pipeline folgt M9, Toast solange). Looper-Schließen mit Clips:
+    async Bestätigungs-Dialog (ersetzt die M6-Doppel-Klick-Lösung).
+  - Tests: TransportBar-Kontext-Sichtbarkeit, HoldTile-Zustandsmaschine;
+    Browser-Tests an die zweite Aktions-Zeile angepasst. 434 Fälle grün.
 
 ---
 

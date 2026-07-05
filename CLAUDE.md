@@ -646,7 +646,7 @@ Plattform-spezifisches Setup in `initAudio()` und CMake ist explizit erlaubt.
   Link ▾ (Menü: Start/Stop-Sync, Clock-Offset, Metronom-Ausgang),
   Page-Icons, „+"-Browser (Module + Presets), Undo (Shift-Klick = Redo),
   Save, ⚙, Skala.
-- **Pages** (`Source/UI/PageHost`): Grid (Ω, AbletonOSC-Remote) · Mixer (∥∥)
+- **Pages** (`Source/UI/PageHost`): Grid (Ω, Touch-Controller-Baukasten) · Mixer (∥∥)
   · Clip (▷▭, Fugue-Machine-Sequencer) · Device (|||, Patch-Canvas). Nur
   Device ist implementiert — die anderen sind gestylte Platzhalter, je ein
   eigener Meilenstein (Roadmap 11).
@@ -799,7 +799,15 @@ Plattform-spezifisches Setup in `initAudio()` und CMake ist explizit erlaubt.
 | Looper-Page (Retro-Looper, Endlesss-Stil, MVP ein Loop) | v2.0 | erledigt 07/2026 — 10.0 |
 | Looper-Vollausbau (4 Looper × 4 Tracks × Slots, Clip-Grid, VARI/Reverse/×2÷2, Delete/Save-Gesten, OSC-Actions, Clip-Export) | v2.0 | erledigt 07/2026 — 10.0; LooperModule + MIDI-Input + Drag-to-DAW später |
 | Mixer-Page | v2.x | ∥∥-Icon, Channel-Strips (Capture-Buttons wandern dorthin) |
-| Grid-Page (AbletonOSC-Remote) | v2.x | Ω-Icon, Remote-Steuerung von Live |
+| Grid-Page (Touch-Controller-Baukasten) | Ω-Icon | benutzerfreundlicher Baukasten für Touch-Controller-Layouts, die interne und externe Ziele steuern. AbletonOSC-Remote (Live fernsteuern) ist eines dieser Ziele, keine eigene Page. Meilenstein-Leiter:
+  M1  Voice-Engine + direkter MIDI-Sink + spielbares 2-Stimmen-MPE-Keyboard (Circle-Mechanik, Release = Finger heben, Rand-Ribbons, Release-All)
+  danach unabhängig, Reihenfolge nach Priorität:
+    - OSC-Sink + Transcoder (Remote, cross-platform)
+    - Gesten-State-Machine (Drone/Latch per Abhebe-Reihenfolge, Pinch-weg, Doppeltipp, Drift-über-Rand-und-Faden)
+    - CV-Sink (Software-CVC)
+    - Hardware-MPE-Input (macht Conduit zum Hub; mit CV-Sink = Haken CVC in Software)
+    - Chord-Squares + Save/Load (Browser, Factory-Sets zum Losjammen ohne Theorie)
+    - Omnichord-Strings |
 | Clip-Page (Fugue-Machine-Sequencer) | v2.x | ▷▭-Icon, immer aktiv, CV- UND MIDI-Ziele |
 | Capture-Netzwerk-Share (Exports für entferntes Ableton) | v2.x | HTTP-Bereitstellung der Capture-Dateien |
 
@@ -908,6 +916,52 @@ cmake --preset tsan && cmake --build --preset tsan   # TSan (Clang) — NUR Linu
   „v2.x" bleiben Feature-Meilensteine, keine Repo-Namen.
 - Kein Code betroffen — reine Dokumentationsentscheidung.
 
+### ADR: Grid-Page als Touch-Controller-Baukasten
+
+Status: Akzeptiert — Juli 2026
+
+Kontext:
+Grid war als AbletonOSC-Remote-Page geführt (Conduit steuert Live fern).
+Neue Produktabsicht: Grid wird der benutzerfreundlichste Touch-Controller-
+Baukasten. Nutzer ohne Programmierkenntnisse bauen Controller-Layouts, die
+interne (Conduit-Parameter/Makros) und externe Ziele steuern. Positionierung:
+kein TouchOSC-Konkurrent, sondern mehr Gestaltungsfreiheit für Nicht-Programmierer.
+
+Entscheidung:
+1. Grid = Touch-Controller-Baukasten. AbletonOSC-Remote wird ein Ausgangs-Ziel
+   innerhalb von Grid, keine eigene Page.
+2. Architektur-Rückgrat, symmetrisch: mehrere Quellen -> ein internes
+   Voice-/Control-Modell -> mehrere austauschbare Sinks, Quellen hinter einem
+   Source-Interface und Sinks hinter einem Sink-Interface.
+   - Quellen: Grid-Touch (u.a. MPE-Keyboard mit Circle-Mechanik),
+     Hardware-MPE-Input (USB/DIN).
+   - Sinks: (A) direkt MPE-MIDI (virtueller Port same-machine / Hardware-Port
+     USB+DIN / macOS RTP-MIDI fuer Netz); (B) MPE-ueber-OSC (UDP -> externer
+     Transcoder oder Max-Patch, remote/cross-platform); (C) CV (Software-CVC,
+     per-Voice Pitch/Pressure/Slide auf DC-gekoppelte Outs, ES-9/MOTU).
+3. Die MPE-Zuteilung (Finger -> Voice -> Kanal) liegt IN Conduit (testbar).
+   Das OSC-Protokoll traegt bereits zugeteilte Voices, damit der externe
+   Transcoder ohne musikalische Logik bleibt (Leos Max/JS-Domaene).
+4. Same-machine nutzt den direkten MIDI-Sink; der OSC-Sink ist nur fuer Remote.
+5. Circle-Mechanik: erster Finger = Note + Pitch-Bend ueber X + eine durchgehende
+   Achse ueber Y; zweiter Finger spannt einen Kreis, dessen Radius eine zweite
+   durchgehende Achse steuert. Y-Achse und Radius mappen auf die zwei
+   durchgehenden MPE-Dimensionen (Channel Pressure / CC74-Slide), pro Element
+   vertauschbar. Detail-Spezifikation im jeweiligen Meilenstein-Auftrag.
+
+Konsequenzen:
++ Eine Engine, viele Ziele. Nicht-Programmierer erhalten Gestaltungsfreiheit.
++ Remote = OSC: netz-nativ, cross-platform, passt zur bestehenden OSC-Infra
+  und zum Dedicated-Hardware-Ziel.
+- MPE ist MIDI 1.0 (kein MIDI-2.0-Bedarf fuer dieses Feature).
+- Direkter MIDI-Out-Sink ist neue Infrastruktur (§4.1 kennt bisher kein
+  MIDI-Out-Modul). Virtueller Port ist plattformabhaengig.
+- Die Circle-Gesten-Disambiguierung (Latch/Pinch/Drift) braucht eine eigene
+  State-Machine und ist ein eigener Meilenstein.
+- Windows-Kontext (Juli 2026): natives Network-MIDI noch Preview/Alpha ->
+  der OSC-Weg ist die tragfaehige Remote-Loesung; nativer virtueller
+  Port/Loopback ist inzwischen vorhanden.
+
 ---
 
-*Conduit Alpha v3 — Claude Code Instructions v4.4  |  Juli 2026*
+*Conduit Alpha v3 — Claude Code Instructions v4.5  |  Juli 2026*

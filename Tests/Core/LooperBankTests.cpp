@@ -860,7 +860,7 @@ TEST_CASE ("LooperBank: ×2/÷2 ändern nur L — Fenster-Wahl erste/aktuelle H�
                                               conduit::looper::HalveMode::firstHalf).wasOk());
         LooperBank::ClipInfo info;
         REQUIRE (rig.bank.getClipInfo (0, 0, info));
-        REQUIRE (info.lengthBeats == 8.0);
+        REQUIRE (juce::exactlyEqual (info.lengthBeats, 8.0));
     }
 }
 

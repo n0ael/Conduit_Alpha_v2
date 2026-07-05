@@ -99,12 +99,16 @@ set(CONDUIT_CPP_SOURCES
     Source/Core/EngineEditor.cpp
     Source/Core/GraphFader.cpp
     Source/Core/GraphManager.cpp
+    Source/Core/GridVoiceEngine.cpp
     Source/Core/InputLinkSend.cpp
     Source/Core/LinkClock.cpp
     Source/Core/LinkSendTaps.cpp
     Source/Core/MeterSettings.cpp
     Source/Core/Metronome.cpp
+    Source/Core/MidiDeviceTarget.cpp
     Source/Core/ModuleUiDefaults.cpp
+    Source/Core/MpeEncoder.cpp
+    Source/Core/MpeMidiSink.cpp
     Source/Core/NodeUiRegistry.cpp
     Source/Core/OscController.cpp
     Source/Core/OscSendService.cpp
@@ -113,6 +117,7 @@ set(CONDUIT_CPP_SOURCES
     Source/Core/SourceNameResolver.cpp
     Source/Core/TransportSettings.cpp
     Source/Core/UiSettings.cpp
+    Source/Core/VoiceAllocator.cpp
     Source/Core/Browser/BrowserContextProvider.cpp
     Source/Core/Browser/BrowserModel.cpp
     Source/Core/Browser/BrowserFileScanner.cpp
@@ -253,11 +258,15 @@ target_sources(Conduit PRIVATE
     Source/Core/EngineEditor.h
     Source/Core/GraphFader.h
     Source/Core/GraphManager.h
+    Source/Core/GridVoiceEngine.h
     Source/Core/InputLinkSend.h
     Source/Core/LinkClock.h
     Source/Core/LinkSendTaps.h
     Source/Core/Metronome.h
+    Source/Core/MidiDeviceTarget.h
     Source/Core/ModuleUiDefaults.h
+    Source/Core/MpeEncoder.h
+    Source/Core/MpeMidiSink.h
     Source/Core/NodeUiRegistry.h
     Source/Core/OscAddress.h
     Source/Core/OscController.h
@@ -266,6 +275,7 @@ target_sources(Conduit PRIVATE
     Source/Core/RemoteModuleBinder.h
     Source/Core/SourceNameResolver.h
     Source/Core/TransportSettings.h
+    Source/Core/VoiceAllocator.h
     Source/Core/Browser/BrowserContextProvider.h
     Source/Core/Browser/BrowserModel.h
     Source/Core/Browser/BrowserFileScanner.h
@@ -285,8 +295,10 @@ target_sources(Conduit PRIVATE
     Source/Interfaces/IClockSlave.h
     Source/Interfaces/IClockSource.h
     Source/Interfaces/ILinkAudioClient.h
+    Source/Interfaces/IMidiOutputTarget.h
     Source/Interfaces/ISendConfigClient.h
     Source/Interfaces/IStochastic.h
+    Source/Interfaces/IVoiceSink.h
     Source/Modules/AnalysisModule.h
     Source/Modules/ChassisSchema.h
     Source/Modules/ConduitModule.h
@@ -495,6 +507,7 @@ if(CONDUIT_BUILD_TESTS)
         Tests/Core/GraphFaderTests.cpp
         Tests/Core/NamedIdTests.cpp
         Tests/Core/GraphManagerTests.cpp
+        Tests/Core/GridVoiceEngineTests.cpp
         Tests/Core/LevelMeterTests.cpp
         Tests/Core/InputLinkSendTests.cpp
         Tests/Core/LinkAudioSendTests.cpp
@@ -512,6 +525,8 @@ if(CONDUIT_BUILD_TESTS)
         Tests/Core/MasterTapTests.cpp
         Tests/Core/MeterSettingsTests.cpp
         Tests/Core/MetronomeTests.cpp
+        Tests/Core/MpeEncoderTests.cpp
+        Tests/Core/MpeMidiSinkTests.cpp
         Tests/Core/OscControllerTests.cpp
         Tests/Core/OscSendServiceTests.cpp
         Tests/Core/PatchingTests.cpp
@@ -524,6 +539,7 @@ if(CONDUIT_BUILD_TESTS)
         Tests/Core/ThreadingStressTests.cpp
         Tests/Core/TransportLinkTests.cpp
         Tests/Core/UiSettingsTests.cpp
+        Tests/Core/VoiceAllocatorTests.cpp
         Tests/UI/BrowserPanelTests.cpp
         Tests/UI/TouchKeyboardTests.cpp
         Tests/UI/FxModulePanelTests.cpp
@@ -549,12 +565,15 @@ if(CONDUIT_BUILD_TESTS)
         Source/Core/EngineProcessor.cpp
         Source/Core/GraphFader.cpp
         Source/Core/GraphManager.cpp
+        Source/Core/GridVoiceEngine.cpp
         Source/Core/InputLinkSend.cpp
         Source/Core/LinkClock.cpp
         Source/Core/LinkSendTaps.cpp
         Source/Core/MeterSettings.cpp
         Source/Core/Metronome.cpp
         Source/Core/ModuleUiDefaults.cpp
+        Source/Core/MpeEncoder.cpp
+        Source/Core/MpeMidiSink.cpp
         Source/Core/NodeUiRegistry.cpp
         Source/Core/OscController.cpp
         Source/Core/OscSendService.cpp
@@ -563,6 +582,7 @@ if(CONDUIT_BUILD_TESTS)
         Source/Core/SourceNameResolver.cpp
         Source/Core/TransportSettings.cpp
         Source/Core/UiSettings.cpp
+        Source/Core/VoiceAllocator.cpp
         Source/Core/Browser/BrowserContextProvider.cpp
         Source/Core/Browser/BrowserModel.cpp
         Source/Core/Browser/BrowserFileScanner.cpp

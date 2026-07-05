@@ -152,6 +152,46 @@ EngineProcessor::EngineProcessor (const juce::File& settingsFolder)
         if (node.isValid())
             oscSendService.sendNodeValues (node.getProperty (id::nodeId).toString());
     };
+
+    // Looper-Aktionen (M8): Commit/Stop/Target via Push-Pads/Fußschalter —
+    // fire-and-forget (Fehler wie „kein Target" werden still verworfen,
+    // der Sender bekommt kein Feedback; Stop nutzt die Launch-Quant der
+    // Settings, Commit ist per Konstruktion sofort)
+    oscController.onLooperAction = [this] (const osc::LooperOscAction& action)
+    {
+        using Type = osc::LooperOscAction::Type;
+        const auto qBeats = launchQuantBeats (looperSettings.getLaunchQuant());
+
+        switch (action.type)
+        {
+            case Type::commit:
+                juce::ignoreUnused (commitToTarget (action.looperIndex, action.bars));
+                break;
+
+            case Type::stopTrack:
+                looperSession.stopTrack (action.looperIndex, action.trackIndex, qBeats);
+                break;
+
+            case Type::stopLooper:
+                for (int t = 0; t < LooperBank::maxTracks; ++t)
+                    looperSession.stopTrack (action.looperIndex, t, qBeats);
+                break;
+
+            case Type::stopAll:
+                for (int l = 0; l < looperSession.getNumLoopers(); ++l)
+                    for (int t = 0; t < LooperBank::maxTracks; ++t)
+                        looperSession.stopTrack (l, t, qBeats);
+                break;
+
+            case Type::target:
+                looperSession.armTarget (action.looperIndex, action.trackIndex,
+                                         action.slotIndex);
+                break;
+
+            case Type::none:
+                break;
+        }
+    };
 }
 
 EngineProcessor::~EngineProcessor()

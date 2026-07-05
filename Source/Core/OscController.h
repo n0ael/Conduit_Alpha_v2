@@ -119,6 +119,11 @@ public:
         plus Node-Werte-Dump. Optional (Tests laufen ohne). */
     std::function<void (const osc::AnnounceInfo&)> onAnnounce;
 
+    /** [Message Thread] Eine validierte Looper-Aktion (M8: Commit/Stop/
+        Target via Push-Pads/Fußschalter) — der EngineProcessor verdrahtet
+        SessionModel + commitToTarget. Optional (Tests laufen ohne). */
+    std::function<void (const osc::LooperOscAction&)> onLooperAction;
+
     //==========================================================================
     // IP-Learn (7.3) — Message Thread
 
@@ -215,6 +220,10 @@ private:
     // Announces (7.4) — eigener Lock, gleiche Marshalling-Richtung
     juce::CriticalSection announceLock;
     std::vector<osc::AnnounceInfo> pendingAnnounces;
+
+    // Looper-Aktionen (M8) — gleiches Muster (sammeln → MT-Hook)
+    juce::CriticalSection looperActionLock;
+    std::vector<osc::LooperOscAction> pendingLooperActions;
 
     std::atomic<bool> stateDirty { false };
     std::atomic<bool> syncRequested { false };  // Netzwerk → Message Thread

@@ -264,6 +264,68 @@ void OscController::oscMessageReceived (const juce::OSCMessage& message)
         return;  // Garbage still verwerfen — kein Crash, kein Log-Spam
     }
 
+    // /conduit/looper/... (M8): Aktions-Adressen VOR dem Endpoint-Lookup —
+    // Adresse pur parsen, Argumente validieren, auf den MT marshallen
+    if (message.getAddressPattern().toString().startsWith (osc::looperAddressPrefix))
+    {
+        auto action = osc::parseLooperActionAddress (
+            message.getAddressPattern().toString());
+
+        const auto intArg = [&message] (int index, int fallback) -> int
+        {
+            if (index >= message.size())
+                return fallback;
+            if (message[index].isInt32())
+                return message[index].getInt32();
+            if (message[index].isFloat32())   // Max/js-Toleranz wie Announce
+                return static_cast<int> (message[index].getFloat32());
+            return fallback;
+        };
+
+        switch (action.type)
+        {
+            case osc::LooperOscAction::Type::commit:
+                action.bars = juce::jlimit (1, 8, intArg (0, 0));
+                if (intArg (0, 0) < 1)
+                    action.type = osc::LooperOscAction::Type::none;  // bars-Pflicht
+                break;
+
+            case osc::LooperOscAction::Type::target:
+            {
+                const auto track = intArg (0, 0);
+                const auto slot  = intArg (1, 0);
+                if (track >= 1 && track <= 4 && slot >= 1 && slot <= 12)
+                {
+                    action.trackIndex = track - 1;
+                    action.slotIndex  = slot - 1;
+                }
+                else
+                {
+                    action.type = osc::LooperOscAction::Type::none;
+                }
+                break;
+            }
+
+            case osc::LooperOscAction::Type::stopLooper:
+            case osc::LooperOscAction::Type::stopTrack:
+            case osc::LooperOscAction::Type::stopAll:
+            case osc::LooperOscAction::Type::none:
+                break;
+        }
+
+        if (action.type != osc::LooperOscAction::Type::none)
+        {
+            {
+                const juce::ScopedLock lock (looperActionLock);
+                pendingLooperActions.push_back (action);
+            }
+
+            triggerAsyncUpdate();
+        }
+
+        return;  // Looper-Namensraum konsumiert — nie Endpoint-Lookup
+    }
+
     if (message.size() < 1)
         return;
 
@@ -341,6 +403,20 @@ void OscController::handleAsyncUpdate()
         if (onAnnounce != nullptr)
             for (const auto& announce : announces)
                 onAnnounce (announce);
+    }
+
+    // Looper-Aktionen (M8) — gleiche Marshalling-Richtung wie Announces
+    {
+        std::vector<osc::LooperOscAction> actions;
+
+        {
+            const juce::ScopedLock lock (looperActionLock);
+            actions.swap (pendingLooperActions);
+        }
+
+        if (onLooperAction != nullptr)
+            for (const auto& action : actions)
+                onLooperAction (action);
     }
 
     // Sync NACH applyTreeUpdates — der Dump enthält damit auch Werte,

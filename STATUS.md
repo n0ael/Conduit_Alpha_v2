@@ -175,6 +175,23 @@ modul-ready).
     async Bestätigungs-Dialog (ersetzt die M6-Doppel-Klick-Lösung).
   - Tests: TransportBar-Kontext-Sichtbarkeit, HoldTile-Zustandsmaschine;
     Browser-Tests an die zweite Aktions-Zeile angepasst. 434 Fälle grün.
+- **M8 (fertig, 05.07.2026):** OSC-Looper-Aktionen (Push-Pads/Fußschalter —
+  „für Live das mit Abstand wertvollste").
+  - **Adressen** (OscAddress.h, Indizes 1-basiert): `/conduit/looper/stop`
+    (alles) · `/conduit/looper/{1-4}/commit i:bars` (letzte N Takte →
+    Target-Slot, bars-Pflicht 1–8, Float toleriert) ·
+    `/conduit/looper/{1-4}/stop` · `/conduit/looper/{1-4}/track/{1-4}/stop`
+    · `/conduit/looper/{1-4}/target i:track i:slot`. Purer Adress-Parser
+    (parseLooperActionAddress) — testbar ohne Netz.
+  - **OscController:** Erkennung VOR dem Endpoint-Lookup [Netzwerk-Thread],
+    pendingLooperActions unter eigenem Lock + AsyncUpdater (Announce-
+    Muster), MT-Hook onLooperAction; Garbage/OOB still verworfen.
+  - **EngineProcessor:** onLooperAction → commitToTarget bzw.
+    SessionModel-Stops (Launch-Quant aus den Settings) / armTarget —
+    fire-and-forget. Empfang wie gehabt Port 9000.
+  - Tests: Parser-Tabelle (gültig + Garbage/Grenzen), Marshalling-Test
+    (Netzwerk-Empfang → MT-Hook, Float-Toleranz, Verwerfen ungültiger
+    Argumente). 436 Fälle grün, ASan [osc]+[looper] grün.
 
 ---
 

@@ -388,3 +388,83 @@ TEST_CASE ("OscController: cancelIpLearn restauriert ohne Callback", "[osc][netw
 
     rig.osc.disconnect();
 }
+
+//==============================================================================
+TEST_CASE ("OscAddress (M8): Looper-Aktions-Parser — Adress-Tabelle", "[osc][looper]")
+{
+    using Action = conduit::osc::LooperOscAction;
+    using Type = Action::Type;
+    const auto parse = [] (const char* address)
+    { return conduit::osc::parseLooperActionAddress (address); };
+
+    // Gueltige Adressen (Indizes 1-basiert -> 0-basiert)
+    REQUIRE (parse ("/conduit/looper/stop").type == Type::stopAll);
+    REQUIRE (parse ("/conduit/looper/1/commit").type == Type::commit);
+    REQUIRE (parse ("/conduit/looper/1/commit").looperIndex == 0);
+    REQUIRE (parse ("/conduit/looper/4/stop").type == Type::stopLooper);
+    REQUIRE (parse ("/conduit/looper/4/stop").looperIndex == 3);
+    REQUIRE (parse ("/conduit/looper/2/target").type == Type::target);
+
+    const auto trackStop = parse ("/conduit/looper/3/track/2/stop");
+    REQUIRE (trackStop.type == Type::stopTrack);
+    REQUIRE (trackStop.looperIndex == 2);
+    REQUIRE (trackStop.trackIndex == 1);
+
+    // Garbage/Grenzen -> none (kein Crash, kein Fallback)
+    REQUIRE (parse ("/conduit/looper/0/commit").type == Type::none);
+    REQUIRE (parse ("/conduit/looper/5/commit").type == Type::none);
+    REQUIRE (parse ("/conduit/looper/x/commit").type == Type::none);
+    REQUIRE (parse ("/conduit/looper/1/quatsch").type == Type::none);
+    REQUIRE (parse ("/conduit/looper/1/track/9/stop").type == Type::none);
+    REQUIRE (parse ("/conduit/looper/1/track/1/start").type == Type::none);
+    REQUIRE (parse ("/conduit/looper").type == Type::none);
+    REQUIRE (parse ("/conduit/generator/lfo_1/rate").type == Type::none);
+}
+
+TEST_CASE ("OscController (M8): Looper-Aktionen — Marshalling auf den MT-Hook", "[osc][looper]")
+{
+    OscTestRig rig;
+
+    std::vector<conduit::osc::LooperOscAction> received;
+    rig.osc.onLooperAction = [&received] (const conduit::osc::LooperOscAction& action)
+    { received.push_back (action); };
+
+    using Type = conduit::osc::LooperOscAction::Type;
+
+    // Netzwerk-Thread-Empfang: erst nach dem MT-Drain beim Hook
+    rig.osc.oscMessageReceived (juce::OSCMessage { "/conduit/looper/1/commit",
+                                                   static_cast<juce::int32> (4) });
+    REQUIRE (received.empty());
+
+    rig.osc.flushPendingUpdates();
+    REQUIRE (received.size() == 1);
+    REQUIRE (received[0].type == Type::commit);
+    REQUIRE (received[0].looperIndex == 0);
+    REQUIRE (received[0].bars == 4);
+
+    // Float-Toleranz (Max/js) + Target mit Argumenten + Stops
+    received.clear();
+    rig.osc.oscMessageReceived (juce::OSCMessage { "/conduit/looper/2/commit", 8.0f });
+    rig.osc.oscMessageReceived (juce::OSCMessage { "/conduit/looper/2/target",
+                                                   static_cast<juce::int32> (3),
+                                                   static_cast<juce::int32> (5) });
+    rig.osc.oscMessageReceived (juce::OSCMessage { "/conduit/looper/stop" });
+    rig.osc.flushPendingUpdates();
+
+    REQUIRE (received.size() == 3);
+    REQUIRE (received[0].type == Type::commit);
+    REQUIRE (received[0].bars == 8);
+    REQUIRE (received[1].type == Type::target);
+    REQUIRE (received[1].trackIndex == 2);
+    REQUIRE (received[1].slotIndex == 4);
+    REQUIRE (received[2].type == Type::stopAll);
+
+    // Ungueltiges wird still verworfen: Commit ohne bars, Target OOB
+    received.clear();
+    rig.osc.oscMessageReceived (juce::OSCMessage { "/conduit/looper/1/commit" });
+    rig.osc.oscMessageReceived (juce::OSCMessage { "/conduit/looper/1/target",
+                                                   static_cast<juce::int32> (9),
+                                                   static_cast<juce::int32> (1) });
+    rig.osc.flushPendingUpdates();
+    REQUIRE (received.empty());
+}

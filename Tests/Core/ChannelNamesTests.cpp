@@ -384,3 +384,74 @@ TEST_CASE ("ChannelNames: Stereo-Pairing — Anker, Konfliktregel, Persistenz", 
         REQUIRE_FALSE (again.isPortPairStart (Direction::input, 2));
     }
 }
+
+//==============================================================================
+TEST_CASE ("ChannelNames: Kanal-Farbe — set/get, Mapping, Prune, Persistenz", "[channelnames][colour]")
+{
+    juce::ScopedJuceInitialiser_GUI juceRuntime;
+    TempSettingsFolder temp;
+
+    SECTION ("Default ist 0 (keine Farbe)")
+    {
+        ChannelNames names (temp.options());
+        names.setActiveDevice ("ES-3", {}, {});
+        REQUIRE (names.getColour (Direction::input, 0) == 0);
+    }
+
+    SECTION ("Setzen/Lesen, Richtungen getrennt, Löschen mit 0")
+    {
+        ChannelNames names (temp.options());
+        names.setActiveDevice ("ES-3", { "A", "B" }, { "L" });
+
+        names.setColour (Direction::input, 0, 0x00ff453au);
+        REQUIRE (names.getColour (Direction::input, 0)  == 0x00ff453au);
+        REQUIRE (names.getColour (Direction::output, 0) == 0);  // andere Richtung
+
+        names.setColour (Direction::input, 0, 0);
+        REQUIRE (names.getColour (Direction::input, 0) == 0);
+    }
+
+    SECTION ("Ohne aktives Device ist setColour ein No-op")
+    {
+        ChannelNames detached (temp.options());
+        detached.setColour (Direction::input, 0, 0x0000bfd8u);
+        REQUIRE (detached.getColour (Direction::input, 0) == 0);
+    }
+
+    SECTION ("Farbe folgt dem physischen Geräte-Kanal bei Auswahl-Änderung")
+    {
+        ChannelNames names (temp.options());
+        // Aktiv nur Kanal 1 und 3: Port 0 → Kanal 1, Port 1 → Kanal 3
+        names.setColour (Direction::input, 0, 0);  // no-op ohne Device
+        names.setActiveDevice ("Interface", { "A", "B", "C", "D" }, {},
+                               channelMask ({ 1, 3 }), {});
+        names.setColour (Direction::input, 0, 0x003ddc84u);  // Port 0 = Kanal 1
+
+        // Kanal 0 zusätzlich aktiv → Port 1 = Kanal 1
+        names.setActiveDevice ("Interface", { "A", "B", "C", "D" }, {},
+                               channelMask ({ 0, 1, 3 }), {});
+        REQUIRE (names.getColour (Direction::input, 0) == 0);           // Kanal 0
+        REQUIRE (names.getColour (Direction::input, 1) == 0x003ddc84u); // folgt Kanal 1
+    }
+
+    SECTION ("Prune: farb-only-Entry überlebt Roundtrip, 0 räumt ihn aus")
+    {
+        {
+            ChannelNames names (temp.options());
+            names.setActiveDevice ("ES-3", {}, {});
+            names.setColour (Direction::input, 2, 0x00a066d3u);  // ohne Label/Pairing
+            names.flush();
+        }
+
+        ChannelNames reloaded (temp.options());
+        reloaded.setActiveDevice ("ES-3", {}, {});
+        REQUIRE (reloaded.getColour (Direction::input, 2) == 0x00a066d3u);
+
+        reloaded.setColour (Direction::input, 2, 0);
+        reloaded.flush();
+
+        ChannelNames again (temp.options());
+        again.setActiveDevice ("ES-3", {}, {});
+        REQUIRE (again.getColour (Direction::input, 2) == 0);
+    }
+}

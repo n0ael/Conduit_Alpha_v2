@@ -210,6 +210,7 @@ set(CONDUIT_CPP_SOURCES
     Source/UI/CapturePanel.cpp
     Source/UI/CaptureSettingsComponent.cpp
     Source/UI/CaptureToast.cpp
+    Source/UI/ChannelAttributePanel.cpp
     Source/UI/CurveEditor.cpp
     Source/UI/FxModulePanel.cpp
     Source/UI/GainFaderMeter.cpp
@@ -365,6 +366,7 @@ target_sources(Conduit PRIVATE
     Source/UI/CaptureAllButton.h
     Source/UI/CapturePanel.h
     Source/UI/CaptureToast.h
+    Source/UI/ChannelAttributePanel.h
     Source/UI/CurveEditor.h
     Source/UI/CurvedSlider.h
     Source/UI/FxModulePanel.h
@@ -652,6 +654,7 @@ if(CONDUIT_BUILD_TESTS)
         Source/UI/CapturePanel.cpp
         Source/UI/CaptureSettingsComponent.cpp
         Source/UI/CaptureToast.cpp
+        Source/UI/ChannelAttributePanel.cpp
         Source/UI/CurveEditor.cpp
         Source/UI/FxModulePanel.cpp
         Source/UI/GainFaderMeter.cpp

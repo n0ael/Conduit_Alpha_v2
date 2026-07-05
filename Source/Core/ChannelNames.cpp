@@ -22,6 +22,7 @@ namespace
     const juce::Identifier xmlImagePath { "imagePath" };
     const juce::Identifier xmlPaired    { "paired" };
     const juce::Identifier xmlLinkSend  { "linkSend" };
+    const juce::Identifier xmlColour    { "colour" };
 
     [[nodiscard]] const char* toString (ChannelNames::Direction direction)
     {
@@ -87,6 +88,7 @@ void ChannelNames::loadFromFile()
             entry.imagePath       = channelXml->getStringAttribute (xmlImagePath.toString());
             entry.pairedWithNext  = channelXml->getBoolAttribute (xmlPaired.toString(), false);
             entry.linkSendEnabled = channelXml->getBoolAttribute (xmlLinkSend.toString(), false);
+            entry.colour          = (juce::uint32) channelXml->getIntAttribute (xmlColour.toString(), 0);
 
             if (entry.channelIndex >= 0 && ! entry.isEmpty())
                 device.entries.push_back (std::move (entry));
@@ -120,6 +122,9 @@ void ChannelNames::writeToFile()
 
             if (entry.linkSendEnabled)
                 channelXml->setAttribute (xmlLinkSend.toString(), 1);
+
+            if (entry.colour != 0)
+                channelXml->setAttribute (xmlColour.toString(), (int) entry.colour);
         }
     }
 
@@ -242,6 +247,32 @@ void ChannelNames::setImagePath (Direction direction, int channelIndex, const ju
         it->imagePath = path;
     else if (path.isNotEmpty())
         device.entries.push_back ({ direction, deviceChannel, {}, path });
+
+    pruneAndStore (device);
+}
+
+//==============================================================================
+juce::uint32 ChannelNames::getColour (Direction direction, int channelIndex) const
+{
+    if (const auto* entry = findEntry (direction, toDeviceChannel (direction, channelIndex)))
+        return entry->colour;
+
+    return 0;
+}
+
+void ChannelNames::setColour (Direction direction, int channelIndex, juce::uint32 colour)
+{
+    if (activeDeviceName.isEmpty() || channelIndex < 0)
+        return;  // ohne Device-Kontext gibt es keinen Key zum Speichern
+
+    const auto deviceChannel = toDeviceChannel (direction, channelIndex);
+
+    if (colour == getColour (direction, channelIndex))
+        return;
+
+    auto& device = findOrCreateActiveDevice();
+    auto& entry  = findOrCreateEntry (device, direction, deviceChannel);
+    entry.colour = colour;
 
     pruneAndStore (device);
 }

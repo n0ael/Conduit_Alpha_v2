@@ -92,6 +92,19 @@ public:
     [[nodiscard]] juce::String getImagePath (Direction direction, int channelIndex) const;
 
     //==========================================================================
+    // Kanal-Farbe (Quellfarbe) — App-Zustand am PHYSISCHEN Geräte-Kanal wie das
+    // Pairing (kein Undo, überlebt Preset-Load, folgt Device-Matching). Format
+    // 0x00RRGGBB, 0 = keine Farbe gesetzt (Sentinel wie tintColour::isVoid).
+    // Speist das Kabel-Rendering (M-B); M-A schreibt und persistiert nur.
+
+    /** 0, wenn keine Farbe gesetzt ist (→ Kabel nutzt die Default-Farbe). */
+    [[nodiscard]] juce::uint32 getColour (Direction direction, int channelIndex) const;
+
+    /** Farbe für den physischen Kanal des Ports setzen; 0 löscht sie.
+        No-op ohne aktives Device. */
+    void setColour (Direction direction, int channelIndex, juce::uint32 colour);
+
+    //==========================================================================
     // Stereo-Pairing (Port-Sicht — Indizes sind komprimierte Port-Indizes,
     // das Mapping auf physische Geräte-Kanäle passiert am Rand wie getLabel)
 
@@ -149,12 +162,13 @@ private:
         juce::String imagePath;
         bool pairedWithNext = false;   // Stereo-Paar (channelIndex, channelIndex+1)
         bool linkSendEnabled = false;  // Kanal wird als Link-Audio-Kanal gesendet
+        juce::uint32 colour = 0;       // Quellfarbe 0x00RRGGBB, 0 = keine
 
         /** Trägt der Eintrag noch etwas Persistierenswertes? (Prune-Regel) */
         [[nodiscard]] bool isEmpty() const noexcept
         {
             return userLabel.isEmpty() && imagePath.isEmpty()
-                && ! pairedWithNext && ! linkSendEnabled;
+                && ! pairedWithNext && ! linkSendEnabled && colour == 0;
         }
     };
 

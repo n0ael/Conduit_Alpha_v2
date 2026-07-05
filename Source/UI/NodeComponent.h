@@ -52,7 +52,8 @@ namespace conduit
 */
 class NodeComponent final : public juce::Component,
                             private juce::ValueTree::Listener,
-                            private juce::ChangeListener
+                            private juce::ChangeListener,
+                            private juce::Timer
 {
 public:
     /** channelNamesToUse darf nullptr sein (Tests) — dann keine Port-Labels.
@@ -134,6 +135,7 @@ public:
     void resized() override;
     void mouseDown (const juce::MouseEvent& event) override;
     void mouseDrag (const juce::MouseEvent& event) override;
+    void mouseUp (const juce::MouseEvent& event) override;
 
 private:
     //==========================================================================
@@ -142,6 +144,16 @@ private:
 
     // juce::ChangeListener [Message Thread] — ChannelNames-Labels
     void changeListenerCallback (juce::ChangeBroadcaster* source) override;
+
+    // juce::Timer [Message Thread] — Long-Press auf eine audio_in-Kanalzeile
+    void timerCallback() override;
+
+    /** Kanal (Port-Index) unter localPoint an einem audio_in-Endpunkt, sonst
+        −1. Nur wenn hasPairingUi() (Input-Endpunkt mit ChannelNames). */
+    [[nodiscard]] int channelRowAt (juce::Point<int> localPoint) const;
+
+    /** Öffnet das ChannelAttributePanel als CallOutBox über der Kanalzeile. */
+    void openChannelAttributePanel (int channel);
 
     /** Richtung der Kanal-Labels dieses Endpunkts; nullopt = kein Endpunkt
         oder keine ChannelNames-Quelle. */
@@ -252,6 +264,13 @@ private:
 
     // Processor-Nodes (FX-Chassis, 4.6): Gain-Züge + vertikale Fader-Reihe
     std::unique_ptr<FxModulePanel> fxPanel;
+
+    // Long-Press auf eine audio_in-Kanalzeile öffnet das Attribut-Panel
+    // (Geste-Tabelle 10.1, P2). longPressChannel >= 0 = Timer läuft für diese
+    // Zeile; ein Drag über die Schwelle entlarvt die Geste als Node-Verschieben.
+    static constexpr int longPressMs = 500;
+    static constexpr int longPressMoveThreshold = 8;
+    int longPressChannel = -1;
 
     std::unique_ptr<juce::VBlankAttachment> teardownVBlank;
     bool tearingDown = false;

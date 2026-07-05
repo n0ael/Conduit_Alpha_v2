@@ -6,6 +6,7 @@
 #include "Modules/LinkAudioSendModule.h"
 #include "Modules/ScopeModule.h"
 #include "Modules/StepSequencerModule.h"
+#include "UI/ChannelAttributePanel.h"
 #include "PushLookAndFeel.h"
 
 namespace conduit
@@ -211,6 +212,9 @@ void NodeComponent::beginTeardown()
     // letzten Render-Zyklus.
     tearingDown = true;
     nodeTree.removeListener (this);
+
+    stopTimer();          // kein Long-Press-Panel mehr während des Teardowns
+    longPressChannel = -1;
 
     if (uiSettings != nullptr)
         uiSettings->removeChangeListener (this);
@@ -780,6 +784,16 @@ void NodeComponent::paint (juce::Graphics& g)
             g.drawText (channelNames->getLabel (*direction, channel), area,
                         isInputEndpoint ? juce::Justification::centredRight
                                         : juce::Justification::centredLeft);
+
+            // Quellfarbe als schmaler Farbstreifen am linken Zeilenrand (M-A) —
+            // sichtbarer Beleg der Deklaration; die Kabel folgen ihr in M-B
+            if (const auto rgb = channelNames->getColour (*direction, channel); rgb != 0)
+            {
+                g.setColour (juce::Colour (0xff000000u | (rgb & 0x00ffffffu)));
+                g.fillRoundedRectangle (
+                    juce::Rectangle<float> (3.0f, (float) rowY - 6.0f, 4.0f, 12.0f), 2.0f);
+                g.setColour (juce::Colours::white.withAlpha (0.55f));  // Label-Farbe wiederherstellen
+            }
         }
     }
 }
@@ -871,10 +885,27 @@ void NodeComponent::mouseDown (const juce::MouseEvent& event)
 {
     toFront (false);  // gegriffene Kachel über überlappende Nachbarn heben
     dragger.startDraggingComponent (this, event);
+
+    // Long-Press auf eine audio_in-Kanalzeile öffnet das Attribut-Panel —
+    // ein Drag über die Schwelle entlarvt die Geste als Node-Verschieben
+    longPressChannel = channelRowAt (event.getPosition());
+    if (longPressChannel >= 0)
+        startTimer (longPressMs);
 }
 
 void NodeComponent::mouseDrag (const juce::MouseEvent& event)
 {
+    // Während der Long-Press wartet, bleibt der Node stehen (kleines Zittern
+    // bricht die Geste nicht); erst über der Schwelle wird sie zum Drag
+    if (longPressChannel >= 0)
+    {
+        if (event.getDistanceFromDragStart() <= longPressMoveThreshold)
+            return;
+
+        stopTimer();
+        longPressChannel = -1;
+    }
+
     // ≤ 1-Frame-Feedback: Component bewegt sich sofort, der Tree zieht nach.
     // Ohne UndoManager — ein Drag erzeugt sonst hunderte Undo-Schritte.
     dragger.dragComponent (this, event, nullptr);
@@ -887,6 +918,54 @@ void NodeComponent::mouseDrag (const juce::MouseEvent& event)
     setTopLeftPosition (snapped);
     nodeTree.setProperty (id::positionX, snapped.x, nullptr);
     nodeTree.setProperty (id::positionY, snapped.y, nullptr);
+}
+
+void NodeComponent::mouseUp (const juce::MouseEvent&)
+{
+    // Loslassen vor Ablauf des Long-Press: Geste verwerfen (war ein Tap/Drag)
+    stopTimer();
+    longPressChannel = -1;
+}
+
+void NodeComponent::timerCallback()
+{
+    stopTimer();
+
+    const auto channel = longPressChannel;
+    longPressChannel = -1;
+
+    if (channel >= 0 && ! tearingDown)
+        openChannelAttributePanel (channel);
+}
+
+int NodeComponent::channelRowAt (juce::Point<int> localPoint) const
+{
+    // Nur der audio_in-Endpunkt trägt die Kanal-Attribute (Direction::input);
+    // seine Kanal-Zeilen liegen im Output-Bank-Raster (Ports = Hardware-Inputs)
+    if (! hasPairingUi())
+        return -1;
+
+    for (int channel = 0; channel < outputChannelCount; ++channel)
+        if (std::abs (localPoint.y - channelRowY (false, channel)) <= 15)
+            return channel;
+
+    return -1;
+}
+
+void NodeComponent::openChannelAttributePanel (int channel)
+{
+    if (channelNames == nullptr)
+        return;
+
+    auto panel = std::make_unique<ChannelAttributePanel> (
+        *channelNames, inputSend, channel, channel + 1 < outputChannelCount);
+
+    // Anker: die Kanal-Zeile in Bildschirm-Koordinaten (CallOutBox zeigt darauf)
+    const auto rowY = channelRowY (false, channel);
+    const auto rowArea = localAreaToGlobal (
+        juce::Rectangle<int> (0, rowY - 12, getWidth(), 24));
+
+    juce::CallOutBox::launchAsynchronously (std::move (panel), rowArea, nullptr);
 }
 
 } // namespace conduit

@@ -20,18 +20,18 @@ namespace conduit
       Looper (oo)  — Retro-Looper (B3), erreichbar über die Tape-Kachel
                      statt über ein Page-Icon
 
-    Der Host besitzt nur die Platzhalter; Device-Komponente (NodeCanvas)
-    und LooperPage gehören weiterhin dem EngineEditor und werden als
-    Referenz eingehängt — ihre Verdrahtung bleibt unangetastet.
+    Der Host besitzt nur die Platzhalter; Device-Komponente (NodeCanvas),
+    LooperPage und GridPage (M1 Teil 3) gehören weiterhin dem EngineEditor
+    und werden als Referenz eingehängt — ihre Verdrahtung bleibt unangetastet.
 
     Page-Indizes == TransportBar::PageIndex. Message Thread.
 */
 class PageHost final : public juce::Component
 {
 public:
-    /** devicePage (Canvas) und looperPage: nicht owned, müssen den Host
-        überleben — Member-Reihenfolge im EngineEditor. */
-    PageHost (juce::Component& devicePage, juce::Component& looperPage);
+    /** devicePage (Canvas), looperPage und gridPage: nicht owned, müssen
+        den Host überleben — Member-Reihenfolge im EngineEditor. */
+    PageHost (juce::Component& devicePage, juce::Component& looperPage, juce::Component& gridPage);
 
     void setPage (int pageIndex);
     [[nodiscard]] int getPage() const noexcept { return currentPage; }
@@ -54,7 +54,7 @@ private:
 
     juce::Component& device;
     juce::Component& looper;
-    Placeholder gridPage   { push::Icon::pageGrid,  "Grid" };
+    juce::Component& grid;
     Placeholder mixerPage  { push::Icon::pageMixer, "Mixer" };
     Placeholder clipPage   { push::Icon::pageClip,  "Clip" };
 

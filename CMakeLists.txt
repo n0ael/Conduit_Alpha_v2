@@ -113,6 +113,7 @@ set(CONDUIT_CPP_SOURCES
     Source/Core/OscController.cpp
     Source/Core/OscSendService.cpp
     Source/Core/OscSendSettings.cpp
+    Source/Core/PadGridLayout.cpp
     Source/Core/RemoteModuleBinder.cpp
     Source/Core/SourceNameResolver.cpp
     Source/Core/TransportSettings.cpp
@@ -220,6 +221,8 @@ set(CONDUIT_CPP_SOURCES
     Source/UI/CurveEditor.cpp
     Source/UI/FxModulePanel.cpp
     Source/UI/GainFaderMeter.cpp
+    Source/UI/GridKeyboardComponent.cpp
+    Source/UI/GridPage.cpp
     Source/UI/InputSendButton.cpp
     Source/UI/LevelMeterBar.cpp
     Source/UI/LinkAudioSendPanel.cpp
@@ -272,6 +275,7 @@ target_sources(Conduit PRIVATE
     Source/Core/OscController.h
     Source/Core/OscSendService.h
     Source/Core/OscSendSettings.h
+    Source/Core/PadGridLayout.h
     Source/Core/RemoteModuleBinder.h
     Source/Core/SourceNameResolver.h
     Source/Core/TransportSettings.h
@@ -387,6 +391,8 @@ target_sources(Conduit PRIVATE
     Source/UI/CurvedSlider.h
     Source/UI/FxModulePanel.h
     Source/UI/GainFaderMeter.h
+    Source/UI/GridKeyboardComponent.h
+    Source/UI/GridPage.h
     Source/UI/InputSendButton.h
     Source/UI/LinkAudioSendPanel.h
     Source/UI/LinkAudioStatusBadge.h
@@ -508,6 +514,7 @@ if(CONDUIT_BUILD_TESTS)
         Tests/Core/NamedIdTests.cpp
         Tests/Core/GraphManagerTests.cpp
         Tests/Core/GridVoiceEngineTests.cpp
+        Tests/Core/PadGridLayoutTests.cpp
         Tests/Core/LevelMeterTests.cpp
         Tests/Core/InputLinkSendTests.cpp
         Tests/Core/LinkAudioSendTests.cpp
@@ -542,6 +549,7 @@ if(CONDUIT_BUILD_TESTS)
         Tests/Core/VoiceAllocatorTests.cpp
         Tests/UI/BrowserPanelTests.cpp
         Tests/UI/TouchKeyboardTests.cpp
+        Tests/UI/GridKeyboardTests.cpp
         Tests/UI/FxModulePanelTests.cpp
         Tests/UI/NodeCanvasTests.cpp
         Tests/UI/LevelMeterBarTests.cpp
@@ -571,6 +579,7 @@ if(CONDUIT_BUILD_TESTS)
         Source/Core/LinkSendTaps.cpp
         Source/Core/MeterSettings.cpp
         Source/Core/Metronome.cpp
+        Source/Core/MidiDeviceTarget.cpp
         Source/Core/ModuleUiDefaults.cpp
         Source/Core/MpeEncoder.cpp
         Source/Core/MpeMidiSink.cpp
@@ -578,6 +587,7 @@ if(CONDUIT_BUILD_TESTS)
         Source/Core/OscController.cpp
         Source/Core/OscSendService.cpp
         Source/Core/OscSendSettings.cpp
+        Source/Core/PadGridLayout.cpp
         Source/Core/RemoteModuleBinder.cpp
         Source/Core/SourceNameResolver.cpp
         Source/Core/TransportSettings.cpp
@@ -685,6 +695,8 @@ if(CONDUIT_BUILD_TESTS)
         Source/UI/CurveEditor.cpp
         Source/UI/FxModulePanel.cpp
         Source/UI/GainFaderMeter.cpp
+        Source/UI/GridKeyboardComponent.cpp
+        Source/UI/GridPage.cpp
         Source/UI/InputSendButton.cpp
         Source/UI/LevelMeterBar.cpp
         Source/UI/LinkAudioSendPanel.cpp

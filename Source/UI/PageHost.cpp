@@ -6,10 +6,10 @@
 namespace conduit
 {
 
-PageHost::PageHost (juce::Component& devicePage, juce::Component& looperPage)
-    : device (devicePage), looper (looperPage)
+PageHost::PageHost (juce::Component& devicePage, juce::Component& looperPage, juce::Component& gridPage)
+    : device (devicePage), looper (looperPage), grid (gridPage)
 {
-    addChildComponent (gridPage);
+    addChildComponent (grid);
     addChildComponent (mixerPage);
     addChildComponent (clipPage);
     addChildComponent (looper);
@@ -22,7 +22,7 @@ void PageHost::setPage (int pageIndex)
 {
     currentPage = juce::jlimit (0, (int) TransportBar::pageLooper, pageIndex);
 
-    gridPage.setVisible (currentPage == TransportBar::pageGrid);
+    grid.setVisible (currentPage == TransportBar::pageGrid);
     mixerPage.setVisible (currentPage == TransportBar::pageMixer);
     clipPage.setVisible (currentPage == TransportBar::pageClip);
     device.setVisible (currentPage == TransportBar::pageDevice);
@@ -32,7 +32,7 @@ void PageHost::setPage (int pageIndex)
 void PageHost::resized()
 {
     const auto bounds = getLocalBounds();
-    gridPage.setBounds (bounds);
+    grid.setBounds (bounds);
     mixerPage.setBounds (bounds);
     clipPage.setBounds (bounds);
     device.setBounds (bounds);

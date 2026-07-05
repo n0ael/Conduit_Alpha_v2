@@ -13,6 +13,7 @@
 #include "UI/DevPanel.h"
 #include <array>
 
+#include "UI/GridPage.h"
 #include "UI/LooperPage.h"
 #include "UI/NodeCanvas.h"
 #include "UI/PageHost.h"
@@ -133,6 +134,14 @@ private:
     // deklariert (der hält eine Referenz darauf)
     LooperPage looperPage;
 
+    // Grid-Page (Ω, M1 Teil 3 — erster spielbarer Ton): GridVoiceEngine +
+    // MidiDeviceTarget kommen als Referenzen vom EngineProcessor (Muster
+    // Looper/Metronom, 4.2 ITouchMacro) — nach engine, VOR dem PageHost
+    // deklariert (der hält eine Referenz darauf). Initialisierung im .cpp-
+    // Ctor (EngineProcessor ist hier nur vorwärtsdeklariert, 4.6-Muster
+    // wie canvas/capturePanel).
+    GridPage gridPage;
+
     // TARGET-Halten pro Looper (Aktiv-Auswahl statt Launch, Übergabe §2)
     std::array<bool, 4> looperTargetHold {};
 
@@ -146,9 +155,10 @@ private:
         letzte Track, nur leer & gestoppt (M4-Entscheidung). */
     void removeLooperTrack (int looperIndex, int trackIndex);
 
-    // Nach Canvas + LooperPage deklariert (hält Referenzen darauf): die
-    // Pages hinter den Push-Icons — Device = Canvas, Rest Platzhalter
-    PageHost pageHost { canvas, looperPage };
+    // Nach Canvas + LooperPage + GridPage deklariert (hält Referenzen
+    // darauf): die Pages hinter den Push-Icons — Device = Canvas, Grid =
+    // GridPage, Rest Platzhalter
+    PageHost pageHost { canvas, looperPage, gridPage };
 
     // Browser-Panel (rechts angedockt): Kontext ← selectPage, Modell hält
     // seinen EIGENEN ValueTree (nie im Patch) — Reihenfolge: Worker-Pool

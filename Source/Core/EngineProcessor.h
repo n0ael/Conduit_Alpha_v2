@@ -14,6 +14,9 @@
 #include "Looper/LooperSessionModel.h"
 #include "Looper/LooperWaveformTap.h"
 #include "Metronome.h"
+#include "GridVoiceEngine.h"
+#include "MidiDeviceTarget.h"
+#include "MpeMidiSink.h"
 #include "GraphFader.h"
 #include "GraphManager.h"
 #include "InputLinkSend.h"
@@ -243,6 +246,13 @@ public:
         übernehmen Main.cpp und der EngineEditor. */
     [[nodiscard]] UiSettings& getUiSettings() noexcept;
 
+    /** Grid-Voice-Kette (M1 Teil 3, CLAUDE.md 14 ADR Grid-Page): reine
+        Message-Thread-Logik (ITouchMacro, 4.2) — NIE vom Audio-Thread
+        aufrufen. GridKeyboardComponent ruft die Engine direkt, die
+        Grid-Page füllt das Port-Dropdown aus dem MidiDeviceTarget. */
+    [[nodiscard]] grid::GridVoiceEngine& getGridVoiceEngine() noexcept { return gridVoiceEngine; }
+    [[nodiscard]] grid::MidiDeviceTarget& getGridMidiDeviceTarget() noexcept { return midiDeviceTarget; }
+
 private:
     /** Legt die reservierten I/O-Tree-Nodes (audio_input/audio_output) an,
         falls sie fehlen — frischer Patch oder Preset ohne I/O. Idempotent. */
@@ -425,6 +435,15 @@ private:
     // der OscController löst Endpoints über ihn auf und wird zuerst zerstört.
     SpscQueue<ParameterUpdate> oscToAudioQueue { 1024 };
     OscController oscController { rootState, graphManager, oscToAudioQueue };
+
+    // Grid-Voice-Kette (M1 Teil 3): reine Message-Thread-Logik, vom Audio-
+    // Graph unabhängig (kein processBlock-Zugriff, CLAUDE.md 4.2 ITouchMacro).
+    // Deklarationsreihenfolge = Abhängigkeitsrichtung, jede Referenz zeigt
+    // nach OBEN: MidiDeviceTarget → MpeMidiSink (nimmt Target&) →
+    // GridVoiceEngine (nimmt Sink&); Zerstörung läuft sicher rückwärts.
+    grid::MidiDeviceTarget midiDeviceTarget;
+    grid::MpeMidiSink      mpeMidiSink      { midiDeviceTarget };
+    grid::GridVoiceEngine  gridVoiceEngine  { mpeMidiSink };
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (EngineProcessor)
 };

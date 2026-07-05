@@ -4,6 +4,7 @@
 #include "EngineProcessor.h"
 #include "Modules/LinkAudioSendModule.h"
 #include "UI/LinkSendCreateDialog.h"
+#include "Core/Looper/LooperClipExporter.h"
 #include "UI/LooperSettingsMenu.h"
 #include "UI/SettingsWindow.h"
 #include "Util/ScaleQuantizer.h"
@@ -721,9 +722,19 @@ void EngineEditor::handleLooperSlotTap (int looperIndex, int trackIndex, int slo
 
     if (looperGesture == LooperGesture::saveClips)
     {
-        if (session.clipAt (looperIndex, trackIndex, slotIndex) != nullptr)
-            captureToast.show (juce::String::fromUTF8 (
-                "Clip-Export als Datei kommt mit M9 (Save-Geste steht)"));
+        // M9: Clip als sample-alignte BWF-Dateien (_l/_r) über die
+        // CaptureWriter-Pipeline — Abschluss meldet der Export-Toast
+        if (auto* clip = session.clipAt (looperIndex, trackIndex, slotIndex))
+        {
+            const auto baseName = "looper" + juce::String (looperIndex + 1)
+                                + "_clip" + juce::String (clip->clipId);
+            const auto result = LooperClipExporter::exportClip (
+                engine.getCaptureService(), *clip, baseName, engine.getSampleRate());
+
+            captureToast.show (result.wasOk()
+                                   ? baseName + " wird gespeichert " + juce::String::fromUTF8 ("…")
+                                   : result.getErrorMessage());
+        }
         return;
     }
 

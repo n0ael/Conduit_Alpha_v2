@@ -192,6 +192,24 @@ modul-ready).
   - Tests: Parser-Tabelle (gültig + Garbage/Grenzen), Marshalling-Test
     (Netzwerk-Empfang → MT-Hook, Float-Toleranz, Verwerfen ungültiger
     Argumente). 436 Fälle grün, ASan [osc]+[looper] grün.
+- **M9 (fertig, 05.07.2026):** Save-Geste → BWF-Export.
+  - **LooperClipExporter** (`Source/Core/Looper/`): makeJob baut pro Clip
+    einen CaptureWriter::Job mit ZWEI Tasks (_l/_r), TrackSource liest
+    DIREKT aus der Content-Region des Clip-Buffers
+    (`ringCapacitySamples == 0` = eingefrorene Quelle, kein Überholschutz);
+    `startPosition = commitStartSample` → Loop-Dateien tragen dieselbe
+    Zeitreferenz (bext) wie Capture-Exports (sample-align zur Session —
+    Grundstein Drag-to-DAW). exportPins halten den Clip bis
+    releaseResources (Writer-Thread) am Leben; Delete/prepare parken ihn
+    im Graveyard, Freigabe erst bei Pins == 0.
+  - **CaptureService::enqueueExternalJob** (kleine neue API): Bit-Tiefe/
+    Verzeichnis/Take-Nummer vom Service, Writer-Thread + Report-→-MT-
+    Pfad (Toast) wiederverwendet.
+  - **EngineEditor:** Save halten + Clip antippen → exportClip
+    („looper{n}_clip{id}"), Abschluss über den bestehenden Export-Toast.
+  - Tests: makeJob (Tasks/Pins/sample-exakte Reads/Grenzen), End-to-End
+    (BWF-Datei sample-exakt zurückgelesen), Pin-vs-Delete am Bank-Rig
+    (Graveyard wartet auf Unpin). 439 Fälle grün, ASan [looper] grün.
 
 ---
 

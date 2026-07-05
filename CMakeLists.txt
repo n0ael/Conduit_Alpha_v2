@@ -127,6 +127,7 @@ set(CONDUIT_CPP_SOURCES
     Source/UI/LooperSettingsMenu.cpp
     Source/UI/LooperTrackStrip.cpp
     Source/Core/Looper/LooperBank.cpp
+    Source/Core/Looper/LooperClipExporter.cpp
     Source/Core/Looper/LooperSessionModel.cpp
     Source/Core/Looper/LooperWaveformTap.cpp
     Source/Core/Capture/CaptureSettings.cpp
@@ -497,6 +498,7 @@ if(CONDUIT_BUILD_TESTS)
         Tests/Core/LooperSourceTests.cpp
         Tests/Core/LooperWaveformTapTests.cpp
         Tests/Core/LooperBankTests.cpp
+        Tests/Core/LooperClipExporterTests.cpp
         Tests/Core/LooperSessionModelTests.cpp
         Tests/Core/LooperSettingsTests.cpp
         Tests/Core/MasterTapTests.cpp
@@ -567,6 +569,7 @@ if(CONDUIT_BUILD_TESTS)
         Source/UI/LooperSettingsMenu.cpp
         Source/UI/LooperTrackStrip.cpp
         Source/Core/Looper/LooperBank.cpp
+        Source/Core/Looper/LooperClipExporter.cpp
         Source/Core/Looper/LooperSessionModel.cpp
         Source/Core/Looper/LooperWaveformTap.cpp
         Source/Core/Capture/CaptureSettings.cpp

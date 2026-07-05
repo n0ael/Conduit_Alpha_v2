@@ -235,6 +235,15 @@ public:
         dieselbe Pipeline wie exportAll(), nur auf einen Kanal begrenzt. */
     int exportChannel (int channelIndex);
 
+    /** [Message Thread] Externen Export-Job einreihen (M9: Looper-Clip-
+        Export der Save-Geste): Bit-Tiefe, Verzeichnis und Take-Nummer
+        ergänzt der Service; Writer-Thread und Report-→-MT-Pfad (Toast)
+        werden wiederverwendet. Die TrackSources des Jobs sind
+        EINGEFRORENE Quellen (ringCapacitySamples == 0, CaptureWriter-
+        Doku) — der Caller pinnt sie bis releaseResources. false, wenn
+        der Service nicht prepared ist. */
+    bool enqueueExternalJob (CaptureWriter::Job&& job);
+
     /** [Message Thread] Nach Export + User-Bestätigung: die genannten Kanäle
         freigeben, sofern sie (noch) im Zustand held sind — die Quittung
         kommt vom Audio Thread im nächsten Block. */

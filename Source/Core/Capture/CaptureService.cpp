@@ -756,6 +756,25 @@ int CaptureService::enqueueExport (int onlyChannel)
     return numTracks;
 }
 
+bool CaptureService::enqueueExternalJob (CaptureWriter::Job&& job)
+{
+    JUCE_ASSERT_MESSAGE_THREAD
+
+    if (preparedSampleRate <= 0.0 || job.tasks.empty())
+        return false;
+
+    // Service-Anteile ergänzen — Sample-Rate des Jobs bleibt, falls der
+    // Caller sie gesetzt hat (Clips tragen ihre Aufnahme-Rate)
+    if (job.sampleRate <= 0.0)
+        job.sampleRate = preparedSampleRate;
+    job.bitDepth   = settings.getExportBitDepth();
+    job.directory  = settings.getExportDirectory();
+    job.takeNumber = nextTakeNumber++;
+
+    writer.enqueueJob (std::move (job));
+    return true;
+}
+
 void CaptureService::releaseExportedHeldChannels (const std::vector<int>& channelIndices)
 {
     if (currentSet == nullptr)

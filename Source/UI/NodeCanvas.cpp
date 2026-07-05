@@ -191,12 +191,19 @@ void NodeCanvas::updateCableDrag (juce::Point<int> position)
     }
 }
 
+void NodeCanvas::setCableDragMono()
+{
+    if (activeCableDrag)
+        activeCableDrag->forceMono = true;
+}
+
 void NodeCanvas::endCableDrag (juce::Point<int> position)
 {
     if (! activeCableDrag)
         return;
 
-    const auto from = activeCableDrag->from;
+    const auto from      = activeCableDrag->from;
+    const auto forceMono = activeCableDrag->forceMono;
     activeCableDrag.reset();
     repaint();
 
@@ -213,9 +220,10 @@ void NodeCanvas::endCableDrag (juce::Point<int> position)
         const auto& source = from.isInput ? port->getInfo() : from;
         const auto& dest   = from.isInput ? from            : port->getInfo();
 
-        // Stereo-Paar-Port als Quelle: EIN Drag erzeugt beide Kabel in einer
-        // Undo-Transaktion (Doppel-Linie am selben Port)
-        if (source.span == 2)
+        // Stereo-Quelle (span-2, z.B. FX-Audio 0/1 oder gekoppeltes audio_in):
+        // Default = beide Kabel in einer Undo-Transaktion. Dwell-Geste
+        // (forceMono) → nur ein Einzel-Kabel vom Anker-Kanal.
+        if (source.span == 2 && ! forceMono)
             graphManager.addConnectionPair (source.nodeUuid, source.channel,
                                             dest.nodeUuid, dest.channel);
         else
@@ -412,7 +420,7 @@ juce::uint32 NodeCanvas::sourceChannelRgb (const juce::String& sourceUuid, int c
         return 0;
 
     if (channelNames != nullptr && GraphManager::factoryKeyOf (node) == audioInputModuleId)
-        return channelNames->getColour (ChannelNames::Direction::input, channel);
+        return inputChannelRgb (channel);
 
     return computeEffectiveRgb (sourceUuid, visiting);
 }
@@ -426,12 +434,29 @@ juce::uint32 NodeCanvas::lookupSourceRgb (const juce::String& sourceUuid, int ch
 
     // audio_in: Farbe pro Kanal (ChannelNames)
     if (channelNames != nullptr && GraphManager::factoryKeyOf (node) == audioInputModuleId)
-        return channelNames->getColour (ChannelNames::Direction::input, channel);
+        return inputChannelRgb (channel);
 
     if (const auto it = flowColours.find (sourceUuid); it != flowColours.end())
         return it->second;
 
     return 0;
+}
+
+juce::uint32 NodeCanvas::inputChannelRgb (int channel) const
+{
+    if (channelNames == nullptr)
+        return 0;
+
+    using D = ChannelNames::Direction;
+
+    // Partner-Kanal eines Paars (Vorgänger ist Pair-Start) → Farbe des Ankers
+    auto anchor = channel;
+    if (channel > 0
+        && ! channelNames->isPortPairStart (D::input, channel)
+        && channelNames->isPortPairStart (D::input, channel - 1))
+        anchor = channel - 1;
+
+    return channelNames->getColour (D::input, anchor);
 }
 
 void NodeCanvas::refreshFlowColours()
@@ -451,6 +476,42 @@ void NodeCanvas::refreshFlowColours()
         const auto it = flowColours.find (comp->getNodeUuid());
         comp->setFlowColour (it != flowColours.end() ? it->second : 0);
     }
+
+    // Port-Striche einfärben: verbundener Port = Kabelfarbe, sonst neutral
+    const auto connections = rootState.getChildWithName (id::connections);
+    const juce::Colour neutralPort (0xff5a6170);
+
+    const auto portColour = [this, &connections, neutralPort] (const PortInfo& info) -> juce::Colour
+    {
+        const auto matches = [&info] (int connChannel)
+        {
+            return connChannel == info.channel
+                || (info.span == 2 && connChannel == info.channel + 1);
+        };
+
+        for (int i = 0; i < connections.getNumChildren(); ++i)
+        {
+            const auto c = connections.getChild (i);
+
+            if (info.isInput)
+            {
+                if (c.getProperty (id::destNodeId).toString() == info.nodeUuid
+                    && matches ((int) c.getProperty (id::destChannel)))
+                    return cableColourFor (c.getProperty (id::sourceNodeId).toString(),
+                                           (int) c.getProperty (id::sourceChannel));
+            }
+            else if (c.getProperty (id::sourceNodeId).toString() == info.nodeUuid
+                     && matches ((int) c.getProperty (id::sourceChannel)))
+            {
+                return cableColourFor (info.nodeUuid, info.channel);
+            }
+        }
+
+        return neutralPort;  // unverbunden
+    };
+
+    for (auto& comp : nodeComponents)
+        comp->applyPortSignalColours (portColour);
 
     repaint();  // Kabel folgen der neuen Farbe
 }

@@ -24,8 +24,8 @@ namespace
     constexpr int endpointSendColumn  = 24;   // Link-Send-Toggle-Spalte (nur audio_in)
 
     // Vertikaler Versatz der beiden Kabel-Anker eines Stereo-Paar-Ports —
-    // die zwei Connections starten dicht beieinander (Doppel-Linien-Optik)
-    constexpr int pairCableOffset = 3;
+    // deckt sich mit dem Strich-Versatz in PortComponent (zwei enge Striche)
+    constexpr int pairCableOffset = 5;
 }
 
 NodeComponent::NodeComponent (juce::ValueTree nodeTreeToBind,
@@ -440,14 +440,23 @@ void NodeComponent::rebuildPorts()
     if (isChassisNode)
         inputChannelCount = juce::jmin (inputChannelCount, FxModulePanel::firstCvChannel);
 
-    // Stereo-Paare verschmelzen nur am audio_in-Endpunkt zu span-2-Zeilen
-    const auto pairStart = hasPairingUi()
-        ? std::function<bool (int)> ([this] (int channel)
-              { return channelNames->isPortPairStart (ChannelNames::Direction::input, channel); })
-        : std::function<bool (int)>();
+    // Stereo-Paare verschmelzen zu span-2-Zeilen: am audio_in-Endpunkt nach
+    // ChannelNames-Pairing, an FX-Chassis-Nodes fest die Audio-Kanäle 0/1
+    // (inhärentes Stereo — Default-Stereo-Verbindung, User 05.07.).
+    const auto pairStartForBank = [this] (bool isInputBank) -> std::function<bool (int)>
+    {
+        if (! isInputBank && hasPairingUi())
+            return [this] (int channel)
+                   { return channelNames->isPortPairStart (ChannelNames::Direction::input, channel); };
 
-    inputRows  = buildPortRows (inputChannelCount, nullptr);
-    outputRows = buildPortRows (outputChannelCount, pairStart);
+        if (isChassisNode)
+            return [] (int channel) { return channel == 0; };
+
+        return {};
+    };
+
+    inputRows  = buildPortRows (inputChannelCount,  pairStartForBank (true));
+    outputRows = buildPortRows (outputChannelCount, pairStartForBank (false));
 
     const auto makePorts = [this] (bool isInput, const std::vector<PortRow>& rows,
                                    std::vector<std::unique_ptr<PortComponent>>& ports)
@@ -509,8 +518,14 @@ void NodeComponent::updateEndpointSize()
     // Zeile pro Kanal, auch wenn Paare zu einem Port verschmelzen). Mit
     // Metern breitere Kachel; audio_in zusätzlich die Koppel-Spalte.
     const auto maxChannels = juce::jmax (inputChannelCount, outputChannelCount, 1);
+
+    // audio_in spart links ~1/3 der Label-Spalte (User 05.07.) — Meter/Ports/
+    // Toggles sind rechts verankert, der Label-Bereich schrumpft entsprechend.
+    constexpr int audioInLabelSaving = 48;
+    const auto base = endpointWidth - (hasPairingUi() ? audioInLabelSaving : 0);
+
     const auto width = hasMeters()
-                     ? endpointWidth + (hasPairingUi() ? endpointPairColumn + endpointSendColumn : 0)
+                     ? base + (hasPairingUi() ? endpointPairColumn + endpointSendColumn : 0)
                      : defaultWidth;
     setSize (width, touchTarget + maxChannels * 30);
 }
@@ -1003,6 +1018,18 @@ void NodeComponent::setFlowColour (juce::uint32 rgb)
     if (colourDot != nullptr)
         colourDot->setDotColour (rgb != 0 ? juce::Colour (0xff000000u | (rgb & 0x00ffffffu))
                                           : push::colours::ledGreen);
+}
+
+void NodeComponent::applyPortSignalColours (const std::function<juce::Colour (const PortInfo&)>& colourFn)
+{
+    if (colourFn == nullptr)
+        return;
+
+    for (auto& port : inputPorts)
+        port->setSignalColour (colourFn (port->getInfo()));
+
+    for (auto& port : outputPorts)
+        port->setSignalColour (colourFn (port->getInfo()));
 }
 
 juce::Colour NodeComponent::dotColourForNode() const

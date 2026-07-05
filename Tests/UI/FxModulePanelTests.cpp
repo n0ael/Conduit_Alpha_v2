@@ -205,9 +205,10 @@ TEST_CASE ("NodeComponent: CV-Anker liegen im Panel, Kante traegt nur Audio-Port
     ChassisRig rig;
     conduit::NodeComponent nodeUi { rig.node, rig.manager, rig.uiRegistry };
 
-    // Linke Kante: nur die 2 Audio-Eingänge (CV-Ports leben im Panel)
-    REQUIRE (nodeUi.getNumInputPorts() == 2);
-    REQUIRE (nodeUi.getNumOutputPorts() == 2);
+    // Linke/rechte Kante: Audio-Kanäle 0/1 als EIN Stereo-Paar-Port (span-2,
+    // FX-Default-Stereo); die CV-Ports leben im Panel
+    REQUIRE (nodeUi.getNumInputPorts() == 1);
+    REQUIRE (nodeUi.getNumOutputPorts() == 1);
 
     // CV-Anker (Kanal 2..5) liegen rechts der Kanten-Ports im Panel-Bereich
     for (int channel = 2; channel <= 5; ++channel)

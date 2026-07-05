@@ -71,6 +71,9 @@ public:
     void updateCableDrag (juce::Point<int> position);
     void endCableDrag (juce::Point<int> position);
 
+    /** Dwell-Geste: erzwingt ein Einzel-(Mono-)Kabel trotz Stereo-Quelle. */
+    void setCableDragMono();
+
     /** Kabel unter dem Punkt (Toleranz ~8px), invalides ValueTree wenn keins.
         Public für Tests. */
     [[nodiscard]] juce::ValueTree findConnectionAt (juce::Point<int> position) const;
@@ -128,6 +131,10 @@ private:
     [[nodiscard]] juce::uint32 lookupSourceRgb (const juce::String& sourceUuid,
                                                 int channel) const;
 
+    /** audio_in-Kanalfarbe (ChannelNames), aufgelöst auf den Stereo-Paar-Anker:
+        beide Kanäle eines Paars liefern die Farbe des ERSTEN Kanals. */
+    [[nodiscard]] juce::uint32 inputChannelRgb (int channel) const;
+
     /** Mittelt die Farben (0x00RRGGBB) komponentenweise; {} → 0. */
     [[nodiscard]] static juce::uint32 blendRgb (const std::vector<juce::uint32>& colours);
 
@@ -158,6 +165,7 @@ private:
     {
         PortInfo from;
         juce::Point<int> currentPosition;
+        bool forceMono = false;  // Dwell-Geste: Einzel-Kabel trotz Stereo-Quelle
     };
 
     std::optional<CableDrag> activeCableDrag;

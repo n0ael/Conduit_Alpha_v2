@@ -554,13 +554,13 @@ TEST_CASE ("NodeComponent: Stereo-Paar verschmilzt Ports, Meter bleiben pro Kana
     REQUIRE (component->getNumOutputPorts() == 3);
     REQUIRE (component->getNumMeterBars() == 4);
     REQUIRE (component->getNumSendButtons() == 3);
-    REQUIRE (component->getWidth() == 344);  // endpointWidth + Koppel- + Send-Spalte
+    REQUIRE (component->getWidth() == 296);  // endpointWidth − Label-Sparung + Koppel/Send
 
-    // Kabel-Anker des Paars: derselbe Port, ∓3px versetzt (Doppel-Linie)
+    // Kabel-Anker des Paars: derselbe Port, ∓5px versetzt (zwei enge Striche)
     const auto anchor0 = component->getPortCentre (false, 0);
     const auto anchor1 = component->getPortCentre (false, 1);
     REQUIRE (anchor0.x == anchor1.x);
-    REQUIRE (anchor1.y - anchor0.y == 6);
+    REQUIRE (anchor1.y - anchor0.y == 10);
 
     // Paar-Zuordnung für den Kabel-Klick-Pfad
     REQUIRE (component->pairAnchorForPort (false, 0) == 0);

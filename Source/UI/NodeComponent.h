@@ -87,6 +87,10 @@ public:
         an I/O-Endpunkten (kein Punkt). */
     void setFlowColour (juce::uint32 rgb);
 
+    /** Färbt jeden Port-Strich in seine Signalfarbe — colourFn liefert die
+        Farbe je PortInfo (vom NodeCanvas: verbundenes Kabel bzw. neutral). */
+    void applyPortSignalColours (const std::function<juce::Colour (const PortInfo&)>& colourFn);
+
     /** Canvas-Callback: Teardown abgeschlossen — Component jetzt zerstören.
         Nach dem Aufruf darf die Component nicht mehr angefasst werden. */
     std::function<void (NodeComponent&)> onTeardownFinished;

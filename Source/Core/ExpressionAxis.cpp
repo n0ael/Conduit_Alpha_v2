@@ -55,6 +55,14 @@ bool ExpressionAxis::isActive (int voiceIndex) const noexcept
     return isValidSlot (voiceIndex) && active[(size_t) voiceIndex];
 }
 
+float ExpressionAxis::rawValue (int voiceIndex) const noexcept
+{
+    if (! isValidSlot (voiceIndex))
+        return 0.0f;
+
+    return raw[(size_t) voiceIndex];
+}
+
 float ExpressionAxis::combined (int voiceIndex) const noexcept
 {
     if (! isValidSlot (voiceIndex))

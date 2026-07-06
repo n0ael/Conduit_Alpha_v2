@@ -8,6 +8,7 @@ GridVoiceEngine::GridVoiceEngine (IVoiceSink& sinkToUse, int maxVoices) noexcept
       slideAxis (ExpressionAxis::Config { 0.0f, 1.0f, 1.0f }),
       pitchBendAxis (ExpressionAxis::Config { -kPitchBendRangeSemitones, kPitchBendRangeSemitones, 12.0f })
 {
+    slotNote.fill (-1);
 }
 
 void GridVoiceEngine::noteOn (uint32_t fingerId, int note, int velocity) noexcept
@@ -22,6 +23,7 @@ void GridVoiceEngine::noteOn (uint32_t fingerId, int note, int velocity) noexcep
         sink.voiceStop (voiceIndex, 0);
 
     sink.voiceStart (voiceIndex, note, velocity);
+    slotNote[(size_t) voiceIndex] = note;
 
     pressureAxis.activate (voiceIndex);
     slideAxis.activate (voiceIndex);
@@ -47,6 +49,7 @@ void GridVoiceEngine::noteOff (uint32_t fingerId, int releaseVelocity) noexcept
         return;
 
     sink.voiceStop (voiceIndex, releaseVelocity);
+    slotNote[(size_t) voiceIndex] = -1;
 
     pressureAxis.deactivate (voiceIndex);
     slideAxis.deactivate (voiceIndex);
@@ -93,6 +96,7 @@ void GridVoiceEngine::allNotesOff() noexcept
     pressureAxis.reset();
     slideAxis.reset();
     pitchBendAxis.reset();
+    slotNote.fill (-1);
     // Offsets bleiben -- die Ribbon-Stellungen halten über Release-All hinweg.
 }
 
@@ -131,6 +135,46 @@ void GridVoiceEngine::setPitchBendOffset (float bipolarOffsetSemitones) noexcept
     {
         if (pitchBendAxis.isActive (i))
             sink.voicePitchBend (i, pitchBendAxis.combined (i));
+    }
+}
+
+ExpressionAxis& GridVoiceEngine::axisFor (Axis axis) noexcept
+{
+    switch (axis)
+    {
+        case Axis::Pressure:  return pressureAxis;
+        case Axis::Slide:     return slideAxis;
+        case Axis::PitchBend: return pitchBendAxis;
+    }
+
+    return pressureAxis;
+}
+
+const ExpressionAxis& GridVoiceEngine::axisFor (Axis axis) const noexcept
+{
+    return const_cast<GridVoiceEngine&> (*this).axisFor (axis);
+}
+
+ResponseCurve& GridVoiceEngine::responseCurve (Axis axis) noexcept
+{
+    return axisFor (axis).responseCurve();
+}
+
+const ResponseCurve& GridVoiceEngine::responseCurve (Axis axis) const noexcept
+{
+    return axisFor (axis).responseCurve();
+}
+
+void GridVoiceEngine::readActiveVoices (Axis axis, std::vector<VoiceReadout>& outVoices) const
+{
+    const auto& expressionAxis = axisFor (axis);
+
+    outVoices.clear();
+
+    for (int i = 0; i < allocator.maxVoices(); ++i)
+    {
+        if (expressionAxis.isActive (i))
+            outVoices.push_back ({ i, slotNote[(size_t) i], expressionAxis.rawValue (i) });
     }
 }
 

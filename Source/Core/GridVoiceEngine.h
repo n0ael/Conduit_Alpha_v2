@@ -1,6 +1,8 @@
 #pragma once
 
+#include <array>
 #include <cstdint>
+#include <vector>
 
 #include <juce_core/juce_core.h>
 
@@ -51,6 +53,29 @@ public:
         geklemmt. Message Thread. */
     void setPitchBendOffset (float bipolarOffsetSemitones) noexcept;
 
+    //==========================================================================
+    // Lesepfade fürs spätere MPE-Shaping-Panel (S2) — reiner Lese-/
+    // Referenzzugriff, keine Verhaltensänderung am Spielpfad.
+
+    enum class Axis { Pressure, Slide, PitchBend };
+
+    struct VoiceReadout
+    {
+        int   voiceIndex = -1;
+        int   note       = -1;   // MIDI-Note der Stimme
+        float rawValue   = 0.0f; // roher Achsen-Eingang (vor Kurve/Offset)
+    };
+
+    /** Nur-Lese-Referenz auf die ResponseCurve einer Achse (Panel-Editor). */
+    ResponseCurve&       responseCurve (Axis axis) noexcept;
+    const ResponseCurve& responseCurve (Axis axis) const noexcept;
+
+    /** Füllt outVoices mit je einem Eintrag pro AKTIVER Stimme für die
+        gewählte Achse (rawValue der Achse + Note). outVoices wird geleert
+        und neu befüllt; keine Allokation, wenn Kapazität ≥ kMaxVoices.
+        Message Thread. */
+    void readActiveVoices (Axis axis, std::vector<VoiceReadout>& outVoices) const;
+
 private:
     // Encoder-Bendrange (MpeEncoder::Config::pitchBendRangeSemitones-Default,
     // CLAUDE.md 14 ADR) — die Achse kennt die konkrete Encoder-Config nicht
@@ -58,12 +83,19 @@ private:
     // Ausgangs-Clamp.
     static constexpr float kPitchBendRangeSemitones = 48.0f;
 
+    ExpressionAxis& axisFor (Axis axis) noexcept;
+    const ExpressionAxis& axisFor (Axis axis) const noexcept;
+
     IVoiceSink&    sink;
     VoiceAllocator allocator;
 
     ExpressionAxis pressureAxis;
     ExpressionAxis slideAxis;
     ExpressionAxis pitchBendAxis;
+
+    // Note pro aktivem Slot (-1 = inaktiv) -- für die Panel-Visualisierung
+    // (Noten-Kreise); ohne Einfluss auf den Sink-Pfad.
+    std::array<int, VoiceAllocator::kMaxVoices> slotNote;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (GridVoiceEngine)
 };

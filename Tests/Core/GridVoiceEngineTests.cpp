@@ -468,3 +468,109 @@ TEST_CASE ("GridVoiceEngine: noteOn wendet einen bereits aktiven PitchBend-Offse
     REQUIRE (fake.calls[1].voiceIndex == 0);
     REQUIRE (juce::exactlyEqual (fake.calls[1].floatValue, 7.0f));
 }
+
+//==============================================================================
+// Lesepfade fürs MPE-Shaping-Panel (S2-Vorstufe) -- readActiveVoices/responseCurve(Axis)
+
+TEST_CASE ("GridVoiceEngine: readActiveVoices liefert Note + Rohwert der aktiven Stimme", "[grid]")
+{
+    grid::FakeVoiceSink fake;
+    grid::GridVoiceEngine engine (fake);
+
+    engine.noteOn (101, 60, 100);
+    engine.setPressure (101, 0.4f);
+
+    std::vector<grid::GridVoiceEngine::VoiceReadout> readout;
+    engine.readActiveVoices (grid::GridVoiceEngine::Axis::Pressure, readout);
+
+    REQUIRE (readout.size() == 1);
+    REQUIRE (readout[0].voiceIndex == 0);
+    REQUIRE (readout[0].note == 60);
+    REQUIRE (readout[0].rawValue == Approx (0.4f));
+}
+
+TEST_CASE ("GridVoiceEngine: readActiveVoices spiegelt noteOff/allNotesOff wider", "[grid]")
+{
+    grid::FakeVoiceSink fake;
+    grid::GridVoiceEngine engine (fake);
+
+    engine.noteOn (101, 60, 100);
+    engine.noteOn (102, 64, 90);
+
+    std::vector<grid::GridVoiceEngine::VoiceReadout> readout;
+    engine.readActiveVoices (grid::GridVoiceEngine::Axis::Pressure, readout);
+    REQUIRE (readout.size() == 2);
+
+    engine.noteOff (101, 0);
+    engine.readActiveVoices (grid::GridVoiceEngine::Axis::Pressure, readout);
+    REQUIRE (readout.size() == 1);
+    REQUIRE (readout[0].note == 64);
+
+    engine.allNotesOff();
+    engine.readActiveVoices (grid::GridVoiceEngine::Axis::Pressure, readout);
+    REQUIRE (readout.empty());
+}
+
+TEST_CASE ("GridVoiceEngine: readActiveVoices liefert die Rohwerte von Slide und PitchBend", "[grid]")
+{
+    grid::FakeVoiceSink fake;
+    grid::GridVoiceEngine engine (fake);
+
+    engine.noteOn (101, 60, 100);
+    engine.setSlide (101, 0.7f);
+    engine.setPitchBend (101, 5.0f);
+
+    std::vector<grid::GridVoiceEngine::VoiceReadout> slideReadout;
+    engine.readActiveVoices (grid::GridVoiceEngine::Axis::Slide, slideReadout);
+    REQUIRE (slideReadout.size() == 1);
+    REQUIRE (slideReadout[0].rawValue == Approx (0.7f));
+
+    std::vector<grid::GridVoiceEngine::VoiceReadout> bendReadout;
+    engine.readActiveVoices (grid::GridVoiceEngine::Axis::PitchBend, bendReadout);
+    REQUIRE (bendReadout.size() == 1);
+    REQUIRE (bendReadout[0].rawValue == Approx (5.0f));
+}
+
+TEST_CASE ("GridVoiceEngine: responseCurve(Axis) wirkt nur auf die zugehörige Achse", "[grid]")
+{
+    grid::FakeVoiceSink fake;
+    grid::GridVoiceEngine engine (fake);
+
+    engine.responseCurve (grid::GridVoiceEngine::Axis::Pressure).setOutputRange (0.0f, 0.5f);
+
+    engine.noteOn (101, 60, 100);
+    fake.calls.clear();
+
+    engine.setPressure (101, 1.0f);
+    REQUIRE (fake.calls.size() == 1);
+    REQUIRE (fake.calls[0].kind == grid::FakeVoiceSink::Kind::Pressure);
+    REQUIRE (fake.calls[0].floatValue == Approx (0.5f));
+
+    // Slide/PitchBend unberührt -- eigene ResponseCurve-Instanz je Achse
+    engine.setSlide (101, 1.0f);
+    engine.setPitchBend (101, 10.0f);
+    REQUIRE (fake.calls[1].floatValue == Approx (1.0f));
+    REQUIRE (fake.calls[2].floatValue == Approx (10.0f));
+}
+
+TEST_CASE ("GridVoiceEngine: readActiveVoices mit vorbelegtem Vektor hinterlässt keinen Zustandsleck", "[grid]")
+{
+    grid::FakeVoiceSink fake;
+    grid::GridVoiceEngine engine (fake);
+
+    std::vector<grid::GridVoiceEngine::VoiceReadout> readout;
+    readout.reserve (grid::VoiceAllocator::kMaxVoices);
+
+    engine.noteOn (101, 60, 100);
+    engine.readActiveVoices (grid::GridVoiceEngine::Axis::Pressure, readout);
+    REQUIRE (readout.size() == 1);
+
+    engine.noteOn (102, 64, 90);
+    engine.readActiveVoices (grid::GridVoiceEngine::Axis::Pressure, readout);
+    REQUIRE (readout.size() == 2);   // kein Leck alter Einträge aus dem ersten Aufruf
+
+    engine.noteOff (101, 0);
+    engine.noteOff (102, 0);
+    engine.readActiveVoices (grid::GridVoiceEngine::Axis::Pressure, readout);
+    REQUIRE (readout.empty());
+}

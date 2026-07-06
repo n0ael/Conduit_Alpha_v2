@@ -51,6 +51,12 @@ public:
     /** Zugriff auf die Response-Kurve dieser Achse (Nutzung durch das
         spätere Kurven-Panel, S2). */
     ResponseCurve& responseCurve() noexcept { return curve; }
+    /** Nur-Lese-Zugriff auf die Kurve (Panel liest Punkte/Krümmung). */
+    const ResponseCurve& responseCurve() const noexcept { return curve; }
+
+    /** Roher, ungeklemmter Eingangswert der Stimme (vor Kurve/Offset) —
+        für die Panel-Visualisierung (Noten-Kreise). Ungültiger Slot → 0. */
+    float rawValue (int voiceIndex) const noexcept;
 
 private:
     Config config;

@@ -1,6 +1,7 @@
 #pragma once
 #include <array>
 #include <juce_core/juce_core.h>
+#include "Core/ResponseCurve.h"
 #include "Core/VoiceAllocator.h"   // kMaxVoices
 
 namespace conduit::grid
@@ -40,14 +41,21 @@ public:
     void deactivate (int voiceIndex) noexcept;
     bool isActive   (int voiceIndex) const noexcept;
 
-    /** Finaler Ausgangswert der Stimme: clamp(raw + offset, outMin, outMax). */
+    /** Finaler Ausgangswert der Stimme: clamp(curve.apply(raw) + offset,
+        outMin, outMax) -- die Kurve formt VOR dem Offset (Default-Kurve =
+        Identität, also verhaltensneutral). */
     float combined (int voiceIndex) const noexcept;
 
     void reset() noexcept;   // alle Slots inaktiv, Rohwerte 0 — Offset bleibt
 
+    /** Zugriff auf die Response-Kurve dieser Achse (Nutzung durch das
+        spätere Kurven-Panel, S2). */
+    ResponseCurve& responseCurve() noexcept { return curve; }
+
 private:
     Config config;
     float  axisOffset { 0.0f };
+    ResponseCurve curve;
     std::array<float, (size_t) VoiceAllocator::kMaxVoices> raw {};
     std::array<bool,  (size_t) VoiceAllocator::kMaxVoices> active {};
 

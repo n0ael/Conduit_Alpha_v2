@@ -60,7 +60,7 @@ float ExpressionAxis::combined (int voiceIndex) const noexcept
     if (! isValidSlot (voiceIndex))
         return config.outMin;
 
-    return juce::jlimit (config.outMin, config.outMax, raw[(size_t) voiceIndex] + axisOffset);
+    return juce::jlimit (config.outMin, config.outMax, curve.apply (raw[(size_t) voiceIndex]) + axisOffset);
 }
 
 void ExpressionAxis::reset() noexcept

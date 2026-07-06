@@ -91,3 +91,17 @@ TEST_CASE ("ExpressionAxis: deactivate/reset setzen Aktiv-Status und Rohwerte zu
     // Offset selbst bleibt unverändert
     REQUIRE (juce::exactlyEqual (axis.offset(), 0.2f));
 }
+
+TEST_CASE ("ExpressionAxis: Response-Kurve formt VOR dem Offset", "[grid]")
+{
+    grid::ExpressionAxis axis;
+
+    axis.responseCurve().setOutputRange (0.0f, 0.5f);
+    axis.activate (0);
+    axis.setRaw (0, 1.0f);
+
+    REQUIRE (axis.combined (0) == Approx (0.5f));
+
+    axis.setOffset (0.3f);
+    REQUIRE (axis.combined (0) == Approx (0.8f));
+}

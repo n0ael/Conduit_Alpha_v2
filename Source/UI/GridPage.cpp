@@ -10,6 +10,8 @@ GridPage::GridPage (grid::GridVoiceEngine& engineToUse, grid::MidiDeviceTarget& 
     addAndMakeVisible (releaseAllButton);
     addAndMakeVisible (volumeRibbon);
     addAndMakeVisible (atOffsetRibbon);
+    addAndMakeVisible (slideOffsetRibbon);
+    addAndMakeVisible (pitchOffsetRibbon);
     addAndMakeVisible (keyboard);
 
     rebuildDeviceList();
@@ -21,6 +23,13 @@ GridPage::GridPage (grid::GridVoiceEngine& engineToUse, grid::MidiDeviceTarget& 
 
     // Bipolar: Mitte (value01 == 0.5) -> Offset 0, oben -> +1, unten -> -1.
     atOffsetRibbon.onValueChanged = [this] (float value) { engine.setPressureOffset ((value - 0.5f) * 2.0f); };
+    slideOffsetRibbon.onValueChanged = [this] (float value) { engine.setSlideOffset ((value - 0.5f) * 2.0f); };
+
+    // Bipolar: Mitte -> 0 HT, oben/unten -> ±kPitchBendOffsetSemitones.
+    pitchOffsetRibbon.onValueChanged = [this] (float value)
+    {
+        engine.setPitchBendOffset ((value - 0.5f) * 2.0f * kPitchBendOffsetSemitones);
+    };
 }
 
 void GridPage::rebuildDeviceList()
@@ -59,9 +68,14 @@ void GridPage::resized()
     outputCombo.setBounds (topRow.removeFromLeft (200).reduced (8, 4));
     releaseAllButton.setBounds (topRow.removeFromRight (120).reduced (8, 4));
 
-    constexpr int ribbonWidth = 48;
-    volumeRibbon.setBounds   (bounds.removeFromLeft  (ribbonWidth));
-    atOffsetRibbon.setBounds (bounds.removeFromRight (ribbonWidth));
+    constexpr int ribbonWidth = 72;
+
+    // Links: Volume, dann Pressure/AT-Offset. Rechts: PitchBend-Offset außen,
+    // dann Slide-Offset -- beide Gruppen wachsen vom Rand zur Mitte.
+    volumeRibbon.setBounds      (bounds.removeFromLeft  (ribbonWidth));
+    atOffsetRibbon.setBounds    (bounds.removeFromLeft  (ribbonWidth));
+    pitchOffsetRibbon.setBounds (bounds.removeFromRight (ribbonWidth));
+    slideOffsetRibbon.setBounds (bounds.removeFromRight (ribbonWidth));
     keyboard.setBounds (bounds);
 }
 

@@ -42,11 +42,28 @@ public:
         gehaltenen Stimmen angewandt. Message Thread. */
     void setPressureOffset (float bipolarOffset) noexcept;
 
+    /** Bipolarer globaler Slide-Offset [-1, +1] — analog setPressureOffset. */
+    void setSlideOffset (float bipolarOffset) noexcept;
+
+    /** Bipolarer globaler PitchBend-Offset in Halbtönen, intern auf ±12 HT
+        geklemmt — addiert auf den per-Note-Bend jeder gehaltenen Stimme;
+        Ausgang bleibt auf die Encoder-Bendrange (±kPitchBendRangeSemitones)
+        geklemmt. Message Thread. */
+    void setPitchBendOffset (float bipolarOffsetSemitones) noexcept;
+
 private:
+    // Encoder-Bendrange (MpeEncoder::Config::pitchBendRangeSemitones-Default,
+    // CLAUDE.md 14 ADR) — die Achse kennt die konkrete Encoder-Config nicht
+    // (IVoiceSink-Abstraktion), spiegelt aber deren Reichweite für den
+    // Ausgangs-Clamp.
+    static constexpr float kPitchBendRangeSemitones = 48.0f;
+
     IVoiceSink&    sink;
     VoiceAllocator allocator;
 
     ExpressionAxis pressureAxis;
+    ExpressionAxis slideAxis;
+    ExpressionAxis pitchBendAxis;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (GridVoiceEngine)
 };

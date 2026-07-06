@@ -276,3 +276,195 @@ TEST_CASE ("GridVoiceEngine: noteOn ohne aktiven Offset sendet kein initiales Pr
     REQUIRE (fake.calls.size() == 1);
     REQUIRE (fake.calls[0].kind == grid::FakeVoiceSink::Kind::VoiceStart);
 }
+
+//==============================================================================
+// Slide-Achse (M1b-6) -- analog zur Pressure-Achse oben.
+
+TEST_CASE ("GridVoiceEngine: setSlide ohne Offset sendet den reinen Wert", "[grid]")
+{
+    grid::FakeVoiceSink fake;
+    grid::GridVoiceEngine engine (fake);
+
+    engine.noteOn (101, 60, 100);
+    fake.calls.clear();
+
+    engine.setSlide (101, 0.5f);
+    REQUIRE (fake.calls.size() == 1);
+    REQUIRE (fake.calls[0].kind == grid::FakeVoiceSink::Kind::Slide);
+    REQUIRE (fake.calls[0].voiceIndex == 0);
+    REQUIRE (juce::exactlyEqual (fake.calls[0].floatValue, 0.5f));
+}
+
+TEST_CASE ("GridVoiceEngine: setSlideOffset addiert/subtrahiert auf den gemerkten Rohwert", "[grid]")
+{
+    grid::FakeVoiceSink fake;
+    grid::GridVoiceEngine engine (fake);
+
+    engine.noteOn (101, 60, 100);
+    engine.setSlide (101, 0.5f);
+    fake.calls.clear();
+
+    engine.setSlideOffset (0.3f);
+    REQUIRE (fake.calls.size() == 1);
+    REQUIRE (fake.calls[0].kind == grid::FakeVoiceSink::Kind::Slide);
+    REQUIRE (fake.calls[0].voiceIndex == 0);
+    REQUIRE (fake.calls[0].floatValue == Approx (0.8f));
+
+    engine.setSlideOffset (-0.3f);
+    REQUIRE (fake.calls.size() == 2);
+    REQUIRE (fake.calls[1].floatValue == Approx (0.2f));
+}
+
+TEST_CASE ("GridVoiceEngine: setSlideOffset clampt das Ergebnis auf [0,1]", "[grid]")
+{
+    grid::FakeVoiceSink fake;
+    grid::GridVoiceEngine engine (fake);
+
+    engine.noteOn (101, 60, 100);
+    engine.setSlide (101, 0.9f);
+    fake.calls.clear();
+
+    engine.setSlideOffset (0.5f);
+    REQUIRE (fake.calls.size() == 1);
+    REQUIRE (juce::exactlyEqual (fake.calls[0].floatValue, 1.0f));
+}
+
+TEST_CASE ("GridVoiceEngine: setSlideOffset berechnet ALLE aktiven Stimmen neu", "[grid]")
+{
+    grid::FakeVoiceSink fake;
+    grid::GridVoiceEngine engine (fake);
+
+    engine.noteOn (101, 60, 100);
+    engine.noteOn (102, 64, 90);
+    engine.setSlide (101, 0.2f);
+    engine.setSlide (102, 0.6f);
+    fake.calls.clear();
+
+    engine.setSlideOffset (0.1f);
+    REQUIRE (fake.calls.size() == 2);
+    REQUIRE (fake.calls[0].voiceIndex == 0);
+    REQUIRE (fake.calls[0].floatValue == Approx (0.3f));
+    REQUIRE (fake.calls[1].voiceIndex == 1);
+    REQUIRE (fake.calls[1].floatValue == Approx (0.7f));
+}
+
+TEST_CASE ("GridVoiceEngine: noteOn wendet einen bereits aktiven Slide-Offset sofort an", "[grid]")
+{
+    grid::FakeVoiceSink fake;
+    grid::GridVoiceEngine engine (fake);
+
+    engine.setSlideOffset (0.4f);
+
+    engine.noteOn (101, 60, 100);
+    REQUIRE (fake.calls.size() == 2);
+    REQUIRE (fake.calls[0].kind == grid::FakeVoiceSink::Kind::VoiceStart);
+    REQUIRE (fake.calls[1].kind == grid::FakeVoiceSink::Kind::Slide);
+    REQUIRE (fake.calls[1].voiceIndex == 0);
+    REQUIRE (juce::exactlyEqual (fake.calls[1].floatValue, 0.4f));
+}
+
+//==============================================================================
+// PitchBend-Achse (M1b-6) -- Offset in Halbtönen, Ausgang auf die
+// Encoder-Bendrange (±48) geklemmt, Offset selbst auf ±12 HT.
+
+TEST_CASE ("GridVoiceEngine: setPitchBend ohne Offset sendet den reinen Wert", "[grid]")
+{
+    grid::FakeVoiceSink fake;
+    grid::GridVoiceEngine engine (fake);
+
+    engine.noteOn (101, 60, 100);
+    fake.calls.clear();
+
+    engine.setPitchBend (101, 5.0f);
+    REQUIRE (fake.calls.size() == 1);
+    REQUIRE (fake.calls[0].kind == grid::FakeVoiceSink::Kind::PitchBend);
+    REQUIRE (fake.calls[0].voiceIndex == 0);
+    REQUIRE (juce::exactlyEqual (fake.calls[0].floatValue, 5.0f));
+}
+
+TEST_CASE ("GridVoiceEngine: setPitchBendOffset addiert/subtrahiert auf den gemerkten Rohwert", "[grid]")
+{
+    grid::FakeVoiceSink fake;
+    grid::GridVoiceEngine engine (fake);
+
+    engine.noteOn (101, 60, 100);
+    engine.setPitchBend (101, 10.0f);
+    fake.calls.clear();
+
+    engine.setPitchBendOffset (6.0f);
+    REQUIRE (fake.calls.size() == 1);
+    REQUIRE (fake.calls[0].kind == grid::FakeVoiceSink::Kind::PitchBend);
+    REQUIRE (fake.calls[0].voiceIndex == 0);
+    REQUIRE (fake.calls[0].floatValue == Approx (16.0f));
+
+    engine.setPitchBendOffset (-6.0f);
+    REQUIRE (fake.calls.size() == 2);
+    REQUIRE (fake.calls[1].floatValue == Approx (4.0f));
+}
+
+TEST_CASE ("GridVoiceEngine: setPitchBendOffset klemmt den Ausgang auf die Encoder-Bendrange", "[grid]")
+{
+    grid::FakeVoiceSink fake;
+    grid::GridVoiceEngine engine (fake);
+
+    engine.noteOn (101, 60, 100);
+    engine.setPitchBend (101, 45.0f);
+    fake.calls.clear();
+
+    engine.setPitchBendOffset (6.0f);
+    REQUIRE (fake.calls.size() == 1);
+    REQUIRE (juce::exactlyEqual (fake.calls[0].floatValue, 48.0f));
+}
+
+TEST_CASE ("GridVoiceEngine: setPitchBendOffset klemmt intern auf ±12 Halbtöne", "[grid]")
+{
+    grid::FakeVoiceSink fake;
+    grid::GridVoiceEngine engine (fake);
+
+    engine.noteOn (101, 60, 100);
+    fake.calls.clear();
+
+    // Rohwert unverändert 0 -- ein interner Clamp auf ±12 (statt der
+    // angeforderten ±20) zeigt sich direkt im kombinierten Ausgang.
+    engine.setPitchBendOffset (20.0f);
+    REQUIRE (fake.calls.size() == 1);
+    REQUIRE (juce::exactlyEqual (fake.calls[0].floatValue, 12.0f));
+
+    engine.setPitchBendOffset (-20.0f);
+    REQUIRE (fake.calls.size() == 2);
+    REQUIRE (juce::exactlyEqual (fake.calls[1].floatValue, -12.0f));
+}
+
+TEST_CASE ("GridVoiceEngine: setPitchBendOffset berechnet ALLE aktiven Stimmen neu", "[grid]")
+{
+    grid::FakeVoiceSink fake;
+    grid::GridVoiceEngine engine (fake);
+
+    engine.noteOn (101, 60, 100);
+    engine.noteOn (102, 64, 90);
+    engine.setPitchBend (101, 2.0f);
+    engine.setPitchBend (102, -3.0f);
+    fake.calls.clear();
+
+    engine.setPitchBendOffset (1.0f);
+    REQUIRE (fake.calls.size() == 2);
+    REQUIRE (fake.calls[0].voiceIndex == 0);
+    REQUIRE (fake.calls[0].floatValue == Approx (3.0f));
+    REQUIRE (fake.calls[1].voiceIndex == 1);
+    REQUIRE (fake.calls[1].floatValue == Approx (-2.0f));
+}
+
+TEST_CASE ("GridVoiceEngine: noteOn wendet einen bereits aktiven PitchBend-Offset sofort an", "[grid]")
+{
+    grid::FakeVoiceSink fake;
+    grid::GridVoiceEngine engine (fake);
+
+    engine.setPitchBendOffset (7.0f);
+
+    engine.noteOn (101, 60, 100);
+    REQUIRE (fake.calls.size() == 2);
+    REQUIRE (fake.calls[0].kind == grid::FakeVoiceSink::Kind::VoiceStart);
+    REQUIRE (fake.calls[1].kind == grid::FakeVoiceSink::Kind::PitchBend);
+    REQUIRE (fake.calls[1].voiceIndex == 0);
+    REQUIRE (juce::exactlyEqual (fake.calls[1].floatValue, 7.0f));
+}

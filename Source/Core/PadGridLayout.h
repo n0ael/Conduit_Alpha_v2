@@ -37,7 +37,9 @@ public:
     int   noteForPad   (int padIndex) const noexcept;
     /** Kombination: Note direkt aus Position, -1 außerhalb. */
     int   noteAt       (float normX, float normY) const noexcept;
-    /** Pitch-Bend in Halbtönen aus horizontaler Bewegung, clamp ±range. */
+    /** Pitch-Bend in Halbtönen aus horizontaler Bewegung. NICHT geklemmt —
+        Werte über ±range durch große Bewegungen sind gewollt (die
+        pitchBendAxis/der Encoder klemmen erst am Ausgang, CLAUDE.md 14 ADR). */
     float pitchBendSemitones (float startNormX, float currentNormX) const noexcept;
     /** Erste Ausdrucksachse aus vertikaler Bewegung relativ zum Aufsetzpunkt.
         Neutral (0.5) beim Aufsetzen; nach oben > 0.5, nach unten < 0.5.

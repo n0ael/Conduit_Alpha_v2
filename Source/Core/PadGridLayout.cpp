@@ -42,9 +42,10 @@ int PadGridLayout::noteAt (float normX, float normY) const noexcept
 float PadGridLayout::pitchBendSemitones (float startNormX, float currentNormX) const noexcept
 {
     const auto padWidth = 1.0f / (float) config.cols;
-    const auto semitones = (currentNormX - startNormX) / padWidth * config.semitonesPerPadWidth;
 
-    return juce::jlimit (-config.pitchBendRangeSemitones, config.pitchBendRangeSemitones, semitones);
+    // NICHT geklemmt -- die pitchBendAxis/der Encoder klemmen erst am
+    // Ausgang (CLAUDE.md 14 ADR).
+    return (currentNormX - startNormX) / padWidth * config.semitonesPerPadWidth;
 }
 
 float PadGridLayout::expressionFromDrag (float startNormY, float currentNormY) const noexcept

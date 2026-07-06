@@ -62,10 +62,13 @@ RingTouchModel::MoveResult RingTouchModel::onMove (uint32_t fingerId, juce::Poin
             const auto radius = primary.ringOffset.getDistanceFromOrigin();
             primary.curRadiusPx = radius;
 
+            // NICHT geklemmt -- Werte über 1 / unter 0 durch Radius über
+            // maxRadiusPx bzw. unter minRadiusPx hinaus sind gewollt (die
+            // slideAxis in GridVoiceEngine klemmt erst am Ausgang).
             const auto range = config.maxRadiusPx - config.minRadiusPx;
             const auto slide  = range > 0.0f ? (radius - config.minRadiusPx) / range : 0.0f;
 
-            return { true, primary.id, juce::jlimit (0.0f, 1.0f, slide) };
+            return { true, primary.id, slide };
         }
 
         if (primary.id == fingerId)

@@ -181,6 +181,25 @@ TEST_CASE ("RingTouchModel: onUp deregistriert Ring bzw. entfernt den primären 
     REQUIRE (upPrimary.primaryFinger == 1);
 }
 
+TEST_CASE ("RingTouchModel: Radius über/unter min-/maxRadiusPx liefert ungeklemmtes slide01 (M1b-6)", "[grid]")
+{
+    // slide01 klemmt seit M1b-6 nicht mehr selbst -- der Ausgang klemmt erst
+    // in der slideAxis (GridVoiceEngine), damit ein negativer Slide-Offset
+    // per Weiterwischen den vollen Bereich erreichen kann (Muster
+    // expressionFromDrag).
+    grid::RingTouchModel model;
+    model.onDown (1, { 0.0f, 0.0f });
+    model.onDown (2, { 50.0f, 0.0f }); // Ring von 1
+
+    const auto beyondMax = model.onMove (2, { 300.0f, 0.0f }); // > maxRadiusPx (220)
+    REQUIRE (beyondMax.hasSlide);
+    REQUIRE (beyondMax.slide01 > 1.0f);
+
+    const auto belowMin = model.onMove (2, { 10.0f, 0.0f }); // < minRadiusPx (40)
+    REQUIRE (belowMin.hasSlide);
+    REQUIRE (belowMin.slide01 < 0.0f);
+}
+
 TEST_CASE ("RingTouchModel: activeCircles spiegelt Radius wider", "[grid]")
 {
     grid::RingTouchModel model;

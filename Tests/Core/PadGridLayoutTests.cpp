@@ -39,7 +39,7 @@ TEST_CASE ("PadGridLayout: noteAt konsistent zu padIndexAt/noteForPad", "[grid]"
     REQUIRE (layout.noteAt (1.5f, 0.5f) == -1);
 }
 
-TEST_CASE ("PadGridLayout: pitchBendSemitones — Skala und Clamp", "[grid]")
+TEST_CASE ("PadGridLayout: pitchBendSemitones — Skala, ungeklemmt (M1b-6)", "[grid]")
 {
     grid::PadGridLayout layout;
 
@@ -49,9 +49,10 @@ TEST_CASE ("PadGridLayout: pitchBendSemitones — Skala und Clamp", "[grid]")
     const auto padWidth = 1.0f / (float) layout.cols();
     REQUIRE (juce::exactlyEqual (layout.pitchBendSemitones (0.0f, padWidth), 2.0f));
 
-    // Große Bewegung -> Clamp auf +48
-    REQUIRE (juce::exactlyEqual (layout.pitchBendSemitones (0.0f, 10.0f), 48.0f));
-    REQUIRE (juce::exactlyEqual (layout.pitchBendSemitones (10.0f, 0.0f), -48.0f));
+    // Große Bewegung -> NICHT geklemmt, Betrag über pitchBendRangeSemitones
+    // (48) hinaus (die pitchBendAxis/der Encoder klemmen erst am Ausgang).
+    REQUIRE (layout.pitchBendSemitones (0.0f, 10.0f) > 48.0f);
+    REQUIRE (layout.pitchBendSemitones (10.0f, 0.0f) < -48.0f);
 }
 
 TEST_CASE ("PadGridLayout: expressionFromDrag — ungeklemmter Ausdruck relativ zum Aufsetzpunkt", "[grid]")

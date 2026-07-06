@@ -19,15 +19,13 @@ void GridVoiceEngine::noteOn (uint32_t fingerId, int note, int velocity) noexcep
     if (stolen != 0)
         sink.voiceStop (voiceIndex, 0);
 
-    voiceActive[(size_t) voiceIndex]  = true;
-    rawPressure[(size_t) voiceIndex]  = 0.0f;
-
     sink.voiceStart (voiceIndex, note, velocity);
+    pressureAxis.activate (voiceIndex);
 
     // Ein aktiver Offset gilt sofort auch für frische Noten, nicht erst ab
     // der nächsten Y-Bewegung des Fingers.
-    if (! juce::exactlyEqual (pressureOffset, 0.0f))
-        sink.voicePressure (voiceIndex, juce::jlimit (0.0f, 1.0f, pressureOffset));
+    if (! juce::exactlyEqual (pressureAxis.offset(), 0.0f))
+        sink.voicePressure (voiceIndex, pressureAxis.combined (voiceIndex));
 }
 
 void GridVoiceEngine::noteOff (uint32_t fingerId, int releaseVelocity) noexcept
@@ -38,8 +36,7 @@ void GridVoiceEngine::noteOff (uint32_t fingerId, int releaseVelocity) noexcept
         return;
 
     sink.voiceStop (voiceIndex, releaseVelocity);
-    voiceActive[(size_t) voiceIndex] = false;
-    rawPressure[(size_t) voiceIndex] = 0.0f;
+    pressureAxis.deactivate (voiceIndex);
 }
 
 void GridVoiceEngine::setPitchBend (uint32_t fingerId, float semitones) noexcept
@@ -57,8 +54,8 @@ void GridVoiceEngine::setPressure (uint32_t fingerId, float value01) noexcept
     if (voiceIndex < 0)
         return;
 
-    rawPressure[(size_t) voiceIndex] = value01;
-    sink.voicePressure (voiceIndex, juce::jlimit (0.0f, 1.0f, value01 + pressureOffset));
+    pressureAxis.setRaw (voiceIndex, value01);
+    sink.voicePressure (voiceIndex, pressureAxis.combined (voiceIndex));
 }
 
 void GridVoiceEngine::setSlide (uint32_t fingerId, float value01) noexcept
@@ -73,10 +70,8 @@ void GridVoiceEngine::allNotesOff() noexcept
 {
     sink.allNotesOff();
     allocator.reset();
-
-    voiceActive.fill (false);
-    rawPressure.fill (0.0f);
-    // pressureOffset bleibt -- die Ribbon-Stellung hält über Release-All hinweg.
+    pressureAxis.reset();
+    // Offset bleibt -- die Ribbon-Stellung hält über Release-All hinweg.
 }
 
 void GridVoiceEngine::setGlobalVolume (float value01) noexcept
@@ -86,12 +81,12 @@ void GridVoiceEngine::setGlobalVolume (float value01) noexcept
 
 void GridVoiceEngine::setPressureOffset (float bipolarOffset) noexcept
 {
-    pressureOffset = juce::jlimit (-1.0f, 1.0f, bipolarOffset);
+    pressureAxis.setOffset (bipolarOffset);
 
     for (int i = 0; i < allocator.maxVoices(); ++i)
     {
-        if (voiceActive[(size_t) i])
-            sink.voicePressure (i, juce::jlimit (0.0f, 1.0f, rawPressure[(size_t) i] + pressureOffset));
+        if (pressureAxis.isActive (i))
+            sink.voicePressure (i, pressureAxis.combined (i));
     }
 }
 

@@ -97,6 +97,7 @@ set(CONDUIT_CPP_SOURCES
     Source/Core/ChannelNames.cpp
     Source/Core/EngineProcessor.cpp
     Source/Core/EngineEditor.cpp
+    Source/Core/ExpressionAxis.cpp
     Source/Core/GraphFader.cpp
     Source/Core/GraphManager.cpp
     Source/Core/GridVoiceEngine.cpp
@@ -261,6 +262,7 @@ target_sources(Conduit PRIVATE
     Source/Core/ChannelNames.h
     Source/Core/EngineProcessor.h
     Source/Core/EngineEditor.h
+    Source/Core/ExpressionAxis.h
     Source/Core/GraphFader.h
     Source/Core/GraphManager.h
     Source/Core/GridVoiceEngine.h
@@ -514,6 +516,7 @@ if(CONDUIT_BUILD_TESTS)
         Tests/Core/ChannelNamesTests.cpp
         Tests/Core/ClockTests.cpp
         Tests/Core/EngineIOChannelTests.cpp
+        Tests/Core/ExpressionAxisTests.cpp
         Tests/Core/GraphFaderTests.cpp
         Tests/Core/NamedIdTests.cpp
         Tests/Core/GraphManagerTests.cpp
@@ -576,6 +579,7 @@ if(CONDUIT_BUILD_TESTS)
         Source/Core/ChannelNames.cpp
         Source/Core/EngineEditor.cpp
         Source/Core/EngineProcessor.cpp
+        Source/Core/ExpressionAxis.cpp
         Source/Core/GraphFader.cpp
         Source/Core/GraphManager.cpp
         Source/Core/GridVoiceEngine.cpp

@@ -1,10 +1,10 @@
 #pragma once
 
-#include <array>
 #include <cstdint>
 
 #include <juce_core/juce_core.h>
 
+#include "ExpressionAxis.h"
 #include "Interfaces/IVoiceSink.h"
 #include "VoiceAllocator.h"
 
@@ -46,9 +46,7 @@ private:
     IVoiceSink&    sink;
     VoiceAllocator allocator;
 
-    float pressureOffset { 0.0f };
-    std::array<float, (size_t) VoiceAllocator::kMaxVoices> rawPressure {};
-    std::array<bool,  (size_t) VoiceAllocator::kMaxVoices> voiceActive {};
+    ExpressionAxis pressureAxis;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (GridVoiceEngine)
 };

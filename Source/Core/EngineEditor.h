@@ -80,6 +80,7 @@ private:
     void selectPage (int pageIndex);
 
     void toggleBrowserPanel();
+    void toggleEditorPanel();   // Grid-Editor-Dock-Panel (S2), unabhängig vom Browser
 
     // Looper-Page (B3/M6): Quellen-Liste (Master + Hardware-Paare + Taps)
     // neu aufbauen — bei Start, Tap-Änderungen und ChannelNames-Broadcasts

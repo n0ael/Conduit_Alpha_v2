@@ -100,6 +100,7 @@ set(CONDUIT_CPP_SOURCES
     Source/Core/ExpressionAxis.cpp
     Source/Core/GraphFader.cpp
     Source/Core/GraphManager.cpp
+    Source/Core/GridPanelSettings.cpp
     Source/Core/GridVoiceEngine.cpp
     Source/Core/InputLinkSend.cpp
     Source/Core/LinkClock.cpp
@@ -222,6 +223,7 @@ set(CONDUIT_CPP_SOURCES
     Source/UI/ChannelAttributePanel.cpp
     Source/UI/ColourSwatchStrip.cpp
     Source/UI/CurveEditor.cpp
+    Source/UI/EditorDockPanel.cpp
     Source/UI/ExpressionRibbon.cpp
     Source/UI/FxModulePanel.cpp
     Source/UI/GainFaderMeter.cpp
@@ -266,6 +268,7 @@ target_sources(Conduit PRIVATE
     Source/Core/ExpressionAxis.h
     Source/Core/GraphFader.h
     Source/Core/GraphManager.h
+    Source/Core/GridPanelSettings.h
     Source/Core/GridVoiceEngine.h
     Source/Core/InputLinkSend.h
     Source/Core/LinkClock.h
@@ -396,6 +399,7 @@ target_sources(Conduit PRIVATE
     Source/UI/ColourSwatchStrip.h
     Source/UI/CurveEditor.h
     Source/UI/CurvedSlider.h
+    Source/UI/EditorDockPanel.h
     Source/UI/ExpressionRibbon.h
     Source/UI/FxModulePanel.h
     Source/UI/GainFaderMeter.h
@@ -559,6 +563,7 @@ if(CONDUIT_BUILD_TESTS)
         Tests/Core/UiSettingsTests.cpp
         Tests/Core/VoiceAllocatorTests.cpp
         Tests/UI/BrowserPanelTests.cpp
+        Tests/UI/EditorDockPanelTests.cpp
         Tests/UI/TouchKeyboardTests.cpp
         Tests/UI/GridKeyboardTests.cpp
         Tests/UI/FxModulePanelTests.cpp
@@ -585,6 +590,7 @@ if(CONDUIT_BUILD_TESTS)
         Source/Core/ExpressionAxis.cpp
         Source/Core/GraphFader.cpp
         Source/Core/GraphManager.cpp
+        Source/Core/GridPanelSettings.cpp
         Source/Core/GridVoiceEngine.cpp
         Source/Core/InputLinkSend.cpp
         Source/Core/LinkClock.cpp
@@ -707,6 +713,7 @@ if(CONDUIT_BUILD_TESTS)
         Source/UI/ChannelAttributePanel.cpp
         Source/UI/ColourSwatchStrip.cpp
         Source/UI/CurveEditor.cpp
+        Source/UI/EditorDockPanel.cpp
         Source/UI/ExpressionRibbon.cpp
         Source/UI/FxModulePanel.cpp
         Source/UI/GainFaderMeter.cpp

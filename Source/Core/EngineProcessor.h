@@ -19,6 +19,7 @@
 #include "MpeMidiSink.h"
 #include "GraphFader.h"
 #include "GraphManager.h"
+#include "GridPanelSettings.h"
 #include "InputLinkSend.h"
 #include "LinkClock.h"
 #include "MeterSettings.h"
@@ -253,6 +254,11 @@ public:
     [[nodiscard]] grid::GridVoiceEngine& getGridVoiceEngine() noexcept { return gridVoiceEngine; }
     [[nodiscard]] grid::MidiDeviceTarget& getGridMidiDeviceTarget() noexcept { return midiDeviceTarget; }
 
+    /** Chrome-Zustand des rechten Editor-Dock-Panels der Grid-Page (S2,
+        App-Zustand) — der Processor lauscht nicht darauf, GridPage lädt/
+        speichert direkt (Muster getUiSettings). */
+    [[nodiscard]] GridPanelSettings& getGridPanelSettings() noexcept { return gridPanelSettings; }
+
 private:
     /** Legt die reservierten I/O-Tree-Nodes (audio_input/audio_output) an,
         falls sie fehlen — frischer Patch oder Preset ohne I/O. Idempotent. */
@@ -381,6 +387,9 @@ private:
 
     // Oberflächen-Einstellungen (App-Zustand) — reines UI-Anliegen
     UiSettings uiSettings;
+
+    // Chrome-Zustand des Grid-Editor-Dock-Panels (S2, App-Zustand)
+    GridPanelSettings gridPanelSettings;
 
     // Modul-Typ-Defaults des Dev-Modus (4.6, App-Zustand) — der GraphManager
     // wendet sie bei Neu-Anlagen als Overlay an

@@ -28,7 +28,8 @@ EngineEditor::EngineEditor (EngineProcessor& engineProcessor,
               &engineProcessor.getChannelNames(),
               &engineProcessor.getInputLevels(), &engineProcessor.getOutputLevels(),
               &engineProcessor.getInputLinkSend(), &engineProcessor.getUiSettings()),
-      gridPage (engineProcessor.getGridVoiceEngine(), engineProcessor.getGridMidiDeviceTarget()),
+      gridPage (engineProcessor.getGridVoiceEngine(), engineProcessor.getGridMidiDeviceTarget(),
+               engineProcessor.getGridPanelSettings()),
       browserModel (engineProcessor.getModuleFactory(), browserContext, browserWorker),
       browserPanel (browserModel, engineProcessor.getUiSettings())
 {
@@ -127,6 +128,12 @@ EngineEditor::EngineEditor (EngineProcessor& engineProcessor,
     // Browser-Panel: Toggle über die Bar, Dock-Breite animiert → Layout
     transportBar.onToggleBrowserPanel = [this] { toggleBrowserPanel(); };
     browserPanel.onDockWidthChanged = [this] { resized(); };
+
+    // Grid-Editor-Dock-Panel (S2): eigener Toggle, unabhängig vom Browser;
+    // LED-Zustand sofort mit der geladenen Persistenz synchronisieren
+    // (das Panel kann bereits offen starten, GridPanelSettings::isEditorPanelOpen)
+    transportBar.onToggleEditorPanel = [this] { toggleEditorPanel(); };
+    transportBar.setEditorPanelOpen (gridPage.isDockPanelOpen());
 
     // Tap-to-Load (M3): versetzt platzieren, damit gestapelte Nodes
     // greifbar bleiben; Link-Send braucht seinen Config-Dialog (7.2),
@@ -951,6 +958,12 @@ void EngineEditor::toggleBrowserPanel()
 {
     browserPanel.setOpen (! browserPanel.isOpen());
     transportBar.setBrowserPanelOpen (browserPanel.isOpen());
+}
+
+void EngineEditor::toggleEditorPanel()
+{
+    gridPage.setDockPanelOpen (! gridPage.isDockPanelOpen());
+    transportBar.setEditorPanelOpen (gridPage.isDockPanelOpen());
 }
 
 //==============================================================================

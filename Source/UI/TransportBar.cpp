@@ -191,6 +191,12 @@ TransportBar::TransportBar (juce::ValueTree rootTree, LinkClock& linkClockToUse,
     browserPanelTile.onClick = [this]
     { if (onToggleBrowserPanel != nullptr) onToggleBrowserPanel(); };
 
+    // Grid-Editor-Dock-Panel-Toggle: unabhängig vom Browser, wirkt nur auf
+    // der Grid-Page (LED = Panel offen, Status setzt der Editor)
+    editorPanelTile.setTooltip ("Editor-Panel (Grid)");
+    editorPanelTile.onClick = [this]
+    { if (onToggleEditorPanel != nullptr) onToggleEditorPanel(); };
+
     // -- Globale Session-Skala (Schema 6.2) — Ableton-Look: [♯][Root][Skala] --
     {
         const char* noteNames[] = { "C", "C#", "D", "D#", "E", "F",
@@ -259,7 +265,7 @@ TransportBar::TransportBar (juce::ValueTree rootTree, LinkClock& linkClockToUse,
              &tapTile, &setTile, &nudgeDownTile, &nudgeUpTile,
              &metronomeTile, &tempoTile, &positionTile, &swingTile, &linkTile,
              &undoTile, &gearTile,
-             &scaleToggleTile, &rootCombo, &scaleCombo, &browserPanelTile,
+             &scaleToggleTile, &rootCombo, &scaleCombo, &browserPanelTile, &editorPanelTile,
              &warningLabel, &dspMeterLabel })
         addAndMakeVisible (component);
 
@@ -300,6 +306,11 @@ void TransportBar::setDevPanelOpen (bool isOpen)
 void TransportBar::setBrowserPanelOpen (bool isPanelOpen)
 {
     browserPanelTile.setActive (isPanelOpen);
+}
+
+void TransportBar::setEditorPanelOpen (bool isPanelOpen)
+{
+    editorPanelTile.setActive (isPanelOpen);
 }
 
 void TransportBar::openTapMenu()
@@ -547,9 +558,11 @@ void TransportBar::resized()
     placeLeft (linkTile,     78, 14);
 
     // Rechts von außen nach innen: Browser-Panel-Toggle (äußerstes Element),
-    // Skala-Gruppe (Ableton-Look: [♯][Root][Skala] bündig mit 2px-Fugen),
-    // Aktionen, Pages
+    // direkt daneben der Grid-Editor-Panel-Toggle (S2, unabhängig vom
+    // Browser), Skala-Gruppe (Ableton-Look: [♯][Root][Skala] bündig mit
+    // 2px-Fugen), Aktionen, Pages
     placeRight (browserPanelTile, tile);
+    placeRight (editorPanelTile, tile, 14);
     placeRight (scaleCombo, 88, 2);
     placeRight (rootCombo,  46, 2);
     placeRight (scaleToggleTile, 28, 14);

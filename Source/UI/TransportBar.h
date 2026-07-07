@@ -58,6 +58,7 @@ public:
     std::function<void()> onCaptureAll, onToggleCapturePanel;
     std::function<void()> onToggleLooperPage;             // Tape-Kachel (oo)
     std::function<void()> onToggleBrowserPanel;           // Browser-Toggle rechts außen
+    std::function<void()> onToggleEditorPanel;            // Grid-Editor-Dock-Panel-Toggle (S2)
     std::function<void (int pageIndex)> onPageSelected;   // Reihenfolge: pages[]
 
     /** Beschriftungen der Metronom-Ziel-Paare (Kanäle 2n/2n+1) fürs
@@ -152,6 +153,12 @@ public:
 
     [[nodiscard]] push::IconTile& getBrowserPanelTile() noexcept { return browserPanelTile; }
 
+    /** LED des Editor-Panel-Toggles = Grid-Editor-Dock-Panel offen (S2,
+        unabhängig vom Browser -- Status kommt vom Editor). */
+    void setEditorPanelOpen (bool isPanelOpen);
+
+    [[nodiscard]] push::IconTile& getEditorPanelTile() noexcept { return editorPanelTile; }
+
 private:
     void openLinkMenu();
     void openTapMenu();
@@ -207,6 +214,12 @@ private:
     // Meilenstein (User 03.07.)
     push::IconTile browserPanelTile { push::Icon::browserPanel, "browserPanel",
                                       push::colours::ledOrange };
+
+    // Grid-Editor-Dock-Panel-Toggle (S2-Vorstufe MPE-Shaping) -- eigenes
+    // Icon (~, wiederverwendet aus dem FxModulePanel-CurveEditor-Button),
+    // eigener Akzent, klar vom Browser-Toggle unterscheidbar.
+    push::IconTile editorPanelTile { push::Icon::curve, "editorPanel",
+                                     push::colours::ledCyan };
 
     juce::Label warningLabel;
     juce::Label dspMeterLabel;   // „DSP x % ⌀ / y % pk · N XRuns" (Timing-Monitor)

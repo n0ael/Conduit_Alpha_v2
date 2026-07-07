@@ -95,6 +95,7 @@ set(CONDUIT_CPP_SOURCES
     Source/Core/Main.cpp
     Source/Core/AudioDeviceController.cpp
     Source/Core/ChannelNames.cpp
+    Source/Core/CurveEditInteraction.cpp
     Source/Core/EngineProcessor.cpp
     Source/Core/EngineEditor.cpp
     Source/Core/ExpressionAxis.cpp
@@ -265,6 +266,7 @@ target_sources(Conduit PRIVATE
     ${CONDUIT_CPP_SOURCES}
     Source/Core/AudioDeviceController.h
     Source/Core/ChannelNames.h
+    Source/Core/CurveEditInteraction.h
     Source/Core/EngineProcessor.h
     Source/Core/EngineEditor.h
     Source/Core/ExpressionAxis.h
@@ -525,6 +527,7 @@ if(CONDUIT_BUILD_TESTS)
         Tests/Core/CaptureWriterTests.cpp
         Tests/Core/ChannelNamesTests.cpp
         Tests/Core/ClockTests.cpp
+        Tests/Core/CurveEditInteractionTests.cpp
         Tests/Core/EngineIOChannelTests.cpp
         Tests/Core/ExpressionAxisTests.cpp
         Tests/Core/GraphFaderTests.cpp
@@ -590,6 +593,7 @@ if(CONDUIT_BUILD_TESTS)
         ${CONDUIT_TEST_CPP_SOURCES}
         Source/Core/AudioDeviceController.cpp
         Source/Core/ChannelNames.cpp
+        Source/Core/CurveEditInteraction.cpp
         Source/Core/EngineEditor.cpp
         Source/Core/EngineProcessor.cpp
         Source/Core/ExpressionAxis.cpp

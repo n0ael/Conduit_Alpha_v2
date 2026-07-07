@@ -1,10 +1,12 @@
 #pragma once
 
 #include <array>
+#include <map>
 
 #include <juce_gui_basics/juce_gui_basics.h>
 #include <juce_graphics/juce_graphics.h>
 
+#include "Core/CurveEditInteraction.h"
 #include "Core/GridPanelSettings.h"
 #include "Core/GridVoiceEngine.h"
 #include "Core/UiSettings.h"
@@ -43,6 +45,10 @@ public:
     void paint (juce::Graphics& g) override;
     void resized() override;
 
+    void mouseDown (const juce::MouseEvent& event) override;
+    void mouseDrag (const juce::MouseEvent& event) override;
+    void mouseUp   (const juce::MouseEvent& event) override;
+
 private:
     struct AxisSection
     {
@@ -53,14 +59,43 @@ private:
         NoteCircleFadeTracker fadeTracker { 180 };   // Default, setFadeMs() aus der Persistenz im Ctor
         std::vector<grid::GridVoiceEngine::VoiceReadout> scratch {};   // reserve(kMaxVoices) einmalig
 
+        // Schatten der ResponseCurve-Krümmung (Segment 0) -- ResponseCurve
+        // hat keinen Getter dafür; diese View ist die einzige Stelle, die
+        // setSegmentCurvature aufruft, daher bleibt der Schatten konsistent.
+        float segmentCurvature = 0.0f;
+
         juce::Rectangle<int> tileBounds {};      // ganze Kachel (Kurvenfeld+Detailspalte), Rounded-Rect
         juce::Rectangle<int> curveBounds {};     // gesetzt in resized(), gelesen in paint()
         juce::Rectangle<int> detailBounds {};    // leer, wenn unter der Schwellbreite
     };
 
+    /** Laufende Touch-Bearbeitung einer Kurve (Multi-Touch: eine Geste pro
+        Touch-Source-Index). */
+    struct EditGesture
+    {
+        int   sectionIndex    = -1;
+        grid::CurveEditInteraction::Target target = grid::CurveEditInteraction::Target::None;
+        float startNormY      = 0.0f;   // normY bei mouseDown (Curvature-Basis)
+        float curvatureAtDown = 0.0f;   // section.segmentCurvature bei mouseDown
+    };
+
     void tick();
-    void paintAxis (juce::Graphics& g, const AxisSection& section) const;
+    void paintAxis (juce::Graphics& g, const AxisSection& section,
+                    grid::CurveEditInteraction::Target activeTarget) const;
     void updateDevSliderVisibility (bool devModeEnabled);
+
+    /** Index der Achsen-Sektion, deren curveBounds pos enthält, sonst -1. */
+    [[nodiscard]] int sectionIndexAt (juce::Point<float> pos) const noexcept;
+
+    /** Das eigentliche Kurvenfeld einer Sektion (curveBounds abzüglich
+        Header-Zeile und Rand) -- dieselbe Geometrie wie beim Zeichnen, damit
+        Hit-Testing und Rendering nie auseinanderlaufen. */
+    [[nodiscard]] juce::Rectangle<float> curveFieldBounds (const AxisSection& section) const noexcept;
+
+    /** Pixel-Position -> normierte Feld-Position (x: 0=links..1=rechts,
+        y: 0=unten..1=oben -- CurveEditInteraction-Konvention). */
+    [[nodiscard]] static juce::Point<float> normalisedPositionIn (juce::Rectangle<float> fieldBounds,
+                                                                  juce::Point<float> pos) noexcept;
 
     static constexpr float kNoteCircleDiameter = 10.0f;
     static constexpr int   kCurveSamples       = 48;   // >= 48 Stützstellen
@@ -72,11 +107,19 @@ private:
     static constexpr float kMarkerWidth        = 6.0f; // Höhenmarke (combinedValue)
     static constexpr float kMarkerHeight       = 2.5f;
 
+    // Touch-Bearbeitung der Kurve (S2c-2a)
+    static constexpr float kTouchTargetPx        = 44.0f;  // CLAUDE.md 10 Touch-Target-Regel
+    static constexpr float kCurvatureSensitivity = 1.5f;   // Krümmungs-Wisch-Empfindlichkeit
+    static constexpr float kEndpointRadius       = 4.0f;   // Endpunkt-Griff, Ruhezustand
+    static constexpr float kEndpointRadiusActive = 6.0f;   // ... während des Ziehens
+
     grid::GridVoiceEngine& engine;
     GridPanelSettings& panelSettings;
     UiSettings& uiSettings;
 
     std::array<AxisSection, 3> sections;
+
+    std::map<int, EditGesture> gestures;   // Key = Touch-Source-Index (Multi-Touch)
 
     juce::Label  thresholdCaption { {}, "Schwellbreite" };
     juce::Slider thresholdSlider;

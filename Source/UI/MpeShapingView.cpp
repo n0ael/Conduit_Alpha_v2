@@ -95,11 +95,24 @@ void MpeShapingView::paint (juce::Graphics& g)
 {
     g.fillAll (push::colours::panel);
 
-    for (auto& section : sections)
-        paintAxis (g, section);
+    // Pro Sektion: welches Ziel wird gerade (von irgendeinem Touch) bearbeitet?
+    // (Multi-Touch: mehrere Gesten können gleichzeitig verschiedene Sektionen treffen.)
+    std::array<grid::CurveEditInteraction::Target, 3> activeTargets;
+    activeTargets.fill (grid::CurveEditInteraction::Target::None);
+
+    for (const auto& entry : gestures)
+    {
+        const auto& gesture = entry.second;
+        if (gesture.sectionIndex >= 0 && gesture.sectionIndex < (int) activeTargets.size())
+            activeTargets[(size_t) gesture.sectionIndex] = gesture.target;
+    }
+
+    for (size_t i = 0; i < sections.size(); ++i)
+        paintAxis (g, sections[i], activeTargets[i]);
 }
 
-void MpeShapingView::paintAxis (juce::Graphics& g, const AxisSection& section) const
+void MpeShapingView::paintAxis (juce::Graphics& g, const AxisSection& section,
+                                grid::CurveEditInteraction::Target activeTarget) const
 {
     if (section.tileBounds.isEmpty())
         return;
@@ -122,7 +135,6 @@ void MpeShapingView::paintAxis (juce::Graphics& g, const AxisSection& section) c
     const auto& curve  = engine.responseCurve (section.axis);
     const auto outMin  = curve.getOutputMin();
     const auto outMax  = curve.getOutputMax();
-    const auto outRange = outMax - outMin;
 
     g.setColour (section.colour);
     g.setFont (push::scaledFont (12.0f, true));
@@ -161,14 +173,18 @@ void MpeShapingView::paintAxis (juce::Graphics& g, const AxisSection& section) c
         g.drawLine (bounds.getX(), midY, bounds.getRight(), midY, 1.0f);
     }
 
-    // Kurve: kCurveSamples+1 Stützstellen über x in [0,1]
+    // Kurve: kCurveSamples+1 Stützstellen über x in [0,1] -- apply(x) ist
+    // bereits der ABSOLUTE Ausgangswert (auf [outMin,outMax] skaliert) und
+    // wird direkt als y-Position verwendet. NICHT erneut auf die aktuelle
+    // Spanne renormalisieren -- sonst füllt die Kurve nach jedem Repaint
+    // wieder die ganze Box aus und ein Min/Max-Drag bleibt unsichtbar
+    // (Bugfix: Endpunkte ließen sich anfassen, aber nicht sichtbar ziehen).
     juce::Path path;
     for (int i = 0; i <= kCurveSamples; ++i)
     {
         const auto x = (float) i / (float) kCurveSamples;
-        const auto normY = outRange > 0.0f ? (curve.apply (x) - outMin) / outRange : 0.0f;
         const auto px = bounds.getX() + x * bounds.getWidth();
-        const auto py = bounds.getBottom() - juce::jlimit (0.0f, 1.0f, normY) * bounds.getHeight();
+        const auto py = bounds.getBottom() - juce::jlimit (0.0f, 1.0f, curve.apply (x)) * bounds.getHeight();
 
         if (i == 0)
             path.startNewSubPath (px, py);
@@ -176,31 +192,52 @@ void MpeShapingView::paintAxis (juce::Graphics& g, const AxisSection& section) c
             path.lineTo (px, py);
     }
 
-    g.setColour (section.colour);
-    g.strokePath (path, juce::PathStrokeType (1.5f));
+    // Krümmungs-Wisch aktiv: Kurvenlinie kurz betonen (dicker, heller)
+    const auto curvatureActive = activeTarget == grid::CurveEditInteraction::Target::Curvature;
+    g.setColour (curvatureActive ? section.colour.brighter (0.4f) : section.colour);
+    g.strokePath (path, juce::PathStrokeType (curvatureActive ? 3.0f : 1.5f));
+
+    // Endpunkt-Griffe (S2c-2a): Höhe = tatsächlicher outMin-/outMax-Wert
+    // (NICHT mehr fix an den Feld-Ecken) -- sonst bleibt ein Endpunkt-Drag
+    // sichtbar wirkungslos, obwohl setOutputRange längst greift. Aktiv
+    // gezogener Endpunkt wird größer/heller hervorgehoben.
+    const auto minActive = activeTarget == grid::CurveEditInteraction::Target::MinEndpoint;
+    const auto maxActive = activeTarget == grid::CurveEditInteraction::Target::MaxEndpoint;
+
+    const auto minPy = bounds.getBottom() - juce::jlimit (0.0f, 1.0f, outMin) * bounds.getHeight();
+    const auto maxPy = bounds.getBottom() - juce::jlimit (0.0f, 1.0f, outMax) * bounds.getHeight();
+    const auto minPos = juce::Point<float> (bounds.getX(), minPy);
+    const auto maxPos = juce::Point<float> (bounds.getRight(), maxPy);
+
+    const auto minRadius = minActive ? kEndpointRadiusActive : kEndpointRadius;
+    g.setColour (minActive ? push::colours::ledWhite : section.colour);
+    g.fillEllipse (juce::Rectangle<float> (minRadius * 2.0f, minRadius * 2.0f).withCentre (minPos));
+
+    const auto maxRadius = maxActive ? kEndpointRadiusActive : kEndpointRadius;
+    g.setColour (maxActive ? push::colours::ledWhite : section.colour);
+    g.fillEllipse (juce::Rectangle<float> (maxRadius * 2.0f, maxRadius * 2.0f).withCentre (maxPos));
 
     // Live-Noten-Kreise: x = jlimit(0,1,rawValue) -- für Achsen mit
     // Rohwertbereich außerhalb [0,1] (PitchBend in Halbtönen) klemmt die
     // Position an den Rand; eine domänenkorrekte Skalierung folgt mit den
-    // Achs-Optionen (S2c-2). y = apply(rawValue), normalisiert.
+    // Achs-Optionen (S2c-2). y = apply(rawValue) direkt (absoluter
+    // Ausgangswert, nicht auf die aktuelle Spanne renormalisiert).
     for (const auto& circle : section.fadeTracker.circles())
     {
         const auto x = juce::jlimit (0.0f, 1.0f, circle.rawValue);
-        const auto normY = outRange > 0.0f ? (curve.apply (circle.rawValue) - outMin) / outRange : 0.0f;
         const auto px = bounds.getX() + x * bounds.getWidth();
-        const auto py = bounds.getBottom() - juce::jlimit (0.0f, 1.0f, normY) * bounds.getHeight();
+        const auto py = bounds.getBottom()
+                           - juce::jlimit (0.0f, 1.0f, curve.apply (circle.rawValue)) * bounds.getHeight();
 
         g.setColour (section.colour.withAlpha (circle.opacity));
         g.fillEllipse (juce::Rectangle<float> (kNoteCircleDiameter, kNoteCircleDiameter)
                            .withCentre ({ px, py }));
 
         // Zweite Höhenmarke am rechten Feldrand: finaler Ausgang inkl. Kurve+
-        // Offset (combinedValue) -- wandert live am Offset-Slider, schwächer/
-        // kleiner als der Kreis.
-        const auto combinedNormY = outRange > 0.0f
-                                      ? (circle.combinedValue - outMin) / outRange : 0.0f;
+        // Offset (combinedValue, schon absolut) -- wandert live am Offset-
+        // Slider, schwächer/kleiner als der Kreis.
         const auto markerY = bounds.getBottom()
-                                 - juce::jlimit (0.0f, 1.0f, combinedNormY) * bounds.getHeight();
+                                 - juce::jlimit (0.0f, 1.0f, circle.combinedValue) * bounds.getHeight();
         const auto markerRect = juce::Rectangle<float> (kMarkerWidth, kMarkerHeight)
                                     .withCentre ({ bounds.getRight() - kMarkerWidth * 0.5f - 1.0f, markerY });
 
@@ -253,6 +290,118 @@ void MpeShapingView::resized()
                                           : juce::Rectangle<int>{};
         section.curveBounds  = sectionBounds;
     }
+}
+
+int MpeShapingView::sectionIndexAt (juce::Point<float> pos) const noexcept
+{
+    for (int i = 0; i < (int) sections.size(); ++i)
+        if (sections[(size_t) i].curveBounds.contains (pos.toInt()))
+            return i;
+
+    return -1;
+}
+
+juce::Rectangle<float> MpeShapingView::curveFieldBounds (const AxisSection& section) const noexcept
+{
+    auto area = section.curveBounds;
+    area.removeFromTop (kHeaderRowHeight);
+    return area.reduced (6).toFloat();
+}
+
+juce::Point<float> MpeShapingView::normalisedPositionIn (juce::Rectangle<float> fieldBounds,
+                                                         juce::Point<float> pos) noexcept
+{
+    if (fieldBounds.getWidth() <= 0.0f || fieldBounds.getHeight() <= 0.0f)
+        return {};
+
+    const auto normX = (pos.x - fieldBounds.getX()) / fieldBounds.getWidth();
+    const auto normY = (fieldBounds.getBottom() - pos.y) / fieldBounds.getHeight();   // 0=unten, 1=oben
+    return { normX, normY };
+}
+
+void MpeShapingView::mouseDown (const juce::MouseEvent& event)
+{
+    const auto sectionIndex = sectionIndexAt (event.position);
+    if (sectionIndex < 0)
+        return;
+
+    auto& section = sections[(size_t) sectionIndex];
+    const auto fieldBounds = curveFieldBounds (section);
+    if (fieldBounds.isEmpty())
+        return;
+
+    const auto normPos = normalisedPositionIn (fieldBounds, event.position);
+    const auto& curve = engine.responseCurve (section.axis);
+
+    // Trefferradius: 44 px (Touch-Target-Regel) normiert auf die Feldhöhe.
+    const auto hitRadiusNorm = kTouchTargetPx / juce::jmax (1.0f, fieldBounds.getHeight());
+
+    const auto target = grid::CurveEditInteraction::hitTest (normPos, curve.getOutputMin(),
+                                                             curve.getOutputMax(), hitRadiusNorm);
+
+    EditGesture gesture;
+    gesture.sectionIndex    = sectionIndex;
+    gesture.target          = target;
+    gesture.startNormY      = normPos.y;
+    gesture.curvatureAtDown = section.segmentCurvature;
+
+    gestures[event.source.getIndex()] = gesture;
+
+    repaint();
+}
+
+void MpeShapingView::mouseDrag (const juce::MouseEvent& event)
+{
+    const auto it = gestures.find (event.source.getIndex());
+    if (it == gestures.end())
+        return;
+
+    const auto& gesture = it->second;
+    if (gesture.target == grid::CurveEditInteraction::Target::None || gesture.sectionIndex < 0)
+        return;
+
+    auto& section = sections[(size_t) gesture.sectionIndex];
+    const auto fieldBounds = curveFieldBounds (section);
+    if (fieldBounds.isEmpty())
+        return;
+
+    const auto normPos = normalisedPositionIn (fieldBounds, event.position);
+    auto& curve = engine.responseCurve (section.axis);
+
+    switch (gesture.target)
+    {
+        case grid::CurveEditInteraction::Target::MinEndpoint:
+            curve.setOutputRange (grid::CurveEditInteraction::endpointValueFromY (normPos.y),
+                                  curve.getOutputMax());
+            break;
+
+        case grid::CurveEditInteraction::Target::MaxEndpoint:
+            curve.setOutputRange (curve.getOutputMin(),
+                                  grid::CurveEditInteraction::endpointValueFromY (normPos.y));
+            break;
+
+        case grid::CurveEditInteraction::Target::Curvature:
+        {
+            const auto newCurvature = juce::jlimit (-1.0f, 1.0f,
+                gesture.curvatureAtDown + grid::CurveEditInteraction::curvatureDelta (
+                    gesture.startNormY, normPos.y, kCurvatureSensitivity));
+            curve.setSegmentCurvature (0, newCurvature);
+            section.segmentCurvature = newCurvature;
+            break;
+        }
+
+        case grid::CurveEditInteraction::Target::None:
+        default:
+            break;
+    }
+
+    repaint();
+}
+
+void MpeShapingView::mouseUp (const juce::MouseEvent& event)
+{
+    gestures.erase (event.source.getIndex());
+    repaint();
 }
 
 } // namespace conduit

@@ -16,6 +16,16 @@ Du bist ein C++20 und JUCE (v8+) Audio-Experte. Wir entwickeln "Conduit alpha v3
 
 Denke in Architektur und Modulen, bevor du Code schreibst. Liefere Code-Snippets immer sauber getrennt in Header (.h) und Source (.cpp). Bleib technisch, präzise und direkt. Keine Erklärungen, die nicht angefordert wurden.
 
+### 1.1 Subsystem-Dossiers (Pflichtlektüre)
+
+Detail-Spezifikationen und Lektionen abgeschlossener Subsysteme
+liegen in `docs/{Subsystem}.md`, ADRs in `docs/adr/`. Für Arbeiten
+am jeweiligen Subsystem sind Dossiers verbindlich wie diese Datei.
+Vor JEDER Änderung an einem Subsystem mit Dossier: das Dossier
+vollständig lesen; Phase 1 des Auftrags listet die gelesenen
+Dossiers. Neue Feature-Spezifikationen wandern nach Abschluss ins
+Dossier — in der CLAUDE.md verbleiben nur Invarianten + Verweis.
+
 ---
 
 ## 2. Tech-Stack
@@ -141,74 +151,17 @@ Quantisierte Start/Stop/Reset-Aktionen folgen dem Ableton-Grid
 
 ### 4.6 FX-Chassis-Standard (ProcessorModule) — verbindlich für ALLE FX-Module
 
-Jedes Audio-FX-Modul erbt von `ProcessorModule` und bekommt damit AUTOMATISCH
-das Standard-Chassis. Neue FX-Module implementieren NUR `prepareCore()`/
-`processCore()` (reine Stereo-Audio-Sicht, Kanäle 0..1) und liefern ihre
-DSP-Parameter als `ChassisParamDesc`-Liste an den ProcessorModule-Konstruktor.
-NIE `prepareToPlay`/`processBlock`/`appendParametersTo`/`getParameterTarget`
-selbst überschreiben (final).
-
-**Das Chassis stellt bereit (nicht optional, nicht nachbauen):**
-
-- **Input-/Output-Gain** (`input_gain`/`output_gain`, −60..+6 dB, −60 = exakt
-  Stille, role="chassis"), SmoothedValue 5 ms. Signal-Reihenfolge:
-  noteBlockBegin → CV lesen → In-Gain → In-Meter → processCore → Out-Gain →
-  Out-Meter → Link-Tap.
-- **2×2-Kanal-LevelMeter** (eigene Instanzen im Modul; UI liest transient pro
-  Tick über `GraphManager::getModuleFor` — nie Meter-Pointer cachen, 5.3).
-- **Link-Audio-Send-Tap** (LinkSendTaps, Kanal-Name = moduleId, Node-Property
-  `linkSendEnabled` = Patch-Zustand, undo-fähig via
-  `GraphManager::setLinkSendEnabled`); Chassis implementiert ILinkAudioClient
-  + IClockSlave — Injektion/Rename/Phase-1-Retire übernimmt der GraphManager.
-- **Pro DSP-Parameter ein CV-Eingang**: Kanal-Layout FEST Audio 0..1, CV 2..N
-  (CV-Kanal von Parameter i = 2+i, `ChassisSchema::cvChannelForParam`).
-  **CV-Richtungs-Modell** (User-Entscheidung 07/2026): CV blockkonstant als
-  Blockmittel des BETRAGS (Gleichrichtung VOR der Mittelung — bipolare
-  Quellen werden zur Hüllkurve), die Richtung bestimmt allein der
-  Attenuverter `{param}_cv_amt` (−1..+1, role="cvAmount"): positiv = vom
-  Fader-Wert nach oben, negativ = nach unten.
-  `effective = clamp(base + |cv|·amt·(userMax−userMin), userMin, userMax)`.
-- **Control-Linking** (modulintern): `linkSource`/`linkAmount`/`linkCurve`
-  pro dsp-Parameter — das Ziel folgt der normalisierten Stufe-1-Quelle als
-  interne Modulation (folgt auch OSC/CV der Quelle, Ziel-Fader bleibt
-  stehen). DSP zweistufig: Stufe 1 = base+CV, Stufe 2 = Links auf Stufe-1-
-  Basis → Zyklen (A↔B) sind harmlos. Optionale Link-Response
-  (`ChassisSchema::LinkResponse`: Bezier-Form + Start-/Endwert — FALLENDE
-  Responses drehen die Richtung direkt in der Kurve, z.B. Auto-Gain/
-  Gain-Matching). APIs: `setParameterLink`/`setParameterLinkCurve`.
-
-**Schema-Regeln:**
-
-- Parameter-Property `role`: "dsp" | "chassis" | "cvAmount" — die UI layoutet
-  danach; OSC-Adressen bleiben kanonisch /conduit/processor/{moduleId}/{paramId}.
-- `userMin`/`userMax`/`uiHidden`/`curve`/`linkSource`/`linkAmount`/`linkCurve`
-  sind Patch-Zustand pro dsp-Parameter (Dev-Modus): der Fader nutzt die
-  User-Range + Bezier-Kurve (reines UI-Mapping via CurvedSlider — im Tree
-  steht IMMER der echte Wert); CV/Links wirken IM User-Bereich.
-- Range-Edits clampen den Wert in DERSELBEN Undo-Transaktion
-  (`setParameterUserRange`); `uiHidden` trennt CV-Kabel des Parameters in
-  derselben Transaktion (keine Phantom-Modulation) und ändert NIE das
-  Bus-Layout/numInputChannels (sonst Graph-Rebuild pro Klick).
-- Bezier-Kurven: Kontrollpunkte via `ChassisSchema::parseCurve` auf [0,1]
-  geclamped → x(t) UND y(t) monoton, Mapping eindeutig invertierbar.
-- Modul-Typ-Defaults (`ModuleUiDefaults`, App-Zustand, Muster MeterSettings):
-  „als Standard" im Dev-Modus sichert die dsp-Overrides pro factoryId;
-  Overlay greift NUR bei Neu-Anlage (`addModuleNode`) — Presets/Patches
-  gewinnen immer.
-- Chassis-Versionierung: stateVersion ≥ 2; `ChassisSchema::migrate` läuft
-  idempotent in `GraphManager::normalizeNode` für alle Processor-Nodes
-  (Gains/Attenuverter/role ergänzen, Kanäle 0/1 stabil — Kabel überleben).
-
-**UI:** `FxModulePanel` ist die Pflicht-Oberfläche aller Processor-Nodes
-(Auswahl über `type == "Processor"`, nicht factoryKey) — links In-Zug
-(GainFaderMeter: Fader + dB-Skala + Stereo-Meter + Clip-Reset), Mitte pro
-sichtbarem dsp-Parameter eine vertikale Fader-Spalte (Titel / CurvedSlider /
-Attenuverter-Knob / CV-Port), rechts Out-Zug + LINK-Button + Status-LED.
-Dev-Modus-Toggle sitzt im Node-Header (transient pro Kachel, KEIN Patch-/
-App-Zustand); der ~-Button jeder Spalte öffnet den CurveEditor (CallOutBox):
-Tabs Fader/Link, draggbare Range-Endpunkte, Min/Max-Felder, Link-Quelle +
-Amount. CV-Port-Anker delegiert `NodeComponent::getPortCentre` an
-`FxModulePanel::cvPortCentre` (Kanäle ≥ 2).
+- Jedes Audio-FX-Modul erbt `ProcessorModule` und implementiert NUR
+  `prepareCore()`/`processCore()` (Stereo-Sicht, Kanäle 0..1);
+  `prepareToPlay`/`processBlock`/`appendParametersTo`/
+  `getParameterTarget` sind final — NIE überschreiben.
+- Kanal-Layout FEST: Audio 0..1, CV 2..N
+  (`ChassisSchema::cvChannelForParam`); Parameter-`role`:
+  "dsp" | "chassis" | "cvAmount".
+- Chassis-Bestandteile (Gains, Meter, Link-Send-Tap,
+  CV-Richtungsmodell, Control-Linking, Schema-/Migrations-Regeln,
+  `FxModulePanel`) NIE nachbauen — Spezifikation:
+  **docs/FxChassis.md — Pflichtlektüre vor jeder FX-Arbeit.**
 
 ---
 
@@ -443,94 +396,35 @@ RootTree
 - OSC-Deregistrierung erfolgt in Phase 1, **nicht** erst in `valueTreeChildRemoved`
 - DSP-Module wissen nichts von OSC — Single Responsibility
 
-### 7.2 Link Audio (Senden/Empfangen von Audio in der Link-Session)
+### 7.2 Link Audio (Audio in der Link-Session)
 
-- **LinkAudio ERSETZT Link** — beide Klassen nie parallel instanziieren
-  (Header-Doku Link 4.0). `LinkClock`-Pimpl hält die einzige
+- **LinkAudio ERSETZT Link** — beide Klassen nie parallel
+  instanziieren; `LinkClock`-Pimpl hält die einzige
   `ableton::LinkAudio`-Instanz für Timing UND Audio.
-- **IWYU-Falle:** `<ableton/LinkAudio.hpp>` in JEDER Compilation Unit
-  inkludieren, die LinkAudio-Typen berührt — die Link-Header sind nicht
-  selbsttragend.
-- **Format:** interleaved 16-bit signed int. Float→Int16 IMMER mit
-  TPDF-Dither (LCG-basiert, kein rand()). Sink-Größe in SAMPLES anlegen
-  (`samplesPerBlock * numChannels`) — Frames und Samples nie mischen.
-- **Sinks senden erst, wenn mindestens eine Source subscribt** —
-  Idle-Sinks sind gratis. UI unterscheidet „announced" vs. „streaming".
-- **Threading:** `enableLinkAudio()`, `channels()`, Callbacks → Message
-  Thread; `ChannelsChangedCallback` und Source-Callbacks kommen auf einem
-  Link-Thread und werden via `MessageManager::callAsync` gemarshallt.
-  `BufferHandle::commit()` ist RT-safe und nutzt dieselbe
-  SessionState/Beat/Quantum-Basis wie das lokale Rendering (aus dem
-  ClockState des Blocks — kein zweites captureAudioSessionState im Modul).
-- **Sink-Lifecycle = zweiphasiges Delete:** Sink-Reset in Phase 1
-  (Pattern OscController), sonst Zombie-Kanäle bei den Peers.
-- **Kanal-Name = moduleId**, Rename via `sink.setName()` live propagiert.
-- **Empfangen (Phase 2):** Buffer-Alignment über `BufferHandle::Info::
-  beginBeats(sessionState, quantum)` — nie naiv FIFO'en (v1-Drift-Lektion).
+- IWYU: `<ableton/LinkAudio.hpp>` in JEDER Compilation Unit, die
+  LinkAudio-Typen berührt.
+- Format interleaved int16, Float→Int16 NUR mit TPDF-Dither
+  (LCG); Sink-Größe in SAMPLES — Frames und Samples nie mischen.
+- Send + Clock implementiert; **Receive offen** (Phase 2,
+  beginBeats-Alignment). Spezifikation + Lektionen:
+  **docs/LinkAudio.md — Pflichtlektüre vor jeder LinkAudio-Arbeit.**
 
 ### 7.3 OSC-Send (Parameter-Feedback an Clients)
 
-- **Snapshot-Diff statt Listener:** ein `paramValue`-Listener kann
-  OSC-Empfang, UI, Undo und Preset-Load nicht unterscheiden. Der
-  `OscSendService` läuft deshalb als `juce::Timer` @ 30 Hz auf dem Message
-  Thread: Tree-Walk über Nodes[], Diff gegen den `lastSent`-Cache mit Key
-  **`(nodeUuid, paramId)`** (nicht Adresse — rename-sicher). Deleting-Nodes
-  werden wie in der Receive-Registry übersprungen, Cache-Einträge
-  verschwundener Nodes gepruned. Der Audio Thread ist NIE beteiligt (3.1).
-- **Echo-Suppression:** `OscController::applyTreeUpdates()` meldet jeden in
-  den Tree übernommenen Empfangswert via `onRemoteValueApplied` →
-  `OscSendService::noteRemoteValue()` impft den Cache VOR dem nächsten
-  Tick — der eigene Empfang wird nie zurückgesendet. UI/Undo/Preset-Load-
-  Writes diffen dagegen und gehen raus (gewollt).
-- **Float-Diff-Falle:** `var` speichert double, der Cache float — beidseitig
-  über `float` vergleichen (`juce::exactlyEqual`), sonst Dauersende-Schleife.
-- **Transport:** ein `OSCBundle` pro Tick, Chunking bei >50 Messages
-  (UDP-Paketgrenze); `IOscSink`-Seam für Tests, `juce::OSCSender` in der App.
-- **`OscSendSettings`** (App-Zustand, Muster `MeterSettings`): Host / Port /
-  Enabled in `Conduit/OscSend.settings`. **Default-Port 9001, NICHT 9000**
-  (Loopback-Schutz gegen den eigenen Empfang), Enabled default aus.
-  Aktivierung leert den Cache → erster Tick ist ein impliziter Voll-Sync.
-- **`/conduit/sync`:** Client fordert den Voll-Dump an — Erkennung VOR dem
-  Endpoint-Lookup [Netzwerk-Thread], Ausführung via atomic Flag +
-  AsyncUpdater auf dem Message Thread (`sendFullDump()`).
-- **IP-Learn (Learn-Probe):** `juce::OSCReceiver` verwirft die Absender-IP
-  (`socket->read(...)` ohne senderAddress, `OSCInputStream` nicht
-  wiederverwendbar) — deshalb `OscController::beginIpLearn()`: Receiver
-  kurz trennen, eigener `DatagramSocket` bindet den Empfangsport
-  (Bind-Retry gegen das Rebind-Fenster, v.a. Windows), `read()` liefert die
-  IP des ersten UDP-Pakets, Receiver wird restauriert (auch bei
-  Timeout/Cancel/Destruktor). Kein OSC-Parsing nötig.
+- Snapshot-Diff via `juce::Timer` @ 30 Hz auf dem Message Thread,
+  Cache-Key `(nodeUuid, paramId)`; der Audio Thread ist NIE
+  beteiligt (3.1).
+- Default-Port 9001, NICHT 9000 (Loopback-Schutz).
+- Details (Echo-Suppression, Float-Diff-Falle, `/conduit/sync`,
+  IP-Learn, `OscSendSettings`): **docs/OscSend.md**.
 
 ### 7.4 Max4Live-Announce (Remote-Module)
 
-- **Format:** `/conduit/announce s:remoteId s:factoryKey s:trackName
-  i:trackColour` (Farbe 0x00RRGGBB aus der Live API; Float32 wird toleriert
-  — Max/js garantiert die Int-Kodierung nicht).
-- **remoteId — dokumentierte Ausnahme zur Regel 6:** die ID ist in BEIDEN
-  Welten persistent (Live-Set speichert sie als Device-Parameter „Stored
-  Only", der Conduit-Patch als Node-Property `remoteId`) — keine
-  Laufzeit-ID. Hartes Format statt Sanitizing: `[A-Za-z0-9_-]`, max. 64
-  (wird Teil von OSC-Adressen; eine umgeschriebene ID fände ihr Live-
-  Gegenstück nie wieder).
-- **Verarbeitung:** Netzwerk-Thread validiert und sammelt (`pendingAnnounces`,
-  eigener Lock) + `triggerAsyncUpdate` → Message Thread: `onAnnounce` →
-  `RemoteModuleBinder::handleAnnounce()` (find-or-create). Existiert →
-  idempotent (nur `tintColour` nachziehen; Name/Position sind nach der
-  Erst-Anlage User-Hoheit). Neu → `ModuleFactory::isRegistered`-Whitelist,
-  `addModuleNode(factoryKey, pos, configure)` (configure setzt
-  remoteId+Tint VOR dem Einhängen), dann `renameNode` auf den Track-Namen
-  (Kollision → Auto-Name bleibt).
-- **Alias-Adressen (receive-only):** `rebuildEndpoints()` registriert für
-  remoteId-Nodes ZUSÄTZLICH `/conduit/remote/{remoteId}/{paramId}` auf
-  denselben Endpoint — das Device adressiert nur über seine remoteId,
-  User-Renames und Kollisions-Suffixe sind ihm egal. Der Send-Pfad bleibt
-  kanonisch (`/conduit/{type}/{moduleId}/{paramId}`, Helper `OscAddress.h`).
-- **Kein Auth** (LAN-Annahme wie der übrige Empfang) — Whitelist +
-  Zeichen-Limits + Idempotenz decken Garbage ab. Node in Conduit gelöscht,
-  Device lebt → der 30-s-Re-Announce legt neu an (gleiche remoteId).
-- **UI:** `NodeComponent` zeigt `tintColour` als Streifen unter der
-  Kopfzeile, folgt Re-Announces live. Referenz-Device:
-  `Tools/Max/ConduitLFO/` (kein Audio im Device — der LFO läuft nativ).
+- `remoteId` = dokumentierte Ausnahme zur Laufzeit-ID-Regel (§6):
+  in Live-Set UND Patch persistent, hartes Format `[A-Za-z0-9_-]`,
+  max. 64 Zeichen.
+- Details (Announce-Format, RemoteModuleBinder, Alias-Adressen,
+  tintColour, Referenz-Device): **docs/M4LAnnounce.md**.
 
 ---
 
@@ -640,17 +534,11 @@ Plattform-spezifisches Setup in `initAudio()` und CMake ist explizit erlaubt.
   einem normierten 0..1-Quadrat in die Ziel-Bounds skaliert — vektorbasiert,
   beliebig auflösungs-/DPI-fähig, keine Bitmaps. Bausteine: IconTile/
   TextTile/ValueTile (`PushTiles`).
-- **TransportBar** ersetzt die Modul-Button-Toolbar komplett: Play (Link
-  Start/Stop-Sync), Tape (oo — Retro-Looper-Page, LED = Page offen ODER
-  Loop spielt), Capture ⛶
-  (Shift-Klick = Kanal-Panel), Fixed Length/Automate (persistierte
-  Looper-Toggles), Tap-Tempo als Monitor (M4L-„TAP and CHANGE"-Modell:
-  endloses Tappen misst NUR, Set-Kachel committet zur Session; Tap halten
-  = Reset; Tap ▾ = Menü mit Auto-Commit ab Tap n fürs MIDI/OSC-Mapping +
-  Reset-Haltedauer) + Nudge ±, Metronom ○●, Tempo/Position/Swing-Kacheln,
-  Link ▾ (Menü: Start/Stop-Sync, Clock-Offset, Metronom-Ausgang),
-  Page-Icons, „+"-Browser (Module + Presets), Undo (Shift-Klick = Redo),
-  Save, ⚙, Skala.
+- **TransportBar & Metronom:** TransportBar ersetzt die
+  Modul-Button-Toolbar komplett; Transport-/Link-Zustand in
+  `TransportSettings`; Metronom = allocation-free Click NACH dem
+  GraphFader, Beat-Grenzen sample-genau. Spezifikation:
+  **docs/Transport.md**.
 - **Pages** (`Source/UI/PageHost`): Grid (Ω, Touch-Controller-Baukasten) · Mixer (∥∥)
   · Clip (▷▭, Fugue-Machine-Sequencer) · Device (|||, Patch-Canvas). Device
   und Grid (M1) sind implementiert — Mixer und Clip bleiben gestylte
@@ -658,128 +546,18 @@ Plattform-spezifisches Setup in `initAudio()` und CMake ist explizit erlaubt.
 - **Transport-/Link-Zustand** in `TransportSettings` (App-Zustand, Muster
   MeterSettings); der EngineProcessor speist LinkClock (Start/Stop-Sync,
   Clock-Offset ±100 ms als Beat-Lese-Versatz) und Metronom (Enable, Anker).
-- **Metronom** (`Source/Core/Metronome`): allocation-free Click NACH dem
-  GraphFader auf ein wählbares Stereo-Paar; Beat-Grenzen sample-genau
-  (floor-Überquerung, Muster 4.5), Downbeat oktavhöher, Disable lässt den
-  Tail ausklingen. Bewusst kein isPlaying-Gate (Conduit läuft frei).
-- **Retro-Looper** (`Source/Core/Looper` + `Source/UI/LooperPage`, Stand
-  07/2026 — Endlesss-Muster auf Capture-Audio-Basis, MVP = ein Loop):
-  - Immer aufnehmend: Quelle = Capture-Kanal („master" = Master-Output-Tap
-    master_l/_r nach dem GraphFader | „hw:{paar}" | „tap:{name}"), Arming
-    (`CaptureService::setChannelArmed`) hält das Gate zwangsweise offen.
-    Quelle + Ausgabe-Paar persistiert in TransportSettings
-    (looperSource/looperAnchor).
-  - `BarSampleAnchors` [Audio]: Taktgrenzen sample-genau als gepackte
-    64-bit-Atomics (16 Bit bar-Tag + 48 Bit Sample-Position — Paar in EINEM
-    Wort, sonst Slot-Reuse-Race); Grenze 0 wird nie überquert → Commit
-    braucht bars+1 Grenzen.
-  - Commit [MT] = letzte 8/4/2/1 KOMPLETTE Takte via Segment-Klick auf den
-    gestauchten Waveform-Strip (Dichte verdoppelt sich an den
-    Segment-Grenzen; beat-indizierte Min/Max-Bins, binsPerBeat 32); Kopie
-    über das zählerbasierte Export-Halte-Protokoll, Wrap-Crossfade liest
-    einen Lead-in VOR dem Loop-Start (5 ms equal-power).
-  - Playback (`LooperEngine`, Engine-Level wie Metronom, bewusst ohne
-    EngineProcessor-Abhängigkeit — späteres LooperModule hostet dieselbe
-    Klasse): Phase beat-abgeleitet [B−L, B) → Start sofort phasenstarr,
-    kein Drift; 2 Voices × 60 s (~46 MB @48 kHz), Re-Commit/Stop mit
-    5-ms-Voice-Fades. Session- ≠ Aufnahme-Tempo ⇒ Varispeed (MVP-Grenze).
-  - **Playhead-Lektion (3.1 bestätigt):** beatAtBlockStart ist
-    Wall-Clock-basiert und jittert um den Callback-Scheduling-Versatz —
-    NIE direkt als Lese-Basis nutzen (hörbare Körnung). LooperEngine führt
-    einen sample-kontinuierlichen Playhead: Messung aus SampleClock +
-    jüngstem Takt-Anker, Korrektur slew-limitiert (0.2 % Varispeed), Snap
-    nur bei echten Beat-Sprüngen — und NIE hart (Feld-Lektion 04.07.2026:
-    Link-Grid-Re-Syncs ließen die Messung pro Takt springen, jeder rohe
-    Snap war ein Splice-Klick): Snap erst nach snapConfirmBlocks Blöcken,
-    dann Duck-Declick (5-ms-Rampe auf 0 → Sprung unter Stille → zurück);
-    snapCount als Diagnose in der Looper-Statuszeile („N Re-Syncs" —
-    häuft er sich, wackelt Link-Achse oder Audio-Callback; Anzeige nur
-    im Dev-Modus, UiSettings::devMode).
-  - **Callback-Timing-Diagnose** (`Source/Core/CallbackTimingMonitor`):
-    XRun-Zähler (Callback-Start-Gap > 2× Blockdauer = Deadline-Riss) +
-    Load in ‰ des Block-Budgets als Durchschnitt UND Peak, gemessen um den
-    GESAMTEN processBlock (QPC-Wall-Clock als dokumentierte 3.1-Ausnahme,
-    NUR Diagnose, nie Zeitbasis). TransportBar zeigt „DSP x % ⌀ / y % pk ·
-    N XRuns" rechts neben der Setup-Warnung — Durchschnitt = Ableton-CPU-
-    Meter-Semantik, Peak = XRun-Frühwarner. EIGENER Settings-Schalter
-    `UiSettings::dspMeter` (Default an), bewusst UNABHÄNGIG vom Dev-Modus
-    (User-Entscheidung 04.07.2026). Peak-vs-Durchschnitt-Lektion: der
-    Peak fängt den einen Block mit der Spektrum-FFT ein und liegt im
-    Debug-Build ~10× über Release — CPU-Vergleiche NUR im Release-Build.
-  - **Spektrum-View:** der Strip schaltet per Spectrum-Kachel (persistiert
-    als looperSpectrum, TransportSettings) auf ein Spektrogramm um —
-    zweiter always-on Tap-Pfad (FFT 2048/Hann, 64 Log-Bänder via
-    looper::SpectrumBands, 16 Spalten/Beat), Rendering als
-    ring-adressiertes Beat-Raum-Image + Segment-Blits (Fire-Palette);
-    Segment-Klicks/Commit identisch in beiden Views.
+- **Looper (Retro-Looper + Vollausbau):** Engine-Level, kein Graph;
+  MT→Audio via `SpscQueue<ClipCommand>`, Audio→MT via Retire-Queue —
+  `free` NIE im Audio-Callback; Playhead sample-kontinuierlich, NIE
+  roh aus `beatAtBlockStart` (Wall-Clock-Jitter); `prepareToPlay` →
+  `clearAllClips()`. Spezifikation + Lektionen (inkl.
+  CallbackTimingMonitor, Spektrum-View): **docs/Looper.md**.
 
-- **Looper-Vollausbau (M1–M10, 07/2026 — ersetzt das Ein-Loop-MVP oben;
-  dessen Lektionen [Playhead, Snap-Duck, Anker] gelten unverändert):**
-  - **Struktur:** bis 4 Looper (eigene Quelle + eigener WaveformTap) ×
-    bis 4 Tracks × 12 Clip-Slots (sichtbar 4–12 im Menü), Endless-Modell
-    (immer-aufnehmend, Segment-Klick committet 8/4/2/1 Takte in den
-    Target-Slot). Ein spielender Clip pro Track (Session-Verhalten).
-  - **Engine:** `LooperBank` (ersetzt LooperEngine) — Voices REFERENZIEREN
-    right-sized `LooperClip`s (RAM-Konto statt Prealloc, Default 1,5 GB);
-    MT→Audio via SpscQueue<ClipCommand>, Audio→MT via Retire-Queue
-    (Delete wandert IMMER durch den Audio-Thread, free nie im Callback,
-    exportPins verzögern die Freigabe). Clip-Parameter als Staged/Active-
-    Protokoll: der Audio-Thread wendet mit SEINEM Playhead positions-
-    kontinuierlich an (LooperClipMath, geschlossene Re-Anker-Formeln);
-    inhärente Lese-Sprünge deckt ein 5-ms-Splice-Duck pro Clip.
-    Quantisierte Aktionen (Start phasenstarr / Retrigger Anker=Grid /
-    Stop) als Pending-Action pro Track, sample-genau am Grid
-    (`LaunchQuantization.h` = app-weites Enum, 4.5). Track-Mix: Gain-Slew,
-    Balance-Pan (Mitte Unity), Mute/Solo (Scope pro Looper/global),
-    Post-Fader-Meter. `LooperSessionModel` = MT-Slot-/Target-/Aktiv-
-    Zustand über der Bank (EngineProcessor-frei, module-ready — einzige
-    Lücke fürs LooperModule: BarSampleAnchors-Injektion). WICHTIG:
-    prepareToPlay → `clearAllClips()` (Zombie-Pointer-Feld-Fund 05.07.).
-  - **Persistenz:** `LooperSettings` (Conduit/Looper.settings, ValueTree↔
-    XML): Struktur/Quellen/Mixer + alle Menü-Optionen (Quantisierung,
-    Tap-Modus, ÷2-Hälfte, Reverse-Punkt, VARI-Raster Halbtöne|Session-
-    Skala, VARI-Scope, Solo-Scope, sichtbare Slots, Delete-Latch,
-    Auto-Advance). Clips selbst session-flüchtig (Save-Geste exportiert).
-    Arming = VEREINIGUNG aller Looper-Quellen (Refcount-Diff — geteilte
-    Quelle bleibt offen, bis der letzte Looper sie verlässt).
-  - **UI:** Looper NEBENEINANDER (Mock-Layout); Fader OBEN mit vertikalem
-    Wischen; VARI-Rotary in Oktaven (Detent 1×, DK-Reset, Rast-Button,
-    Sync-Reset); TARGET-Kurzklick zykelt Tracks, Halten+Tap = Aktiv-
-    Auswahl. Header-Kontext (nur Looper-Page): DELETE-/SAVE-HoldTiles
-    (halten + Ziel antippen; Delete-Latch-Option) — Session-Save liegt
-    im Browser (PROJEKTE → „Session speichern…").
-  - **OSC-Actions** (`/conduit/looper/…`, Indizes 1-basiert): stop |
-    {n}/commit i:bars | {n}/stop | {n}/track/{t}/stop | {n}/target
-    i:track i:slot — Muster /conduit/sync (Erkennung vor Endpoint-Lookup,
-    AsyncUpdater → onLooperAction), fire-and-forget.
-  - **Clip-Export** (Save-Geste): `LooperClipExporter` → CaptureWriter-Job
-    (_l/_r, eingefrorene TrackSource, startPosition = commitStartSample →
-    bext-align zu Capture-Exports; `CaptureService::enqueueExternalJob`).
-
-- **Grid-Touch-Controller (Ω, M1 07/2026 — MPE-Keyboard als erstes Modul des
-  Baukastens; symmetrisches Rückgrat Quelle → Voice-Modell → Sink, ADR 14):**
-  - **Kette:** GridKeyboardComponent (Touch) → GridVoiceEngine (Engine-Level
-    wie Looper/Metronom, EngineProcessor-besessen, Message-Thread — kein
-    Audio-Thread/Graph) → IVoiceSink → MpeMidiSink (MPE-MIDI 1.0, Lower Zone)
-    → IMidiOutputTarget → MidiDeviceTarget (öffnet nur EXISTIERENDE MIDI-Out-
-    Ports, erzeugt keinen eigenen virtuellen Port — plattformabhängig).
-  - **Voice-Modell:** VoiceAllocator (Finger → Voice-Slot, allocation-free,
-    thread-agnostisch, Stealing = ältester) + MpeEncoder (Voice-Slot-Event →
-    juce::MidiMessage; Member-Kanäle ab 2, Master-Kanal 1). MPE = MIDI 1.0.
-  - **Touch:** PadGridLayout (isomorph, +1 HT/Spalte, +5/Reihe; Note beim
-    Aufsetzen, Pitch-Bend aus X, Ausdruck aus Y — ungeklemmt/aufsetzpunkt-
-    relativ, einstellbare yRangeNorm, Clamp nur am Ausgang). RingTouchModel
-    (Sonne = primärer Finger; Mond = zweiter Finger im Orbit-Greifband,
-    Radius → Slide; Orbit friert relativ zur Sonne ein, wandert mit ihr,
-    weit weg wieder greifbar).
-  - **Ränder:** ExpressionRibbon ×2 — Volume (unipolar → Master-CC7) und
-    AT-Offset (bipolar, Mitte neutral → interner Pressure-Offset auf jede
-    Stimme; ungeklemmter Rohwert hält den vollen Bereich). Release-All →
-    GridVoiceEngine::allNotesOff.
-  - **Sinks/Stränge später:** OSC (Remote + Transcoder) und CV (Software-CVC)
-    docken am selben Voice-Modell an; Gesten-State-Machine (Drone/Latch/
-    Pinch/Drift), Chord-Squares, Hardware-MPE-Input, MPE-Shaping (Kurven +
-    Slide/PitchBend-Offset) als eigene Stränge (Roadmap 11).
+- **Grid-Touch-Controller (Ω):** Kette Quelle → Voice-Modell →
+  Sink; MPE-Zuteilung IN Conduit (`VoiceAllocator` + `MpeEncoder`);
+  `GridVoiceEngine` ist Engine-Level, Message-Thread — kein
+  Audio-Thread, kein Graph. Spezifikation + Meilensteinleiter:
+  **docs/Grid.md**.
 
 - Touch-first Design: `setAcceptsTouchEvents(true)`
 - Minimale Touch-Target-Größe: 44px
@@ -800,7 +578,6 @@ Plattform-spezifisches Setup in `initAudio()` und CMake ist explizit erlaubt.
 |---|---|---|
 | 1 Finger Drag | Parameter-Sweep (CV-Wert) | P0 |
 | 2 Finger Pinch | Range-Zoom Scope/Visualizer | P0 |
-| 10-Finger-Chord | Panic / All-Notes-Off | P0 |
 | Grid: 1 Finger (Sonne) | Note + Pitch-Bend (X) + Ausdruck (Y) | P0 |
 | Grid: 2. Finger im Orbit (Mond) | Ring — Radius → Slide, keine neue Note | P0 |
 | 2 Finger Rotate | LFO-Phase / Tuning | P1 |
@@ -819,27 +596,19 @@ Plattform-spezifisches Setup in `initAudio()` und CMake ist explizit erlaubt.
 | IPolyphonic | v2.x | Interface vorbereitet, noch nicht implementiert |
 | VST3-Hosting | v3.0+ | Steinberg-Lizenz, nach CLAP |
 | Cardinal/VCV Integration | v3.0+ | Touch-native Modular UI |
-| Link Audio Send (LinkAudioSendModule) | v2.0 | NetworkIOModule, Sink = moduleId |
-| Link Audio Receive | v2.x | beginBeats()-Alignment, Monitoring-Latenz dokumentieren |
+| Link Audio Send (LinkAudioSendModule) | v2.0 | erledigt 07/2026 → docs/LinkAudio.md — §7.2 |
+| Link Audio Receive | v2.x | NÄCHSTER MEILENSTEIN — Pflichtlektüre docs/LinkAudio.md; beginBeats()-Alignment, Monitoring-Latenz dokumentieren |
 | OSC-Send (Snapshot-Diff, /conduit/sync, IP-Learn) | v2.0 | OscSendService, 7.3 |
 | M4L-Announce (remoteId, Alias-Adressen, Tint) | v2.0 | RemoteModuleBinder, 7.4 |
 | Max-Testdevice ConduitLFO | v2.0 | Tools/Max/ConduitLFO, kein Audio im Device |
 | Expert-Sleepers-Encoder (ES-5/ES-4(0)/8CV/8GT) | v2.x | v1-Port vorhanden (EncoderEngines.hpp, MIT/VCV) — HardwareIOModule-Grundstein |
 | Euclid-/Turing-Module | v2.x | v1-Engines als Referenz (Launch-Quant, parametrischer Swing, Scale-Quantize) |
-| Push-3-Transport-Header (TransportBar, Metronom, globaler Swing) | v2.0 | erledigt 07/2026 — 10.0 |
-| FX-Chassis-Standard (I/O-Gains+Meter, CV/Parameter, Link-Send, Dev-Modus, Kurven, Control-Links, Defaults) | v2.0 | erledigt 07/2026 — 4.6 |
-| Looper-Page (Retro-Looper, Endlesss-Stil, MVP ein Loop) | v2.0 | erledigt 07/2026 — 10.0 |
-| Looper-Vollausbau (4 Looper × 4 Tracks × Slots, Clip-Grid, VARI/Reverse/×2÷2, Delete/Save-Gesten, OSC-Actions, Clip-Export) | v2.0 | erledigt 07/2026 — 10.0; LooperModule + MIDI-Input + Drag-to-DAW später |
+| Push-3-Transport-Header (TransportBar, Metronom, globaler Swing) | v2.0 | erledigt 07/2026 → docs/Transport.md — §10.0 |
+| FX-Chassis-Standard (I/O-Gains+Meter, CV/Parameter, Link-Send, Dev-Modus, Kurven, Control-Links, Defaults) | v2.0 | erledigt 07/2026 → docs/FxChassis.md — §4.6 |
+| Looper-Page (Retro-Looper, Endlesss-Stil, MVP ein Loop) | v2.0 | erledigt 07/2026 → docs/Looper.md — §10.0 |
+| Looper-Vollausbau (4 Looper × 4 Tracks × Slots, Clip-Grid, VARI/Reverse/×2÷2, Delete/Save-Gesten, OSC-Actions, Clip-Export) | v2.0 | erledigt 07/2026 → docs/Looper.md — §10.0 |
 | Mixer-Page | v2.x | ∥∥-Icon, Channel-Strips (Capture-Buttons wandern dorthin) |
-| Grid-Page (Touch-Controller-Baukasten) | Ω-Icon | benutzerfreundlicher Baukasten für Touch-Controller-Layouts, die interne und externe Ziele steuern. AbletonOSC-Remote (Live fernsteuern) ist eines dieser Ziele, keine eigene Page. Meilenstein-Leiter:
-  M1  Voice-Engine + direkter MIDI-Sink + spielbares 2-Stimmen-MPE-Keyboard (Circle-Mechanik, Release = Finger heben, Rand-Ribbons, Release-All) — erledigt 07/2026 — 10.0
-  danach unabhängig, Reihenfolge nach Priorität:
-    - OSC-Sink + Transcoder (Remote, cross-platform)
-    - Gesten-State-Machine (Drone/Latch per Abhebe-Reihenfolge, Pinch-weg, Doppeltipp, Drift-über-Rand-und-Faden)
-    - CV-Sink (Software-CVC)
-    - Hardware-MPE-Input (macht Conduit zum Hub; mit CV-Sink = Haken CVC in Software)
-    - Chord-Squares + Save/Load (Browser, Factory-Sets zum Losjammen ohne Theorie)
-    - Omnichord-Strings |
+| Grid-Page (Touch-Controller-Baukasten) | Ω-Icon | M1 (MPE-Keyboard) erledigt 07/2026; Meilensteinleiter: docs/Grid.md |
 | Clip-Page (Fugue-Machine-Sequencer) | v2.x | ▷▭-Icon, immer aktiv, CV- UND MIDI-Ziele |
 | Capture-Netzwerk-Share (Exports für entferntes Ableton) | v2.x | HTTP-Bereitstellung der Capture-Dateien |
 
@@ -933,90 +702,13 @@ cmake --preset tsan && cmake --build --preset tsan   # TSan (Clang) — NUR Linu
 
 ## 14. ADRs (Architecture Decision Records)
 
-### ADR: SpscQueue als einziger Inter-Thread-Queue-Baustein + Repo-Rename-Klarstellung
-
-- **(a) AbstractFifo-Restbestand entfernt:** §3.1 nannte noch
-  `juce::AbstractFifo` als Option für Parameter-Updates — ein Restbestand
-  aus frühen Dokumentversionen. Die Codebase nutzt durchgängig `SpscQueue`
-  (`Source/Util/SpscQueue.h`, Catch2-getestet, TSan-abgedeckt); es gibt
-  0 AbstractFifo-Vorkommen im Code. §3.1 schreibt SpscQueue jetzt als
-  einzigen Inter-Thread-Queue-Baustein vor.
-- **(b) Repo-Umbenennung dokumentiert:** `Conduit_Alpha_v2` →
-  `github.com/n0ael/Conduit` (Juli 2026). Der Hinweisblock unter dem
-  Dokumenttitel verhindert Verwechslung alter Referenzen (Commits,
-  Kommentare, externe Notizen) mit einem anderen Projekt; Roadmap-Angaben
-  „v2.x" bleiben Feature-Meilensteine, keine Repo-Namen.
-- Kein Code betroffen — reine Dokumentationsentscheidung.
-
-### ADR: Grid-Page als Touch-Controller-Baukasten
-
-Status: Akzeptiert — Juli 2026
-
-Kontext:
-Grid war als AbletonOSC-Remote-Page geführt (Conduit steuert Live fern).
-Neue Produktabsicht: Grid wird der benutzerfreundlichste Touch-Controller-
-Baukasten. Nutzer ohne Programmierkenntnisse bauen Controller-Layouts, die
-interne (Conduit-Parameter/Makros) und externe Ziele steuern. Positionierung:
-kein TouchOSC-Konkurrent, sondern mehr Gestaltungsfreiheit für Nicht-Programmierer.
-
-Entscheidung:
-1. Grid = Touch-Controller-Baukasten. AbletonOSC-Remote wird ein Ausgangs-Ziel
-   innerhalb von Grid, keine eigene Page.
-2. Architektur-Rückgrat, symmetrisch: mehrere Quellen -> ein internes
-   Voice-/Control-Modell -> mehrere austauschbare Sinks, Quellen hinter einem
-   Source-Interface und Sinks hinter einem Sink-Interface.
-   - Quellen: Grid-Touch (u.a. MPE-Keyboard mit Circle-Mechanik),
-     Hardware-MPE-Input (USB/DIN).
-   - Sinks: (A) direkt MPE-MIDI (virtueller Port same-machine / Hardware-Port
-     USB+DIN / macOS RTP-MIDI fuer Netz); (B) MPE-ueber-OSC (UDP -> externer
-     Transcoder oder Max-Patch, remote/cross-platform); (C) CV (Software-CVC,
-     per-Voice Pitch/Pressure/Slide auf DC-gekoppelte Outs, ES-9/MOTU).
-3. Die MPE-Zuteilung (Finger -> Voice -> Kanal) liegt IN Conduit (testbar).
-   Das OSC-Protokoll traegt bereits zugeteilte Voices, damit der externe
-   Transcoder ohne musikalische Logik bleibt (Leos Max/JS-Domaene).
-4. Same-machine nutzt den direkten MIDI-Sink; der OSC-Sink ist nur fuer Remote.
-5. Circle-Mechanik: erster Finger = Note + Pitch-Bend ueber X + eine durchgehende
-   Achse ueber Y; zweiter Finger spannt einen Kreis, dessen Radius eine zweite
-   durchgehende Achse steuert. Y-Achse und Radius mappen auf die zwei
-   durchgehenden MPE-Dimensionen (Channel Pressure / CC74-Slide), pro Element
-   vertauschbar. Detail-Spezifikation im jeweiligen Meilenstein-Auftrag.
-
-Konsequenzen:
-+ Eine Engine, viele Ziele. Nicht-Programmierer erhalten Gestaltungsfreiheit.
-+ Remote = OSC: netz-nativ, cross-platform, passt zur bestehenden OSC-Infra
-  und zum Dedicated-Hardware-Ziel.
-- MPE ist MIDI 1.0 (kein MIDI-2.0-Bedarf fuer dieses Feature).
-- Direkter MIDI-Out-Sink ist neue Infrastruktur (§4.1 kennt bisher kein
-  MIDI-Out-Modul). Virtueller Port ist plattformabhaengig.
-- Die Circle-Gesten-Disambiguierung (Latch/Pinch/Drift) braucht eine eigene
-  State-Machine und ist ein eigener Meilenstein.
-- Windows-Kontext (Juli 2026): natives Network-MIDI noch Preview/Alpha ->
-  der OSC-Weg ist die tragfaehige Remote-Loesung; nativer virtueller
-  Port/Loopback ist inzwischen vorhanden.
-
-### ADR: Grid-Voice-Ausgabe — Quelle → Voice-Modell → austauschbare Sinks
-
-- **Rückgrat:** Grid = Touch-Controller-Baukasten, erstes Modul = MPE-Keyboard.
-  Symmetrisch: mehrere Quellen (Grid-Touch, später Hardware-MPE-Input) → EIN
-  internes Voice-Modell → mehrere austauschbare Sinks (MIDI, OSC, CV) hinter
-  Interfaces (IVoiceSink Sink-Seam, IMidiOutputTarget MIDI-Sende-Seam, Muster
-  IOscSink 7.3).
-- **MPE-Zuteilung liegt IN Conduit** (VoiceAllocator + MpeEncoder, testbar);
-  MPE ist MIDI 1.0, kein MIDI-2.0-Bedarf. Ein späterer OSC-Sink trägt bereits
-  zugeteilte Voices → externer Transcoder bleibt logikfrei (Leos Max-Domäne).
-- **Thread-Ebene:** reine MIDI-Ausgabe berührt weder Audio-Thread noch Patch-
-  Graph — GridVoiceEngine ist Engine-Level (Muster Looper/Metronom), Message-
-  Thread. IPolyphonic (4.2, Audio-Thread) bleibt dem späteren CV-Sink vorbehalten.
-- **Ausdrucks-Achsen ungeklemmt an der Quelle, Clamp nur am Ausgang:** so bleibt
-  trotz globalem Offset der volle Bereich durch Weiterwischen erreichbar (Y
-  umgesetzt; Slide/PitchBend folgen im MPE-Shaping-Strang).
-- **MIDI-Out-Sink ist neue Infrastruktur** (4.1 kennt kein MIDI-Out-Modul);
-  MidiDeviceTarget öffnet nur existierende Ports — eigenen virtuellen Port
-  erzeugen ist plattformabhängig (Windows via Windows MIDI Services/Loopback,
-  macOS nativ; eigener Strang).
-- **Terminologie:** Sonne (primärer Finger) / Mond (Ring-Finger) / Orbit (Kreis)
-  durchgängig in Kommentaren/UI; öffentliche API bleibt `ring*`/`primary*`.
+ADRs liegen in `docs/adr/` (append-only, wortgleich ausgelagert).
+Index:
+- 001 — SpscQueue als einziger Inter-Thread-Queue-Baustein + Repo-Rename
+- 002 — Grid-Page als Touch-Controller-Baukasten
+- 003 — Grid-Voice-Ausgabe: Quelle → Voice-Modell → austauschbare Sinks
+- 004 — Subsystem-Dossiers unter docs/ (+ Descope 10-Finger-Panic)
 
 ---
 
-*Conduit Alpha v3 — Claude Code Instructions v4.6  |  Juli 2026*
+*Conduit Alpha v3 — Claude Code Instructions v4.7  |  Juli 2026*

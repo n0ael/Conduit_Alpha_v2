@@ -51,10 +51,10 @@ private:
         juce::Colour colour;
 
         NoteCircleFadeTracker fadeTracker { 180 };   // Default, setFadeMs() aus der Persistenz im Ctor
-        std::vector<grid::GridVoiceEngine::VoiceReadout> scratch;   // reserve(kMaxVoices) einmalig
+        std::vector<grid::GridVoiceEngine::VoiceReadout> scratch {};   // reserve(kMaxVoices) einmalig
 
-        juce::Rectangle<int> curveBounds;    // gesetzt in resized(), gelesen in paint()
-        juce::Rectangle<int> detailBounds;   // leer, wenn unter der Schwellbreite
+        juce::Rectangle<int> curveBounds {};    // gesetzt in resized(), gelesen in paint()
+        juce::Rectangle<int> detailBounds {};   // leer, wenn unter der Schwellbreite
     };
 
     void tick();

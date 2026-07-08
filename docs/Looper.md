@@ -5,8 +5,12 @@
 - **Retro-Looper** (`Source/Core/Looper` + `Source/UI/LooperPage`, Stand
   07/2026 — Endlesss-Muster auf Capture-Audio-Basis, MVP = ein Loop):
   - Immer aufnehmend: Quelle = Capture-Kanal („master" = Master-Output-Tap
-    master_l/_r nach dem GraphFader | „hw:{paar}" | „tap:{name}"), Arming
-    (`CaptureService::setChannelArmed`) hält das Gate zwangsweise offen.
+    master_l/_r nach dem GraphFader | „hw:{paar}" = Eingangs-Paar |
+    „out:{paar}" = Ausgangs-Paar hinter dem Master (Kanäle 2p/2p+1, Taps
+    out{p}_l/_r, in prepareToPlay an die Device-Kanalzahl angeglichen —
+    seit 08.07.2026, damit z. B. Link-Receive-Routings loopbar sind) |
+    „tap:{name}"), Arming (`CaptureService::setChannelArmed`) hält das
+    Gate zwangsweise offen.
     Quelle + Ausgabe-Paar persistiert in TransportSettings
     (looperSource/looperAnchor).
   - `BarSampleAnchors` [Audio]: Taktgrenzen sample-genau als gepackte

@@ -70,8 +70,8 @@ public:
     void setMetronomeAnchor (int pairIndex);  // Clamp 0..31
 
     /** Retro-Looper (B3): Quell-Schlüssel der Looper-Page — "master",
-        "hw:{paar}" oder "tap:{name}" (Auflösung in Capture-Indizes macht
-        EngineProcessor::setLooperSource). Leer wird zu "master". */
+        "hw:{paar}", "out:{paar}" oder "tap:{name}" (Auflösung in Capture-
+        Indizes macht EngineProcessor::setLooperSource). Leer wird zu "master". */
     [[nodiscard]] juce::String getLooperSource() const noexcept { return looperSource; }
     void setLooperSource (const juce::String& sourceKey);
 

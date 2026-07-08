@@ -94,6 +94,70 @@ TEST_CASE ("Looper-Quelle (B3): Schlüssel-Auflösung, Arming und Persistenz", "
         REQUIRE (engine.getLooperLeftIndex() == -1);
         REQUIRE (engine.getLooperRightIndex() == -1);
     }
+
+    SECTION ("Ausgangspaar out:1 existiert bei 2 Output-Kanälen nicht")
+    {
+        // 2 Outs = nur der Master (Paar 0) — kein out1-Tap registriert
+        engine.setLooperSource ("out:1");
+
+        REQUIRE (engine.getLooperLeftIndex() == -1);
+        REQUIRE (engine.getLooperRightIndex() == -1);
+    }
+}
+
+//==============================================================================
+TEST_CASE ("Looper-Quellen: Ausgangs-Paar-Taps out:{paar} (alle aktiven Outs)", "[looper]")
+{
+    juce::ScopedJuceInitialiser_GUI juceRuntime;
+    conduit::test::ScopedSettingsFolder settingsFolder;
+    conduit::EngineProcessor engine { settingsFolder.folder };
+    auto& capture = engine.getCaptureService();
+
+    // 6 Outputs = Master (0/1) + Paare out:1 (2/3) und out:2 (4/5)
+    engine.setPlayConfigDetails (2, 6, 48000.0, 480);
+    engine.prepareToPlay (48000.0, 480);
+
+    // prepareToPlay registriert die Paar-Taps hinter master_l/_r
+    int out1Left = -1, out1Right = -1, out2Left = -1;
+    for (int slot = 0; slot < conduit::CaptureService::MAX_VIRTUAL_CHANNELS; ++slot)
+    {
+        const auto info = capture.getVirtualChannelUiInfo (slot);
+        if (! info.inUse)
+            continue;
+        if (info.name == "out1_l") out1Left  = info.captureIndex;
+        if (info.name == "out1_r") out1Right = info.captureIndex;
+        if (info.name == "out2_l") out2Left  = info.captureIndex;
+    }
+    REQUIRE (out1Left >= 0);
+    REQUIRE (out1Right >= 0);
+    REQUIRE (out2Left >= 0);
+
+    // Auflösung + Arming wie bei hw:/tap:-Quellen
+    engine.setLooperSource ("out:1");
+    REQUIRE (engine.getLooperLeftIndex() == out1Left);
+    REQUIRE (engine.getLooperRightIndex() == out1Right);
+    REQUIRE (capture.isChannelArmed (out1Left));
+    REQUIRE (capture.isChannelArmed (out1Right));
+
+    // Quellwechsel entwaffnet das verlassene Paar
+    engine.setLooperSource ("out:2");
+    REQUIRE (engine.getLooperLeftIndex() == out2Left);
+    REQUIRE_FALSE (capture.isChannelArmed (out1Left));
+    REQUIRE (capture.isChannelArmed (out2Left));
+
+    // Re-Prepare mit weniger Outputs baut die Paar-Taps zurück:
+    // out:2 (Kanäle 4/5) gibt es mit 4 Outputs nicht mehr
+    engine.setPlayConfigDetails (2, 4, 48000.0, 480);
+    engine.prepareToPlay (48000.0, 480);
+
+    bool sawOut2 = false;
+    for (int slot = 0; slot < conduit::CaptureService::MAX_VIRTUAL_CHANNELS; ++slot)
+    {
+        const auto info = capture.getVirtualChannelUiInfo (slot);
+        if (info.inUse && info.name == "out2_l")
+            sawOut2 = true;
+    }
+    REQUIRE_FALSE (sawOut2);
 }
 
 //==============================================================================

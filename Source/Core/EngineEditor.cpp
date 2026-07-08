@@ -470,6 +470,22 @@ std::vector<LooperPanel::Source> EngineEditor::buildLooperSources()
                                  + " / "
                                  + labels.getLabel (ChannelNames::Direction::input, channel + 1) });
 
+    // Ausgangs-Paare hinter dem Master (Kanäle 2p/2p+1, "out:{p}"):
+    // damit sind auch Signale loopbar, die nur auf einem Ausgangspaar
+    // liegen — z. B. ein Link-Receive-Routing (User-Wunsch 08.07.2026)
+    auto outNode = nodesTree.getChildWithProperty (id::factoryId, juce::String (audioOutputModuleId));
+    if (! outNode.isValid())
+        outNode = nodesTree.getChildWithProperty (id::moduleId, juce::String (audioOutputModuleId));
+
+    const auto outChannels = outNode.isValid()
+                           ? (int) outNode.getProperty (id::numInputChannels, 2) : 2;
+
+    for (int channel = 2; channel + 1 < outChannels; channel += 2)
+        sources.push_back ({ "out:" + juce::String (channel / 2),
+                             "Out: " + labels.getLabel (ChannelNames::Direction::output, channel)
+                                 + " / "
+                                 + labels.getLabel (ChannelNames::Direction::output, channel + 1) });
+
     // Capture-Taps der Module (virtuelle Slots hinter master_l/_r):
     // _l/_r-Stereo-Paare auf den Basisnamen reduziert, Mono-Taps einzeln
     juce::StringArray seenBaseNames;
@@ -484,6 +500,11 @@ std::vector<LooperPanel::Source> EngineEditor::buildLooperSources()
         auto baseName = info.name;
         if (baseName.endsWith ("_l") || baseName.endsWith ("_r"))
             baseName = baseName.dropLastCharacters (2);
+
+        // Ausgangs-Taps (out{p}_l/_r) sind oben schon als "Out:"-Paare drin
+        if (baseName.length() > 3 && baseName.startsWith ("out")
+            && baseName.substring (3).containsOnly ("0123456789"))
+            continue;
 
         if (seenBaseNames.contains (baseName))
             continue;

@@ -131,8 +131,10 @@ class CaptureService : public ICaptureBufferHost,
 {
 public:
     /** Registry-Obergrenze virtueller Kanäle (Capture-Taps). Teilt sich
-        MAX_CAPTURE_CHANNELS mit der Hardware — buildSet() clampt. */
-    static constexpr int MAX_VIRTUAL_CHANNELS = 8;
+        MAX_CAPTURE_CHANNELS mit der Hardware — buildSet() clampt.
+        16 seit den Ausgangs-Paar-Taps (Looper-Quellen "out:{paar}",
+        08.07.2026): master 2 + bis zu 7 Out-Paare + Modul-Taps. */
+    static constexpr int MAX_VIRTUAL_CHANNELS = 16;
 
     explicit CaptureService (CaptureSettings& settingsToUse);
     ~CaptureService() override;

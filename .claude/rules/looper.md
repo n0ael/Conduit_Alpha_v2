@@ -22,3 +22,6 @@ CallbackTimingMonitor, Spektrum-View, Snap-Declick, Duck, Lead-in).
 - Launch-Quantisierung über das app-weite Enum
   (`Source/Core/LaunchQuantization.h`), Grid-Übertritte sample-genau
   (`LooperClipMath::gridCrossingOffset`, FP-Epsilon-Lektion).
+- Quell-Schlüssel: "master" | "hw:{paar}" | "out:{paar}" | "tap:{name}" —
+  Auflösung zentral in `resolveLooperSourceKey` (EngineProcessor.cpp);
+  Ausgangs-Paar-Taps (out{p}_l/_r) werden in prepareToPlay registriert.

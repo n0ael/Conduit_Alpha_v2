@@ -24,6 +24,13 @@
 - **Kanal-Name = moduleId**, Rename via `sink.setName()` live propagiert.
 ## Empfangen (Phase 2) — Spezifikation (Design 08.07.2026)
 
+Status: implementiert 08.07.2026 (LinkReceiveStream + LinkAudioReceiveModule
++ LinkAudioReceivePanel, Tests grün) — der Ende-zu-Ende-Feldtest gegen
+Ableton Live steht noch aus. WICHTIGER BEFUND: `availableChannels()`
+listet NUR Peer-Announcements (SDK `Channels::sawAnnouncement`) — eigene
+Sinks erscheinen nie, ohne Peer ist die Liste leer; Loopback-Tests
+brauchen deshalb einen echten Peer (z. B. Live).
+
 Referenz: SDK-Beispiel `examples/linkaudio/LinkAudioRenderer.hpp`
 (linkaudiohut) — dessen Muster übernehmen wir mit Conduit-Bausteinen.
 

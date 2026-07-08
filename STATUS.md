@@ -1,7 +1,32 @@
 # Conduit Alpha — Projektstatus
 
-> Letzte Aktualisierung: 2026-07-04 | wird nach jedem Meilenstein gepflegt
+> Letzte Aktualisierung: 2026-07-08 | wird nach jedem Meilenstein gepflegt
 > Architektur-Referenz: [CLAUDE.md](CLAUDE.md) | Repo: n0ael/Conduit
+
+## Aktueller Meilenstein (08.07.2026)
+
+**Link Audio Receive — implementiert, Live-Feldtest offen:**
+
+- `Core/LinkReceiveStream`: Link-Thread pusht beat-gestempelte int16-Slots
+  via SpscQueue, der Audio-Thread rendert das Beat-Fenster
+  `[localBeat − latency_ms]` mit Catmull-Rom-Re-Pitching (deckt
+  SampleRate-Differenz + Tempoänderungen ab); Underflow/Beat-Sprung →
+  declickter Reset; Status/buffered/Diagnose als Atomics.
+- `Modules/LinkAudioReceiveModule` (`link_audio_receive`, 0 In / 2 Out):
+  persistiert NUR den Kanal-Wunsch (targetPeer/targetChannel als Namen),
+  rebind beim ChannelsChanged-Broadcast; enableAudio-Refcount hält die
+  Discovery; Delete Phase 1 = synchroner Source-Reset.
+- `UI/LinkAudioReceivePanel`: Kanal-PopupMenu (Session-Kanäle), Latenz-
+  Slider (20–500 ms), Status-LED + gepufferte ms.
+- **Befund:** `availableChannels()` listet nur PEER-Announcements — eigene
+  Sinks nie; Loopback braucht einen echten Peer (docs/LinkAudio.md).
+- Doku-Diät Stufe 2 am selben Tag: CLAUDE.md v4.8 (540 Zeilen), 4 neue
+  Dossiers (PatchEngine/DataModel/Calibration/Build); Stufe 3
+  (path-scoped Rules) Gating bestanden, kommt nach dem Receive-Feldtest.
+- **Nächster Schritt:** Ende-zu-Ende-Feldtest gegen Ableton Live; danach
+  User-Idee „I/O-Konsolidierung" (CLAUDE.md §11): audio_input/audio_output
+  starten stereo, „+" fügt Hardware- ODER Link-Kanäle hinzu,
+  InputSendButtons entfallen.
 
 ## Fundament (steht komplett)
 

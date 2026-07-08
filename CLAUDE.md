@@ -281,8 +281,9 @@ Connections[], CalibrationProfiles[], Session-Skala/`followAbleton`):
   LinkAudio-Typen berührt.
 - Format interleaved int16, Float→Int16 NUR mit TPDF-Dither
   (LCG); Sink-Größe in SAMPLES — Frames und Samples nie mischen.
-- Send + Clock implementiert; **Receive offen** (Phase 2,
-  beginBeats-Alignment). Spezifikation + Lektionen:
+- Send + Clock + Receive implementiert (Receive 08.07.2026:
+  LinkReceiveStream, beat-aligntes Latenzfenster `latency_ms`;
+  Live-Feldtest offen). Spezifikation + Lektionen:
   **docs/LinkAudio.md — Pflichtlektüre vor jeder LinkAudio-Arbeit.**
 
 ### 7.3 OSC-Send (Parameter-Feedback an Clients)
@@ -446,7 +447,8 @@ Vollausbau, OSC-Send, M4L-Announce (+ Max-Testdevice ConduitLFO), Grid M1.
 
 | Feature | Version | Notiz |
 |---|---|---|
-| Link Audio Receive | v2.x | NÄCHSTER MEILENSTEIN — Pflichtlektüre docs/LinkAudio.md; beginBeats()-Alignment, Monitoring-Latenz dokumentieren |
+| Link Audio Receive | v2.x | implementiert 08.07.2026 (docs/LinkAudio.md) — Live-Feldtest offen |
+| I/O-Konsolidierung (User-Idee 08.07.2026) | v2.x | audio_input/audio_output starten stereo, „+" fügt Hardware- ODER Link-Kanäle hinzu (ein Modul für alle Ins, eins für alle Outs); InputSendButtons entfallen dann; Receive-/Send-Motoren bleiben die Basis |
 | Gate, EQ, Compressor | v2.0 | ProcessorModule, ISidechain |
 | CVTunerModule | v2.0 | AnalysisModule, CalibrationProfile |
 | CLAP-Hosting | v2.x | PluginModule wraps AudioPluginInstance |

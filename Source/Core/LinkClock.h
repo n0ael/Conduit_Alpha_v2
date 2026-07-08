@@ -260,6 +260,9 @@ public:
             int    numFrames;
             int    numChannels;
             double sampleRate;
+            double tempo;           // Session-Tempo beim Senden (Info.tempo) —
+                                    // ergibt die Buffer-Dauer im Beat-Raum
+            std::uint64_t count;    // Sequenznummer des Senders (Lücken-Diagnose)
 
             /** Lokale Beat-Zeit am Buffer-Anfang (beginBeats gegen den
                 aktuellen SessionState, quantum). nullopt: Buffer aus einer

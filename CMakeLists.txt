@@ -105,6 +105,7 @@ set(CONDUIT_CPP_SOURCES
     Source/Core/GridVoiceEngine.cpp
     Source/Core/InputLinkSend.cpp
     Source/Core/LinkClock.cpp
+    Source/Core/LinkReceiveStream.cpp
     Source/Core/LinkSendTaps.cpp
     Source/Core/MeterSettings.cpp
     Source/Core/Metronome.cpp
@@ -541,6 +542,7 @@ if(CONDUIT_BUILD_TESTS)
         Tests/Core/LevelMeterTests.cpp
         Tests/Core/InputLinkSendTests.cpp
         Tests/Core/LinkAudioSendTests.cpp
+        Tests/Core/LinkReceiveStreamTests.cpp
         Tests/Core/LinkSendTapsTests.cpp
         Tests/Core/LaunchQuantizationTests.cpp
         Tests/Core/LooperMathTests.cpp
@@ -605,6 +607,7 @@ if(CONDUIT_BUILD_TESTS)
         Source/Core/GridVoiceEngine.cpp
         Source/Core/InputLinkSend.cpp
         Source/Core/LinkClock.cpp
+        Source/Core/LinkReceiveStream.cpp
         Source/Core/LinkSendTaps.cpp
         Source/Core/MeterSettings.cpp
         Source/Core/Metronome.cpp

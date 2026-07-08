@@ -92,6 +92,8 @@ struct LinkClock::Source::Impl
         rb.numFrames          = static_cast<int> (handle.info.numFrames);
         rb.numChannels        = static_cast<int> (handle.info.numChannels);
         rb.sampleRate         = static_cast<double> (handle.info.sampleRate);
+        rb.tempo              = handle.info.tempo;
+        rb.count              = handle.info.count;
         rb.beatAtBufferBegin  = handle.info.beginBeats (sessionState, LinkClock::quantum);
 
         callback (rb);

@@ -10,6 +10,7 @@
 #include "Core/GridPanelSettings.h"
 #include "Core/GridVoiceEngine.h"
 #include "Core/UiSettings.h"
+#include "LockToggle.h"
 #include "NoteCircleFadeTracker.h"
 #include "PushTiles.h"
 
@@ -85,39 +86,12 @@ private:
                     grid::CurveEditInteraction::Target activeTarget) const;
     void updateDevSliderVisibility (bool devModeEnabled);
 
-    /** "Offset"-Toggle als Schloss-Symbol (S2c-2a-Nachbesserung): zu
-        (Default) = Max ist hart, offen = Offset darf über Max hinaus. Cyan
-        gefüllt wenn offen, sonst gedimmter Umriss (Push-Stil). Eigene
-        Klasse statt push::TextTile -- PushIcons hat kein Schloss-Symbol,
-        und der Button zeichnet Icon + "Offset"-Beschriftung selbst. */
-    class LockToggle final : public juce::Button
-    {
-    public:
-        LockToggle() : juce::Button ("lockToggle") {}
-
-        void setActive (bool shouldBeActive) noexcept
-        {
-            if (active == shouldBeActive)
-                return;
-
-            active = shouldBeActive;
-            repaint();
-        }
-
-        [[nodiscard]] bool isActive() const noexcept { return active; }
-
-    private:
-        void paintButton (juce::Graphics& g, bool isHighlighted, bool isDown) override;
-
-        bool active = false;
-
-        JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (LockToggle)
-    };
-
-    /** Das Schloss-Toggle der Sektion sectionIndex (0=Pressure, 1=Slide,
-        2=PitchBend) -- eigene benannte Member statt Teil der aggregat-
-        initialisierten AxisSection (Button ist nicht kopier-/verschiebbar). */
-    [[nodiscard]] LockToggle& offsetToggleForSection (int sectionIndex) noexcept;
+    /** Verdrahtet ein "Offset"-Schloss-Toggle + graues Label für eine Achse
+        (Pressure/Slide -- PitchBend bekommt noch keins, siehe resized()):
+        Akzentfarbe, initialer Zustand aus der Engine, Klick schaltet
+        engine.setOffsetBeyondMax(axis, ...) und die Optik. */
+    void setupOffsetToggle (LockToggle& toggle, juce::Label& label,
+                            grid::GridVoiceEngine::Axis axis, juce::Colour accentColour);
 
     /** Index der Achsen-Sektion, deren curveBounds pos enthält, sonst -1. */
     [[nodiscard]] int sectionIndexAt (juce::Point<float> pos) const noexcept;
@@ -148,7 +122,7 @@ private:
     static constexpr float kTileCornerRadius   = 6.0f; // Looper-Kachel-Stil
     static constexpr float kMarkerWidth        = 6.0f; // Höhenmarke (combinedValue)
     static constexpr float kMarkerHeight       = 2.5f;
-    static constexpr int   kOffsetToggleHeight = 28;   // "Offset"-Schloss-Toggle in der Detailspalte
+    static constexpr int   kOffsetToggleRowHeight = LockToggle::kComponentSize + 4; // Schloss + Rand
 
     // Achsen-Kapazität (ExpressionAxis::Config::outMin/outMax) aller drei
     // Grid-Achsen ist seit S2c-1 immer [0,1] -- ExpressionAxis/GridVoiceEngine
@@ -177,11 +151,14 @@ private:
     juce::Label  fadeCaption { {}, "Fade-Zeit" };
     juce::Slider fadeSlider;
 
-    // Schloss-Toggle je Achse (Detailspalte) -- eigene Member statt Teil von
-    // AxisSection, siehe offsetToggleForSection().
-    LockToggle pressureOffsetToggle;
-    LockToggle slideOffsetToggle;
-    LockToggle pitchBendOffsetToggle;
+    // Schloss-Toggle je Achse (unteres Ende der Detailspalte) + graues
+    // Label -- eigene Member statt Teil von AxisSection (Button ist nicht
+    // kopier-/verschiebbar, siehe setupOffsetToggle()). PitchBend bekommt
+    // noch kein Schloss -- Platz bleibt frei fürs künftige Range-Element.
+    LockToggle  pressureOffsetToggle;
+    juce::Label pressureOffsetLabel { {}, "Offset" };
+    LockToggle  slideOffsetToggle;
+    juce::Label slideOffsetLabel { {}, "Offset" };
 
     bool devSlidersVisible = false;   // gecachter Dev-Modus-Zustand (tick())
     double lastTickMs = 0.0;

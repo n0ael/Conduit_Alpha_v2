@@ -236,6 +236,7 @@ set(CONDUIT_CPP_SOURCES
     Source/UI/LinkAudioStatusBadge.cpp
     Source/UI/LinkMenuPanel.cpp
     Source/UI/LinkSendCreateDialog.cpp
+    Source/UI/LockToggle.cpp
     Source/UI/MpeShapingView.cpp
     Source/UI/NodeCanvas.cpp
     Source/UI/NodeComponent.cpp
@@ -414,6 +415,7 @@ target_sources(Conduit PRIVATE
     Source/UI/LinkAudioStatusBadge.h
     Source/UI/LinkMenuPanel.h
     Source/UI/LinkSendCreateDialog.h
+    Source/UI/LockToggle.h
     Source/UI/MpeShapingView.h
     Source/UI/NodeAttributePanel.h
     Source/UI/NodeCanvas.h
@@ -734,6 +736,7 @@ if(CONDUIT_BUILD_TESTS)
         Source/UI/LinkAudioStatusBadge.cpp
         Source/UI/LinkMenuPanel.cpp
         Source/UI/LinkSendCreateDialog.cpp
+        Source/UI/LockToggle.cpp
         Source/UI/MpeShapingView.cpp
         Source/UI/NodeCanvas.cpp
         Source/UI/NodeComponent.cpp

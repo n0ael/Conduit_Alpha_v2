@@ -6,8 +6,10 @@
 
 #include <juce_events/juce_events.h>
 
+#include "Core/Capture/CaptureService.h"
 #include "Core/LinkClock.h"
 #include "Core/LinkReceiveStream.h"
+#include "Interfaces/ICaptureTapClient.h"
 #include "Interfaces/IClockSlave.h"
 #include "Interfaces/ILinkAudioClient.h"
 #include "NetworkIOModule.h"
@@ -43,6 +45,7 @@ namespace conduit
 */
 class LinkAudioReceiveModule final : public NetworkIOModule,
                                      public ILinkAudioClient,
+                                     public ICaptureTapClient,
                                      public IClockSlave,
                                      private juce::ChangeListener
 {
@@ -69,6 +72,18 @@ public:
     void setLinkAudioContext (LinkClock* clock, const juce::String& initialModuleId) override;
     void moduleIdRenamed (const juce::String& newModuleId) override;   // announced nichts — no-op
     void releaseSessionResources() override;
+
+    // ICaptureTapClient [Message Thread] — das empfangene Signal steht als
+    // Capture-Kanäle {moduleId}_l/_r bereit und ist damit direkt Looper-
+    // Quelle "tap:{moduleId}" (User-Wunsch 08.07.2026, Muster CaptureTapModule)
+    void setCaptureTapContext (CaptureService* service, const juce::String& initialModuleId) override;
+    void captureModuleIdRenamed (const juce::String& newModuleId) override;
+    void releaseCaptureResources() override;
+
+    /** Registriert die Capture-Kanäle (idempotent) — Basis-prepareForGraph
+        plus Tap-Registrierung; ohne freie Slots läuft das Modul ohne Tap
+        weiter (kein nodeError — der Tap ist Zusatznutzen). */
+    juce::Result prepareForGraph (double sampleRate, int maximumBlockSize) override;
 
     // IClockSlave [Message Thread, vor Graph-Aufnahme]
     void setClockBus (const ClockBus* bus) noexcept override;
@@ -132,6 +147,7 @@ public:
 private:
     void changeListenerCallback (juce::ChangeBroadcaster* source) override;
     void rebind();
+    void unregisterCaptureChannels();
 
     //==========================================================================
     // Member-Reihenfolge (Teardown): stream VOR source deklarieren — der
@@ -146,6 +162,15 @@ private:
     juce::WeakReference<LinkClock> linkClock;
     juce::String targetPeer, targetChannel;
     bool         audioEnabledHeld = false;   // enableAudio-Refcount gehalten?
+
+    // Capture-Tap (Muster CaptureTapModule): Registrierung [MT] in
+    // prepareForGraph; der Audio-Thread liest Service + Slots über Atomics —
+    // releaseCaptureResources trennt am laufenden System race-frei.
+    CaptureService* captureTapService = nullptr;   // MT
+    juce::String captureModuleId;                  // MT
+    std::array<CaptureService::VirtualChannelHandle, 2> captureHandles;
+    std::atomic<CaptureService*> rtCaptureService { nullptr };
+    std::array<std::atomic<int>, 2> rtCaptureSlots { -1, -1 };
 
     // Audio Thread liest; Injektion vor Graph-Aufnahme (4.2)
     const ClockBus* clockBus = nullptr;

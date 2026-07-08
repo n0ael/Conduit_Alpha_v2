@@ -9,8 +9,12 @@
     „out:{paar}" = Ausgangs-Paar hinter dem Master (Kanäle 2p/2p+1, Taps
     out{p}_l/_r, in prepareToPlay an die Device-Kanalzahl angeglichen —
     seit 08.07.2026, damit z. B. Link-Receive-Routings loopbar sind) |
-    „tap:{name}"), Arming (`CaptureService::setChannelArmed`) hält das
-    Gate zwangsweise offen.
+    „tap:{name}" — Link-Receive-Module registrieren ihre Ausgabe seit
+    08.07.2026 selbst als Capture-Kanäle {moduleId}_l/_r und sind damit
+    direkt wählbar), Arming (`CaptureService::setChannelArmed`) hält das
+    Gate zwangsweise offen. Wellenform/Spektrum tragen die Farbe der
+    Quelle (Kanal-Farbe aus ChannelNames bzw. nodeColour;
+    `LooperWaveformStrip::setSourceColour` tönt auch die Spektrum-LUT).
     Quelle + Ausgabe-Paar persistiert in TransportSettings
     (looperSource/looperAnchor).
   - `BarSampleAnchors` [Audio]: Taktgrenzen sample-genau als gepackte

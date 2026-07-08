@@ -17,6 +17,7 @@ LinkAudioReceiveModule::~LinkAudioReceiveModule()
     // der LinkClock ohnehin um einen Message-Loop-Hop verzögert — beim
     // App-Shutdown übernimmt ihr Destruktor racefrei (7.2 Teardown-Race).
     releaseSessionResources();
+    unregisterCaptureChannels();
 }
 
 //==============================================================================
@@ -92,6 +93,78 @@ void LinkAudioReceiveModule::releaseSessionResources()
 void LinkAudioReceiveModule::setClockBus (const ClockBus* bus) noexcept
 {
     clockBus = bus;
+}
+
+//==============================================================================
+void LinkAudioReceiveModule::setCaptureTapContext (CaptureService* service,
+                                                   const juce::String& initialModuleId)
+{
+    captureTapService = service;
+    captureModuleId   = initialModuleId;
+}
+
+void LinkAudioReceiveModule::captureModuleIdRenamed (const juce::String& newModuleId)
+{
+    captureModuleId = newModuleId;
+
+    if (captureTapService == nullptr)
+        return;
+
+    for (size_t ch = 0; ch < captureHandles.size(); ++ch)
+        if (captureHandles[ch].isValid())
+            captureTapService->setVirtualChannelName (
+                captureHandles[ch], captureModuleId + (ch == 0 ? "_l" : "_r"));
+}
+
+void LinkAudioReceiveModule::releaseCaptureResources()
+{
+    unregisterCaptureChannels();
+}
+
+void LinkAudioReceiveModule::unregisterCaptureChannels()
+{
+    // Audio-Thread zuerst trennen — ein bereits laufender Block prallt am
+    // writerActive-Atomic des Slots ab (Muster CaptureTapModule)
+    rtCaptureService.store (nullptr, std::memory_order_release);
+    for (auto& slot : rtCaptureSlots)
+        slot.store (-1, std::memory_order_release);
+
+    if (captureTapService == nullptr)
+        return;
+
+    for (auto& handle : captureHandles)
+        if (handle.isValid())
+            captureTapService->unregisterVirtualChannel (handle);
+}
+
+juce::Result LinkAudioReceiveModule::prepareForGraph (double sampleRate, int maximumBlockSize)
+{
+    if (const auto result = NetworkIOModule::prepareForGraph (sampleRate, maximumBlockSize);
+        result.failed())
+        return result;
+
+    // Idempotent (Kontrakt 5.2 Schritt 1); ohne freie Slots läuft das Modul
+    // ohne Tap weiter — der Empfang selbst hängt nicht am Capture
+    if (captureTapService == nullptr || captureHandles[0].isValid())
+        return juce::Result::ok();
+
+    for (size_t ch = 0; ch < captureHandles.size(); ++ch)
+    {
+        captureHandles[ch] = captureTapService->registerVirtualChannel (
+            captureModuleId + (ch == 0 ? "_l" : "_r"));
+
+        if (! captureHandles[ch].isValid())
+        {
+            unregisterCaptureChannels();
+            return juce::Result::ok();
+        }
+    }
+
+    for (size_t ch = 0; ch < captureHandles.size(); ++ch)
+        rtCaptureSlots[ch].store (captureHandles[ch].slot, std::memory_order_release);
+
+    rtCaptureService.store (captureTapService, std::memory_order_release);
+    return juce::Result::ok();
 }
 
 //==============================================================================
@@ -221,16 +294,26 @@ void LinkAudioReceiveModule::processBlock (juce::AudioBuffer<float>& buffer, juc
     {
         // Ohne Takt-Bus (Tests) gibt es keine Beat-Achse zum Alignen.
         buffer.clear();
-        return;
+    }
+    else
+    {
+        // DSP clamped IMMER auf min/max (4.6-Grundsatz) — der Atomic kann
+        // roh von OSC kommen.
+        const float latencyMs = juce::jlimit (latencyMinMs, latencyMaxMs,
+                                              latencyTarget.load (std::memory_order_relaxed));
+
+        stream.renderBlock (buffer.getWritePointer (0), buffer.getWritePointer (1),
+                            numFrames, clockBus->current, latencyMs);
     }
 
-    // DSP clamped IMMER auf min/max (4.6-Grundsatz) — der Atomic kann roh
-    // von OSC kommen.
-    const float latencyMs = juce::jlimit (latencyMinMs, latencyMaxMs,
-                                          latencyTarget.load (std::memory_order_relaxed));
-
-    stream.renderBlock (buffer.getWritePointer (0), buffer.getWritePointer (1),
-                        numFrames, clockBus->current, latencyMs);
+    // Capture-Tap: das gerenderte (bzw. stille) Signal in die virtuellen
+    // Kanäle spiegeln — Looper-Quelle "tap:{moduleId}" (Muster
+    // CaptureTapModule; NACH dem Input-Tap desselben Callbacks, 3.1)
+    if (auto* capture = rtCaptureService.load (std::memory_order_acquire))
+        for (int ch = 0; ch < 2; ++ch)
+            capture->writeVirtualChannel (
+                { rtCaptureSlots[static_cast<size_t> (ch)].load (std::memory_order_acquire) },
+                buffer.getReadPointer (ch), numFrames);
 }
 
 //==============================================================================

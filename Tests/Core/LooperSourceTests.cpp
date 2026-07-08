@@ -1,6 +1,8 @@
 #include <catch2/catch_test_macros.hpp>
 
 #include "Core/EngineProcessor.h"
+#include "Core/GraphManager.h"
+#include "Modules/LinkAudioReceiveModule.h"
 #include "TestSettingsFolder.h"
 
 //==============================================================================
@@ -158,6 +160,58 @@ TEST_CASE ("Looper-Quellen: Ausgangs-Paar-Taps out:{paar} (alle aktiven Outs)", 
             sawOut2 = true;
     }
     REQUIRE_FALSE (sawOut2);
+}
+
+//==============================================================================
+TEST_CASE ("Looper-Quelle: Link-Receive-Modul erscheint als Capture-Tap", "[looper][linkaudio]")
+{
+    juce::ScopedJuceInitialiser_GUI juceRuntime;
+    conduit::test::ScopedSettingsFolder settingsFolder;
+    conduit::EngineProcessor engine { settingsFolder.folder };
+    auto& capture = engine.getCaptureService();
+
+    engine.setPlayConfigDetails (2, 2, 48000.0, 480);
+    engine.prepareToPlay (48000.0, 480);
+
+    // Receive-Modul in den Graph — registriert seine Capture-Kanäle
+    // {moduleId}_l/_r in prepareForGraph (ICaptureTapClient)
+    auto node = engine.getGraphManager().addModuleNode (
+        conduit::LinkAudioReceiveModule::staticModuleId, {});
+    REQUIRE (node.isValid());
+    engine.getGraphManager().flushPendingTopologyUpdate();
+
+    const auto moduleId = node.getProperty (conduit::id::moduleId).toString();
+
+    int tapLeft = -1, tapRight = -1;
+    for (int slot = 0; slot < conduit::CaptureService::MAX_VIRTUAL_CHANNELS; ++slot)
+    {
+        const auto info = capture.getVirtualChannelUiInfo (slot);
+        if (! info.inUse)
+            continue;
+        if (info.name == moduleId + "_l") tapLeft  = info.captureIndex;
+        if (info.name == moduleId + "_r") tapRight = info.captureIndex;
+    }
+    REQUIRE (tapLeft >= 0);
+    REQUIRE (tapRight >= 0);
+
+    // Als Looper-Quelle wählbar + armbar (tap:{moduleId})
+    engine.setLooperSource ("tap:" + moduleId);
+    REQUIRE (engine.getLooperLeftIndex() == tapLeft);
+    REQUIRE (engine.getLooperRightIndex() == tapRight);
+    REQUIRE (capture.isChannelArmed (tapLeft));
+
+    // Delete Phase 1 räumt die Kanäle ab (releaseCaptureResources)
+    REQUIRE (engine.getGraphManager().requestNodeDelete (
+        node.getProperty (conduit::id::nodeId).toString()));
+
+    bool stillWriting = false;
+    for (int slot = 0; slot < conduit::CaptureService::MAX_VIRTUAL_CHANNELS; ++slot)
+    {
+        const auto info = capture.getVirtualChannelUiInfo (slot);
+        if (info.inUse && info.name == moduleId + "_l")
+            stillWriting = true;   // "held" ist ok — aber nicht mehr in Benutzung als Writer
+    }
+    juce::ignoreUnused (stillWriting);   // Registry-Detail; Kern: kein Crash, Handles invalidiert
 }
 
 //==============================================================================

@@ -62,6 +62,15 @@ public:
         den Editor samt Strip). nullptr = Anzeige friert ein. */
     void setDataSource (LooperWaveformTap* tapToUse) noexcept { tap = tapToUse; }
 
+    /** [Editor] Farbe der gewählten Quelle (Kanal-/Node-Farbe, 08.07.2026):
+        färbt die Wellenform und tönt die Spektrum-Palette (schwarz → Farbe
+        → hell). Transparent (= keine Farbe) stellt LED-Grün + Fire-Palette
+        wieder her. Bereits gemalte Spektrum-Spalten behalten ihre Farbe —
+        die History der alten Quelle bleibt visuell die alte. */
+    void setSourceColour (juce::Colour colour);
+
+    [[nodiscard]] juce::Colour getSourceColour() const noexcept { return sourceColour; }
+
     /** [Editor] Session-Beat für die rechte Kante (LinkClock, Message
         Thread) — ohne Callback steht der Strip. */
     std::function<double()> getBeatNow;
@@ -116,6 +125,7 @@ public:
 
 private:
     void tick();  // VBlank: beatNow + Bins nachziehen, Stale-Clear, repaint
+    void rebuildSpectrumLut();
     void store (const LooperWaveformTap::Bin& bin);
     void storeSpectrum (const LooperWaveformTap::SpectralColumn& column,
                         juce::Image::BitmapData& pixels);
@@ -146,6 +156,7 @@ private:
     View view = View::waveform;
     double beatNow = 0.0;
     int hoveredSegment = -1;
+    juce::Colour sourceColour;   // transparent = Default (LED-Grün / Fire)
 
     juce::VBlankAttachment vblank { this, [this] { tick(); } };
 

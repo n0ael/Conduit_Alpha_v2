@@ -516,6 +516,42 @@ std::vector<LooperPanel::Source> EngineEditor::buildLooperSources()
     return sources;
 }
 
+juce::Colour EngineEditor::looperSourceColour (const juce::String& sourceKey) const
+{
+    auto fromRgb = [] (juce::uint32 rgb)
+    {
+        return rgb != 0 ? juce::Colour (0xff000000u | (rgb & 0x00ffffffu))
+                        : juce::Colour();
+    };
+
+    auto& labels = engine.getChannelNames();
+    using Direction = ChannelNames::Direction;
+
+    // Paar-Farbe: linker Kanal, sonst rechter (vereinfachte Anker-Logik)
+    auto pairColour = [&] (Direction direction, int leftChannel)
+    {
+        const auto left = labels.getColour (direction, leftChannel);
+        return fromRgb (left != 0 ? left
+                                  : labels.getColour (direction, leftChannel + 1));
+    };
+
+    if (sourceKey.startsWith ("hw:"))
+        return pairColour (Direction::input, sourceKey.substring (3).getIntValue() * 2);
+
+    if (sourceKey.startsWith ("out:"))
+        return pairColour (Direction::output, sourceKey.substring (4).getIntValue() * 2);
+
+    if (sourceKey.startsWith ("tap:"))
+    {
+        const auto node = rootState.getChildWithName (id::nodes)
+                              .getChildWithProperty (id::moduleId, sourceKey.substring (4));
+        if (node.isValid())
+            return fromRgb ((juce::uint32) (int) node.getProperty (id::nodeColour, 0));
+    }
+
+    return {};   // master / unbekannt → Strip-Default
+}
+
 void EngineEditor::rebuildLooperSources()
 {
     // Dieselbe Quellen-Liste für alle Panels; Auswahl pro Looper aus den
@@ -524,7 +560,13 @@ void EngineEditor::rebuildLooperSources()
     auto& settings = engine.getLooperSettings();
 
     for (int l = 0; l < looperPage.getLooperCount(); ++l)
-        looperPage.getPanel (l).setSources (sources, settings.getSourceKey (l));
+    {
+        auto& panel = looperPage.getPanel (l);
+        panel.setSources (sources, settings.getSourceKey (l));
+
+        // Wellenform/Spektrum in der Farbe der Quelle (08.07.2026)
+        panel.getStrip().setSourceColour (looperSourceColour (settings.getSourceKey (l)));
+    }
 
     // Ausgabe-Paare hängen an denselben Broadcasts (ChannelNames/Hardware)
     looperPage.setOutputPairs (buildOutputPairNames(),
@@ -583,7 +625,10 @@ void EngineEditor::wireLooperPanels()
         panel.getStrip().getBeatNow = [this] { return linkClock.getBeatPosition(); };
 
         panel.onSourceSelected = [this, l] (const juce::String& key)
-        { engine.setLooperSource (l, key); };
+        {
+            engine.setLooperSource (l, key);
+            looperPage.getPanel (l).getStrip().setSourceColour (looperSourceColour (key));
+        };
 
         // Segment-Klick = Commit in den Target-Slot dieses Loopers
         panel.onSegmentClicked = [this, l] (int bars)

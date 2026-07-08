@@ -14,13 +14,24 @@ LooperWaveformStrip::LooperWaveformStrip()
     setOpaque (false);
 
     spectrumTags.fill (-1);
+    rebuildSpectrumLut();
 
+    // Ring-Image auf "Stille" initialisieren (LUT-Nullpunkt = Schwarz —
+    // Startup zeigt die ruhige LCD-Fläche)
+    spectrumImage.clear (spectrumImage.getBounds(), spectrumLut[0]);
+}
+
+void LooperWaveformStrip::rebuildSpectrumLut()
+{
     // Fire-Palette (Referenz: klassisches Spektrogramm): Schwarz →
     // Tiefrot → Orange (Push-Capture-Familie) → Gelbweiß. Stille (Pegel 0)
     // ist reines Schwarz — der Strip liegt auf schwarzem Grund (LCD-Optik,
     // User-Wunsch 07/2026), leere Bereiche verschwinden darin.
+    // Mit gesetzter Quellfarbe (setSourceColour) wird die Palette zur
+    // Quelle getönt: Schwarz → dunkle Farbe → Farbe → helle Farbe.
     struct Stop { float position; juce::Colour colour; };
-    const Stop stops[] = {
+
+    const Stop fire[] = {
         { 0.00f, juce::Colours::black },
         { 0.35f, juce::Colour (0xff5a1600) },   // Tiefrot-Braun
         { 0.65f, juce::Colour (0xffd35400) },   // Orange
@@ -28,11 +39,21 @@ LooperWaveformStrip::LooperWaveformStrip()
         { 1.00f, juce::Colour (0xffffe9b8) },   // Gelbweiß
     };
 
+    const Stop tinted[] = {
+        { 0.00f, juce::Colours::black },
+        { 0.35f, sourceColour.darker (1.8f) },
+        { 0.70f, sourceColour },
+        { 1.00f, sourceColour.interpolatedWith (juce::Colours::white, 0.65f) },
+    };
+
+    const Stop* stops    = sourceColour.isTransparent() ? fire : tinted;
+    const std::size_t n  = sourceColour.isTransparent() ? std::size (fire) : std::size (tinted);
+
     for (int i = 0; i < 256; ++i)
     {
         const auto level = static_cast<float> (i) / 255.0f;
         auto colour = stops[0].colour;
-        for (std::size_t s = 0; s + 1 < std::size (stops); ++s)
+        for (std::size_t s = 0; s + 1 < n; ++s)
         {
             if (level < stops[s].position || level > stops[s + 1].position)
                 continue;
@@ -42,10 +63,16 @@ LooperWaveformStrip::LooperWaveformStrip()
         }
         spectrumLut[static_cast<std::size_t> (i)] = colour;
     }
+}
 
-    // Ring-Image auf "Stille" initialisieren (LUT-Nullpunkt = Schwarz —
-    // Startup zeigt die ruhige LCD-Fläche)
-    spectrumImage.clear (spectrumImage.getBounds(), spectrumLut[0]);
+void LooperWaveformStrip::setSourceColour (juce::Colour colour)
+{
+    if (sourceColour == colour)
+        return;
+
+    sourceColour = colour;
+    rebuildSpectrumLut();   // wirkt auf NEUE Spalten (Header-Doku)
+    repaint();
 }
 
 //==============================================================================
@@ -180,8 +207,9 @@ void LooperWaveformStrip::paintWaveform (juce::Graphics& g, juce::Rectangle<floa
     const auto midY = wave.getCentreY();
     const auto halfHeight = wave.getHeight() * 0.5f;
 
-    // Wellenform: pro Pixelspalte das Min/Max-Aggregat der Bin-Historie
-    g.setColour (push::colours::ledGreen);
+    // Wellenform: pro Pixelspalte das Min/Max-Aggregat der Bin-Historie —
+    // in der Quellfarbe, falls gesetzt (Kanal-/Node-Farbe, 08.07.2026)
+    g.setColour (sourceColour.isTransparent() ? push::colours::ledGreen : sourceColour);
     for (int x = 0; x < getWidth(); ++x)
     {
         float minValue = 0.0f, maxValue = 0.0f;

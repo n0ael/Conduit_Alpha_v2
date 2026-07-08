@@ -82,10 +82,15 @@ private:
     void toggleBrowserPanel();
     void toggleEditorPanel();   // Grid-Editor-Dock-Panel (S2), unabhängig vom Browser
 
-    // Looper-Page (B3/M6): Quellen-Liste (Master + Hardware-Paare + Taps)
-    // neu aufbauen — bei Start, Tap-Änderungen und ChannelNames-Broadcasts
+    // Looper-Page (B3/M6): Quellen-Liste (Master + Hardware-Paare + Outs +
+    // Taps) neu aufbauen — bei Start, Tap-Änderungen und ChannelNames-Broadcasts
     [[nodiscard]] std::vector<LooperPanel::Source> buildLooperSources();
     void rebuildLooperSources();
+
+    /** Farbe einer Looper-Quelle (08.07.2026): hw:/out: → Kanal-Farbe aus
+        ChannelNames, tap: → explizite nodeColour des Moduls; transparent =
+        keine (Strip nutzt Default). */
+    [[nodiscard]] juce::Colour looperSourceColour (const juce::String& sourceKey) const;
 
     /** M6: Struktur der Page aus den LooperSettings ziehen (Looper-Zahl,
         Tracks, sichtbare Slots, Quellen, Mix-Werte) — bei Start und jedem

@@ -139,8 +139,11 @@ private:
     LinkReceiveStream stream;
     std::unique_ptr<LinkClock::Source> source;
 
-    // Message Thread
-    LinkClock*   linkClock = nullptr;
+    // Message Thread. WeakReference (Muster LinkSendTaps): im Test-Rig-/
+    // Shutdown-Teardown kann die LinkClock vor dem Modul sterben — Zugriffe
+    // in releaseSessionResources()/Destruktor wären sonst use-after-free
+    // (ASan-Fund CI 08.07.2026).
+    juce::WeakReference<LinkClock> linkClock;
     juce::String targetPeer, targetChannel;
     bool         audioEnabledHeld = false;   // enableAudio-Refcount gehalten?
 

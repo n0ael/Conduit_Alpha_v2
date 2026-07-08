@@ -47,13 +47,13 @@ void LinkAudioReceiveModule::setLinkAudioContext (LinkClock* clock, const juce::
 
     linkClock = clock;
 
-    if (linkClock != nullptr)
+    if (clock != nullptr)
     {
         // Discovery + Empfang brauchen aktives Link Audio — Refcount halten,
         // solange der Kontext lebt (Idle ist gratis, 7.2).
-        linkClock->enableAudio (true);
+        clock->enableAudio (true);
         audioEnabledHeld = true;
-        linkClock->addChangeListener (this);
+        clock->addChangeListener (this);
     }
 
     rebind();
@@ -75,18 +75,18 @@ void LinkAudioReceiveModule::releaseSessionResources()
     stream.requestReset();
     bindState.store (0, std::memory_order_relaxed);
 
-    if (linkClock != nullptr)
+    // WeakReference: eine bereits zerstörte Clock (Rig-/Shutdown-Teardown)
+    // hat ihre Listener-Liste und den Refcount mitgenommen — nichts zu tun.
+    if (auto* clock = linkClock.get())
     {
-        linkClock->removeChangeListener (this);
+        clock->removeChangeListener (this);
 
         if (audioEnabledHeld)
-        {
-            linkClock->enableAudio (false);
-            audioEnabledHeld = false;
-        }
-
-        linkClock = nullptr;
+            clock->enableAudio (false);
     }
+
+    audioEnabledHeld = false;
+    linkClock = nullptr;
 }
 
 void LinkAudioReceiveModule::setClockBus (const ClockBus* bus) noexcept
@@ -111,8 +111,10 @@ std::vector<LinkClock::ChannelInfo> LinkAudioReceiveModule::getAvailableChannels
 {
     JUCE_ASSERT_MESSAGE_THREAD
 
-    return linkClock != nullptr ? linkClock->availableChannels()
-                                : std::vector<LinkClock::ChannelInfo>{};
+    if (auto* clock = linkClock.get())
+        return clock->availableChannels();
+
+    return {};
 }
 
 void LinkAudioReceiveModule::changeListenerCallback (juce::ChangeBroadcaster*)
@@ -136,7 +138,9 @@ void LinkAudioReceiveModule::rebind()
 {
     JUCE_ASSERT_MESSAGE_THREAD
 
-    if (linkClock == nullptr || (targetPeer.isEmpty() && targetChannel.isEmpty()))
+    auto* clock = linkClock.get();
+
+    if (clock == nullptr || (targetPeer.isEmpty() && targetChannel.isEmpty()))
     {
         if (source != nullptr)
         {
@@ -147,7 +151,7 @@ void LinkAudioReceiveModule::rebind()
         return;
     }
 
-    const auto wanted = findChannelKey (linkClock->availableChannels(),
+    const auto wanted = findChannelKey (clock->availableChannels(),
                                         targetPeer, targetChannel);
 
     if (wanted == 0)
@@ -170,7 +174,7 @@ void LinkAudioReceiveModule::rebind()
         // Callback läuft auf einem Link-Thread (7.2): nur Beat-Filter +
         // memcpy in die SpscQueue. Buffer fremder Sessions (nullopt) sind
         // nicht alignbar und werden verworfen (v1-Drift-Lektion).
-        source = linkClock->createSource (wanted,
+        source = clock->createSource (wanted,
             [this] (const LinkClock::Source::ReceivedBuffer& rb)
             {
                 if (rb.beatAtBufferBegin.has_value())

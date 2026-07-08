@@ -223,9 +223,12 @@ public:
         juce::String peerName;
     };
 
-    /** Aktuell in der Session verfügbare Audio-Kanäle (inkl. der eigenen
-        Sinks — der Aufrufer filtert bei Bedarf über peerName()). Änderungen
-        melden sich über den ChangeBroadcaster (ChannelsChanged, 7.2). */
+    /** Aktuell in der Session verfügbare Audio-Kanäle. Die Liste speist
+        sich aus den Netzwerk-Announcements der PEERS (Link-SDK
+        Channels::sawAnnouncement) — eigene Sinks erscheinen NICHT, und
+        ohne verbundenen Peer ist sie leer (empirisch verifiziert
+        08.07.2026, Receive-Testlauf). Änderungen melden sich über den
+        ChangeBroadcaster (ChannelsChanged, 7.2). */
     [[nodiscard]] std::vector<ChannelInfo> availableChannels() const;
 
     //==========================================================================

@@ -1,5 +1,7 @@
+#include <atomic>
 #include <cmath>
 #include <cstdint>
+#include <thread>
 #include <vector>
 
 #include <catch2/catch_test_macros.hpp>
@@ -282,4 +284,51 @@ TEST_CASE ("LinkReceiveStream: requestReset verwirft Bestand und Zustand", "[lin
 
     REQUIRE (stream.getStatusForUi() == conduit::LinkReceiveStream::Status::idle);
     REQUIRE (stream.getBufferedSeconds() < 1.0e-9f);
+}
+
+//==============================================================================
+TEST_CASE ("LinkReceiveStream: Producer/Consumer-Stress über echte Threads (TSan)",
+           "[linkaudio][receive][threading]")
+{
+    conduit::LinkReceiveStream stream;
+    std::atomic<bool> stop { false };
+
+    // Producer = Link-Thread-Rolle. Catch2-Assertions sind nicht thread-safe —
+    // der Thread prüft nichts, TSan prüft die Queue-Grenze.
+    std::thread producer ([&stream, &stop]
+    {
+        std::int16_t data[kBlock];
+        for (int i = 0; i < kBlock; ++i)
+            data[i] = static_cast<std::int16_t> (i * 13);
+
+        double        beat  = 0.0;
+        std::uint64_t count = 1;
+
+        while (! stop.load (std::memory_order_relaxed))
+        {
+            stream.pushBuffer (data, kBlock, 1, kSampleRate, kBpm, beat, count);
+            beat += static_cast<double> (kBlock) * beatsPerFrame;
+            ++count;
+            std::this_thread::yield();
+        }
+    });
+
+    std::vector<float> left (kBlock), right (kBlock);
+    double localBeat = 0.0;
+
+    for (int block = 0; block < 3000; ++block)
+    {
+        stream.renderBlock (left.data(), right.data(), kBlock,
+                            clockAt (localBeat), 50.0f);
+        localBeat += static_cast<double> (kBlock) * beatsPerFrame;
+
+        if ((block % 500) == 0)
+            stream.requestReset();   // Message-Thread-Pfad mit-stressen
+    }
+
+    stop.store (true, std::memory_order_relaxed);
+    producer.join();
+
+    for (int i = 0; i < kBlock; ++i)
+        REQUIRE (std::isfinite (left[i]));
 }

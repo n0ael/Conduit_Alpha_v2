@@ -87,6 +87,12 @@ namespace id
     // FX-Chassis: Link-Audio-Send-Tap am Modul-Ausgang (Patch-Zustand)
     inline const juce::Identifier linkSendEnabled { "linkSendEnabled" };
 
+    // Link Audio Receive (7.2): Kanal-WUNSCH als Namen — bewusst KEINE
+    // ChannelKeys (session-transient, 6); Re-Bind matcht die Namen gegen
+    // availableChannels() beim ChannelsChanged-Broadcast.
+    inline const juce::Identifier targetPeer    { "targetPeer" };
+    inline const juce::Identifier targetChannel { "targetChannel" };
+
     // Connections
     inline const juce::Identifier connection    { "Connection" };
     inline const juce::Identifier sourceNodeId  { "sourceNodeId" };

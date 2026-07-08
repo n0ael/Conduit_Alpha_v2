@@ -211,6 +211,7 @@ set(CONDUIT_CPP_SOURCES
     Source/Modules/AttenuatorModule.cpp
     Source/Modules/CaptureTapModule.cpp
     Source/Modules/LfoModule.cpp
+    Source/Modules/LinkAudioReceiveModule.cpp
     Source/Modules/LinkAudioSendModule.cpp
     Source/Modules/ScopeModule.cpp
     Source/Modules/StepSequencerModule.cpp
@@ -541,6 +542,7 @@ if(CONDUIT_BUILD_TESTS)
         Tests/Core/RingTouchModelTests.cpp
         Tests/Core/LevelMeterTests.cpp
         Tests/Core/InputLinkSendTests.cpp
+        Tests/Core/LinkAudioReceiveTests.cpp
         Tests/Core/LinkAudioSendTests.cpp
         Tests/Core/LinkReceiveStreamTests.cpp
         Tests/Core/LinkSendTapsTests.cpp
@@ -713,6 +715,7 @@ if(CONDUIT_BUILD_TESTS)
         Source/Modules/AttenuatorModule.cpp
         Source/Modules/CaptureTapModule.cpp
         Source/Modules/LfoModule.cpp
+        Source/Modules/LinkAudioReceiveModule.cpp
         Source/Modules/LinkAudioSendModule.cpp
         Source/Modules/ScopeModule.cpp
         Source/Modules/StepSequencerModule.cpp

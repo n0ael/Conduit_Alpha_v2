@@ -62,6 +62,7 @@
 #include "AttenuatorModule.h"
 #include "CaptureTapModule.h"
 #include "LfoModule.h"
+#include "LinkAudioReceiveModule.h"
 #include "LinkAudioSendModule.h"
 #include "ScopeModule.h"
 #include "StepSequencerModule.h"
@@ -194,6 +195,10 @@ void registerDefaultModules (ModuleFactory& factory)
         cvDescriptor (LinkAudioSendModule::staticModuleId, "Link Send", "I/O",
                       "link audio send network ableton stream"),
         [] { return std::make_unique<LinkAudioSendModule>(); });
+    factory.registerModule (
+        cvDescriptor (LinkAudioReceiveModule::staticModuleId, "Link Receive", "I/O",
+                      "link audio receive empfang network ableton stream"),
+        [] { return std::make_unique<LinkAudioReceiveModule>(); });
     factory.registerModule (
         cvDescriptor (CaptureTapModule::staticModuleId, "Capture Tap", "Utility",
                       "capture tap record aufnahme export"),

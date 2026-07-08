@@ -10,6 +10,7 @@
 #include "Interfaces/IStochastic.h"
 #include "ModuleUiDefaults.h"
 #include "Modules/ChassisSchema.h"
+#include "Modules/LinkAudioReceiveModule.h"
 #include "Modules/LinkAudioSendModule.h"
 #include "Modules/ModuleFactory.h"
 #include "Modules/ProcessorModule.h"
@@ -918,6 +919,18 @@ void GraphManager::valueTreePropertyChanged (juce::ValueTree& tree, const juce::
         return;
     }
 
+    // Receive-Kanal-Wunsch geändert (7.2): Namen → Modul, LIVE ohne Rebuild
+    // (rebind am laufenden System). Auch via Undo/Preset-Diff.
+    if ((property == id::targetPeer || property == id::targetChannel) && tree.hasType (id::node))
+    {
+        if (auto* receiveModule = dynamic_cast<LinkAudioReceiveModule*> (
+                getModuleFor (tree.getProperty (id::nodeId).toString())))
+            receiveModule->setTargetChannel (tree.getProperty (id::targetPeer).toString(),
+                                             tree.getProperty (id::targetChannel).toString());
+
+        return;
+    }
+
     // Tree → Atomic: paramValue-Änderungen (UI-Slider, OSC-Nachzug, Undo,
     // Preset-Load) auf das Echtzeit-Target spiegeln — KEIN Rebuild.
     if (property == id::paramValue && tree.hasType (id::parameter))
@@ -1210,6 +1223,12 @@ std::unique_ptr<ConduitModule> GraphManager::materializeModule (juce::ValueTree 
     // die Sinks baut.
     if (auto* sendClient = dynamic_cast<ISendConfigClient*> (module.get()))
         sendClient->applySendConfig (LinkAudioSendModule::readInputConfig (nodeTree));
+
+    // Receive-Kanal-Wunsch (7.2): persistierte Namen ans Modul spiegeln —
+    // rebind() matcht sie gegen die Session (Preset-Load-Pfad).
+    if (auto* receiveModule = dynamic_cast<LinkAudioReceiveModule*> (module.get()))
+        receiveModule->setTargetChannel (nodeTree.getProperty (id::targetPeer).toString(),
+                                         nodeTree.getProperty (id::targetChannel).toString());
 
     // Capture-Kontext VOR prepareForGraph: die Kanal-Registrierung passiert
     // dort und braucht Service + moduleId (Spurname == moduleId)

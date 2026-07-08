@@ -145,9 +145,9 @@ TEST_CASE ("LinkReceiveStream: beat-alignte Wiedergabe nach Latenzfenster", "[li
                             kLatencyMs);
 
         const std::int64_t srcStart = static_cast<std::int64_t> (block) * kBlock - latencyFrames;
-        for (int i = 0; i < kBlock; i += 17)
+        for (size_t i = 0; i < static_cast<size_t> (kBlock); i += 17)
         {
-            const float expected = toFloat (rampValue (srcStart + i, 0));
+            const float expected = toFloat (rampValue (srcStart + static_cast<std::int64_t> (i), 0));
             REQUIRE (std::abs (left[i] - expected) < 1.0e-4f);
             REQUIRE (std::abs (right[i] - expected) < 1.0e-4f);   // mono → beide Kanäle
         }
@@ -191,7 +191,7 @@ TEST_CASE ("LinkReceiveStream: Underflow → Stille + Reset, dann Wiederanlauf",
     REQUIRE (stream.getRenderResets() >= 1u);
 
     // Ausklang ist declickt: aktueller Block ist (nahezu) still
-    for (int i = 0; i < kBlock; ++i)
+    for (size_t i = 0; i < static_cast<size_t> (kBlock); ++i)
         REQUIRE (std::abs (left[i]) < 1.0e-3f);
 
     // Feed setzt an der aktuellen Beat-Achse wieder ein → Wiederanlauf
@@ -227,7 +227,7 @@ TEST_CASE ("LinkReceiveStream: fremde SampleRate wird re-pitcht (44.1k → 48k)"
 
     // Rampe bleibt streng monoton (kein Wrap im Testfenster, keine Sprünge):
     // ein Alignment-Fehler würde Knicke oder Rückwärtssprünge erzeugen
-    for (int i = 1; i < kBlock; ++i)
+    for (size_t i = 1; i < static_cast<size_t> (kBlock); ++i)
     {
         REQUIRE (std::isfinite (left[i]));
         REQUIRE (left[i] > left[i - 1] - 1.0e-4f);
@@ -254,7 +254,7 @@ TEST_CASE ("LinkReceiveStream: Stereo-Mapping L/R", "[linkaudio][receive]")
 
     // Kanal 1 ist eine Konstante — rechts konstant, links Rampe (≠ konstant)
     const float expectedRight = toFloat (5000);
-    for (int i = 0; i < kBlock; i += 13)
+    for (size_t i = 0; i < static_cast<size_t> (kBlock); i += 13)
         REQUIRE (std::abs (right[i] - expectedRight) < 1.0e-4f);
 
     REQUIRE (std::abs (left[kBlock - 1] - left[0]) > 1.0e-3f);
@@ -329,6 +329,6 @@ TEST_CASE ("LinkReceiveStream: Producer/Consumer-Stress über echte Threads (TSa
     stop.store (true, std::memory_order_relaxed);
     producer.join();
 
-    for (int i = 0; i < kBlock; ++i)
+    for (size_t i = 0; i < static_cast<size_t> (kBlock); ++i)
         REQUIRE (std::isfinite (left[i]));
 }

@@ -167,7 +167,7 @@ void LinkAudioReceivePanel::paint (juce::Graphics& g)
     g.fillEllipse (led);
 
     const auto text = status == LinkAudioReceiveModule::ReceiveStatus::streaming
-                        ? juce::String ("Streamt  ·  " )
+                        ? juce::String::fromUTF8 ("Streamt · ")
                               + juce::String (juce::roundToInt (bufferedSeconds * 1000.0f)) + " ms gepuffert"
                     : status == LinkAudioReceiveModule::ReceiveStatus::waiting
                         ? juce::String ("Wartet auf Audio")

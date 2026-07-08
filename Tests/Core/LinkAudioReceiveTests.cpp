@@ -51,10 +51,10 @@ TEST_CASE ("LinkAudioReceiveModule: createState-Schema (6.2) + Parameter-Ziel", 
     const auto latency = params.getChildWithProperty (
         conduit::id::paramId, juce::String (conduit::LinkAudioReceiveModule::latencyParamId));
     REQUIRE (latency.isValid());
-    REQUIRE (static_cast<double> (latency.getProperty (conduit::id::paramValue))   == 150.0);
-    REQUIRE (static_cast<double> (latency.getProperty (conduit::id::paramMin))     == 20.0);
-    REQUIRE (static_cast<double> (latency.getProperty (conduit::id::paramMax))     == 500.0);
-    REQUIRE (static_cast<double> (latency.getProperty (conduit::id::paramDefault)) == 150.0);
+    REQUIRE (juce::exactlyEqual (static_cast<double> (latency.getProperty (conduit::id::paramValue)),   150.0));
+    REQUIRE (juce::exactlyEqual (static_cast<double> (latency.getProperty (conduit::id::paramMin)),     20.0));
+    REQUIRE (juce::exactlyEqual (static_cast<double> (latency.getProperty (conduit::id::paramMax)),     500.0));
+    REQUIRE (juce::exactlyEqual (static_cast<double> (latency.getProperty (conduit::id::paramDefault)), 150.0));
 
     // Echtzeit-Parameter-Ziel (Dual-State 6.1)
     REQUIRE (module.getParameterTarget (conduit::LinkAudioReceiveModule::latencyParamId) != nullptr);

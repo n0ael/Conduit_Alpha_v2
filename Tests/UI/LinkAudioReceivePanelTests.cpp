@@ -102,21 +102,23 @@ TEST_CASE ("LinkAudioReceivePanel: Latenz-Slider ↔ paramValue (beide Richtunge
 
     // Slider → Tree (GraphManager spiegelt aufs Atomic, separat getestet)
     panel.latencySlider.setValue (250.0, juce::sendNotificationSync);
-    REQUIRE (static_cast<double> (rig.latencyParam().getProperty (conduit::id::paramValue)) == 250.0);
+    REQUIRE (juce::exactlyEqual (
+        static_cast<double> (rig.latencyParam().getProperty (conduit::id::paramValue)), 250.0));
 
     // Tree-Spiegelung erreicht das Modul-Atomic (syncParameterValue)
     auto* latencyTarget = rig.module()->getParameterTarget (
         conduit::LinkAudioReceiveModule::latencyParamId);
     REQUIRE (latencyTarget != nullptr);
-    REQUIRE (latencyTarget->load() == 250.0f);
+    REQUIRE (juce::exactlyEqual (latencyTarget->load(), 250.0f));
 
     // Tree → Slider (Undo/OSC-Pfad), ohne Rückkopplungs-Schleife
     rig.latencyParam().setProperty (conduit::id::paramValue, 90.0, nullptr);
-    REQUIRE (panel.latencySlider.getValue() == 90.0);
+    REQUIRE (juce::exactlyEqual (panel.latencySlider.getValue(), 90.0));
 
     // stopUpdates (Phase 1): Interaktion aus, keine Tree-Writes mehr
     panel.stopUpdates();
     panel.latencySlider.setValue (400.0, juce::sendNotificationSync);
-    REQUIRE (static_cast<double> (rig.latencyParam().getProperty (conduit::id::paramValue)) == 90.0);
+    REQUIRE (juce::exactlyEqual (
+        static_cast<double> (rig.latencyParam().getProperty (conduit::id::paramValue)), 90.0));
     REQUIRE_FALSE (panel.channelButton.isEnabled());
 }

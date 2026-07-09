@@ -37,17 +37,33 @@ MASTER_PREFIX = "ma"
 SCENE_PREFIX = "sc"
 
 _counters = {}   # prefix -> next integer to hand out
-_ids = {}        # id(obj) -> stable_id string
-_keepalive = {}  # id(obj) -> obj (prevents id() reuse, see module docstring)
+_ids = {}        # identity key -> stable_id string
+_keepalive = {}  # identity key -> obj (prevents id() reuse, see module docstring)
+
+
+def _identity(obj):
+    """Session-stable identity key for a LOM object.
+
+    FELDTEST-BEFUND 09.07.2026: Lives Boost.Python-Wrapper sind NICHT
+    identitaetsstabil - jeder Zugriff auf song.tracks kann neue
+    Wrapper-Objekte liefern, id(obj) zerfaellt damit im echten Live
+    (Stable-IDs wurden pro Tick neu vergeben, der track_ref-Resolver fand
+    nichts mehr). `_live_ptr` ist die kanonische, sessionstabile Identitaet
+    der LOM-Objekte; id(obj) bleibt nur als Fallback fuer die Test-Stubs.
+    """
+    ptr = getattr(obj, "_live_ptr", None)
+    if ptr is not None:
+        return ("ptr", ptr)
+    return ("id", id(obj))
 
 
 def get_id(obj, prefix):
     """Return the stable id for obj, creating one on first sight.
 
-    Same object (by identity) always returns the same string. Different
-    objects always get different strings, even across prefixes.
+    Same object (by LOM identity) always returns the same string.
+    Different objects always get different strings, even across prefixes.
     """
-    key = id(obj)
+    key = _identity(obj)
     existing = _ids.get(key)
     if existing is not None:
         return existing
@@ -66,7 +82,7 @@ def find(objects, stable_id, prefix):
     if not stable_id or not stable_id.startswith(prefix + ":"):
         return None
     for index, obj in enumerate(objects):
-        if _ids.get(id(obj)) == stable_id:
+        if _ids.get(_identity(obj)) == stable_id:
             return index
     return None
 

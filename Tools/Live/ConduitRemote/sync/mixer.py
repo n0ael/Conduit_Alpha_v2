@@ -85,15 +85,29 @@ class MixerDomain(Domain):
 
 
 def _full_state(track):
+    """Volle Mixer-Sicht eines Tracks — LOM-sicher: `arm` existiert nur auf
+    armbaren Tracks, `mute`/`solo` nicht auf dem Master; der Zugriff WIRFT
+    im echten Live (RuntimeError), statt zu fehlen (Feldtest 09.07.2026 —
+    die Domain starb daran bei jedem collect()). Fehlende Faehigkeiten
+    lassen den Key komplett weg (wie _master_state), der Client blendet
+    die Regler nach Key-Existenz aus."""
     md = track.mixer_device
-    return {
+    state = {
         "vol": float(md.volume.value),
         "pan": float(md.panning.value),
         "sends": [float(p.value) for p in md.sends],
-        "mute": bool(track.mute),
-        "solo": bool(track.solo),
-        "arm": bool(track.arm),
     }
+    for prop in ("mute", "solo"):
+        try:
+            state[prop] = bool(getattr(track, prop))
+        except Exception:
+            pass
+    if getattr(track, "can_be_armed", False):
+        try:
+            state["arm"] = bool(track.arm)
+        except Exception:
+            pass
+    return state
 
 
 def _master_state(track):
@@ -108,39 +122,48 @@ class _TrackMixerBinding(object):
     """Binds volume/panning/sends/mute/solo/arm value listeners on one
     track's mixer device.
 
-    We bind mute/solo/arm/send listeners on every track uniformly (master
-    included) purely as change hints that call mark_dirty() -- collect()
-    remains the single source of truth for what actually gets serialised,
-    and _master_state() above simply never reads those fields for the
-    master track. Binding a listener Live will never fire for master is
-    harmless; it costs nothing at runtime.
-    """
+    LOM-sicher (Feldtest 09.07.2026): add_arm_listener wirft auf nicht
+    armbaren Tracks, add_mute/solo_listener auf dem Master — jede Bindung
+    laeuft deshalb einzeln durch try/except und wird fuer unbind()
+    protokolliert. Listener sind nur change hints (mark_dirty); collect()
+    bleibt die Wahrheit."""
 
     def __init__(self, track, on_change):
         self.track = track
         self.on_change = on_change
-        self._send_cbs = []
+        self._bound_params = []   # DeviceParameter mit value-Listener
+        self._bound_props = []    # Property-Namen mit gebundenem Listener
 
     def bind(self):
         track = self.track
         md = track.mixer_device
-        md.volume.add_value_listener(self.on_change)
-        md.panning.add_value_listener(self.on_change)
-        for send in md.sends:
-            send.add_value_listener(self.on_change)
-            self._send_cbs.append(send)
-        track.add_mute_listener(self.on_change)
-        track.add_solo_listener(self.on_change)
-        track.add_arm_listener(self.on_change)
+
+        for param in [md.volume, md.panning] + list(md.sends):
+            param.add_value_listener(self.on_change)
+            self._bound_params.append(param)
+
+        props = ["mute", "solo"]
+        if getattr(track, "can_be_armed", False):
+            props.append("arm")
+
+        for prop in props:
+            try:
+                getattr(track, "add_%s_listener" % prop)(self.on_change)
+                self._bound_props.append(prop)
+            except Exception:
+                pass   # Faehigkeit fehlt (z. B. Master) — collect() laesst den Key weg
 
     def unbind(self):
-        track = self.track
-        md = track.mixer_device
-        md.volume.remove_value_listener(self.on_change)
-        md.panning.remove_value_listener(self.on_change)
-        for send in self._send_cbs:
-            send.remove_value_listener(self.on_change)
-        self._send_cbs = []
-        track.remove_mute_listener(self.on_change)
-        track.remove_solo_listener(self.on_change)
-        track.remove_arm_listener(self.on_change)
+        for param in self._bound_params:
+            try:
+                param.remove_value_listener(self.on_change)
+            except Exception:
+                pass
+        self._bound_params = []
+
+        for prop in self._bound_props:
+            try:
+                getattr(self.track, "remove_%s_listener" % prop)(self.on_change)
+            except Exception:
+                pass
+        self._bound_props = []

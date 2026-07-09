@@ -77,10 +77,18 @@ class MeterStream(object):
 
         for tracks, prefix in groups:
             for track in tracks:
-                left = float(getattr(track, "output_meter_left", 0.0))
-                right = float(getattr(track, "output_meter_right", 0.0))
+                left, right = _meter_pair(track)
                 if left > _SILENCE_EPS or right > _SILENCE_EPS:
                     silent = False
                 args.extend([stable_ids.get_id(track, prefix), left, right])
 
         return args, silent
+
+
+def _meter_pair(track):
+    """LOM-sicher: output_meter_* kann auf Tracks ohne Audio-Ausgang
+    WERFEN (nicht nur fehlen) — dann 0/0 statt Domain-Absturz."""
+    try:
+        return (float(track.output_meter_left), float(track.output_meter_right))
+    except Exception:
+        return (0.0, 0.0)

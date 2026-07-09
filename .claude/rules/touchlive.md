@@ -69,3 +69,14 @@ Meter-Pfad (M2):
   nur bei sichtbarer Page. `clear()` erhöht den Frame-Zähler.
 - pytest der Gegenseite: lokal kollidieren Manager-Tests mit laufendem
   Live (Port 9010) — CI-Job `remote-script` läuft immer vollständig.
+
+LOM-Fallen (Feldtest 09.07.2026, docs/TouchLive.md §10d — im Script NIE
+zurückbauen):
+- LOM-Wrapper sind NICHT identitätsstabil — Stable-IDs IMMER über
+  `_live_ptr` (stable_ids._identity), nie über `id(obj)`.
+- `track.arm` wirft auf nicht armbaren Tracks, `mute`/`solo` auf dem
+  Master, `output_meter_*` auf Tracks ohne Audio-Ausgang — Zugriff UND
+  Listener-Binding nur mit Fähigkeits-Guard/try-except; fehlende
+  Fähigkeit = Key weglassen.
+- Der Test-Stub simuliert diese Fallen (stub_live.Track wirft) —
+  Stub-Realismus beim Erweitern erhalten.

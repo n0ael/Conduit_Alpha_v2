@@ -20,8 +20,15 @@
   (pytest auf Ubuntu — lokal blockiert laufendes Live Port 9010).
 - Tests: 595 Cases / 27 130 Assertions grün, ASan grün; pytest 116 grün
   (socketfreie Teilmenge lokal).
-- **Nächster Schritt:** Feldtest der Meter + Feel-Abnahme gegen die
-  Roto-Messlatte (Raten via getStats), LiveFaderScale kalibrieren.
+- **Feldtest-Runde 1 (09.07. abends):** deckte drei echte LOM-Fallen auf —
+  `id()`-instabile Wrapper (Stable-IDs zerfielen: Track-Volume tot, keine
+  Rückrichtung/Meter-Zuordnung, Key-Churn = Ruckeln), werfende
+  `arm`/`mute`/`solo`-Zugriffe (Mixer-Domain starb), werfende Meter-Reads.
+  Gefixt via `_live_ptr`-Identität + Fähigkeits-Guards; Test-Stub stellt
+  die Fallen jetzt nach (docs/TouchLive.md §10d). pytest 120 grün,
+  Conduit-Suite 596 Cases grün.
+- **Nächster Schritt:** Feldtest-Runde 2 (Live neu starten!), dann
+  Feel-Abnahme (getStats-Raten) + LiveFaderScale-Kalibrierung.
 
 ## Meilenstein (09.07.2026) — TouchLive M1c
 

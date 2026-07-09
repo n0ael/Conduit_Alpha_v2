@@ -132,15 +132,24 @@ class Scene(_Listenable):
 
 
 class Track(_Listenable):
+    """Live-Realismus (Befund Feldtest 09.07.2026): der Zugriff auf `arm`
+    (und die arm-Listener) wirft im echten Live eine RuntimeError, wenn der
+    Track nicht armbar ist (Returns/Master); Master wirft zusätzlich bei
+    `mute`/`solo`. Der Stub bildet das nach, damit die Domains die Guards
+    beweisen müssen."""
+
     def __init__(self, name, color=0xFF0000, num_slots=8, num_sends=2,
-                 has_midi_input=False):
+                 has_midi_input=False, can_be_armed=True, has_mute_solo=True):
         _Listenable.__init__(self)
         self.__dict__["name"] = name
         self.__dict__["color"] = color
-        self.__dict__["mute"] = False
-        self.__dict__["solo"] = False
-        self.__dict__["arm"] = False
-        self.__dict__["can_be_armed"] = True
+        self.__dict__["can_be_armed"] = can_be_armed
+        self.__dict__["has_mute_solo"] = has_mute_solo
+        if has_mute_solo:
+            self.__dict__["mute"] = False
+            self.__dict__["solo"] = False
+        if can_be_armed:
+            self.__dict__["arm"] = False
         self.__dict__["has_midi_input"] = has_midi_input
         self.__dict__["has_audio_output"] = True
         self.__dict__["is_foldable"] = False
@@ -150,6 +159,20 @@ class Track(_Listenable):
         self.clip_slots = [ClipSlot() for _ in range(num_slots)]
         self.devices = []
 
+    def _forbidden(self, name):
+        if name in ("arm", "add_arm_listener", "remove_arm_listener"):
+            return not self.__dict__["can_be_armed"]
+        if name in ("mute", "solo", "add_mute_listener", "remove_mute_listener",
+                    "add_solo_listener", "remove_solo_listener"):
+            return not self.__dict__["has_mute_solo"]
+        return False
+
+    def __getattr__(self, name):
+        if self._forbidden(name):
+            raise RuntimeError("Track %r does not support %s (LOM)"
+                               % (self.__dict__["name"], name))
+        return _Listenable.__getattr__(self, name)
+
     def stop_all_clips(self):
         self.__dict__["stopped_all"] = True   # test hook
         for slot in self.clip_slots:
@@ -157,6 +180,9 @@ class Track(_Listenable):
                 slot.clip.is_playing = False
 
     def __setattr__(self, key, value):
+        if self._forbidden(key):
+            raise RuntimeError("Track %r does not support %s (LOM)"
+                               % (self.__dict__["name"], key))
         if key in ("mixer_device", "clip_slots", "devices"):
             self.__dict__[key] = value
         else:
@@ -176,10 +202,12 @@ class Song(_Listenable):
         self.tracks = [Track("Track %d" % (i + 1), num_slots=num_scenes,
                              num_sends=num_sends)
                        for i in range(num_tracks)]
+        # Returns: mute/solo ja, arm nein; Master: nichts davon (wie Live)
         self.return_tracks = [Track("Return %s" % chr(65 + i), num_slots=0,
-                                    num_sends=0)
+                                    num_sends=0, can_be_armed=False)
                               for i in range(num_sends)]
-        self.master_track = Track("Master", num_slots=0, num_sends=0)
+        self.master_track = Track("Master", num_slots=0, num_sends=0,
+                                  can_be_armed=False, has_mute_solo=False)
         self.scenes = [Scene("Scene %d" % (i + 1)) for i in range(num_scenes)]
 
     # transport methods (LOM names)

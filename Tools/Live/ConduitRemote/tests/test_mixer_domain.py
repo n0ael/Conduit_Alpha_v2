@@ -40,6 +40,29 @@ def test_snapshot_shape():
     assert "solo" not in master
     assert "arm" not in master
 
+    # Returns (LOM: mute/solo ja, arm WIRFT — Feldtest 09.07.2026):
+    # der Key fehlt komplett, statt die Domain zu killen
+    rt1 = payload["rt:1"]
+    assert rt1["mute"] is False
+    assert rt1["solo"] is False
+    assert "arm" not in rt1
+
+
+def test_snapshot_survives_lom_capability_errors():
+    """Der eigentliche Feldtest-Bug: on_subscribe/collect() liefen in
+    track.arm auf Returns bzw. mute/solo-Listener auf dem Master und die
+    Domain starb (5-Fehler-Budget). Mit Guards liefert sie einfach."""
+    song, sender, domain = make_domain()
+
+    domain.on_subscribe()      # bindet Listener inkl. Master — darf nicht werfen
+    assert sender.last() is not None
+
+    song.tracks[0].mixer_device.volume.value = 0.3
+    domain.on_tick(1)          # collect() über Returns+Master — darf nicht werfen
+    assert sender.last()[2]["tr:1"]["vol"] == pytest.approx(0.3)
+
+    domain.detach()            # unbind nur, was gebunden wurde
+
 
 def test_volume_change_diffs_only_that_track():
     song, sender, domain = make_domain()

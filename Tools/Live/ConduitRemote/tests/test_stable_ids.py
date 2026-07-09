@@ -78,3 +78,33 @@ def test_clear_resets_counters():
     stable_ids.clear()
     obj2 = _Obj()
     assert stable_ids.get_id(obj2, stable_ids.TRACK_PREFIX) == "tr:1"
+
+
+def test_live_ptr_wins_over_object_identity():
+    """Feldtest 09.07.2026: Lives Wrapper sind nicht identitaetsstabil -
+    zwei verschiedene Python-Objekte mit gleichem _live_ptr sind DERSELBE
+    LOM-Gegenstand und muessen dieselbe Stable-ID bekommen."""
+    a, b = _Obj(), _Obj()
+    a._live_ptr = 4711
+    b._live_ptr = 4711
+    ida = stable_ids.get_id(a, stable_ids.TRACK_PREFIX)
+    idb = stable_ids.get_id(b, stable_ids.TRACK_PREFIX)
+    assert ida == idb
+
+
+def test_live_ptr_distinguishes_objects():
+    a, b = _Obj(), _Obj()
+    a._live_ptr = 1
+    b._live_ptr = 2
+    assert (stable_ids.get_id(a, stable_ids.TRACK_PREFIX)
+            != stable_ids.get_id(b, stable_ids.TRACK_PREFIX))
+
+
+def test_find_matches_via_live_ptr():
+    a = _Obj()
+    a._live_ptr = 99
+    sid = stable_ids.get_id(a, stable_ids.TRACK_PREFIX)
+
+    fresh = _Obj()          # neuer Wrapper, gleicher LOM-Gegenstand
+    fresh._live_ptr = 99
+    assert stable_ids.find([fresh], sid, stable_ids.TRACK_PREFIX) == 0

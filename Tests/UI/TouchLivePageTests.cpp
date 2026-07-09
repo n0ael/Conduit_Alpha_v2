@@ -312,6 +312,29 @@ TEST_CASE ("TouchLiveGridView: Tap feuert Clip, Scene und Stop über die richtig
 }
 
 //==============================================================================
+TEST_CASE ("TouchLiveMixerView: eingehender Mixer-Diff bewegt den bestehenden Strip", "[touchlive][ui]")
+{
+    PageRig rig;
+    rig.loadDemoSet();
+
+    auto* drums = rig.page->mixerView.findStrip ("tr:0");
+    REQUIRE (drums != nullptr);
+    REQUIRE (drums->fader.getDisplayedValue() == Approx (0.85f));
+
+    // Live→Conduit: Diff über den Listener-Pfad (kein Rebuild) — Fader folgt
+    rig.model.applyDiff ("mixer",
+        parse (R"({"tr:0":{"vol":0.3,"pan":0.5,"sends":[0.1,0.2],"mute":false,"solo":false,"arm":false}})"));
+
+    REQUIRE (drums->fader.getDisplayedValue() == Approx (0.3f));   // headless snappt
+    REQUIRE (drums->pan.getValue() == Approx (0.5));
+
+    // Master analog (eigener Strip außerhalb des Viewports)
+    rig.model.applyDiff ("mixer", parse (R"({"ma:0":{"vol":0.4,"pan":0.0}})"));
+    REQUIRE (rig.page->mixerView.getMasterStrip()->fader.getDisplayedValue()
+             == Approx (0.4f));
+}
+
+//==============================================================================
 TEST_CASE ("TouchLiveMixerView: MeterBus-Frames landen in den Fader-Metern (M2)", "[touchlive][ui]")
 {
     PageRig rig;

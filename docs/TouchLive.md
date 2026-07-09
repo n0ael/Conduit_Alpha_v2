@@ -394,6 +394,32 @@ Meter-Parsing/Bus/Ballistik.
   die Manager-Tests mit laufendem Live (Port 9010 belegt), in der CI
   laufen immer alle. Python lokal: winget Python 3.12 (09.07.2026).
 
+## 10d. Feldtest-Befunde 09.07.2026 (M2) — echte LOM-Fallen
+
+Der erste Meter-/Fader-Feldtest deckte drei Live-API-Eigenschaften auf,
+die der Test-Stub zu gutmütig simuliert hatte (Stub seither realistisch —
+diese Fallen sind jetzt dauerhaft testabgedeckt):
+
+1. **LOM-Wrapper sind nicht identitätsstabil:** jeder `song.tracks`-Zugriff
+   kann neue Python-Wrapper liefern — `id(obj)` zerfällt, die Stable-IDs
+   wurden pro Tick neu vergeben. Symptome: track_ref-Resolver fand nichts
+   (Track-Volume-Commands tot), Domain-Keys passten nicht zu den Strips
+   (keine Fader-Rückrichtung, keine Meter-Zuordnung), Dauer-Diffs mit
+   frischen Keys (Strip-Rebuild pro Tick = Ruckeln). Fix: `_live_ptr` als
+   Identitätsschlüssel (sessionstabil), `id()` nur als Stub-Fallback.
+2. **`track.arm` WIRFT auf nicht armbaren Tracks** (Returns/Master),
+   `mute`/`solo` wirft auf dem Master — Zugriff UND Listener-Binding.
+   `_full_state()` starb daran bei jedem collect() → Mixer-Domain flog
+   nach dem 5-Fehler-Budget raus (keine Mixer-Daten). Fix: Fähigkeits-
+   Guards (`can_be_armed`, try/except pro Property), fehlende Fähigkeit
+   = Key fehlt (Client blendet Regler aus, tat er schon).
+3. **`output_meter_*` kann werfen** (Tracks ohne Audio-Ausgang) —
+   Meter-Reads defensiv (0/0 statt Stream-Abbruch).
+
+Erwartung nach den Fixes: Track-Volume bidirektional, Mixer-Rückrichtung
+für alle Züge, Meter sichtbar, Ruckeln weg (kein Key-Churn mehr). Feel
+danach neu bewerten (getStats-Raten), dann LiveFaderScale kalibrieren.
+
 ## 11. Offen
 
 - Feldtest-Erstkontakt BESTANDEN (09.07.2026): Verbindung + Domain-Sync

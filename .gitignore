@@ -34,3 +34,8 @@ Thumbs.db
 
 # Airwindows-Quelle (read-only Referenz, Source/DSP/Airwindows/PORTING_NOTES.md)
 Third-Party/airwindows/
+
+# Python (Tools/Live/ConduitRemote)
+__pycache__/
+*.pyc
+.pytest_cache/

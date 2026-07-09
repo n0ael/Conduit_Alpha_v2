@@ -37,8 +37,12 @@
   Log-Befund: add_scenes_listener wirft in 12.4.5b3 → Session-Domain tot
   → generischer Poll-Fallback in Domain.attach() + Teardown-Guards.
   pytest 124 grün (socketfrei); docs/TouchLive.md §10e.
-- **Nächster Schritt:** Feldtest-Runde 3 (Live neu starten!) — Fader-Feel
-  gegen Roto-Messlatte, dann LiveFaderScale-Kalibrierung.
+- **Feldtest-Runde 3: BESTANDEN** („It's working perfectly now") — die
+  Stufigkeit ist mit Fast-Path v2 weg, Fader-Feel erfüllt die
+  Roto-Messlatte. **TouchLive M2 damit komplett.**
+- **Nächster Schritt:** LiveFaderScale-Feinkalibrierung (dB-Anzeige unter
+  −18 dB gegen Live), dann M3 (DEVICE-Domain generisch, docs/TouchLive.md
+  §6b) — oder Rückkehr zu Link Audio Receive / I/O-Konsolidierung.
 
 ## Meilenstein (09.07.2026) — TouchLive M1c
 

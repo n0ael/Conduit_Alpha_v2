@@ -230,7 +230,7 @@ Hardware mit echter Audio-Rate — 10 m vom Ableton-Rechner entfernt.
 | M1a | Script-Basis: AbletonOSC-Fork, Ports, Domains transport/tracks/mixer/session, Heartbeat, Touch-Pfad — **erledigt** (Tools/Live/ConduitRemote, 120 pytest-Tests) |
 | M1b | Conduit: TouchLiveClient + LiveSetModel + TouchLiveSettings (IP-Learn), Snapshot/Diff/Reconnect — **erledigt 09.07.2026** (§10) |
 | M1c | GRID- + MIXER-Sub-Tab (UI nach §5 inkl. Feel-Regeln 5.1) — **erledigt 09.07.2026** (§10b; User-SVGs Fader/Icon eingepflegt, weitere Figma-Assets folgen stückweise) |
-| M2 | Meter-Pfad (TouchLiveMeterBus), Feinschliff Fader-Gesten, Feel-Abnahme gegen Roto-Messlatte — **Meter-Pfad erledigt 09.07.2026** (§10c); Feel-Abnahme + Skala-Kalibrierung = Feldtest-Punkte |
+| M2 | Meter-Pfad (TouchLiveMeterBus), Feinschliff Fader-Gesten, Feel-Abnahme gegen Roto-Messlatte — **KOMPLETT 09.07.2026**: Meter-Pfad (§10c) + Fast-Path v2 (§10e); Feel-Abnahme im Feldtest Runde 3 bestanden („working perfectly"). Offen nur noch LiveFaderScale-Feinkalibrierung (§11) |
 | M3 | DEVICE generisch: Device-Domain, Ketten-Navigation, Parameter-Bänke, On/Off (§6b) |
 | M4 | BROWSER: Baum via `load_children`-Muster, Laden auf Track/Chain, Preview |
 | M5 | Bespoke Device-UIs: EQ Eight → Compressor/Glue → Delay/Reverb (§6b) |
@@ -446,6 +446,9 @@ danach neu bewerten (getStats-Raten), dann LiveFaderScale kalibrieren.
   (tote LOM-Objekte werfen beim remove_*_listener).
 - Meter-Kadenz bleibt vorerst am Tick (~10 Hz); falls nötig ist der
   Timer-Pfad der natürliche Träger für 30-Hz-Meter (M2-Feinschliff).
+- **Feldtest-Runde 3 (User-Abnahme):** „It's working perfectly now" —
+  Fader-Feel-Messlatte (Roto, §5.1) BESTANDEN; die Stufigkeit ist mit
+  Fast-Path v2 weg. Damit ist M2 komplett.
 
 ## 11. Offen
 

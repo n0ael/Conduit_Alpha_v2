@@ -8,6 +8,7 @@
 
 #include "TouchLive/LiveSetModel.h"
 #include "TouchLive/TouchLiveClient.h"
+#include "TouchLive/TouchLiveMeterBus.h"
 #include "TouchLive/TouchLiveSettings.h"
 #include "UI/PushTiles.h"
 
@@ -35,13 +36,20 @@ namespace conduit
     (/live/device/set/parameter [dvid, index, value], Fast-Path der
     Gegenseite). Struktur-Änderungen rebuilden coalesced (AsyncUpdater);
     reine parvals-Diffs aktualisieren nur die Slider.
+
+    Gain Reduction (User-Wunsch 09.07.2026, Push-Vorbild): Dynamics-Devices
+    senden ihre GR als dv:-Tripel im Meter-Frame — die View pollt den
+    MeterBus @ 30 Hz (roh, §5.1) und zeigt eine GR-Spalte rechts der Bank,
+    sobald das gewählte Device je einen Wert geliefert hat.
 */
 class TouchLiveDeviceView final : public juce::Component,
                                   private juce::ValueTree::Listener,
-                                  private juce::AsyncUpdater
+                                  private juce::AsyncUpdater,
+                                  private juce::Timer
 {
 public:
-    TouchLiveDeviceView (TouchLiveClient& clientToUse, LiveSetModel& modelToUse);
+    TouchLiveDeviceView (TouchLiveClient& clientToUse, LiveSetModel& modelToUse,
+                         TouchLiveMeterBus& meterBusToUse);
     ~TouchLiveDeviceView() override;
 
     static constexpr int parametersPerBank = 8;
@@ -65,6 +73,10 @@ public:
     //==========================================================================
     // Test-Seams
     void flushPendingRebuild();
+
+    /** Ein GR-Meter-Tick sofort (der 30-Hz-Timer ruft dieselbe Logik). */
+    void refreshGainReductionNow();
+    [[nodiscard]] float getGainReductionLevel() const noexcept { return grLevel; }
     [[nodiscard]] int getTrackChipCount() const noexcept { return (int) trackChips.size(); }
     [[nodiscard]] int getDeviceChipCount() const noexcept { return (int) deviceChips.size(); }
     [[nodiscard]] juce::Slider* getParameterSlider (int column);
@@ -93,6 +105,7 @@ private:
     void valueTreeChildAdded (juce::ValueTree& parent, juce::ValueTree& child) override;
     void valueTreeChildRemoved (juce::ValueTree& parent, juce::ValueTree& child, int index) override;
     void handleAsyncUpdate() override;
+    void timerCallback() override;
 
     void rebuild();
     void rebuildParameterBank();
@@ -107,9 +120,16 @@ private:
 
     TouchLiveClient& client;
     LiveSetModel& model;
+    TouchLiveMeterBus& meterBus;
 
     // Listener-Handle als Member (Lektion M1b)
     juce::ValueTree modelState;
+
+    // Gain Reduction des gewählten Devices (roh aus dem MeterBus)
+    juce::uint32 lastMeterFrame = 0;
+    float grLevel = 0.0f;
+    bool grSeen = false;
+    juce::Rectangle<int> grBounds;
 
     // Chips (dynamisch, in Viewport-Zeilen)
     juce::Viewport trackChipViewport, deviceChipViewport;

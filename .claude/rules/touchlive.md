@@ -70,7 +70,8 @@ Devices (M3):
 Meter-Pfad (M2):
 - `/remote/meters` = flache Tripel `[id:str, left:float, right:float]` —
   bewusst KEIN Domain-Diff, KEINE seq (Frames idempotent), Stille-Dedupe;
-  Werte sind Lives rohe output_meter-Norm. Subscription
+  Werte sind Lives rohe output_meter-Norm. Devices mit `gain_reduction`
+  hängen `[dv-id, gr, gr]` an (Push-Vorbild). Subscription
   `/remote/meters/subscribe`, Heartbeat-Timeout beendet den Stream.
 - `TouchLiveMeterBus` NIE in den ValueTree; Meter sind ROH (kein Slew,
   keine Echo-Suppression, §5.1); UI liest per Frame-Zähler @ 30 Hz und

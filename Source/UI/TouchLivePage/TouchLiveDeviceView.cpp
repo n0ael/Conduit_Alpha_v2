@@ -26,9 +26,11 @@ namespace
 
 //==============================================================================
 TouchLiveDeviceView::TouchLiveDeviceView (TouchLiveClient& clientToUse,
-                                          LiveSetModel& modelToUse)
+                                          LiveSetModel& modelToUse,
+                                          TouchLiveMeterBus& meterBusToUse)
     : client (clientToUse),
       model (modelToUse),
+      meterBus (meterBusToUse),
       modelState (model.getState())
 {
     modelState.addListener (this);
@@ -71,12 +73,50 @@ TouchLiveDeviceView::TouchLiveDeviceView (TouchLiveClient& clientToUse,
     addAndMakeVisible (bankNextTile);
 
     rebuild();
+    startTimerHz (30);   // GR-Meter-Refresh (roh, §5.1); ohne Sicht kostenlos
 }
 
 TouchLiveDeviceView::~TouchLiveDeviceView()
 {
+    stopTimer();
     modelState.removeListener (this);
     cancelPendingUpdate();
+}
+
+//==============================================================================
+void TouchLiveDeviceView::timerCallback()
+{
+    if (! isShowing())
+        return;
+
+    refreshGainReductionNow();
+}
+
+void TouchLiveDeviceView::refreshGainReductionNow()
+{
+    const auto frame = meterBus.getFrameCounter();
+
+    if (frame == lastMeterFrame)
+        return;
+
+    lastMeterFrame = frame;
+
+    const auto level = selectedDevice.isEmpty()
+                           ? 0.0f
+                           : meterBus.getLevel (selectedDevice).left;
+
+    if (level > 0.001f)
+        grSeen = true;
+
+    if (std::abs (level - grLevel) > 0.004f)
+    {
+        grLevel = level;
+        repaint (grBounds.expanded (2));
+    }
+    else
+    {
+        grLevel = level;
+    }
 }
 
 //==============================================================================
@@ -175,6 +215,8 @@ void TouchLiveDeviceView::selectDevice (const juce::String& deviceKey)
 
     selectedDevice = deviceKey;
     bank = 0;
+    grSeen = false;   // GR-Spalte gehört zum Device
+    grLevel = 0.0f;
     rebuild();
 }
 
@@ -478,8 +520,9 @@ void TouchLiveDeviceView::resized()
     bankNextTile.setBounds (footer.removeFromLeft (44));
     onTile.setBounds (footer.removeFromRight (56));
 
-    // Bank-Spalten
+    // Bank-Spalten; rechts die (immer reservierte) GR-Spalte
     auto bankArea = area.reduced (0, 4);
+    grBounds = bankArea.removeFromRight (18).reduced (3, nameHeight);
     const auto columnWidth = bankArea.getWidth() / parametersPerBank;
 
     for (int column = 0; column < parametersPerBank; ++column)
@@ -549,6 +592,28 @@ void TouchLiveDeviceView::paint (juce::Graphics& g)
                           strip.bounds.withTop (strip.bounds.getBottom() - valueHeight)
                                       .reduced (2, 0),
                           juce::Justification::centred, 1, 1.0f);
+    }
+
+    // Gain-Reduction-Spalte (Push-Vorbild): Reduktion füllt VON OBEN
+    if (grSeen && ! grBounds.isEmpty())
+    {
+        const auto column = grBounds.toFloat();
+
+        g.setColour (juce::Colour (0xff1b1e22));
+        g.fillRoundedRectangle (column, 2.0f);
+
+        if (grLevel > 0.001f)
+        {
+            g.setColour (push::colours::ledOrange.withAlpha (0.9f));
+            g.fillRoundedRectangle (column.withHeight (column.getHeight()
+                                                           * juce::jmin (1.0f, grLevel)),
+                                    2.0f);
+        }
+
+        g.setColour (push::colours::textDim);
+        g.setFont (push::scaledFont (9.0f));
+        g.drawText ("GR", grBounds.withY (grBounds.getBottom() + 2).withHeight (12),
+                    juce::Justification::centred);
     }
 
     // Bank-Anzeige mittig im Footer

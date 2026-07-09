@@ -492,10 +492,19 @@ Beidseitig: `sync/devices.py` + `handlers/device.py` (Script) und
   Laufzeit-Zustand (fällt bei verschwundener Kette aufs erste Gerät des
   ersten bestückten Tracks zurück), Suppression-Keys:
   `devices/parvals:{dvid}` (Slider) bzw. `devices/dev:{dvid}/is_active`.
+- **Gain Reduction (User-Wunsch, Push-Vorbild):** Devices mit LOM-Property
+  `gain_reduction` (Compressor/Glue/Limiter — genau die Quelle des
+  Push-GR-Meters) hängen ihr eigenes Tripel `[dvid, gr, gr]` an den
+  `/remote/meters`-Frame (defensiver Read, zählt gegen die Stille-Dedupe).
+  Die DeviceView pollt den MeterBus @ 30 Hz und zeigt eine GR-Spalte
+  rechts der Bank (Reduktion füllt von OBEN, Push-Konvention), sobald das
+  gewählte Device je einen Wert geliefert hat. Wertebereich in 12.4b im
+  Feldtest verifizieren (geclamped 0..1 gesendet).
 - **Offen für den Feldtest:** LOM-Fallen der Device-Parameter in 12.4b
   (alle Zugriffe sind geguarded + Poll-Fallback), Payload-Größe bei sehr
   großen Racks (Chunking vorhanden), Anzeige-Einheiten (parmeta trägt
-  keine Display-Strings — Lives `str_for_value` wäre ein M5-Kandidat).
+  keine Display-Strings — Lives `str_for_value` wäre ein M5-Kandidat),
+  GR-Wertebereich/Skalierung.
 
 ## 11. Offen
 

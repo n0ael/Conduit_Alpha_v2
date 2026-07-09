@@ -8,8 +8,11 @@ overwrites everything). One compact OSC message per manager tick:
 
 covering regular tracks, return tracks and the master track, using the
 SAME stable ids as the tracks/mixer domains so the client joins meters
-onto its channel strips by key. No seq number - frames are idempotent and
-a late datagram at ~10 Hz is visually irrelevant.
+onto its channel strips by key. Devices that expose ``gain_reduction``
+(Compressor/Glue/Limiter - the LOM property Push's GR meter reads) append
+their own triplet keyed by device stable id ("dv:N", left == right == GR
+norm). No seq number - frames are idempotent and a late datagram is
+visually irrelevant.
 
 Values are Live's raw ``output_meter_left/right`` norm (0..1, Live's own
 meter ballistics) - display mapping is the client's business.
@@ -82,6 +85,20 @@ class MeterStream(object):
                     silent = False
                 args.extend([stable_ids.get_id(track, prefix), left, right])
 
+        # Gain Reduction (Push-Muster): Devices mit gain_reduction haengen
+        # ihr eigenes Tripel an - gleicher Frame, dv:-Stable-ID
+        for tracks, _prefix in groups:
+            for track in tracks:
+                for device in _devices_of(track):
+                    gr = _gain_reduction(device)
+                    if gr is None:
+                        continue
+                    if gr > _SILENCE_EPS:
+                        silent = False
+                    args.extend([
+                        stable_ids.get_id(device, stable_ids.DEVICE_PREFIX),
+                        gr, gr])
+
         return args, silent
 
 
@@ -92,3 +109,25 @@ def _meter_pair(track):
         return (float(track.output_meter_left), float(track.output_meter_right))
     except Exception:
         return (0.0, 0.0)
+
+
+def _devices_of(track):
+    try:
+        return list(track.devices)
+    except Exception:
+        return []
+
+
+def _gain_reduction(device):
+    """LOM-sicher: nur Compressor/Glue/Limiter exponieren gain_reduction —
+    fehlt die Property (oder wirft sie), liefert das Device kein Tripel."""
+    try:
+        value = device.gain_reduction
+    except Exception:
+        return None
+    if value is None:
+        return None
+    try:
+        return max(0.0, min(1.0, float(value)))
+    except Exception:
+        return None

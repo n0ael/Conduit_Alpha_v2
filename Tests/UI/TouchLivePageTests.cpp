@@ -461,6 +461,28 @@ TEST_CASE ("TouchLiveDeviceView: ON-Tile toggelt optimistisch + is_active-Comman
     REQUIRE (sent.front()[1].getInt32() == 0);
 }
 
+TEST_CASE ("TouchLiveDeviceView: Gain-Reduction aus dem Meter-Frame (dv:-Tripel)", "[touchlive][ui]")
+{
+    PageRig rig;
+    rig.loadDemoSet();
+
+    auto& device = rig.page->deviceView;
+    REQUIRE (device.getSelectedDeviceKey() == "dv:1");
+    REQUIRE (device.getGainReductionLevel() == Approx (0.0f));
+
+    // GR-Frame für das gewählte Device
+    rig.meterBus.update ("dv:1", 0.4f, 0.4f);
+    rig.meterBus.noteFrame();
+    device.refreshGainReductionNow();
+    REQUIRE (device.getGainReductionLevel() == Approx (0.4f));
+
+    // Gerätewechsel setzt die GR-Anzeige zurück (fremder Key liefert 0)
+    device.selectDevice ("dv:2");
+    rig.meterBus.noteFrame();
+    device.refreshGainReductionNow();
+    REQUIRE (device.getGainReductionLevel() == Approx (0.0f));
+}
+
 TEST_CASE ("TouchLiveDeviceView: Kette entfernt → Auswahl fällt sauber zurück", "[touchlive][ui]")
 {
     PageRig rig;

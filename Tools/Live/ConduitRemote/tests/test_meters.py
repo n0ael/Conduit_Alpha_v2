@@ -98,3 +98,46 @@ def test_tick_divider_thins_the_rate():
 
     # nur Ticks 3, 6, 9
     assert len(send.sent) == 3
+
+
+def test_gain_reduction_devices_append_dv_triplets():
+    """Compressor & Co. (gain_reduction vorhanden) haengen dv:-Tripel an;
+    Devices ohne die Property bleiben draussen."""
+    from ConduitRemote.tests.stub_live import Device
+
+    song, send, stream = make_stream()
+    comp = Device("Compressor", "Compressor2")
+    comp.gain_reduction = 0.3          # LOM-Property nur bei Dynamics-Devices
+    eq = Device("EQ Eight", "Eq8")     # hat KEIN gain_reduction
+    song.tracks[0].devices.append(comp)
+    song.tracks[0].devices.append(eq)
+
+    stream.on_subscribe()
+    stream.on_tick(1)
+
+    _address, args = send.sent[0]
+    triplets = {args[i]: (args[i + 1], args[i + 2])
+                for i in range(0, len(args), 3)}
+
+    comp_id = stable_ids.get_id(comp, stable_ids.DEVICE_PREFIX)
+    eq_id = stable_ids.get_id(eq, stable_ids.DEVICE_PREFIX)
+    assert triplets[comp_id] == (0.3, 0.3)
+    assert eq_id not in triplets
+
+
+def test_gain_reduction_counts_against_silence_dedupe():
+    from ConduitRemote.tests.stub_live import Device
+
+    song, send, stream = make_stream()
+    comp = Device("Compressor", "Compressor2")
+    comp.gain_reduction = 0.0
+    song.tracks[0].devices.append(comp)
+
+    stream.on_subscribe()
+    stream.on_tick(1)   # alles still -> ein Null-Frame
+    stream.on_tick(2)
+    assert len(send.sent) == 1
+
+    comp.gain_reduction = 0.5   # nur GR bewegt sich -> Frame geht raus
+    stream.on_tick(3)
+    assert len(send.sent) == 2

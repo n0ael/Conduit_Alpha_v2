@@ -47,7 +47,7 @@ TouchLivePage::TouchLivePage (LiveSetModel& modelToUse, TouchLiveClient& clientT
                               TouchLiveMeterBus& meterBusToUse, TouchLiveSettings& settingsToUse)
     : gridView (clientToUse, modelToUse, settingsToUse),
       mixerView (clientToUse, modelToUse, meterBusToUse, settingsToUse),
-      deviceView (clientToUse, modelToUse),
+      deviceView (clientToUse, modelToUse, meterBusToUse),
       client (clientToUse),
       settings (settingsToUse),
       browserPlaceholder (push::Icon::browserPanel, "Browser",

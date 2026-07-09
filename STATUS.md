@@ -19,8 +19,13 @@
   parvals-Diffs gehen direkt in die Slider, Struktur coalesced; Client
   abonniert die fünfte Domain. 4 neue UI-Tests; Suite 600 Cases /
   27 197 Assertions grün.
-- **Nächster Schritt:** M3-Feldtest (Device-Bänke gegen echtes Live-Set,
-  große Racks/Payload), dann M4 Browser oder M5 bespoke-UIs.
+- **M3-Feldtest bestanden** (User: „Genial gut. Unglaublich fein
+  aufgelöst … die erste echte Alternative zum Push"). Dazu auf
+  User-Wunsch: **Gain-Reduction-Meter** (Push-Vorbild) — Dynamics-Devices
+  senden `gain_reduction` als dv:-Tripel im Meter-Frame, die DeviceView
+  zeigt die GR-Spalte rechts der Bank (füllt von oben).
+- **Nächster Schritt:** GR-Feldtest (Wertebereich 12.4b), dann M4 Browser
+  oder M5 bespoke-UIs (EQ-Eight-Kurve zuerst).
 
 ## Meilenstein (09.07.2026) — TouchLive M2 (Meter-Pfad)
 

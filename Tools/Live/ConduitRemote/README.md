@@ -78,8 +78,10 @@ Nach ~6 s ohne Ping werden alle Subscriptions beendet.
 - Push: `/remote/meters` mit flachen Tripeln `[id:str, left:f, right:f] × n`
   (Tracks + Returns + Master, gleiche Stable-IDs wie die Domains; Werte =
   Lives rohe `output_meter`-Norm 0..1) — im Timer-Modus ~33 Hz
-  (`METER_PUMP_DIVIDER`), ohne Timer ~10 Hz am Tick. Keine Sequenznummer
-  (Frames sind idempotent), Stille wird nach einem Null-Frame dedupliziert.
+  (`METER_PUMP_DIVIDER`), ohne Timer ~10 Hz am Tick. Devices mit
+  `gain_reduction` (Compressor/Glue/Limiter) hängen `[dv-id, gr, gr]` an.
+  Keine Sequenznummer (Frames sind idempotent), Stille wird nach einem
+  Null-Frame dedupliziert.
 
 ## Tests
 

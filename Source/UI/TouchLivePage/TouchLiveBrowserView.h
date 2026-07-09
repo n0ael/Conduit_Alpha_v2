@@ -92,7 +92,6 @@ private:
     int selectedNodeId = -1;
     bool loading = false;
     bool previewMode = false;
-    bool rootsRequested = false;
 
     juce::Viewport viewport;
     std::unique_ptr<ListArea> listArea;

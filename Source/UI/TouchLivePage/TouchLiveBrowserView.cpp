@@ -123,11 +123,10 @@ TouchLiveBrowserView::~TouchLiveBrowserView()
 //==============================================================================
 void TouchLiveBrowserView::visibilityChanged()
 {
-    if (isVisible() && ! rootsRequested)
-    {
-        rootsRequested = true;
+    // Solange keine Wurzeln da sind, bei jedem Sichtbarwerden neu anfordern —
+    // verlorene Antworten (Script alt/Reconnect) heilt so der Tab-Wechsel
+    if (isVisible() && levels.empty())
         requestLevel (0, {});
-    }
 }
 
 void TouchLiveBrowserView::requestLevel (int parentId, const juce::String& name)

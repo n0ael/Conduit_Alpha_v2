@@ -59,6 +59,14 @@ Wire-Protokoll (Gegenseite M1a):
   kennt die NICHT. Richtung Script→Conduit nie Bool-Argumente senden
   (Bools reisen im JSON).
 
+Devices (M3):
+- Wire-Form flach: `chain:{tid}` · `dev:{dvid}` · `parmeta:{dvid}` ·
+  `parvals:{dvid}` (heiße Zeile — Werte-Diffs berühren NIE die Metadaten).
+  Nur Top-Level-Devices (keine Rack-Rekursion bis M5). parameters[0] =
+  „Device On" reist mit; UI-Bänke starten bei Index 1, Schalter über
+  `/live/device/set/is_active`. `/live/device/set/parameter` gehört auf
+  die FAST_WHITELIST.
+
 Meter-Pfad (M2):
 - `/remote/meters` = flache Tripel `[id:str, left:float, right:float]` —
   bewusst KEIN Domain-Diff, KEINE seq (Frames idempotent), Stille-Dedupe;

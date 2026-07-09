@@ -18,13 +18,24 @@ logger = logging.getLogger(__name__)
 
 
 class CommandContext(object):
-    def __init__(self, get_song, track_resolver=None):
+    def __init__(self, get_song, track_resolver=None, device_resolver=None):
         self._get_song = get_song
         self._track_resolver = track_resolver
+        self._device_resolver = device_resolver
 
     @property
     def song(self):
         return self._get_song()
+
+    def resolve_device(self, ref):
+        """Stable-ID ("dv:3") -> Device-Objekt, None wenn unbekannt."""
+        if self._device_resolver is None or not isinstance(ref, str):
+            return None
+        try:
+            return self._device_resolver(ref)
+        except Exception:
+            logger.exception("device resolver failed for %r", ref)
+            return None
 
     def resolve_track(self, ref):
         song = self.song

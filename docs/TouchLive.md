@@ -231,7 +231,7 @@ Hardware mit echter Audio-Rate — 10 m vom Ableton-Rechner entfernt.
 | M1b | Conduit: TouchLiveClient + LiveSetModel + TouchLiveSettings (IP-Learn), Snapshot/Diff/Reconnect — **erledigt 09.07.2026** (§10) |
 | M1c | GRID- + MIXER-Sub-Tab (UI nach §5 inkl. Feel-Regeln 5.1) — **erledigt 09.07.2026** (§10b; User-SVGs Fader/Icon eingepflegt, weitere Figma-Assets folgen stückweise) |
 | M2 | Meter-Pfad (TouchLiveMeterBus), Feinschliff Fader-Gesten, Feel-Abnahme gegen Roto-Messlatte — **KOMPLETT 09.07.2026**: Meter-Pfad (§10c) + Fast-Path v2 (§10e); Feel-Abnahme im Feldtest Runde 3 bestanden („working perfectly"). Offen nur noch LiveFaderScale-Feinkalibrierung (§11) |
-| M3 | DEVICE generisch: Device-Domain, Ketten-Navigation, Parameter-Bänke, On/Off (§6b) |
+| M3 | DEVICE generisch: Device-Domain, Ketten-Navigation, Parameter-Bänke, On/Off (§6b) — **erledigt 09.07.2026** (§10g; Feldtest offen) |
 | M4 | BROWSER: Baum via `load_children`-Muster, Laden auf Track/Chain, Preview |
 | M5 | Bespoke Device-UIs: EQ Eight → Compressor/Glue → Delay/Reverb (§6b) |
 | M6 | Modulator-Zwillinge: LFO zuerst, dann Shaper/Envelope Follower (§6c) |
@@ -463,6 +463,39 @@ exakt). Die „Näherung" ist damit Lives tatsächliche Kurve; keine
 Code-Änderung nötig, §11-Punkt geschlossen. (Einziger Messausreißer:
 −12-Plateau bei −11.9 = Einstellgenauigkeit des Drags, std 0.05 zeigt
 Nachjustieren.)
+
+## 10g. M3 — DEVICE generisch: Implementierungs-Notizen (09.07.2026)
+
+Beidseitig: `sync/devices.py` + `handlers/device.py` (Script) und
+`TouchLiveDeviceView` (Conduit, ersetzt den DEVICE-Platzhalter).
+
+- **Wire-Form (Shallow-Diff-Granularität, Session-Grid-Lektion):**
+  `chain:{tid}` = Ketten-Array pro Track (Tracks + Returns + Master) ·
+  `dev:{dvid}` = Struktur-Item (name/class_name/is_active) ·
+  `parmeta:{dvid}` = statische Parameter-Metadaten (name/min/max/quant,
+  quantisierte mit `items`-Werteliste) · `parvals:{dvid}` = HEISSE Zeile
+  (nur Floats) — eine Parameteränderung difft ausschließlich das kleine
+  Werte-Array, nie die Metadaten. Stable-ID-Präfix `dv:`.
+- **Scope-Grenze M3:** nur TOP-LEVEL-Devices — keine Rack-/Chain-Rekursion
+  (kommt mit den bespoke-UIs, §6b). `parameters[0]` ist Lives „Device On"
+  und reist mit; die Bänke der UI beginnen bei Index 1, der Schalter läuft
+  über `/live/device/set/is_active` (dev:-Item).
+- **Commands:** `/live/device/set/parameter [dvid, index, value]` (auf der
+  FAST_WHITELIST → Timer-Pump, fühlt sich wie die Fader an) und
+  `/live/device/set/is_active [dvid, 0|1]`. Resolver `_resolve_device`
+  sucht über alle Ketten-Träger (gleiche `_live_ptr`-Registry wie die
+  Domain).
+- **Conduit-View:** Track-Chips → Device-Chips (mit On-LED) → 8er-Bank
+  (Name · Slider · Wertetext; quantisierte zeigen `items`), ‹ ›-Bank-
+  Navigation + ON-Tile. Struktur-Rebuild coalesced; `parvals:`-Diffs des
+  gewählten Devices gehen direkt in die Slider (kein Rebuild). Auswahl =
+  Laufzeit-Zustand (fällt bei verschwundener Kette aufs erste Gerät des
+  ersten bestückten Tracks zurück), Suppression-Keys:
+  `devices/parvals:{dvid}` (Slider) bzw. `devices/dev:{dvid}/is_active`.
+- **Offen für den Feldtest:** LOM-Fallen der Device-Parameter in 12.4b
+  (alle Zugriffe sind geguarded + Poll-Fallback), Payload-Größe bei sehr
+  großen Racks (Chunking vorhanden), Anzeige-Einheiten (parmeta trägt
+  keine Display-Strings — Lives `str_for_value` wäre ein M5-Kandidat).
 
 ## 11. Offen
 

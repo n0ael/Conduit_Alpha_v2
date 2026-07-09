@@ -47,10 +47,9 @@ TouchLivePage::TouchLivePage (LiveSetModel& modelToUse, TouchLiveClient& clientT
                               TouchLiveMeterBus& meterBusToUse, TouchLiveSettings& settingsToUse)
     : gridView (clientToUse, modelToUse, settingsToUse),
       mixerView (clientToUse, modelToUse, meterBusToUse, settingsToUse),
+      deviceView (clientToUse, modelToUse),
       client (clientToUse),
       settings (settingsToUse),
-      devicePlaceholder (push::Icon::browserAudioFx, "Device",
-                         juce::String::fromUTF8 ("kommt als eigener Meilenstein (M3)")),
       browserPlaceholder (push::Icon::browserPanel, "Browser",
                           juce::String::fromUTF8 ("kommt als eigener Meilenstein (M4)"))
 {
@@ -119,7 +118,7 @@ TouchLivePage::TouchLivePage (LiveSetModel& modelToUse, TouchLiveClient& clientT
 
     addChildComponent (gridView);
     addChildComponent (mixerView);
-    addChildComponent (devicePlaceholder);
+    addChildComponent (deviceView);
     addChildComponent (browserPlaceholder);
 
     client.addChangeListener (this);     // Status-LED
@@ -142,7 +141,7 @@ void TouchLivePage::setSubTab (int newTab)
 
     gridView.setVisible (currentTab == tabGrid);
     mixerView.setVisible (currentTab == tabMixer);
-    devicePlaceholder.setVisible (currentTab == tabDevice);
+    deviceView.setVisible (currentTab == tabDevice);
     browserPlaceholder.setVisible (currentTab == tabBrowser);
 
     gridTabTile.setActive (currentTab == tabGrid);
@@ -199,7 +198,7 @@ void TouchLivePage::resized()
 
     gridView.setBounds (area);
     mixerView.setBounds (area);
-    devicePlaceholder.setBounds (area);
+    deviceView.setBounds (area);
     browserPlaceholder.setBounds (area);
 }
 

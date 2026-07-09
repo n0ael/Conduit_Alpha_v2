@@ -8,6 +8,7 @@ from . import config
 from .osc.server import OscServer
 from .handlers import FAST_WHITELIST
 from .handlers.registry import CommandContext, CommandRegistry
+from .handlers import device as device_handlers
 from .handlers import song as song_handlers
 from .handlers import track as track_handlers
 from .handlers import session as session_handlers
@@ -112,10 +113,12 @@ class Manager(ControlSurface):
 
         self.registry = CommandRegistry()
         self.ctx = CommandContext(self._get_song,
-                                  track_resolver=self._resolve_stable_id)
+                                  track_resolver=self._resolve_stable_id,
+                                  device_resolver=self._resolve_device)
         song_handlers.register_all(self.registry)
         track_handlers.register_all(self.registry)
         session_handlers.register_all(self.registry)
+        device_handlers.register_all(self.registry)
 
         # Same function for both registries: registry.dispatch() looks the
         # address up itself and is thread-tolerant (read-only handler dict).
@@ -179,6 +182,24 @@ class Manager(ControlSurface):
         tracks = self._song.tracks
         if 0 <= index < len(tracks):
             return tracks[index]
+        return None
+
+    def _resolve_device(self, ref):
+        """Stable-ID ("dv:3") -> Device ueber alle Ketten-Traeger (Tracks,
+        Returns, Master) — gleiche Registry wie die devices-Domain."""
+        song = self._song
+        groups = (list(song.tracks), list(song.return_tracks),
+                  [song.master_track])
+        for tracks in groups:
+            for track in tracks:
+                try:
+                    devices = list(track.devices)
+                except Exception:
+                    continue
+                for device in devices:
+                    if stable_ids.get_id(
+                            device, stable_ids.DEVICE_PREFIX) == ref:
+                        return device
         return None
 
     def _dispatch_command(self, address, args):

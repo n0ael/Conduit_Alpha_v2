@@ -35,6 +35,7 @@ TRACK_PREFIX = "tr"
 RETURN_PREFIX = "rt"
 MASTER_PREFIX = "ma"
 SCENE_PREFIX = "sc"
+DEVICE_PREFIX = "dv"
 
 _counters = {}   # prefix -> next integer to hand out
 _ids = {}        # identity key -> stable_id string

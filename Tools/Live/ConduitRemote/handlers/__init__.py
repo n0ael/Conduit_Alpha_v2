@@ -17,4 +17,5 @@ FAST_WHITELIST = (
     "/live/return/set/panning",
     "/live/master/set/volume",
     "/live/master/set/panning",
+    "/live/device/set/parameter",
 )

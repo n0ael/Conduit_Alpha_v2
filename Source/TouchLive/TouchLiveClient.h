@@ -63,9 +63,10 @@ public:
     static constexpr double touchThinningIntervalMs = 16.0;
     static constexpr double echoSuppressionReleaseMs = 250.0;
 
-    /** M1-Domains (docs/TouchLive.md §2). */
-    static constexpr std::array<const char*, 4> domainNames { "transport", "tracks",
-                                                              "mixer", "session" };
+    /** Abonnierte Domains (docs/TouchLive.md §2; devices seit M3). */
+    static constexpr std::array<const char*, 5> domainNames { "transport", "tracks",
+                                                              "mixer", "session",
+                                                              "devices" };
 
     /** transport nullptr → UDP (App-Pfad); Tests injizieren einen Fake.
         Lauscht auf die Settings und verbindet sofort, falls enabled.

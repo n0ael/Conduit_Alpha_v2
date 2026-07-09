@@ -33,4 +33,4 @@ HEARTBEAT_TIMEOUT_TICKS = 60  # ~6 s without /remote/ping -> client considered g
 
 # --- Protocol ----------------------------------------------------------------
 PROTOCOL_VERSION = 1
-DOMAINS = ("transport", "tracks", "mixer", "session")
+DOMAINS = ("transport", "tracks", "mixer", "session", "devices")

@@ -402,7 +402,7 @@ Vollausbau, OSC-Send, M4L-Announce (+ Max-Testdevice ConduitLFO), Grid M1.
 | Mixer-Page | v2.x | ∥∥-Icon, Channel-Strips (Capture-Buttons wandern dorthin) |
 | Grid-Page weitere Meilensteine | Ω-Icon | Meilensteinleiter: docs/Grid.md |
 | Clip-Page (Fugue-Machine-Sequencer) | v2.x | ▷▭-Icon, immer aktiv, CV- UND MIDI-Ziele; Slot 2 vorerst an TouchLive abgegeben (09.07.2026) |
-| TouchLive-Page (Ableton-Live-Remote) | v2.x | M1a–M1c erledigt (Script + Client/Modell + GRID/MIXER-Page auf Slot 2), Meilensteinleiter: docs/TouchLive.md |
+| TouchLive-Page (Ableton-Live-Remote) | v2.x | M1–M3 erledigt (GRID/MIXER/DEVICE auf Slot 2, Meter, Fast-Path via Live.Base.Timer), Meilensteinleiter: docs/TouchLive.md |
 | Capture-Netzwerk-Share (Exports für entferntes Ableton) | v2.x | HTTP-Bereitstellung der Capture-Dateien |
 
 ---

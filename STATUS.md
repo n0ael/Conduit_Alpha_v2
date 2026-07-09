@@ -3,7 +3,26 @@
 > Letzte Aktualisierung: 2026-07-09 | wird nach jedem Meilenstein gepflegt
 > Architektur-Referenz: [CLAUDE.md](CLAUDE.md) | Repo: n0ael/Conduit
 
-## Aktueller Meilenstein (09.07.2026) — TouchLive M2 (Meter-Pfad)
+## Aktueller Meilenstein (09.07.2026) — TouchLive M3 (DEVICE generisch)
+
+**Jedes Live-Device fernsteuerbar — Script-Domain + DeviceView:**
+
+- **Script:** `sync/devices.py` — devices-Domain mit flacher Wire-Form
+  (`chain:{tid}` · `dev:{dvid}` · `parmeta:{dvid}` · `parvals:{dvid}` als
+  heiße Werte-Zeile), nur Top-Level-Devices; Commands
+  `/live/device/set/parameter` (FAST_WHITELIST → Timer-Pump) +
+  `is_active`; `_resolve_device` über die `_live_ptr`-Registry;
+  7 neue pytest-Tests (131 socketfrei grün).
+- **Conduit:** `TouchLiveDeviceView` ersetzt den DEVICE-Platzhalter —
+  Track-Chips → Device-Chips (On-LED) → 8er-Parameter-Bank (Name/Slider/
+  Wertetext, quantisierte mit Werteliste), ‹ ›-Bänke + ON-Tile;
+  parvals-Diffs gehen direkt in die Slider, Struktur coalesced; Client
+  abonniert die fünfte Domain. 4 neue UI-Tests; Suite 600 Cases /
+  27 197 Assertions grün.
+- **Nächster Schritt:** M3-Feldtest (Device-Bänke gegen echtes Live-Set,
+  große Racks/Payload), dann M4 Browser oder M5 bespoke-UIs.
+
+## Meilenstein (09.07.2026) — TouchLive M2 (Meter-Pfad)
 
 **Echte Live-Pegel in den Kanalzügen — beidseitig:**
 

@@ -7,8 +7,10 @@ def build_domains(song, sender):
     from .tracks import TracksDomain
     from .mixer import MixerDomain
     from .session import SessionDomain
+    from .devices import DevicesDomain
     domains = {}
-    for cls in (TransportDomain, TracksDomain, MixerDomain, SessionDomain):
+    for cls in (TransportDomain, TracksDomain, MixerDomain, SessionDomain,
+                DevicesDomain):
         domain = cls(song, sender)
         domains[domain.NAME] = domain
     return domains

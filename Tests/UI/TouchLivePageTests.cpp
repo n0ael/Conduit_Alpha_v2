@@ -117,8 +117,32 @@ struct PageRig
             R"("grid:tr:0":[{"name":"Beat","color":16711680,"state":"playing"},null],)"
             R"("grid:tr:1":[null,{"name":"Chords","color":255,"state":"stopped"}]})"));
 
+        // Devices (M3): EQ mit 10 Parametern (2 Bänke) + Compressor auf tr:0
+        juce::String parmeta = R"([{"name":"Device On","min":0,"max":1,"quant":false})";
+        juce::String parvals = "[1.0";
+
+        for (int i = 1; i <= 10; ++i)
+        {
+            parmeta << R"(,{"name":"P)" << juce::String (i) << R"(","min":0,"max":1,"quant":false})";
+            parvals << "," << juce::String (0.1 * i, 2);
+        }
+
+        parmeta << "]";
+        parvals << "]";
+
+        model.applySnapshot ("devices", parse ((
+            juce::String (R"({"chain:tr:0":["dv:1","dv:2"],"chain:tr:1":[],)"
+                          R"("chain:rt:0":[],"chain:ma:0":[],)"
+                          R"("dev:dv:1":{"name":"EQ Eight","class_name":"Eq8","is_active":true},)"
+                          R"("dev:dv:2":{"name":"Compressor","class_name":"Compressor2","is_active":true},)"
+                          R"("parmeta:dv:2":[{"name":"Device On","min":0,"max":1,"quant":false},)"
+                          R"({"name":"Model","min":0,"max":2,"quant":true,"items":["Peak","RMS","Expand"]}],)"
+                          R"("parvals:dv:2":[1.0,1.0],)")
+            + R"("parmeta:dv:1":)" + parmeta + R"(,"parvals:dv:1":)" + parvals + "}").toRawUTF8()));
+
         page->mixerView.flushPendingRebuild();
         page->gridView.flushPendingRebuild();
+        page->deviceView.flushPendingRebuild();
         page->resized();
     }
 
@@ -364,6 +388,94 @@ TEST_CASE ("TouchLiveMixerView: MeterBus-Frames landen in den Fader-Metern (M2)"
     // Unbekannte Keys (Master hat eigenen) bleiben still
     REQUIRE (rig.page->mixerView.getMasterStrip()->fader.getMeterBarLevel (0)
              == Approx (0.0f));
+}
+
+//==============================================================================
+TEST_CASE ("TouchLiveDeviceView: Chips + Bank aus der devices-Domain (M3)", "[touchlive][ui]")
+{
+    PageRig rig;
+    rig.loadDemoSet();
+
+    auto& device = rig.page->deviceView;
+
+    REQUIRE (device.getTrackChipCount() == 4);            // 2 Tracks + Return + Master
+    REQUIRE (device.getSelectedTrackKey() == "tr:0");     // erster Track mit Geräten
+    REQUIRE (device.getDeviceChipCount() == 2);
+    REQUIRE (device.getSelectedDeviceKey() == "dv:1");
+
+    // EQ: 10 Parameter (ohne Device On) → 2 Bänke à 8
+    REQUIRE (device.getBankCount() == 2);
+    REQUIRE (device.getParameterName (0) == "P1");
+    REQUIRE (device.getParameterSlider (0)->getValue() == Approx (0.1));
+
+    device.setBank (1);
+    REQUIRE (device.getParameterName (0) == "P9");
+    REQUIRE (device.getParameterName (2).isEmpty());      // Bank 2 hat nur 2 Spalten
+
+    // Gerätewechsel: quantisierter Parameter zeigt seine Werteliste
+    device.selectDevice ("dv:2");
+    REQUIRE (device.getBankCount() == 1);
+    REQUIRE (device.getParameterName (0) == "Model");
+    REQUIRE (device.getParameterValueText (0) == "RMS");  // Wert 1.0 → items[1]
+}
+
+TEST_CASE ("TouchLiveDeviceView: Slider sendet Touch-Command, parvals-Diff aktualisiert", "[touchlive][ui]")
+{
+    PageRig rig;
+    rig.loadDemoSet();
+
+    auto& device = rig.page->deviceView;
+    auto* slider = device.getParameterSlider (0);
+    REQUIRE (slider != nullptr);
+
+    slider->setValue (0.8, juce::sendNotificationSync);
+
+    const auto sent = rig.transport->sentTo ("/live/device/set/parameter");
+    REQUIRE_FALSE (sent.empty());
+    REQUIRE (sent.back()[0].getString() == "dv:1");
+    REQUIRE (sent.back()[1].getInt32() == 1);             // Bank 0, Spalte 0 → Param 1
+    REQUIRE (sent.back()[2].getFloat32() == Approx (0.8f));
+
+    // Eingehende parvals-Zeile bewegt den Slider (direkter Modell-Weg —
+    // die Echo-Suppression sitzt im Client-Pfad und ist hier nicht beteiligt)
+    rig.model.applyDiff ("devices",
+        parse (R"({"parvals:dv:1":[1.0,0.25,0.2,0.3,0.4,0.5,0.6,0.7,0.8,0.9,1.0]})"));
+    REQUIRE (slider->getValue() == Approx (0.25));
+}
+
+TEST_CASE ("TouchLiveDeviceView: ON-Tile toggelt optimistisch + is_active-Command", "[touchlive][ui]")
+{
+    PageRig rig;
+    rig.loadDemoSet();
+
+    auto& device = rig.page->deviceView;
+    REQUIRE (device.onTile.isActive());
+
+    device.onTile.onClick();
+
+    REQUIRE_FALSE (device.onTile.isActive());
+
+    const auto sent = rig.transport->sentTo ("/live/device/set/is_active");
+    REQUIRE (sent.size() == 1);
+    REQUIRE (sent.front()[0].getString() == "dv:1");
+    REQUIRE (sent.front()[1].getInt32() == 0);
+}
+
+TEST_CASE ("TouchLiveDeviceView: Kette entfernt → Auswahl fällt sauber zurück", "[touchlive][ui]")
+{
+    PageRig rig;
+    rig.loadDemoSet();
+
+    rig.model.applyDiff ("devices",
+        parse (R"({"chain:tr:0":[],"dev:dv:1":null,"dev:dv:2":null,)"
+               R"("parmeta:dv:1":null,"parvals:dv:1":null,)"
+               R"("parmeta:dv:2":null,"parvals:dv:2":null})"));
+    rig.page->deviceView.flushPendingRebuild();
+
+    REQUIRE (rig.page->deviceView.getSelectedDeviceKey().isEmpty());
+    REQUIRE (rig.page->deviceView.getDeviceChipCount() == 0);
+    REQUIRE (rig.page->deviceView.getParameterSlider (0) != nullptr);
+    REQUIRE_FALSE (rig.page->deviceView.getParameterSlider (0)->isVisible());
 }
 
 //==============================================================================

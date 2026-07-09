@@ -5,6 +5,7 @@
 #include "TouchLive/LiveSetModel.h"
 #include "TouchLive/TouchLiveClient.h"
 #include "TouchLive/TouchLiveSettings.h"
+#include "TouchLiveDeviceView.h"
 #include "TouchLiveGridView.h"
 #include "TouchLiveMixerView.h"
 #include "UI/PushTiles.h"
@@ -59,6 +60,7 @@ public:
 
     TouchLiveGridView gridView;
     TouchLiveMixerView mixerView;
+    TouchLiveDeviceView deviceView;   // M3 — generische Device-Steuerung
 
 private:
     //==========================================================================
@@ -83,7 +85,6 @@ private:
     TouchLiveClient& client;
     TouchLiveSettings& settings;
 
-    PlaceholderView devicePlaceholder;
     PlaceholderView browserPlaceholder;
 
     juce::Rectangle<int> statusLedArea;

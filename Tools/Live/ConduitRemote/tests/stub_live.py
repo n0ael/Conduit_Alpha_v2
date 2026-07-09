@@ -48,12 +48,14 @@ class _Listenable(object):
 
 
 class DeviceParameter(_Listenable):
-    def __init__(self, name, value=0.0, min_value=0.0, max_value=1.0):
+    def __init__(self, name, value=0.0, min_value=0.0, max_value=1.0,
+                 is_quantized=False, value_items=None):
         _Listenable.__init__(self)
         self.__dict__["name"] = name
         self.__dict__["min"] = min_value
         self.__dict__["max"] = max_value
-        self.__dict__["is_quantized"] = False
+        self.__dict__["is_quantized"] = is_quantized
+        self.__dict__["value_items"] = list(value_items or [])
         self.__dict__["value"] = value
 
     def __setattr__(self, key, value):
@@ -66,6 +68,25 @@ class DeviceParameter(_Listenable):
 
     def __str__(self):
         return "%.2f" % self.value
+
+
+class Device(_Listenable):
+    """Top-Level-Device eines Tracks (M3). parameters[0] ist wie in Live
+    der Device-On-Parameter."""
+
+    def __init__(self, name, class_name, parameters=None):
+        _Listenable.__init__(self)
+        self.__dict__["name"] = name
+        self.__dict__["class_name"] = class_name
+        self.__dict__["is_active"] = True
+        self.parameters = (list(parameters) if parameters is not None
+                           else [DeviceParameter("Device On", 1.0, 0.0, 1.0)])
+
+    def __setattr__(self, key, value):
+        if key == "parameters":
+            self.__dict__[key] = value
+        else:
+            self._set(key, value)
 
 
 class MixerDevice(object):

@@ -45,6 +45,10 @@ Bewusst getrennt von Conduits eigenem OSC (9000/9001) und AbletonOSC (11000/1100
 | `/live/clip_slot/fire` · `stop` | `track_ref, i scene` |
 | `/live/scene/fire` | `i scene` |
 | `/live/track/stop_all_clips` | `track_ref` |
+| `/live/device/set/parameter` | `device_ref, i param, f` |
+| `/live/device/set/is_active` | `device_ref, i` |
+
+`device_ref` = Stable-ID-String (`"dv:3"`) aus der devices-Domain.
 
 `track_ref` = Index (int, AbletonOSC-kompatibel) **oder** Stable-ID-String
 (`"tr:3"` aus den Snapshots) — Stable-IDs überleben Track-Reorder in Live.
@@ -61,7 +65,9 @@ Bewusst getrennt von Conduits eigenem OSC (9000/9001) und AbletonOSC (11000/1100
 Domains: `transport` (is_playing, tempo, metronome, session_record, sig) ·
 `tracks` (Name, Farbe, Art, Reihenfolge) · `mixer` (vol/pan/sends/mute/solo/arm)
 · `session` (Clip-Grid pro Track-Zeile: state stopped/playing/triggered/recording
-+ Name/Farbe; Scenes).
++ Name/Farbe; Scenes) · `devices` (M3: `chain:{tid}`-Ketten, `dev:{dvid}`-
+Struktur, `parmeta:{dvid}`-Metadaten, `parvals:{dvid}`-Werte — nur
+Top-Level-Devices).
 
 **Heartbeat:** Client sendet `/remote/ping` (~2 s) → `/remote/pong [version]`.
 Nach ~6 s ohne Ping werden alle Subscriptions beendet.
@@ -89,6 +95,6 @@ den Konventionen von [AbletonOSC](https://github.com/ideoforms/AbletonOSC)
 
 ## Status / Roadmap
 
-M1a fertig, Meter-Hochraten-Pfad (M2) drin. Es folgen laut `TOUCHLIVE.md`
-(im Conduit-Repo: docs/TouchLive.md): Device-Domain generisch (M3),
+M1a fertig, Meter-Hochraten-Pfad (M2) und Device-Domain generisch (M3)
+drin. Es folgen laut `TOUCHLIVE.md` (im Conduit-Repo: docs/TouchLive.md):
 Browser (M4), bespoke Device-UIs (M5), Modulator-Zwillinge (M6).

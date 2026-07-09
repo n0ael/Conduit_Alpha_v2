@@ -41,6 +41,31 @@ public:
     void setState (const State& newState);
     [[nodiscard]] const State& getState() const noexcept { return state; }
 
+    /** [Editor, beim Commit] „Geschnappte" Strip-Ansicht des Clips
+        (renderCommitThumbnail, Tinte auf transparent) + Quellfarbe: die
+        Zelle malt ihre Fläche in der Quellfarbe und die Tinte schwarz
+        darüber — die Strip-Optik invertiert (User-Idee 09.07.2026).
+        sourceLabel (Quell-Text der Combo, z. B. „Live / wavetable") wird
+        zum Zell-Label eingefroren — die Quelle des Loopers darf danach
+        wechseln. clipId bindet Bild + Label an den Clip; der Editor-Timer
+        räumt bei Mismatch auf (Delete, Überschreib-Commit, clearAllClips). */
+    void setThumbnail (juce::Image inkImage, juce::Colour background, juce::uint32 clipId,
+                       juce::String sourceLabel);
+    void clearThumbnail();
+    [[nodiscard]] bool hasThumbnail() const noexcept { return thumbnail.isValid(); }
+    [[nodiscard]] juce::uint32 getThumbnailClipId() const noexcept { return thumbnailClipId; }
+    [[nodiscard]] const juce::String& getThumbnailSourceLabel() const noexcept
+    {
+        return thumbnailSourceLabel;
+    }
+
+    /** Mittlere Tinten-Deckung (Alpha 0..1) einer normalisierten Zone des
+        Tinte-Bildes — Aufbauten (Play-Dreieck, Label) nehmen auf dunklen
+        Stellen die Gegenfarbe an und bleiben sichtbar (User 09.07.2026).
+        Pure/static für Tests. */
+    [[nodiscard]] static float computeInkCoverage (const juce::Image& ink,
+                                                   juce::Rectangle<float> normalisedZone);
+
     /** [Page] Gemeinsame Puls-Phase 0..1 (Target-Pulsieren). */
     void setPulsePhase (float phase01);
 
@@ -52,6 +77,16 @@ public:
 private:
     State state;
     float pulsePhase = 0.0f;
+
+    juce::Image thumbnail;             // Tinte auf transparent (Strip-Snapshot)
+    juce::Colour thumbnailBackground;  // Quellfarbe der Aufnahme
+    juce::uint32 thumbnailClipId = 0;
+    juce::String thumbnailSourceLabel; // beim Commit eingefrorener Quell-Text
+
+    // Vorberechnete Tinten-Deckung der Kopfzeilen-Zonen (setThumbnail):
+    // Dreieck-Ecke und volle Kopfzeile getrennt — paint() bleibt billig
+    float iconZoneInk = 0.0f;
+    float headlineZoneInk = 0.0f;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (LooperSlotCell)
 };

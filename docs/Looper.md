@@ -107,6 +107,32 @@
     Auswahl. Header-Kontext (nur Looper-Page): DELETE-/SAVE-HoldTiles
     (halten + Ziel antippen; Delete-Latch-Option) — Session-Save liegt
     im Browser (PROJEKTE → „Session speichern…").
+  - **Clip-Thumbnail (09.07.2026):** der Commit schnappt die AKTUELLE
+    Strip-Ansicht (Waveform ODER Spektrum) der committeten Takte —
+    `LooperWaveformStrip::renderCommitThumbnail(startBeat, endBeat, w, h)`
+    rendert „Tinte auf transparent" (Waveform = schwarze Min/Max-Spalten,
+    Spektrum = Schwarz mit Intensitäts-Alpha; Pegel-Proxy = wahrgenommene
+    Helligkeit der LUT-Pixel, beide Paletten sind monoton hell). Beat-
+    Range = [commitEndBeat − contentBeats, commitEndBeat) des frischen
+    Aktiv-Clips; SOFORT nach dem Commit rendern (History-/Spektrum-Ring
+    halten nur ~16 Takte). Die LooperSlotCell zeigt es INVERTIERT zur
+    Strip-Optik: Zellfläche = Quellfarbe (Master-Fallback LED-Grün),
+    Tinte/Sweep/Aufbauten schwarz. Progress-Sweep = Fade-Schweif
+    (09.07.2026): begrenztes Gradient-Band (~35 % Zellbreite) hinter der
+    Abspielkante, läuft nach hinten transparent aus (Reverse gespiegelt) —
+    NIE die ganze abgespielte Fläche flächig abdunkeln (verdeckt das
+    Thumbnail). Kopfzeile OBEN (Dreieck + Label +
+    Badges — die Waveform-Tinte ballt sich um die Zell-Mitte); Zell-Label
+    der Thumbnail-Zellen = beim Commit eingefrorener Quell-Text der Combo
+    („Live / wavetable"), klassische Zellen weiter „Clip N · X Bars".
+    Der Schweif wickelt ZYKLISCH über die Loop-Grenze (alpha-stetig ans
+    andere Zellende) — er verschwindet am Loop-Ende nie (User 09.07.2026).
+    Kontrast-Regel: Aufbauten nehmen auf überwiegend schwarzen Stellen die
+    Quellfarbe an (computeInkCoverage, Zonen-Deckung VORBERECHNET in
+    setThumbnail — nie in paint messen). Lifecycle über clipId-Bindung:
+    setThumbnail beim Commit [Editor], der 30-Hz-Timer cleart bei
+    clipId-Mismatch oder leerem Slot (Delete, Überschreib-Commit,
+    clearAllClips) — kein Zustand außerhalb der Zelle.
   - **OSC-Actions** (`/conduit/looper/…`, Indizes 1-basiert): stop |
     {n}/commit i:bars | {n}/stop | {n}/track/{t}/stop | {n}/target
     i:track i:slot — Muster /conduit/sync (Erkennung vor Endpoint-Lookup,

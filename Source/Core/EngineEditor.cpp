@@ -717,12 +717,18 @@ void EngineEditor::wireLooperPanels()
             looperPage.getPanel (l).getStrip().setSourceColour (looperSourceColour (key));
         };
 
-        // Segment-Klick = Commit in den Target-Slot dieses Loopers
+        // Segment-Klick = Commit in den Target-Slot dieses Loopers;
+        // danach schnappt die Ziel-Zelle die Strip-Ansicht des Loops
         panel.onSegmentClicked = [this, l] (int bars)
         {
             const auto result = engine.commitToTarget (l, bars);
             if (result.failed())
+            {
                 captureToast.show (result.getErrorMessage());
+                return;
+            }
+
+            captureLooperClipThumbnail (l);
         };
 
         panel.onSlotTapped = [this, l] (int t, int s) { handleLooperSlotTap (l, t, s); };
@@ -934,6 +940,46 @@ void EngineEditor::handleLooperSlotTap (int looperIndex, int trackIndex, int slo
         captureToast.show (result.getErrorMessage());
 }
 
+void EngineEditor::captureLooperClipThumbnail (int looperIndex)
+{
+    // Commit setzt Aktiv-Clip + -Slot (LooperSessionModel-Doku) — der
+    // frische Clip liefert die bar-genaue Beat-Range, der Strip rendert
+    // seine aktuelle Ansicht (Waveform/Spektrum) als Tinte-Bild. Sofort
+    // rendern: History- und Spektrum-Ring halten nur ~16 Takte.
+    auto& session = engine.getLooperSession();
+    const auto address = session.getActiveSlot (looperIndex);
+    auto* clip = session.getActiveClip (looperIndex);
+    if (clip == nullptr || ! address.isValid())
+        return;
+
+    auto& panel = looperPage.getPanel (looperIndex);
+    if (address.track >= panel.getTrackCount())
+        return;
+
+    auto& track = panel.getTrack (address.track);
+    if (address.slot >= track.getVisibleSlots())
+        return;
+
+    auto& strip = panel.getStrip();
+
+    // Zellfläche = Quellfarbe; farblose Quellen (Master) nutzen das
+    // Strip-Default-Grün — die Inversion bleibt konsistent zur Anzeige
+    auto background = strip.getSourceColour();
+    if (background.isTransparent())
+        background = push::colours::ledGreen;
+
+    constexpr int thumbnailWidth  = 256;   // 32 Spalten pro Takt beim 8-Bar-Commit
+    constexpr int thumbnailHeight = 64;
+
+    // Quell-Text der Combo („Live / wavetable") friert als Zell-Label ein —
+    // die Quelle des Loopers darf danach wechseln (User 09.07.2026)
+    track.getSlotCell (address.slot).setThumbnail (
+        strip.renderCommitThumbnail (clip->commitEndBeat - clip->contentBeats,
+                                     clip->commitEndBeat,
+                                     thumbnailWidth, thumbnailHeight),
+        background, clip->clipId, panel.getSourceCombo().getText());
+}
+
 void EngineEditor::refreshLooperStatus (bool devMode)
 {
     auto& bank = engine.getLooperBank();
@@ -975,6 +1021,8 @@ void EngineEditor::refreshLooperStatus (bool devMode)
 
             for (int s = 0; s < track.getVisibleSlots(); ++s)
             {
+                auto& cell = track.getSlotCell (s);
+
                 LooperSlotCell::State state;
                 if (auto* clip = session.clipAt (l, t, s))
                 {
@@ -995,14 +1043,20 @@ void EngineEditor::refreshLooperStatus (bool devMode)
                         playingProgress = state.progress01;
                         playingLength = clip->stagedLengthBeats.load (std::memory_order_relaxed);
                     }
+
+                    // Thumbnail gehört zu GENAU diesem Clip — nach
+                    // Überschreib-Commit/Neuaufbau räumt der Timer auf
+                    if (cell.hasThumbnail() && cell.getThumbnailClipId() != clip->clipId)
+                        cell.clearThumbnail();
                 }
                 else
                 {
                     state.target = target.track == t && target.slot == s;
+                    cell.clearThumbnail();   // no-op ohne Thumbnail
                 }
 
                 state.active = active.track == t && active.slot == s && state.hasClip;
-                track.getSlotCell (s).setState (state);
+                cell.setState (state);
             }
 
             // Takt-Anzeige: "aktueller Takt / Länge" des spielenden Clips

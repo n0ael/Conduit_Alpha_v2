@@ -137,6 +137,60 @@ TEST_CASE ("LooperPanel: Quellen-Menü mit Link-Gruppen — Separatoren, Farben,
     }
 }
 
+TEST_CASE ("LooperSlotCell: Thumbnail-Lifecycle (Commit-Snapshot)", "[looper][ui]")
+{
+    juce::ScopedJuceInitialiser_GUI juceRuntime;
+
+    conduit::LooperSlotCell cell;
+    cell.setBounds (0, 0, 120, 32);
+
+    REQUIRE_FALSE (cell.hasThumbnail());
+
+    juce::Image ink (juce::Image::ARGB, 64, 16, true);
+    cell.setThumbnail (ink, juce::Colour (0xffffa726), 7, "Live / wavetable");
+
+    REQUIRE (cell.hasThumbnail());
+    REQUIRE (cell.getThumbnailClipId() == 7);
+    REQUIRE (cell.getThumbnailSourceLabel() == "Live / wavetable");
+
+    // Timer-Aufräumlogik: Mismatch der clipId → clear (Überschreib-Commit)
+    cell.clearThumbnail();
+    REQUIRE_FALSE (cell.hasThumbnail());
+    REQUIRE (cell.getThumbnailClipId() == 0);
+    REQUIRE (cell.getThumbnailSourceLabel().isEmpty());
+
+    cell.clearThumbnail();   // idempotent (30-Hz-Timer ruft blind)
+    REQUIRE_FALSE (cell.hasThumbnail());
+}
+
+TEST_CASE ("LooperSlotCell: Tinten-Deckung der Kopfzeilen-Zonen", "[looper][ui]")
+{
+    juce::ScopedJuceInitialiser_GUI juceRuntime;
+
+    // Obere Hälfte volle Tinte, untere transparent
+    juce::Image ink (juce::Image::ARGB, 100, 100, true);
+    {
+        juce::Graphics g (ink);
+        g.setColour (juce::Colours::black);
+        g.fillRect (0, 0, 100, 50);
+    }
+
+    using Cell = conduit::LooperSlotCell;
+
+    REQUIRE (Cell::computeInkCoverage (ink, { 0.0f, 0.0f, 1.0f, 0.5f })
+             > 0.95f);                                                   // volle Zone
+    REQUIRE (Cell::computeInkCoverage (ink, { 0.0f, 0.5f, 1.0f, 0.5f })
+             < 0.05f);                                                   // leere Zone
+    const auto mixed = Cell::computeInkCoverage (ink, { 0.0f, 0.0f, 1.0f, 1.0f });
+    REQUIRE (mixed > 0.4f);                                              // halb/halb
+    REQUIRE (mixed < 0.6f);
+
+    // Ungültiges Bild / Zone außerhalb → 0 (kein Crash)
+    REQUIRE (Cell::computeInkCoverage (juce::Image(), { 0.0f, 0.0f, 1.0f, 1.0f })
+             == 0.0f);
+    REQUIRE (Cell::computeInkCoverage (ink, { 2.0f, 2.0f, 0.5f, 0.5f }) == 0.0f);
+}
+
 TEST_CASE ("LooperTrackStrip: Hooks liefern Track-lokale Indizes und Werte", "[looper][ui]")
 {
     juce::ScopedJuceInitialiser_GUI juceRuntime;

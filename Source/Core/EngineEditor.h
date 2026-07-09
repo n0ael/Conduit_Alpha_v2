@@ -113,6 +113,11 @@ private:
         Auswahl. */
     void handleLooperSlotTap (int looperIndex, int trackIndex, int slotIndex);
 
+    /** Direkt nach erfolgreichem Commit: die committeten Takte aus dem
+        Strip als Tinte-Bild schnappen (aktuelle View) und der Ziel-Zelle
+        geben — sie zeigt sie invertiert auf Quellfarbe (09.07.2026). */
+    void captureLooperClipThumbnail (int looperIndex);
+
     /** Looper-Status in die Page spiegeln (Editor-Timer, 30 Hz). */
     void refreshLooperStatus (bool devMode);
 

@@ -37,6 +37,63 @@ void LooperSlotCell::setState (const State& newState)
         repaint();
 }
 
+float LooperSlotCell::computeInkCoverage (const juce::Image& ink,
+                                          juce::Rectangle<float> normalisedZone)
+{
+    if (! ink.isValid())
+        return 0.0f;
+
+    const auto zone = normalisedZone
+                          .transformedBy (juce::AffineTransform::scale (
+                              (float) ink.getWidth(), (float) ink.getHeight()))
+                          .getSmallestIntegerContainer()
+                          .getIntersection (ink.getBounds());
+    if (zone.isEmpty())
+        return 0.0f;
+
+    const juce::Image::BitmapData pixels { ink, zone.getX(), zone.getY(),
+                                           zone.getWidth(), zone.getHeight() };
+
+    std::int64_t alphaSum = 0;
+    for (int y = 0; y < zone.getHeight(); ++y)
+        for (int x = 0; x < zone.getWidth(); ++x)
+            alphaSum += pixels.getPixelColour (x, y).getAlpha();
+
+    return static_cast<float> (alphaSum)
+           / (255.0f * static_cast<float> (zone.getWidth())
+                     * static_cast<float> (zone.getHeight()));
+}
+
+void LooperSlotCell::setThumbnail (juce::Image inkImage, juce::Colour background,
+                                   juce::uint32 clipId, juce::String sourceLabel)
+{
+    thumbnail = std::move (inkImage);
+    thumbnailBackground = background;
+    thumbnailClipId = clipId;
+    thumbnailSourceLabel = std::move (sourceLabel);
+
+    // Kopfzeilen-Kontrast einmal beim Commit messen (nie in paint):
+    // Dreieck-Ecke oben links + volle obere Zone für Label/Badges
+    iconZoneInk     = computeInkCoverage (thumbnail, { 0.0f, 0.0f, 0.18f, 0.35f });
+    headlineZoneInk = computeInkCoverage (thumbnail, { 0.0f, 0.0f, 1.0f,  0.35f });
+
+    repaint();
+}
+
+void LooperSlotCell::clearThumbnail()
+{
+    if (! thumbnail.isValid())
+        return;   // no-op ohne Repaint — läuft im 30-Hz-Timer
+
+    thumbnail = {};
+    thumbnailBackground = {};
+    thumbnailClipId = 0;
+    thumbnailSourceLabel = {};
+    iconZoneInk = 0.0f;
+    headlineZoneInk = 0.0f;
+    repaint();
+}
+
 void LooperSlotCell::setPulsePhase (float phase01)
 {
     pulsePhase = phase01;
@@ -54,27 +111,98 @@ void LooperSlotCell::paint (juce::Graphics& g)
 {
     auto bounds = getLocalBounds().toFloat().reduced (1.0f);
 
-    g.setColour (push::colours::tile);
+    // Invertierte Strip-Optik mit Thumbnail (User-Idee 09.07.2026): die
+    // Fläche trägt die Quellfarbe, die geschnappte Waveform/Spektrum-
+    // Tinte und alle Aufbauten (Sweep, Dreieck, Text) wechseln auf Schwarz
+    const auto inked = state.hasClip && thumbnail.isValid();
+
+    g.setColour (inked ? thumbnailBackground : push::colours::tile);
     g.fillRoundedRectangle (bounds, 4.0f);
 
     if (state.hasClip)
     {
-        // Progress-Sweep: gefüllter Anteil dunkler abgesetzt; Reverse
-        // spiegelt die Richtung (Übergabe §2)
+        if (inked)
+            g.drawImage (thumbnail, bounds.reduced (2.0f),
+                         juce::RectanglePlacement::stretchToFit);
+
+        // Progress-Sweep als Fade-Schweif (User 09.07.2026): nicht der
+        // gesamte abgespielte Teil dunkelt ab — ein begrenztes Band hinter
+        // der Abspielkante läuft nach hinten transparent aus. Der Loop ist
+        // ZYKLISCH: um die Loop-Grenze wickelt der Schweif ans andere
+        // Zellende weiter (alpha-stetig), statt zu verschwinden; Reverse
+        // spiegelt Richtung und Verlauf (Übergabe §2)
         if (state.playing)
         {
-            auto sweep = bounds.reduced (2.0f);
+            const auto sweep = bounds.reduced (2.0f);
             const auto width = sweep.getWidth() * juce::jlimit (0.0f, 1.0f, state.progress01);
-            const auto region = state.reversed ? sweep.removeFromRight (width)
-                                               : sweep.removeFromLeft (width);
-            g.setColour (push::colours::tileActive);
-            g.fillRoundedRectangle (region, 3.0f);
+            const auto tailLength = sweep.getWidth() * 0.35f;
+            const auto edgeColour = inked ? juce::Colours::black.withAlpha (0.45f)
+                                          : push::colours::tileActive;
+
+            // Ein Schweif-Segment [xStart, xEnd] mit linearem Alpha-Verlauf
+            // (Anteile 0..1 der Schweif-Deckung an den Segment-Enden)
+            const auto drawTail = [&] (float xStart, float xEnd,
+                                       float alphaStart, float alphaEnd)
+            {
+                if (xEnd - xStart < 0.5f)
+                    return;
+
+                const juce::ColourGradient gradient (
+                    edgeColour.withMultipliedAlpha (alphaStart), xStart, sweep.getY(),
+                    edgeColour.withMultipliedAlpha (alphaEnd),   xEnd,   sweep.getY(),
+                    false);
+                g.setGradientFill (gradient);
+                g.fillRect (juce::Rectangle<float> (xStart, sweep.getY(),
+                                                    xEnd - xStart, sweep.getHeight()));
+            };
+
+            if (tailLength > 0.5f)
+            {
+                const auto head = juce::jmin (width, tailLength);
+                const auto rest = tailLength - head;   // wickelt über die Loop-Grenze
+
+                if (state.reversed)
+                {
+                    // Kante links des gefüllten Anteils, Schweif nach rechts;
+                    // Rest-Schweif setzt am LINKEN Zellrand fort
+                    const auto edgeX = sweep.getRight() - width;
+                    drawTail (edgeX, edgeX + head, 1.0f, 1.0f - head / tailLength);
+                    drawTail (sweep.getX(), sweep.getX() + rest, rest / tailLength, 0.0f);
+                }
+                else
+                {
+                    // Kante rechts des gefüllten Anteils, Schweif nach links;
+                    // Rest-Schweif setzt am RECHTEN Zellrand fort
+                    const auto edgeX = sweep.getX() + width;
+                    drawTail (edgeX - head, edgeX, 1.0f - head / tailLength, 1.0f);
+                    drawTail (sweep.getRight() - rest, sweep.getRight(),
+                              0.0f, rest / tailLength);
+                }
+            }
         }
 
-        // Play-Dreieck (gespiegelt bei Reverse) + Label
-        const auto iconSide = juce::jmin (12.0f, bounds.getHeight() - 8.0f);
-        auto iconBox = bounds.reduced (6.0f).removeFromLeft (iconSide).toFloat();
-        iconBox = iconBox.withSizeKeepingCentre (iconSide, iconSide);
+        // Kopfzeile OBEN (User 09.07.2026): Play-Dreieck + Label + Badges —
+        // die Waveform-Tinte ballt sich um die Zell-Mitte, oben bleibt sie
+        // meist frei. Auf dunklen Stellen nehmen die Aufbauten die
+        // Gegenfarbe an (vorberechnete Zonen-Deckung) und bleiben sichtbar.
+        auto headline = bounds.reduced (4.0f);
+        headline = headline.removeFromTop (juce::jmin (16.0f, headline.getHeight()));
+
+        constexpr float inkContrastThreshold = 0.4f;
+        const auto iconColour = inked
+            ? (iconZoneInk > inkContrastThreshold ? thumbnailBackground
+                                                  : juce::Colours::black)
+            : push::colours::ledGreen;
+        const auto headlineBase = inked
+            ? (headlineZoneInk > inkContrastThreshold ? thumbnailBackground
+                                                      : juce::Colours::black)
+            : (state.playing ? push::colours::text : push::colours::textDim);
+        const auto textColour = inked && ! state.playing
+                              ? headlineBase.withAlpha (0.75f) : headlineBase;
+
+        const auto iconSide = juce::jmin (10.0f, headline.getHeight() - 1.0f);
+        auto iconBox = headline.removeFromLeft (iconSide + 4.0f)
+                           .withSizeKeepingCentre (iconSide, iconSide);
 
         if (state.playing)
         {
@@ -91,14 +219,14 @@ void LooperSlotCell::paint (juce::Graphics& g)
                                       iconBox.getX(), iconBox.getBottom(),
                                       iconBox.getRight(), iconBox.getCentreY());
             }
-            g.setColour (push::colours::ledGreen);
+            g.setColour (iconColour);
             g.fillPath (triangle);
         }
 
-        g.setColour (state.playing ? push::colours::text : push::colours::textDim);
-        g.setFont (push::scaledFont (12.0f));
-        auto textArea = bounds.reduced (4.0f);
-        textArea.removeFromLeft (iconSide + 6.0f);
+        g.setColour (textColour);
+        g.setFont (push::scaledFont (juce::jmin (12.0f, headline.getHeight() + 2.0f)));
+        auto textArea = headline;
+        textArea.removeFromLeft (2.0f);
 
         // Badges rechts: Rate ("0.71×") und Reverse (◁)
         juce::String badge = state.rateBadge;
@@ -109,12 +237,16 @@ void LooperSlotCell::paint (juce::Graphics& g)
         {
             const auto badgeWidth = juce::jmin (textArea.getWidth() * 0.5f, 44.0f);
             const auto badgeArea = textArea.removeFromRight (badgeWidth);
-            g.setColour (push::colours::ledOrange);
+            g.setColour (inked ? headlineBase : push::colours::ledOrange);
             g.drawText (badge, badgeArea, juce::Justification::centredRight, false);
-            g.setColour (state.playing ? push::colours::text : push::colours::textDim);
+            g.setColour (textColour);
         }
 
-        g.drawText (state.label, textArea, juce::Justification::centredLeft, false);
+        // Thumbnail-Zellen tragen den eingefrorenen Quell-Text („Live /
+        // wavetable"), klassische Zellen weiter "Clip N · X Bars"
+        const auto label = inked && thumbnailSourceLabel.isNotEmpty()
+                         ? thumbnailSourceLabel : state.label;
+        g.drawText (label, textArea, juce::Justification::centredLeft, true);
     }
     else if (state.target)
     {

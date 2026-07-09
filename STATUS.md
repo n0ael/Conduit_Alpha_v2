@@ -1,9 +1,28 @@
 # Conduit Alpha — Projektstatus
 
-> Letzte Aktualisierung: 2026-07-08 | wird nach jedem Meilenstein gepflegt
+> Letzte Aktualisierung: 2026-07-09 | wird nach jedem Meilenstein gepflegt
 > Architektur-Referenz: [CLAUDE.md](CLAUDE.md) | Repo: n0ael/Conduit
 
-## Aktueller Meilenstein (08.07.2026)
+## Aktueller Meilenstein (09.07.2026)
+
+**Looper-Page: Link-bewusste Quellauswahl + Clip-Thumbnails (invertierte
+Strip-Optik):**
+
+- Quellen-Combo: Link-Receive-Taps als „{peer} / {kanal}" in eigener
+  Gruppe (Separator pro Peer/App), alle Einträge + Combo-Text in
+  Quellfarbe; Live-Refresh via Root-Tree-Listener (Kanal-Wahl im
+  Receive-Panel, nodeColour, I/O-Kanalzahl).
+- Clip-Thumbnails: Commit schnappt die aktuelle Strip-Ansicht
+  (Waveform/Spektrum) der committeten Takte als „Tinte auf transparent"
+  (`renderCommitThumbnail`) — die Slot-Zelle zeigt sie invertiert
+  (Fläche = Quellfarbe, Tinte schwarz). Kopfzeile oben mit eingefrorenem
+  Quell-Label; Kontrast-Regel: Aufbauten wechseln auf dunklen Stellen
+  auf die Quellfarbe (vorberechnete Zonen-Deckung). Progress-Sweep =
+  zyklisch über die Loop-Grenze wickelnder Fade-Schweif.
+- Details/Invarianten: docs/Looper.md; Tests: Thumbnail-Rendering,
+  Menü-Struktur, Deckungs-Messung, Lifecycle (560 Cases grün, ASan grün).
+
+## Meilenstein (08.07.2026)
 
 **Link Audio Receive — implementiert, Live-Feldtest offen:**
 

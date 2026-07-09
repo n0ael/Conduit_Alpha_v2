@@ -78,6 +78,16 @@ public:
     /** Klick auf Segment → Commit-Länge in Takten (8/4/2/1). */
     std::function<void (int bars)> onSegmentClicked;
 
+    /** [Editor, direkt nach dem Commit] Die committeten Takte als „Tinte
+        auf transparent"-Bild der AKTUELLEN View (User-Idee 09.07.2026):
+        Waveform als schwarze Min/Max-Spalten, Spektrum als Schwarz mit
+        Intensitäts-Alpha (Helligkeit der LUT-Pixel als Pegel-Proxy — die
+        Paletten sind monoton hell). Die Slot-Zelle legt das Bild auf ihre
+        Quellfarben-Fläche — die Strip-Optik invertiert. Zeitnah rufen:
+        History-Ring und Spektrum-Ring halten nur ~16 Takte. */
+    [[nodiscard]] juce::Image renderCommitThumbnail (double startBeat, double endBeat,
+                                                     int width, int height) const;
+
     void paint (juce::Graphics& g) override;
     void mouseUp (const juce::MouseEvent& event) override;
     void mouseMove (const juce::MouseEvent& event) override;
@@ -126,6 +136,12 @@ public:
 private:
     void tick();  // VBlank: beatNow + Bins nachziehen, Stale-Clear, repaint
     void rebuildSpectrumLut();
+
+    /** Min/Max-Aggregat der Bins im Beat-Bereich [beatLo, beatHi] —
+        gemeinsamer Kern von aggregateColumn (gestauchte Strip-Achse) und
+        renderCommitThumbnail (lineare Achse). */
+    [[nodiscard]] bool aggregateBeatRange (double beatLo, double beatHi,
+                                           float& minOut, float& maxOut) const;
     void store (const LooperWaveformTap::Bin& bin);
     void storeSpectrum (const LooperWaveformTap::SpectralColumn& column,
                         juce::Image::BitmapData& pixels);

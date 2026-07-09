@@ -166,18 +166,9 @@ void LooperWaveformStrip::clearStaleSpectrumColumns()
     }
 }
 
-bool LooperWaveformStrip::aggregateColumn (int x, double beatAtRightEdge,
-                                           float& minOut, float& maxOut) const
+bool LooperWaveformStrip::aggregateBeatRange (double beatLo, double beatHi,
+                                              float& minOut, float& maxOut) const
 {
-    const auto width = static_cast<double> (getWidth());
-    if (width <= 0.0)
-        return false;
-
-    // Spalte deckt Beats [beatNow − offset(x), beatNow − offset(x+1)) —
-    // im gestauchten linken Segment fallen mehrere Bins auf ein Pixel
-    const auto beatLo = beatAtRightEdge - looper::beatOffsetForX (x, width);
-    const auto beatHi = beatAtRightEdge - looper::beatOffsetForX (x + 1.0, width);
-
     const auto binLo = static_cast<std::int64_t> (
         std::floor (beatLo * LooperWaveformTap::binsPerBeat));
     const auto binHi = static_cast<std::int64_t> (
@@ -199,6 +190,103 @@ bool LooperWaveformStrip::aggregateColumn (int x, double beatAtRightEdge,
     }
 
     return anyData;
+}
+
+bool LooperWaveformStrip::aggregateColumn (int x, double beatAtRightEdge,
+                                           float& minOut, float& maxOut) const
+{
+    const auto width = static_cast<double> (getWidth());
+    if (width <= 0.0)
+        return false;
+
+    // Spalte deckt Beats [beatNow − offset(x), beatNow − offset(x+1)) —
+    // im gestauchten linken Segment fallen mehrere Bins auf ein Pixel
+    return aggregateBeatRange (beatAtRightEdge - looper::beatOffsetForX (x, width),
+                               beatAtRightEdge - looper::beatOffsetForX (x + 1.0, width),
+                               minOut, maxOut);
+}
+
+//==============================================================================
+juce::Image LooperWaveformStrip::renderCommitThumbnail (double startBeat, double endBeat,
+                                                        int width, int height) const
+{
+    // Dimensionen lokal und beweisbar ≥ 1 halten — Divisionen durch die
+    // Pimpl-Getter (getWidth/getHeight) meldet der Release-Codegen als
+    // C4723 (mögliche Division durch 0, /WX)
+    const auto imageWidth  = juce::jmax (1, width);
+    const auto imageHeight = juce::jmax (1, height);
+    juce::Image image (juce::Image::ARGB, imageWidth, imageHeight, true);
+
+    const auto span = endBeat - startBeat;
+    if (span <= 0.0)
+        return image;
+
+    if (view == View::waveform)
+    {
+        // Lineare Beat-Achse (kein Segment-Stauchen): pro Spalte das
+        // Min/Max-Aggregat, gezeichnet als Tinte (Schwarz auf transparent)
+        juce::Graphics g (image);
+        g.setColour (juce::Colours::black);
+
+        const auto midY = static_cast<float> (imageHeight) * 0.5f;
+        const auto halfHeight = midY - 1.0f;
+
+        for (int x = 0; x < imageWidth; ++x)
+        {
+            const auto beatLo = startBeat + span * x / imageWidth;
+            const auto beatHi = startBeat + span * (x + 1) / imageWidth;
+
+            float minValue = 0.0f, maxValue = 0.0f;
+            if (! aggregateBeatRange (beatLo, beatHi, minValue, maxValue))
+                continue;
+
+            const auto top    = midY - juce::jlimit (0.0f, 1.0f,  maxValue) * halfHeight;
+            const auto bottom = midY - juce::jlimit (-1.0f, 0.0f, minValue) * halfHeight;
+            g.drawVerticalLine (x, top, juce::jmax (bottom, top + 1.0f));
+        }
+
+        return image;
+    }
+
+    // Spektrum: Intensität der Ring-Spalten als Alpha der Tinte. Das Ring-
+    // Image hält fertige LUT-Farben — deren wahrgenommene Helligkeit ist
+    // der Pegel-Proxy (beide Paletten sind monoton hell), normalisiert
+    // über die LUT-Endpunkte. Stale/fehlende Spalten bleiben transparent.
+    const juce::Image::BitmapData source { spectrumImage, 0, 0,
+                                           spectrumRingColumns, looper::spectrumBands };
+    juce::Image::BitmapData target { image, juce::Image::BitmapData::writeOnly };
+
+    const auto brightnessLo = spectrumLut[0].getPerceivedBrightness();
+    const auto brightnessRange = juce::jmax (
+        0.001f, spectrumLut[255].getPerceivedBrightness() - brightnessLo);
+
+    for (int x = 0; x < imageWidth; ++x)
+    {
+        const auto beat = startBeat + span * (x + 0.5) / imageWidth;
+        const auto columnIndex = static_cast<std::int64_t> (
+            std::floor (beat * looper::spectrumColumnsPerBeat));
+        if (columnIndex < 0)
+            continue;
+
+        const auto slot = static_cast<int> (columnIndex % spectrumRingColumns);
+        if (spectrumTags[static_cast<std::size_t> (slot)] != columnIndex)
+            continue;
+
+        for (int y = 0; y < imageHeight; ++y)
+        {
+            // Zeile 0 = Band 63 in Bild UND Ring — direkte Zuordnung
+            const auto row = juce::jlimit (0, looper::spectrumBands - 1,
+                                           y * looper::spectrumBands / imageHeight);
+            const auto level = juce::jlimit (0.0f, 1.0f,
+                (source.getPixelColour (slot, row).getPerceivedBrightness() - brightnessLo)
+                    / brightnessRange);
+
+            if (level > 0.02f)
+                target.setPixelColour (x, y, juce::Colours::black.withAlpha (level));
+        }
+    }
+
+    return image;
 }
 
 //==============================================================================

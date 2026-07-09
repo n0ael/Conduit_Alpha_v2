@@ -135,3 +135,70 @@ TEST_CASE ("LooperWaveformStrip: Spektrum-Ring-Image, Stale-Clear und View (S2)"
         REQUIRE (strip.getView() == Strip::View::waveform);
     }
 }
+
+//==============================================================================
+TEST_CASE ("LooperWaveformStrip: Commit-Thumbnail als Tinte auf transparent", "[looper][ui]")
+{
+    juce::ScopedJuceInitialiser_GUI juceRuntime;
+
+    conduit::LooperWaveformStrip strip;
+    strip.setBounds (0, 0, 400, 160);
+
+    using Strip = conduit::LooperWaveformStrip;
+    using Column = conduit::LooperWaveformTap::SpectralColumn;
+
+    SECTION ("Waveform: Signal-Spalten tragen schwarze Tinte, Leere bleibt transparent")
+    {
+        // Nur der Takt [4, 8) Beats trägt Vollpegel (Bins 128..255,
+        // binsPerBeat 32) — die erste Fensterhälfte bleibt leer
+        for (std::int64_t b = 128; b < 256; ++b)
+            strip.ingestBinForTest ({ b, -1.0f, 1.0f });
+
+        const auto image = strip.renderCommitThumbnail (0.0, 8.0, 128, 32);
+        REQUIRE (image.getWidth() == 128);
+        REQUIRE (image.getHeight() == 32);
+
+        // Spalte 32 → Beats um 2.0 (leer); Spalte 96 → Beats um 6.0 (voll)
+        REQUIRE (image.getPixelAt (32, 16).getAlpha() == 0);
+
+        const auto ink = image.getPixelAt (96, 16);
+        REQUIRE (ink.getAlpha() > 200);
+        REQUIRE (ink.getPerceivedBrightness() < 0.1f);   // Tinte ist Schwarz
+    }
+
+    SECTION ("Waveform: kleiner Pegel malt nur um die Mittellinie")
+    {
+        for (std::int64_t b = 0; b < 256; ++b)
+            strip.ingestBinForTest ({ b, -0.05f, 0.05f });
+
+        const auto image = strip.renderCommitThumbnail (0.0, 8.0, 128, 32);
+        REQUIRE (image.getPixelAt (64, 16).getAlpha() > 0);
+        REQUIRE (image.getPixelAt (64, 2).getAlpha() == 0);
+        REQUIRE (image.getPixelAt (64, 29).getAlpha() == 0);
+    }
+
+    SECTION ("Spektrum-View: Band-Intensität wird Tinten-Alpha, Lücken transparent")
+    {
+        strip.setView (Strip::View::spectrum);
+
+        Column column;
+        column.index = 8;          // Beat-Fenster [0,1) → Spaltenindizes 0..15
+        column.bands[10] = 1.0f;   // ein heißes Band
+        strip.ingestSpectrumForTest (column);
+
+        // Bild 16×64: Spalte x trifft exakt Spaltenindex x, Zeile y = Ring-
+        // Zeile y (Band 10 liegt in Zeile 63 − 10 = 53, Spektrogramm-Konvention)
+        const auto image = strip.renderCommitThumbnail (0.0, 1.0, 16, 64);
+
+        REQUIRE (image.getPixelAt (8, 53).getAlpha() > 128);           // heißes Band
+        REQUIRE (image.getPixelAt (8, 63 - 40).getAlpha() == 0);       // stilles Band
+        REQUIRE (image.getPixelAt (3, 53).getAlpha() == 0);            // Spalte ohne Daten
+    }
+
+    SECTION ("leeres Fenster liefert ein gültiges, transparentes Bild")
+    {
+        const auto image = strip.renderCommitThumbnail (8.0, 8.0, 64, 32);
+        REQUIRE (image.isValid());
+        REQUIRE (image.getPixelAt (32, 16).getAlpha() == 0);
+    }
+}

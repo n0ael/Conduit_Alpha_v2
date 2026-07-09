@@ -22,8 +22,8 @@ namespace conduit
     Track-Name auf Track-Farbe als Fußzeile.
 
     kind steuert die Bedienbreite: „audio"/„midi" = voller Zug (Commands
-    über die Stable-ID), „return" = nur Vol/Pan (/live/return/set/*, Index),
-    „master" = nur Vol/Pan (/live/master/set/*). Die Gegenseite (M1a)
+    über die Stable-ID), „return" = nur Vol/Pan (/live/return/set/…, Index),
+    „master" = nur Vol/Pan (/live/master/set/…). Die Gegenseite (M1a)
     kann Mute/Solo/Sends für Returns noch nicht setzen — die Regler
     erscheinen erst, wenn das Script sie kann.
 

@@ -186,9 +186,10 @@ TEST_CASE ("LooperSlotCell: Tinten-Deckung der Kopfzeilen-Zonen", "[looper][ui]"
     REQUIRE (mixed < 0.6f);
 
     // Ungültiges Bild / Zone außerhalb → 0 (kein Crash)
-    REQUIRE (Cell::computeInkCoverage (juce::Image(), { 0.0f, 0.0f, 1.0f, 1.0f })
-             == 0.0f);
-    REQUIRE (Cell::computeInkCoverage (ink, { 2.0f, 2.0f, 0.5f, 0.5f }) == 0.0f);
+    REQUIRE (juce::exactlyEqual (
+        Cell::computeInkCoverage (juce::Image(), { 0.0f, 0.0f, 1.0f, 1.0f }), 0.0f));
+    REQUIRE (juce::exactlyEqual (
+        Cell::computeInkCoverage (ink, { 2.0f, 2.0f, 0.5f, 0.5f }), 0.0f));
 }
 
 TEST_CASE ("LooperTrackStrip: Hooks liefern Track-lokale Indizes und Werte", "[looper][ui]")

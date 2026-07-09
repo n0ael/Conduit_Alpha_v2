@@ -62,7 +62,7 @@ public:
     {
         juce::String key;
         juce::String label;
-        juce::Colour colour;
+        juce::Colour colour {};        // transparent = Standard-Textfarbe
         bool separatorBefore = false;
     };
     void setSources (std::vector<Source> sources, const juce::String& selectedKey);

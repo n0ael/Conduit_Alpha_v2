@@ -8,10 +8,11 @@ TEST_CASE ("PageHost: Device ist default, Umschalten zeigt genau eine Page", "[p
 {
     juce::ScopedJuceInitialiser_GUI juceRuntime;
 
-    juce::Component devicePage;  // steht für die NodeCanvas
-    juce::Component looperPage;  // steht für die LooperPage (B3)
-    juce::Component gridPage;    // steht für die GridPage (M1 Teil 3)
-    conduit::PageHost host (devicePage, looperPage, gridPage);
+    juce::Component devicePage;     // steht für die NodeCanvas
+    juce::Component looperPage;     // steht für die LooperPage (B3)
+    juce::Component gridPage;       // steht für die GridPage (M1 Teil 3)
+    juce::Component touchLivePage;  // steht für die TouchLivePage (M1c)
+    conduit::PageHost host (devicePage, looperPage, gridPage, touchLivePage);
     host.setBounds (0, 0, 800, 600);
 
     // Default: Device sichtbar (Index 3 == TransportBar::pageDevice)
@@ -28,7 +29,8 @@ TEST_CASE ("PageHost: Device ist default, Umschalten zeigt genau eine Page", "[p
     for (int i = 0; i < host.getNumChildComponents(); ++i)
     {
         auto* child = host.getChildComponent (i);
-        if (child != &devicePage && child != &looperPage && child != &gridPage && child->isVisible())
+        if (child != &devicePage && child != &looperPage && child != &gridPage
+            && child != &touchLivePage && child->isVisible())
             ++visiblePlaceholders;
     }
 
@@ -40,6 +42,26 @@ TEST_CASE ("PageHost: Device ist default, Umschalten zeigt genau eine Page", "[p
     REQUIRE (devicePage.getBounds() == host.getLocalBounds());
 }
 
+TEST_CASE ("PageHost: TouchLive-Page auf Slot 2 (statt Clip, M1c)", "[pages][ui][touchlive]")
+{
+    juce::ScopedJuceInitialiser_GUI juceRuntime;
+
+    juce::Component devicePage;
+    juce::Component looperPage;
+    juce::Component gridPage;
+    juce::Component touchLivePage;
+    conduit::PageHost host (devicePage, looperPage, gridPage, touchLivePage);
+    host.setBounds (0, 0, 800, 600);
+
+    host.setPage (conduit::TransportBar::pageTouchLive);
+    REQUIRE (touchLivePage.isVisible());
+    REQUIRE_FALSE (devicePage.isVisible());
+    REQUIRE (touchLivePage.getBounds() == host.getLocalBounds());
+
+    host.setPage (conduit::TransportBar::pageDevice);
+    REQUIRE_FALSE (touchLivePage.isVisible());
+}
+
 TEST_CASE ("PageHost: Looper-Page (B3) hinter der Tape-Kachel", "[pages][ui][looper]")
 {
     juce::ScopedJuceInitialiser_GUI juceRuntime;
@@ -47,7 +69,8 @@ TEST_CASE ("PageHost: Looper-Page (B3) hinter der Tape-Kachel", "[pages][ui][loo
     juce::Component devicePage;
     juce::Component looperPage;
     juce::Component gridPage;
-    conduit::PageHost host (devicePage, looperPage, gridPage);
+    juce::Component touchLivePage;
+    conduit::PageHost host (devicePage, looperPage, gridPage, touchLivePage);
     host.setBounds (0, 0, 800, 600);
 
     // Looper einblenden: Device weg, Looper füllt den Host

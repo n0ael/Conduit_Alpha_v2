@@ -9,29 +9,31 @@ namespace conduit
 
 //==============================================================================
 /**
-    Host der vier Pages hinter den Push-Icons der TransportBar
-    (User-Entscheidung 2026-07-02):
+    Host der Pages hinter den Push-Icons der TransportBar
+    (User-Entscheidung 2026-07-02; TouchLive statt Clip 09.07.2026):
 
-      Grid   (Ω)   — AbletonOSC-Remote-Page        [eigener Meilenstein]
-      Mixer  (∥∥)  — Mixer-Page                    [eigener Meilenstein]
-      Clip   (▷▭)  — Fugue-Machine-Sequencer,
-                     CV- und MIDI-Ziele            [eigener Meilenstein]
-      Device (|||) — die Patch-Canvas (bestehend)
-      Looper (oo)  — Retro-Looper (B3), erreichbar über die Tape-Kachel
-                     statt über ein Page-Icon
+      Grid      (Ω)             — MPE-Touch-Controller (implementiert)
+      Mixer     (∥∥)            — Mixer-Page           [eigener Meilenstein]
+      TouchLive (Mini-Kanalzüge) — Ableton-Live-Remote (M1c); die Clip-Page
+                                  (▷▭, Fugue-Machine-Sequencer) bekommt
+                                  später wieder einen eigenen Slot
+      Device    (|||)           — die Patch-Canvas (bestehend)
+      Looper    (oo)            — Retro-Looper (B3), erreichbar über die
+                                  Tape-Kachel statt über ein Page-Icon
 
-    Der Host besitzt nur die Platzhalter; Device-Komponente (NodeCanvas),
-    LooperPage und GridPage (M1 Teil 3) gehören weiterhin dem EngineEditor
-    und werden als Referenz eingehängt — ihre Verdrahtung bleibt unangetastet.
+    Der Host besitzt nur die Platzhalter; NodeCanvas, LooperPage, GridPage
+    und TouchLivePage gehören weiterhin dem EngineEditor und werden als
+    Referenz eingehängt — ihre Verdrahtung bleibt unangetastet.
 
     Page-Indizes == TransportBar::PageIndex. Message Thread.
 */
 class PageHost final : public juce::Component
 {
 public:
-    /** devicePage (Canvas), looperPage und gridPage: nicht owned, müssen
-        den Host überleben — Member-Reihenfolge im EngineEditor. */
-    PageHost (juce::Component& devicePage, juce::Component& looperPage, juce::Component& gridPage);
+    /** devicePage (Canvas), looperPage, gridPage und touchLivePage: nicht
+        owned, müssen den Host überleben — Member-Reihenfolge im EngineEditor. */
+    PageHost (juce::Component& devicePage, juce::Component& looperPage,
+              juce::Component& gridPage, juce::Component& touchLivePage);
 
     void setPage (int pageIndex);
     [[nodiscard]] int getPage() const noexcept { return currentPage; }
@@ -55,8 +57,8 @@ private:
     juce::Component& device;
     juce::Component& looper;
     juce::Component& grid;
+    juce::Component& touchLive;
     Placeholder mixerPage  { push::Icon::pageMixer, "Mixer" };
-    Placeholder clipPage   { push::Icon::pageClip,  "Clip" };
 
     int currentPage = 3;  // TransportBar::pageDevice
 

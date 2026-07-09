@@ -1,7 +1,9 @@
 ---
 paths:
   - "Source/TouchLive/**"
+  - "Source/UI/TouchLivePage/**"
   - "Tests/TouchLive/**"
+  - "Tests/UI/TouchLivePageTests.cpp"
   - "Tools/Live/ConduitRemote/**"
   - "docs/TouchLive.md"
 ---
@@ -32,6 +34,18 @@ Feel-Regeln (§5.1, verbindlich):
   Das UI wartet NIE auf Live-Feedback, um sich zu bewegen.
 - **Touch-Thinning:** `sendTouchValue` max. ein Send pro ~16 ms pro Adresse,
   letzter Wert gewinnt; kein Bundling mit Struktur-Traffic.
+- **Fremd-Feedback slewt** (~30 ms, AnimatedValue), nie hart setzen —
+  Meter ausgenommen (roh, M2).
+
+UI (M1c, Source/UI/TouchLivePage/):
+- Page-Slot 2 (Icon `pageTouchLive`, User-SVG) — die Clip-Page bekommt
+  später wieder einen Slot. Sub-Tabs GRID · MIXER · DEVICE · BROWSER.
+- Fader-Drag ist RELATIV (kein Cap-Sprung), Doppeltipp = 0 dB; Wert↔dB via
+  `touchlive::faderscale` (Näherung — nach Feldtest kalibrieren).
+- Mixer-Feldnamen der Gegenseite: `vol`/`pan`/`sends`/`mute`/`solo`/`arm`.
+  Returns nur über `/live/return/set/*` (Index), Master `/live/master/set/*`
+  — der Stable-ID-Resolver der Gegenseite kennt NUR reguläre Tracks.
+- Kanalbreite (TouchLiveSettings) steuert Mixer-Züge UND Grid-Spalten.
 
 Wire-Protokoll (Gegenseite M1a):
 - `/remote/state/{d}/snapshot|diff` mit `[seq:int, chunk:int, chunks:int,

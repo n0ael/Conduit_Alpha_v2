@@ -13,9 +13,11 @@ paths:
   einem normierten 0..1-Quadrat in die Ziel-Bounds skaliert — vektorbasiert,
   DPI-fähig, keine Bitmaps. Bausteine: IconTile/TextTile/ValueTile
   (`PushTiles`).
-- **Pages** (`Source/UI/PageHost`): Grid (Ω) · Mixer (∥∥) · Clip (▷▭) ·
-  Device (|||, Patch-Canvas). Device und Grid (M1) implementiert — Mixer
-  und Clip bleiben gestylte Platzhalter (je ein eigener Meilenstein).
+- **Pages** (`Source/UI/PageHost`): Grid (Ω) · Mixer (∥∥) · TouchLive
+  (Mini-Kanalzüge, Slot 2 — Rule `touchlive`) · Device (|||, Patch-Canvas).
+  Device, Grid (M1) und TouchLive (M1c) implementiert — Mixer bleibt
+  gestylter Platzhalter; die Clip-Page (▷▭) bekommt später wieder einen
+  eigenen Slot (09.07.2026).
 - **Schrift wird NIE horizontal gestaucht (User-Regel 07/2026):** bei
   Platzmangel Schriftgröße reduzieren oder Text kürzen — niemals quetschen.
   `drawFittedText`/`drawLabel` immer mit minimumHorizontalScale = 1.0

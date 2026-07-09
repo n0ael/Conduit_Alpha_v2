@@ -6,12 +6,13 @@
 namespace conduit
 {
 
-PageHost::PageHost (juce::Component& devicePage, juce::Component& looperPage, juce::Component& gridPage)
-    : device (devicePage), looper (looperPage), grid (gridPage)
+PageHost::PageHost (juce::Component& devicePage, juce::Component& looperPage,
+                    juce::Component& gridPage, juce::Component& touchLivePage)
+    : device (devicePage), looper (looperPage), grid (gridPage), touchLive (touchLivePage)
 {
     addChildComponent (grid);
     addChildComponent (mixerPage);
-    addChildComponent (clipPage);
+    addChildComponent (touchLive);
     addChildComponent (looper);
     addAndMakeVisible (device);
 
@@ -24,7 +25,7 @@ void PageHost::setPage (int pageIndex)
 
     grid.setVisible (currentPage == TransportBar::pageGrid);
     mixerPage.setVisible (currentPage == TransportBar::pageMixer);
-    clipPage.setVisible (currentPage == TransportBar::pageClip);
+    touchLive.setVisible (currentPage == TransportBar::pageTouchLive);
     device.setVisible (currentPage == TransportBar::pageDevice);
     looper.setVisible (currentPage == TransportBar::pageLooper);
 }
@@ -34,7 +35,7 @@ void PageHost::resized()
     const auto bounds = getLocalBounds();
     grid.setBounds (bounds);
     mixerPage.setBounds (bounds);
-    clipPage.setBounds (bounds);
+    touchLive.setBounds (bounds);
     device.setBounds (bounds);
     looper.setBounds (bounds);
 }

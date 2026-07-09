@@ -18,11 +18,14 @@ namespace conduit::push
     Kreis-Outline + gefüllter Punkt); outlinePath() liefert die reine
     Geometrie für Tests und Sonderfälle.
 
-    Zuordnung der Page-Icons (User-Entscheidung 2026-07-02):
-      pageMixer  (Balken)        → Mixer-Page
-      pageClip   (▷ im Rechteck) → Clip-Page (Fugue-Machine-Sequencer)
-      pageDevice (|||)           → Device-Page (Patch-Canvas)
-      pageGrid   (Ω-Schleife)    → Grid-Page (AbletonOSC-Remote)
+    Zuordnung der Page-Icons (User-Entscheidung 2026-07-02, TouchLive 09.07.):
+      pageMixer     (Balken)            → Mixer-Page
+      pageTouchLive (Mini-Kanalzüge)    → TouchLive-Page (Ableton-Live-Remote,
+                                          belegt vorerst den Clip-Slot)
+      pageClip      (▷ im Rechteck)     → Clip-Page (Fugue-Machine-Sequencer,
+                                          bekommt später wieder einen Slot)
+      pageDevice    (|||)               → Device-Page (Patch-Canvas)
+      pageGrid      (Ω-Schleife)        → Grid-Page (MPE-Touch-Controller)
 */
 enum class Icon
 {
@@ -39,6 +42,7 @@ enum class Icon
     pageClip,       // ▷ im Rechteck
     pageDevice,     // |||
     pageGrid,       // Ω
+    pageTouchLive,  // drei Mini-Kanalzüge (User-SVG TouchLive.svg, 09.07.2026)
 
     // Dev-Zeile des FxModulePanel (4.6) — Symbole statt Text (User 03.07.:
     // Text war bei 28px-Buttons unlesbar; Vektor-Icons skalieren immer)

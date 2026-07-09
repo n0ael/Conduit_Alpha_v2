@@ -139,8 +139,8 @@ TransportBar::TransportBar (juce::ValueTree rootTree, LinkClock& linkClockToUse,
 
     // -- Pages (Reihenfolge wie auf dem Push-Controller) ----------------------
     const push::Icon pageIcons[] = { push::Icon::pageGrid, push::Icon::pageMixer,
-                                     push::Icon::pageClip, push::Icon::pageDevice };
-    const char* pageNames[] = { "Grid", "Mixer", "Clip", "Device" };
+                                     push::Icon::pageTouchLive, push::Icon::pageDevice };
+    const char* pageNames[] = { "Grid", "Mixer", "TouchLive", "Device" };
 
     for (int page = 0; page < 4; ++page)
     {

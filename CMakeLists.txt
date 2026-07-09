@@ -149,6 +149,10 @@ set(CONDUIT_CPP_SOURCES
     Source/TouchLive/LiveSetModel.cpp
     Source/TouchLive/TouchLiveClient.cpp
     Source/TouchLive/TouchLiveSettings.cpp
+    Source/UI/TouchLivePage/TouchLiveFader.cpp
+    Source/UI/TouchLivePage/TouchLiveGridView.cpp
+    Source/UI/TouchLivePage/TouchLiveMixerView.cpp
+    Source/UI/TouchLivePage/TouchLivePage.cpp
     Source/Modules/ChassisSchema.cpp
     Source/Modules/ConduitModule.cpp
     Source/Modules/ModuleFactory.cpp
@@ -317,9 +321,14 @@ target_sources(Conduit PRIVATE
     Source/Core/Capture/PreRollBuffer.h
     Source/Core/Capture/SampleClock.h
     Source/TouchLive/IRemoteTransport.h
+    Source/TouchLive/LiveFaderScale.h
     Source/TouchLive/LiveSetModel.h
     Source/TouchLive/TouchLiveClient.h
     Source/TouchLive/TouchLiveSettings.h
+    Source/UI/TouchLivePage/TouchLiveFader.h
+    Source/UI/TouchLivePage/TouchLiveGridView.h
+    Source/UI/TouchLivePage/TouchLiveMixerView.h
+    Source/UI/TouchLivePage/TouchLivePage.h
     Source/Interfaces/ICaptureTapClient.h
     Source/Interfaces/IClockSlave.h
     Source/Interfaces/IClockSource.h
@@ -584,8 +593,10 @@ if(CONDUIT_BUILD_TESTS)
         Tests/Core/TransportLinkTests.cpp
         Tests/Core/UiSettingsTests.cpp
         Tests/Core/VoiceAllocatorTests.cpp
+        Tests/TouchLive/LiveFaderScaleTests.cpp
         Tests/TouchLive/LiveSetModelTests.cpp
         Tests/TouchLive/TouchLiveClientTests.cpp
+        Tests/UI/TouchLivePageTests.cpp
         Tests/UI/BrowserPanelTests.cpp
         Tests/UI/EditorDockPanelTests.cpp
         Tests/UI/NoteCircleFadeTrackerTests.cpp
@@ -665,6 +676,10 @@ if(CONDUIT_BUILD_TESTS)
         Source/TouchLive/LiveSetModel.cpp
         Source/TouchLive/TouchLiveClient.cpp
         Source/TouchLive/TouchLiveSettings.cpp
+        Source/UI/TouchLivePage/TouchLiveFader.cpp
+        Source/UI/TouchLivePage/TouchLiveGridView.cpp
+        Source/UI/TouchLivePage/TouchLiveMixerView.cpp
+        Source/UI/TouchLivePage/TouchLivePage.cpp
         Source/Modules/ChassisSchema.cpp
         Source/Modules/ConduitModule.cpp
         Source/Modules/ModuleFactory.cpp

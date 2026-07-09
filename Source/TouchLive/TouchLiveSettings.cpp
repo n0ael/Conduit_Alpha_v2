@@ -5,10 +5,11 @@ namespace conduit
 
 namespace
 {
-    constexpr const char* hostKey        = "host";
-    constexpr const char* commandPortKey = "commandPort";
-    constexpr const char* listenPortKey  = "listenPort";
-    constexpr const char* enabledKey     = "enabled";
+    constexpr const char* hostKey         = "host";
+    constexpr const char* commandPortKey  = "commandPort";
+    constexpr const char* listenPortKey   = "listenPort";
+    constexpr const char* enabledKey      = "enabled";
+    constexpr const char* channelWidthKey = "channelWidth";
 
     [[nodiscard]] bool isValidPort (int port) noexcept
     {
@@ -45,10 +46,12 @@ void TouchLiveSettings::loadFromFile()
 {
     if (auto* file = applicationProperties.getUserSettings())
     {
-        host        = file->getValue (hostKey, defaultHost);
-        commandPort = file->getIntValue (commandPortKey, defaultCommandPort);
-        listenPort  = file->getIntValue (listenPortKey, defaultListenPort);
-        enabled     = file->getBoolValue (enabledKey, false);
+        host         = file->getValue (hostKey, defaultHost);
+        commandPort  = file->getIntValue (commandPortKey, defaultCommandPort);
+        listenPort   = file->getIntValue (listenPortKey, defaultListenPort);
+        enabled      = file->getBoolValue (enabledKey, false);
+        channelWidth = juce::jlimit (minChannelWidth, maxChannelWidth,
+                                     file->getIntValue (channelWidthKey, defaultChannelWidth));
 
         if (! isValidPort (commandPort))
             commandPort = defaultCommandPort;
@@ -106,6 +109,18 @@ void TouchLiveSettings::setEnabled (bool shouldConnect)
 
     enabled = shouldConnect;
     store (enabledKey, enabled);
+    sendChangeMessage();
+}
+
+void TouchLiveSettings::setChannelWidth (int newWidth)
+{
+    const auto clamped = juce::jlimit (minChannelWidth, maxChannelWidth, newWidth);
+
+    if (clamped == channelWidth)
+        return;
+
+    channelWidth = clamped;
+    store (channelWidthKey, channelWidth);
     sendChangeMessage();
 }
 

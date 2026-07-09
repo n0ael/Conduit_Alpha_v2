@@ -90,8 +90,10 @@ public:
 
     /** Page-Reihenfolge in der Bar (Icon-Optik wie auf dem Push).
         pageLooper hat KEIN Page-Icon — die Looper-Page (B3) öffnet über
-        die Tape-Kachel (oo) links im Transport. */
-    enum PageIndex { pageGrid = 0, pageMixer = 1, pageClip = 2, pageDevice = 3,
+        die Tape-Kachel (oo) links im Transport. Slot 2 gehört seit M1c der
+        TouchLive-Page (Ableton-Live-Remote); die Clip-Page bekommt später
+        wieder einen eigenen Slot (User-Entscheidung 09.07.2026). */
+    enum PageIndex { pageGrid = 0, pageMixer = 1, pageTouchLive = 2, pageDevice = 3,
                      pageLooper = 4 };
 
     void setSelectedPage (int pageIndex);

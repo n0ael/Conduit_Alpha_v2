@@ -3,7 +3,35 @@
 > Letzte Aktualisierung: 2026-07-09 | wird nach jedem Meilenstein gepflegt
 > Architektur-Referenz: [CLAUDE.md](CLAUDE.md) | Repo: n0ael/Conduit
 
-## Aktueller Meilenstein (09.07.2026) — TouchLive M1b
+## Aktueller Meilenstein (09.07.2026) — TouchLive M1c
+
+**TouchLive-Page: GRID + MIXER auf Page-Slot 2 (statt Clip-Platzhalter):**
+
+- Neues Page-Icon aus User-SVG (drei Mini-Kanalzüge, als juce::Path);
+  `PageIndex::pageClip` → `pageTouchLive` — die Clip-Page bekommt später
+  wieder einen Slot. `Source/UI/TouchLivePage/`: Page mit Sub-Tabs
+  GRID · MIXER · DEVICE · BROWSER (letzte zwei gestylte Platzhalter) +
+  Verbindungsleiste (Status-LED, LIVE-Enable, Host, IP-LEARN, Kanalbreite).
+- **MIXER:** Kanalzug pro Track (Pan, Sends dynamisch, Volume-Fader nach
+  User-SVG mit dB-Skala 0…60 + adaptiver Label-Dichte, Mute/Solo/Arm-LEDs
+  gelb/blau/rot, Name auf Trackfarbe), Master rechts angepinnt. Fader:
+  relativer Drag + Doppeltipp = 0 dB, lokal-optimistisch + Thinning +
+  Suppression; Fremd-Feedback slewt 30 ms (`LiveFaderScale`: 0.85 → 0 dB,
+  Näherung — Kalibrierung nach Feldtest). Returns/Master über eigene
+  OSC-Pfade (Stable-ID-Resolver der Gegenseite kennt nur reguläre Tracks).
+- **GRID:** Session-View paint-only (Track-Header in Live-Farbe, Clip-
+  Zellen mit 5 Zuständen, queued blinkt via VBlank, Scene-Fire-Spalte,
+  Stop-Zeile, Tap-vs-Pan-Geste); Spaltenbreite = Kanalbreiten-Setting.
+- Verdrahtung: EngineProcessor besitzt Settings/Modell/Client, EngineEditor
+  die Page (PageHost-Slot 2). Tests: 591 Cases / 27 105 Assertions grün
+  (12 neue UI-/Skala-Cases), ASan grün.
+- **Feldtest-Erstkontakt erfolgreich (09.07.2026, Release-Build):** Live-
+  Verbindung steht, Track-Namen und -Farben erscheinen in der Page
+  (User-Abnahme). Nächster Schritt: M2 (Meter-Pfad + Fader-Feel-Abnahme
+  gegen die Roto-Messlatte, LiveFaderScale kalibrieren) und Figma-Assets
+  stückweise ersetzen.
+
+## Meilenstein (09.07.2026) — TouchLive M1b
 
 **TouchLive (Ableton-Live-Remote): Conduit-Client + LiveSetModel + Settings
 — noch ohne UI (M1c):**

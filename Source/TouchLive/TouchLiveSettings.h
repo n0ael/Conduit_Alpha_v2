@@ -27,6 +27,12 @@ public:
     static constexpr int defaultListenPort  = 9011;
     static constexpr const char* defaultHost = "127.0.0.1";
 
+    // Kanalzug-Breite der Mixer-Ansicht (User-Entscheidung 09.07.2026:
+    // einstellbar, wie viele Tracks parallel sichtbar sind)
+    static constexpr int defaultChannelWidth = 96;
+    static constexpr int minChannelWidth     = 56;
+    static constexpr int maxChannelWidth     = 200;
+
     /** Eigene Datei neben Meter.settings / OscSend.settings. */
     [[nodiscard]] static juce::PropertiesFile::Options defaultOptions();
 
@@ -46,6 +52,11 @@ public:
     [[nodiscard]] bool isEnabled() const noexcept { return enabled; }
     void setEnabled (bool shouldConnect);
 
+    /** Breite eines Mixer-Kanalzugs in px (geklemmt [min,max]) — die
+        dB-Skala des Faders passt ihre Label-Dichte daran an. */
+    [[nodiscard]] int getChannelWidth() const noexcept { return channelWidth; }
+    void setChannelWidth (int newWidth);
+
 private:
     void loadFromFile();
     void store (const char* key, const juce::var& value);
@@ -56,6 +67,7 @@ private:
     int commandPort = defaultCommandPort;
     int listenPort  = defaultListenPort;
     bool enabled = false;
+    int channelWidth = defaultChannelWidth;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (TouchLiveSettings)
 };

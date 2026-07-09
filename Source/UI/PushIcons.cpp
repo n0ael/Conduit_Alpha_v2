@@ -343,6 +343,33 @@ juce::Path gridLoop()
     return p;
 }
 
+juce::Path touchLiveStrips()
+{
+    // TouchLive-Page (User-SVG TouchLive.svg, 09.07.2026): drei Mini-
+    // Kanalzüge — je drei Querstriche über einem Fader-Stem. Rects 1:1 aus
+    // der 44er-ViewBox, Inhalt (x 14..30, y 13..31) zentriert hochskaliert.
+    juce::Path p;
+
+    const auto addSvgRect = [&p] (float x, float y, float w, float h)
+    {
+        constexpr float scale = 0.68f / 18.0f;             // Inhaltshöhe → 0.68
+        constexpr float x0 = (1.0f - 16.0f * scale) / 2.0f;
+        constexpr float y0 = (1.0f - 18.0f * scale) / 2.0f;
+        p.addRectangle (x0 + (x - 14.0f) * scale, y0 + (y - 13.0f) * scale,
+                        w * scale, h * scale);
+    };
+
+    for (const auto columnX : { 14.0f, 20.0f, 26.0f })
+    {
+        addSvgRect (columnX, 13.0f, 4.0f, 2.0f);
+        addSvgRect (columnX, 17.0f, 4.0f, 2.0f);
+        addSvgRect (columnX, 21.0f, 4.0f, 2.0f);
+        addSvgRect (columnX + 1.0f, 25.0f, 2.0f, 6.0f);    // Stem
+    }
+
+    return p;
+}
+
 //==============================================================================
 juce::AffineTransform fitToBounds (const juce::Rectangle<float>& bounds)
 {
@@ -368,6 +395,7 @@ juce::Path strokeGeometry (Icon icon)
         case Icon::nudgeLeft:
         case Icon::nudgeRight:
         case Icon::chevronDown:
+        case Icon::pageTouchLive:
             return {};
         case Icon::pageMixer:    return mixerBars();
         case Icon::pageClip:     return clipBoxOutline();
@@ -401,6 +429,7 @@ juce::Path fillGeometry (Icon icon)
     {
         case Icon::metronome:   return metronomeDot();
         case Icon::pageClip:    return clipBoxTriangle();
+        case Icon::pageTouchLive: return touchLiveStrips();
         case Icon::chevronDown: return chevronDownSmall();
         case Icon::fader:       return faderThumb();
         case Icon::browserPanel: return browserPanelFill();

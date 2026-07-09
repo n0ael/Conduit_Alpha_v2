@@ -33,6 +33,8 @@ EngineEditor::EngineEditor (EngineProcessor& engineProcessor,
               &engineProcessor.getInputLinkSend(), &engineProcessor.getUiSettings()),
       gridPage (engineProcessor.getGridVoiceEngine(), engineProcessor.getGridMidiDeviceTarget(),
                engineProcessor.getGridPanelSettings(), engineProcessor.getUiSettings()),
+      touchLivePage (engineProcessor.getLiveSetModel(), engineProcessor.getTouchLiveClient(),
+                     engineProcessor.getTouchLiveSettings()),
       browserModel (engineProcessor.getModuleFactory(), browserContext, browserWorker),
       browserPanel (browserModel, engineProcessor.getUiSettings())
 {

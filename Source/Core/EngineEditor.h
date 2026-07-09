@@ -17,6 +17,7 @@
 #include "UI/LooperPage.h"
 #include "UI/NodeCanvas.h"
 #include "UI/PageHost.h"
+#include "UI/TouchLivePage/TouchLivePage.h"
 #include "UI/PushLookAndFeel.h"
 #include "UI/TransportBar.h"
 
@@ -167,6 +168,11 @@ private:
     // wie canvas/capturePanel).
     GridPage gridPage;
 
+    // TouchLive-Page (M1c, Ableton-Live-Remote): Modell/Client/Settings
+    // kommen als Referenzen vom EngineProcessor — VOR dem PageHost
+    // deklariert (der hält eine Referenz darauf), Init in der Ctor-Liste.
+    TouchLivePage touchLivePage;
+
     // TARGET-Halten pro Looper (Aktiv-Auswahl statt Launch, Übergabe §2)
     std::array<bool, 4> looperTargetHold {};
 
@@ -180,10 +186,10 @@ private:
         letzte Track, nur leer & gestoppt (M4-Entscheidung). */
     void removeLooperTrack (int looperIndex, int trackIndex);
 
-    // Nach Canvas + LooperPage + GridPage deklariert (hält Referenzen
-    // darauf): die Pages hinter den Push-Icons — Device = Canvas, Grid =
-    // GridPage, Rest Platzhalter
-    PageHost pageHost { canvas, looperPage, gridPage };
+    // Nach Canvas + LooperPage + GridPage + TouchLivePage deklariert (hält
+    // Referenzen darauf): die Pages hinter den Push-Icons — Device =
+    // Canvas, Grid = GridPage, TouchLive = Live-Remote, Rest Platzhalter
+    PageHost pageHost { canvas, looperPage, gridPage, touchLivePage };
 
     // Browser-Panel (rechts angedockt): Kontext ← selectPage, Modell hält
     // seinen EIGENEN ValueTree (nie im Patch) — Reihenfolge: Worker-Pool

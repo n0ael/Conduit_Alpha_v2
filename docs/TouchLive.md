@@ -229,7 +229,7 @@ Hardware mit echter Audio-Rate — 10 m vom Ableton-Rechner entfernt.
 |---|---|
 | M1a | Script-Basis: AbletonOSC-Fork, Ports, Domains transport/tracks/mixer/session, Heartbeat, Touch-Pfad — **erledigt** (Tools/Live/ConduitRemote, 120 pytest-Tests) |
 | M1b | Conduit: TouchLiveClient + LiveSetModel + TouchLiveSettings (IP-Learn), Snapshot/Diff/Reconnect — **erledigt 09.07.2026** (§10) |
-| M1c | GRID- + MIXER-Sub-Tab (UI nach §5 inkl. Feel-Regeln 5.1, Figma-Assets eingepflegt) |
+| M1c | GRID- + MIXER-Sub-Tab (UI nach §5 inkl. Feel-Regeln 5.1) — **erledigt 09.07.2026** (§10b; User-SVGs Fader/Icon eingepflegt, weitere Figma-Assets folgen stückweise) |
 | M2 | Meter-Pfad (TouchLiveMeterBus), Feinschliff Fader-Gesten, Feel-Abnahme gegen Roto-Messlatte |
 | M3 | DEVICE generisch: Device-Domain, Ketten-Navigation, Parameter-Bänke, On/Off (§6b) |
 | M4 | BROWSER: Baum via `load_children`-Muster, Laden auf Track/Chain, Preview |
@@ -309,9 +309,65 @@ Noch NICHT im EngineProcessor verdrahtet — das macht M1c mit der Page.
   (Bools reisen im JSON) — beim Erweitern der Gegenseite nie nackte Bools
   an Conduit senden.
 
+## 10b. M1c — Page-UI: Implementierungs-Notizen (09.07.2026)
+
+Umgesetzt in `Source/UI/TouchLivePage/` (TouchLivePage · TouchLiveGridView ·
+TouchLiveMixerView/ChannelStrip · TouchLiveFader) + `TouchLive/LiveFaderScale.h`;
+verdrahtet im EngineProcessor (Settings/Modell/Client als Member) und
+EngineEditor (Page vor dem PageHost). Tests: Tests/UI/TouchLivePageTests.cpp,
+Tests/TouchLive/LiveFaderScaleTests.cpp.
+
+- **Slot-Entscheidung (User 09.07.2026):** die TouchLive-Page ersetzt
+  vorerst die Clip-Page (PageIndex 2, `pageTouchLive`); Icon = User-SVG
+  (drei Mini-Kanalzüge, `TouchLive.svg`, als juce::Path portiert —
+  PushIcons-Muster, Fill-only). Die Clip-Page bekommt später wieder einen
+  eigenen Slot.
+- **Fader nach User-SVG** („ableton fader" mit/ohne Pegel): Dreiecks-Zeiger
+  links, Tick-Striche, schwarzer Track, dB-Labels rechts (0/12/24/36/48/60).
+  Positionsskala ist dB-LINEAR (+6…−72; die SVG-Teilung ist gleichmäßig) —
+  NICHT wertlinear wie Lives eigener Fader. Label-Dichte halbiert sich
+  automatisch unter ~16 px Tick-Abstand (User: „je nach Skalierung").
+  Meter-Füllung IM Track = M2 (Layout-Hook im paint markiert).
+- **LiveFaderScale:** Wert↔dB-Näherung (0.85→0 dB, 1.0→+6 dB; unter 0.4
+  log-Auslauf). Community-Fit, unter −18 dB ungenau → nach dem Feldtest
+  gegen Lives Anzeige kalibrieren (§11).
+- **Feldnamen-Falle:** die mixer-Domain liefert `vol`/`pan` (NICHT
+  volume/panning) + `sends`-Array + `mute`/`solo`/`arm`; der Master lässt
+  sends/mute/solo/arm komplett weg — die UI blendet Regler nach
+  Feld-Existenz/Kind aus.
+- **Adressierungs-Grenze der Gegenseite:** `_resolve_stable_id` iteriert
+  NUR `song.tracks` — Returns/Master sind per track_ref nicht erreichbar.
+  Returns senden über `/live/return/set/volume|panning` (Index), Master
+  über `/live/master/set/*`; Return-Sends/Mute/Solo bleiben in der UI
+  ausgeblendet, bis das Script sie kann (M2-Kandidat).
+- **MixerView:** Strips werden bei Struktur-Änderungen coalesced
+  (AsyncUpdater) neu aufgebaut, aber per Stable-ID WIEDERVERWENDET (kein
+  Flackern, Drag-Zustand überlebt); reine Wert-Diffs gehen direkt an den
+  Strip (Fader-Slew 30 ms via AnimatedValue — headless snappt er, Tests).
+  Buttons schalten optimistisch + Suppression-Note (Command-Pfad läuft
+  über Lives ~100-ms-Tick).
+- **GridView:** Zellen paint-only (kein Component pro Zelle), Header/
+  Scene-Spalte/Stop-Zeile angepinnt, manueller Scroll (Tap vs. Pan über
+  8-px-Schwelle — Gesten-Kernpfad `tapAt()` testbar). Queued-Blink über
+  VBlank ~2 Hz zeitbasiert; Link-Beat-Kopplung = M2-Feinschliff.
+- **Kanalbreite** (`TouchLiveSettings::channelWidth`, 56–200 px, Header-
+  Kachel KANAL): steuert Mixer-Zugbreite UND Grid-Spaltenbreite — das ist
+  die User-Einstellung „wie viele Tracks parallel".
+- **EngineProcessor-Hinweis:** Settings lesen die echte
+  `Conduit/TouchLive.settings` — auch in Tests, die einen EngineProcessor
+  bauen. Enabled default aus ⇒ keine Sockets; auf Dev-Maschinen mit
+  aktivierter Remote öffnen solche Tests den Listen-Port (harmlos,
+  Bind-Fehler wird 2-s-weise erneut versucht).
+
 ## 11. Offen
 
-- Figma-Bedienelemente (kommen von Leon, §6-Liste).
+- Feldtest-Erstkontakt BESTANDEN (09.07.2026): Verbindung + Domain-Sync
+  laufen, Namen/Farben erscheinen (User-Abnahme). Offen bleibt die
+  Feel-Abnahme gegen die Roto-Messlatte (§5.1) und die Kalibrierung von
+  `LiveFaderScale` unter −18 dB gegen Lives dB-Anzeige.
+- Figma-Bedienelemente (kommen von Leon stückweise, §6-Liste — Fader +
+  Page-Icon sind seit M1c drin; Clip-Zelle/Track-Header/Sub-Tab-Leiste
+  werden bei Lieferung 1:1 ersetzt).
 - Meter-Raten-Budget final messen (UDP-Last bei 16+ Tracks).
 - DEVICE/BROWSER-API-Detailschema (bei M3/M4 festzurren).
 - Mindest-Live-Version: 11 oder 12 (Script-API-Unterschiede prüfen;

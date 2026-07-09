@@ -322,12 +322,16 @@ Tests/TouchLive/LiveFaderScaleTests.cpp.
   (drei Mini-Kanalzüge, `TouchLive.svg`, als juce::Path portiert —
   PushIcons-Muster, Fill-only). Die Clip-Page bekommt später wieder einen
   eigenen Slot.
-- **Fader nach User-SVG** („ableton fader" mit/ohne Pegel): Dreiecks-Zeiger
-  links, Tick-Striche, schwarzer Track, dB-Labels rechts (0/12/24/36/48/60).
-  Positionsskala ist dB-LINEAR (+6…−72; die SVG-Teilung ist gleichmäßig) —
-  NICHT wertlinear wie Lives eigener Fader. Label-Dichte halbiert sich
-  automatisch unter ~16 px Tick-Abstand (User: „je nach Skalierung").
-  Meter-Füllung IM Track = M2 (Layout-Hook im paint markiert).
+- **Fader in Conduit-Push-Optik** (User-Entscheidung 09.07.2026 abends:
+  die eigenen Fader-Skizzen sind vorerst GEPARKT — „bau die Seite so, wie
+  sie zu Conduit passt"; Idee für später: zwei Skins „Conduit / Ableton
+  mirrored", §11): Rinne + Füllung von unten + Griffstein mit Mittellinie
+  (Formsprache PushLookAndFeel::drawLinearSlider), dB-Labels + Ticks
+  rechts (0/12/24/36/48/60). Positionsskala ist dB-LINEAR (+6…−72, wie
+  die FX-Chassis-Gain-Fader). Label-Dichte halbiert sich automatisch
+  unter ~16 px Tick-Abstand (User: „je nach Skalierung"). Stereo-Meter
+  = eigene Spalte mit M2 (GainFaderMeter-Muster). Das Page-Icon bleibt
+  das User-SVG.
 - **LiveFaderScale:** Wert↔dB-Näherung (0.85→0 dB, 1.0→+6 dB; unter 0.4
   log-Auslauf). Community-Fit, unter −18 dB ungenau → nach dem Feldtest
   gegen Lives Anzeige kalibrieren (§11).
@@ -365,9 +369,11 @@ Tests/TouchLive/LiveFaderScaleTests.cpp.
   laufen, Namen/Farben erscheinen (User-Abnahme). Offen bleibt die
   Feel-Abnahme gegen die Roto-Messlatte (§5.1) und die Kalibrierung von
   `LiveFaderScale` unter −18 dB gegen Lives dB-Anzeige.
-- Figma-Bedienelemente (kommen von Leon stückweise, §6-Liste — Fader +
-  Page-Icon sind seit M1c drin; Clip-Zelle/Track-Header/Sub-Tab-Leiste
-  werden bei Lieferung 1:1 ersetzt).
+- Bedienelement-Optik: User-Skizzen/SVGs geparkt (09.07.2026) — die Page
+  läuft in Conduit-Push-Optik weiter; evtl. braucht es gar keine eigenen
+  Assets mehr. Kandidat stattdessen: **zwei Skins** („Conduit" ·
+  „Ableton mirrored") als umschaltbares Theme — entscheiden, wenn M2
+  steht. Das Page-Icon (User-SVG) bleibt.
 - Meter-Raten-Budget final messen (UDP-Last bei 16+ Tracks).
 - DEVICE/BROWSER-API-Detailschema (bei M3/M4 festzurren).
 - Mindest-Live-Version: 11 oder 12 (Script-API-Unterschiede prüfen;

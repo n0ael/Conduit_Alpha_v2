@@ -11,14 +11,17 @@ namespace conduit
 
 //==============================================================================
 /**
-    Remote-Volume-Fader der TouchLive-Page nach der User-SVG-Referenz
-    (09.07.2026, „ableton fader"): schwarzer Fader-Track, Dreiecks-Zeiger
-    links auf der Skala, Tick-Striche, dB-Beschriftung rechts (0/12/24/36/
-    48/60, Dichte passt sich der Höhe an). Die Meter-Füllung IM Track kommt
-    mit dem Meter-Pfad (M2) — Layout/Hook sind vorbereitet.
+    Remote-Volume-Fader der TouchLive-Page in Conduit-Push-Optik
+    (User-Entscheidung 09.07.2026: eigene Fader-Skizzen vorerst geparkt,
+    Page im Conduit-Look — Skin-Idee „Conduit / Ableton mirrored" notiert,
+    Dossier §11): schmale Rinne mit Füllung von unten + Griffstein mit
+    Mittellinie (Formsprache PushLookAndFeel::drawLinearSlider), rechts
+    dB-Beschriftung 0/12/24/36/48/60 mit Tick-Strichen — die Label-Dichte
+    passt sich der Höhe an. Das Stereo-Meter kommt als eigene Spalte mit
+    dem Meter-Pfad (M2, Muster GainFaderMeter).
 
-    Positionsskala ist dB-linear (+6 oben … −72 unten, wie die gleichmäßige
-    Label-Teilung der SVG-Vorlage); Wert ↔ dB über touchlive::faderscale.
+    Positionsskala ist dB-linear (+6 oben … −72 unten — wie die
+    FX-Chassis-Gain-Fader); Wert ↔ dB über touchlive::faderscale.
 
     Feel-Regeln (docs/TouchLive.md §5.1):
     - Drag ist RELATIV (fein per Wisch-Distanz, kein Cap-Sprung beim
@@ -69,7 +72,7 @@ public:
     void mouseUp (const juce::MouseEvent& event) override;
     void mouseDoubleClick (const juce::MouseEvent& event) override;
 
-    /** Fader-Track-Fläche (für Tests/Layout-Checks). */
+    /** Fader-Spalte (ohne dB-Label-Spalte) — Drag-Höhe und Layout-Checks. */
     [[nodiscard]] juce::Rectangle<float> trackArea() const;
 
 private:

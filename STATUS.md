@@ -12,9 +12,11 @@
   wieder einen Slot. `Source/UI/TouchLivePage/`: Page mit Sub-Tabs
   GRID · MIXER · DEVICE · BROWSER (letzte zwei gestylte Platzhalter) +
   Verbindungsleiste (Status-LED, LIVE-Enable, Host, IP-LEARN, Kanalbreite).
-- **MIXER:** Kanalzug pro Track (Pan, Sends dynamisch, Volume-Fader nach
-  User-SVG mit dB-Skala 0…60 + adaptiver Label-Dichte, Mute/Solo/Arm-LEDs
-  gelb/blau/rot, Name auf Trackfarbe), Master rechts angepinnt. Fader:
+- **MIXER:** Kanalzug pro Track (Pan, Sends dynamisch, Volume-Fader in
+  Conduit-Push-Optik mit dB-Skala 0…60 + adaptiver Label-Dichte —
+  User-Fader-Skizzen geparkt, Skin-Idee „Conduit/Ableton mirrored" notiert
+  —, Mute/Solo/Arm-LEDs gelb/blau/rot, Name auf Trackfarbe), Master
+  rechts angepinnt. Fader:
   relativer Drag + Doppeltipp = 0 dB, lokal-optimistisch + Thinning +
   Suppression; Fremd-Feedback slewt 30 ms (`LiveFaderScale`: 0.85 → 0 dB,
   Näherung — Kalibrierung nach Feldtest). Returns/Master über eigene

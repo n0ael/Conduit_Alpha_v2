@@ -8,10 +8,9 @@ namespace conduit
 
 namespace
 {
-    constexpr float pointerColumn = 10.0f;  // Dreiecks-Zeiger links
-    constexpr float tickColumn    = 6.0f;   // Skalen-Striche
-    constexpr float labelColumn   = 20.0f;  // dB-Zahlen rechts
-    constexpr float capHeight     = 24.0f;
+    constexpr float labelColumn   = 22.0f;  // dB-Zahlen + Ticks rechts
+    constexpr float channelWidth  = 5.0f;   // Rinne (PushLookAndFeel-Optik)
+    constexpr float gripHeight    = 11.0f;
 
     constexpr int scaleMarksDb[] = { 0, -12, -24, -36, -48, -60 };
 
@@ -112,8 +111,7 @@ void TouchLiveFader::mouseDoubleClick (const juce::MouseEvent&)
 //==============================================================================
 juce::Rectangle<float> TouchLiveFader::trackArea() const
 {
-    auto area = getLocalBounds().toFloat().reduced (0.0f, 2.0f);
-    area.removeFromLeft (pointerColumn + tickColumn);
+    auto area = getLocalBounds().toFloat().reduced (0.0f, 8.0f);
     area.removeFromRight (labelColumn);
     return area;
 }
@@ -132,17 +130,19 @@ void TouchLiveFader::paint (juce::Graphics& g)
     if (track.isEmpty())
         return;
 
-    // Fader-Track: schwarz auf der Kachel (SVG-Vorlage)
-    g.setColour (juce::Colour (0xff0a0a0a));
-    g.fillRoundedRectangle (track, 3.0f);
-    g.setColour (push::colours::outline.withAlpha (0.6f));
-    g.drawRoundedRectangle (track, 3.0f, 1.0f);
+    // Rinne + Füllung von unten (Formsprache PushLookAndFeel-Slider);
+    // das Stereo-Meter kommt als eigene Spalte mit M2 (GainFaderMeter-Muster)
+    const auto gripY = track.getY() + normFromValue (displayedValue) * track.getHeight();
+    const auto channel = track.withSizeKeepingCentre (channelWidth, track.getHeight());
 
-    // (M2: Meter-Füllung IM Track — grün→gelb mit Peak-Hold — landet hier)
+    g.setColour (juce::Colour (0xff1b1e22));
+    g.fillRoundedRectangle (channel, 2.0f);
 
-    // Skalen-Striche links + dB-Zahlen rechts; Label-Dichte folgt der Höhe
-    const auto tickX  = track.getX() - tickColumn;
-    const auto labelX = track.getRight() + 2.0f;
+    g.setColour (push::colours::textDim.withAlpha (0.9f));
+    g.fillRoundedRectangle (channel.withTop (gripY), 2.0f);
+
+    // Skala rechts: Ticks + dB-Zahlen, Label-Dichte folgt der Höhe
+    const auto labelX = track.getRight() + 4.0f;
 
     const auto spacing = track.getHeight() * 12.0f / (float) (topDb - bottomDb);
     const auto labelStep = spacing >= 16.0f ? 1 : 2;
@@ -156,41 +156,33 @@ void TouchLiveFader::paint (juce::Graphics& g)
         const auto tickY = track.getY()
                          + (float) ((topDb - db) / (topDb - bottomDb)) * track.getHeight();
 
-        g.setColour (push::colours::textDim.withAlpha (0.8f));
-        g.fillRect (juce::Rectangle<float> (tickX, tickY - 0.5f, tickColumn - 2.0f, 1.0f));
+        g.setColour (push::colours::textDim.withAlpha (0.7f));
+        g.fillRect (juce::Rectangle<float> (track.getRight() - 1.0f, tickY - 0.5f, 4.0f, 1.0f));
 
         if (markIndex % labelStep == 0)
         {
             g.setColour (push::colours::textDim);
             g.drawText (juce::String (std::abs (db)),
-                        juce::Rectangle<float> (labelX, tickY - 6.0f, labelColumn - 3.0f, 12.0f),
+                        juce::Rectangle<float> (labelX, tickY - 6.0f, labelColumn - 5.0f, 12.0f),
                         juce::Justification::centredLeft);
         }
 
         ++markIndex;
     }
 
-    // Cap + Dreiecks-Zeiger auf Wert-Höhe
-    const auto capCentreY = track.getY() + normFromValue (displayedValue) * track.getHeight();
-    const auto capY = juce::jlimit (track.getY(), track.getBottom() - capHeight,
-                                    capCentreY - capHeight * 0.5f);
+    // Griffstein mit Mittellinie (Push-Fader), aktiv leicht heller
+    const auto gripWidth = juce::jmin (22.0f, track.getWidth() - 4.0f);
+    const auto grip = juce::Rectangle<float> (track.getCentreX() - gripWidth * 0.5f,
+                                              juce::jlimit (track.getY(),
+                                                            track.getBottom() - gripHeight,
+                                                            gripY - gripHeight * 0.5f),
+                                              gripWidth, gripHeight);
+    g.setColour (dragging ? push::colours::ledWhite : push::colours::text);
+    g.fillRoundedRectangle (grip, 2.0f);
+    g.setColour (juce::Colour (0xff1b1e22));
+    g.fillRect (grip.withSizeKeepingCentre (grip.getWidth() - 6.0f, 1.5f));
 
-    const juce::Rectangle<float> cap (track.getX() + 1.0f, capY,
-                                      track.getWidth() - 2.0f, capHeight);
-    g.setColour (juce::Colour (0xff2e2e2e));
-    g.fillRoundedRectangle (cap, 2.0f);
-    g.setColour (push::colours::text.withAlpha (0.85f));
-    g.fillRect (juce::Rectangle<float> (cap.getX() + 2.0f, cap.getCentreY() - 0.5f,
-                                        cap.getWidth() - 4.0f, 1.0f));
-
-    juce::Path pointer;
-    pointer.addTriangle (1.0f, capCentreY - 5.0f,
-                         1.0f, capCentreY + 5.0f,
-                         pointerColumn - 1.0f, capCentreY);
-    g.setColour (push::colours::text);
-    g.fillPath (pointer);
-
-    // dB-Readout während der Geste (oben, über dem Track)
+    // dB-Readout während der Geste (oben, über der Rinne)
     if (dragging)
     {
         g.setColour (push::colours::text);

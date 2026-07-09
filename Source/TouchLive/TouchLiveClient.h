@@ -92,6 +92,20 @@ public:
     void sendTouchValue (const juce::OSCMessage& message);
 
     //==========================================================================
+    // Browser (M4) — Request/Response im load_children-Muster; node-ids sind
+    // Session-transient (nie persistieren). Antworten kommen chunked auf
+    // /remote/browser/list und landen im Callback. [Message Thread]
+
+    /** parentId 0 = Wurzeln; items = Array aus [id, name, folder, loadable]. */
+    std::function<void (int parentId, juce::var items)> onBrowserList;
+
+    void requestBrowserRoots();
+    void requestBrowserChildren (int nodeId);
+    void loadBrowserItem (int nodeId);
+    void previewBrowserItem (int nodeId);
+    void stopBrowserPreview();
+
+    //==========================================================================
     // Echo-Suppression — Message Thread
 
     /** Bei jedem Touch-Event rufen: eingehende Diffs für den Key werden bis
@@ -193,6 +207,7 @@ private:
     void routeMessage (const juce::OSCMessage& message);
     void handlePong();
     void handleMeters (const juce::OSCMessage& message);
+    void handleBrowserList (const juce::OSCMessage& message);
     void handleStatePayload (const juce::String& domainName, bool isSnapshot,
                              const juce::OSCMessage& message);
     void applyPayload (const juce::String& domainName, bool isSnapshot,
@@ -218,6 +233,7 @@ private:
     Stats stats;
 
     std::map<juce::String, DomainSync> domainSync;
+    DomainSync::Reassembly browserPending;   // Chunk-Sammlung /remote/browser/list
 
     // Netzwerk-Thread schreibt, Message Thread drained (AsyncUpdater)
     juce::CriticalSection incomingLock;

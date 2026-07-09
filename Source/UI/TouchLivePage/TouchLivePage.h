@@ -5,6 +5,7 @@
 #include "TouchLive/LiveSetModel.h"
 #include "TouchLive/TouchLiveClient.h"
 #include "TouchLive/TouchLiveSettings.h"
+#include "TouchLiveBrowserView.h"
 #include "TouchLiveDeviceView.h"
 #include "TouchLiveGridView.h"
 #include "TouchLiveMixerView.h"
@@ -60,22 +61,10 @@ public:
 
     TouchLiveGridView gridView;
     TouchLiveMixerView mixerView;
-    TouchLiveDeviceView deviceView;   // M3 — generische Device-Steuerung
+    TouchLiveDeviceView deviceView;     // M3 — generische Device-Steuerung
+    TouchLiveBrowserView browserView;   // M4 — Lives Browser (load_children)
 
 private:
-    //==========================================================================
-    /** Gestylter Platzhalter (Muster PageHost) für DEVICE/BROWSER. */
-    class PlaceholderView final : public juce::Component
-    {
-    public:
-        PlaceholderView (push::Icon iconToUse, juce::String titleToUse, juce::String hintToUse);
-        void paint (juce::Graphics& g) override;
-
-    private:
-        push::Icon icon;
-        juce::String title, hint;
-    };
-
     //==========================================================================
     void changeListenerCallback (juce::ChangeBroadcaster* source) override;
     void refreshHeader();
@@ -84,8 +73,6 @@ private:
 
     TouchLiveClient& client;
     TouchLiveSettings& settings;
-
-    PlaceholderView browserPlaceholder;
 
     juce::Rectangle<int> statusLedArea;
     int currentTab = tabGrid;

@@ -67,6 +67,13 @@ Devices (M3):
   `/live/device/set/is_active`. `/live/device/set/parameter` gehört auf
   die FAST_WHITELIST.
 
+Browser (M4):
+- KEINE Domain — Request/Response (`/remote/browser/roots|children` →
+  `/remote/browser/list`, gleiche [seq,chunk,chunks,json]-Hülle, Chunks
+  konkatenieren das `it`-Array). Node-IDs sind Session-transient (NIE
+  persistieren); verlorene Antworten heilt der nächste Tap.
+- Laden zielt auf Lives Track-Selektion (`/live/song/set/selected_track`).
+
 Meter-Pfad (M2):
 - `/remote/meters` = flache Tripel `[id:str, left:float, right:float]` —
   bewusst KEIN Domain-Diff, KEINE seq (Frames idempotent), Stille-Dedupe;

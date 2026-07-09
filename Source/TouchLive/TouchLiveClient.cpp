@@ -8,10 +8,11 @@ namespace conduit
 //==============================================================================
 namespace
 {
-    constexpr const char* pongAddress   = "/remote/pong";
-    constexpr const char* pingAddress   = "/remote/ping";
-    constexpr const char* metersAddress = "/remote/meters";
-    constexpr const char* statePrefix   = "/remote/state/";
+    constexpr const char* pongAddress        = "/remote/pong";
+    constexpr const char* pingAddress        = "/remote/ping";
+    constexpr const char* metersAddress      = "/remote/meters";
+    constexpr const char* browserListAddress = "/remote/browser/list";
+    constexpr const char* statePrefix        = "/remote/state/";
 
     [[nodiscard]] juce::String stateAddress (const juce::String& domainName,
                                              const char* suffix)
@@ -527,6 +528,12 @@ void TouchLiveClient::routeMessage (const juce::OSCMessage& message)
         return;
     }
 
+    if (address == browserListAddress)
+    {
+        handleBrowserList (message);
+        return;
+    }
+
     if (! address.startsWith (statePrefix))
         return;
 
@@ -560,6 +567,122 @@ void TouchLiveClient::handleMeters (const juce::OSCMessage& message)
 
     meterBus.noteFrame();
     ++stats.meterFrames;
+}
+
+void TouchLiveClient::handleBrowserList (const juce::OSCMessage& message)
+{
+    // Gleiches Wire-Format wie die Domains: [seq, chunk, chunks, json];
+    // Request/Response — verlorene Antworten heilt der nächste Tap
+    if (message.size() != 4
+        || ! message[0].isInt32() || ! message[1].isInt32()
+        || ! message[2].isInt32() || ! message[3].isString())
+        return;
+
+    const auto seq    = message[0].getInt32();
+    const auto chunk  = message[1].getInt32();
+    const auto chunks = message[2].getInt32();
+    const auto json   = message[3].getString();
+
+    juce::var payload;
+
+    if (chunks <= 1)
+    {
+        payload = juce::JSON::parse (json);
+    }
+    else
+    {
+        if (browserPending.seq != seq || browserPending.expectedChunks != chunks)
+        {
+            browserPending = {};
+            browserPending.seq = seq;
+            browserPending.expectedChunks = chunks;
+        }
+
+        if (chunk >= 1 && chunk <= chunks)
+            browserPending.parts[chunk] = json;
+
+        if ((int) browserPending.parts.size() < browserPending.expectedChunks)
+            return;
+
+        // Chunks tragen Teil-Objekte mit denselben Top-Level-Keys ("p"/"it")
+        // — Arrays werden beim Merge aneinandergehängt
+        juce::DynamicObject::Ptr merged = new juce::DynamicObject();
+
+        for (const auto& part : browserPending.parts)
+        {
+            const auto parsed = juce::JSON::parse (part.second);
+            auto* object = parsed.getDynamicObject();
+
+            if (object == nullptr)
+            {
+                browserPending = {};
+                return;
+            }
+
+            for (const auto& prop : object->getProperties())
+            {
+                auto existing = merged->getProperty (prop.name);
+
+                if (auto* target = existing.getArray())
+                    if (const auto* source = prop.value.getArray())
+                    {
+                        for (const auto& entry : *source)
+                            target->add (entry);
+
+                        continue;
+                    }
+
+                merged->setProperty (prop.name, prop.value);
+            }
+        }
+
+        browserPending = {};
+        payload = juce::var (merged.get());
+    }
+
+    auto* object = payload.getDynamicObject();
+
+    if (object == nullptr || onBrowserList == nullptr)
+        return;
+
+    onBrowserList ((int) object->getProperty ("p"),
+                   object->getProperty ("it"));
+}
+
+void TouchLiveClient::requestBrowserRoots()
+{
+    JUCE_ASSERT_MESSAGE_THREAD
+    sendCommand (juce::OSCMessage (juce::OSCAddressPattern ("/remote/browser/roots")));
+}
+
+void TouchLiveClient::requestBrowserChildren (int nodeId)
+{
+    JUCE_ASSERT_MESSAGE_THREAD
+    juce::OSCMessage message { juce::OSCAddressPattern ("/remote/browser/children") };
+    message.addInt32 (nodeId);
+    sendCommand (message);
+}
+
+void TouchLiveClient::loadBrowserItem (int nodeId)
+{
+    JUCE_ASSERT_MESSAGE_THREAD
+    juce::OSCMessage message { juce::OSCAddressPattern ("/live/browser/load") };
+    message.addInt32 (nodeId);
+    sendCommand (message);
+}
+
+void TouchLiveClient::previewBrowserItem (int nodeId)
+{
+    JUCE_ASSERT_MESSAGE_THREAD
+    juce::OSCMessage message { juce::OSCAddressPattern ("/live/browser/preview") };
+    message.addInt32 (nodeId);
+    sendCommand (message);
+}
+
+void TouchLiveClient::stopBrowserPreview()
+{
+    JUCE_ASSERT_MESSAGE_THREAD
+    sendCommand (juce::OSCMessage (juce::OSCAddressPattern ("/live/browser/stop_preview")));
 }
 
 void TouchLiveClient::handlePong()

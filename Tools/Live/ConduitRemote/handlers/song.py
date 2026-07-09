@@ -81,6 +81,21 @@ def _redo(ctx, args):
         fn()
 
 
+def _set_selected_track(ctx, args):
+    """View-Selektion (M4: Browser-Load-Ziel) — track_ref wie ueberall
+    (Index oder Stable-ID); LOM-sicher via try/except."""
+    if len(args) < 1:
+        return
+    track = ctx.resolve_track(args[0])
+    if track is None:
+        logger.debug("selected_track: unknown track %r", args[0])
+        return
+    try:
+        ctx.song.view.selected_track = track
+    except Exception:
+        logger.exception("selected_track failed")
+
+
 def register_all(registry):
     registry.register("/live/song/start_playing", _start_playing)
     registry.register("/live/song/stop_playing", _stop_playing)
@@ -90,3 +105,4 @@ def register_all(registry):
     registry.register("/live/song/set/session_record", _set_session_record)
     registry.register("/live/song/undo", _undo)
     registry.register("/live/song/redo", _redo)
+    registry.register("/live/song/set/selected_track", _set_selected_track)

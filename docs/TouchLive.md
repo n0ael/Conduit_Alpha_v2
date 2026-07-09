@@ -232,7 +232,7 @@ Hardware mit echter Audio-Rate — 10 m vom Ableton-Rechner entfernt.
 | M1c | GRID- + MIXER-Sub-Tab (UI nach §5 inkl. Feel-Regeln 5.1) — **erledigt 09.07.2026** (§10b; User-SVGs Fader/Icon eingepflegt, weitere Figma-Assets folgen stückweise) |
 | M2 | Meter-Pfad (TouchLiveMeterBus), Feinschliff Fader-Gesten, Feel-Abnahme gegen Roto-Messlatte — **KOMPLETT 09.07.2026**: Meter-Pfad (§10c) + Fast-Path v2 (§10e); Feel-Abnahme im Feldtest Runde 3 bestanden („working perfectly"). Offen nur noch LiveFaderScale-Feinkalibrierung (§11) |
 | M3 | DEVICE generisch: Device-Domain, Ketten-Navigation, Parameter-Bänke, On/Off (§6b) — **erledigt 09.07.2026** (§10g; Feldtest offen) |
-| M4 | BROWSER: Baum via `load_children`-Muster, Laden auf Track/Chain, Preview |
+| M4 | BROWSER: Baum via `load_children`-Muster, Laden auf Track/Chain, Preview — **erledigt 10.07.2026** (§10h; Feldtest offen) |
 | M5 | Bespoke Device-UIs: EQ Eight → Compressor/Glue → Delay/Reverb (§6b) |
 | M6 | Modulator-Zwillinge: LFO zuerst, dann Shaper/Envelope Follower (§6c) |
 
@@ -513,6 +513,36 @@ Beidseitig: `sync/devices.py` + `handlers/device.py` (Script) und
   großen Racks (Chunking vorhanden), Anzeige-Einheiten (parmeta trägt
   keine Display-Strings — Lives `str_for_value` wäre ein M5-Kandidat),
   GR-Wertebereich/Skalierung.
+
+## 10h. M4 — Browser: Implementierungs-Notizen (10.07.2026)
+
+Beidseitig: `browser.py` (Script, BrowserService) + `TouchLiveBrowserView`
+(Conduit, ersetzt den letzten Platzhalter — alle vier Sub-Tabs leben).
+
+- **Bewusst KEINE Domain:** Lives Browser-Baum ist riesig und lazy —
+  reines Request/Response (touchAble-`load_children`-Muster):
+  `/remote/browser/roots` bzw. `/children [parent_id]` →
+  `/remote/browser/list [seq,chunk,chunks,json]` mit
+  `{"p": parent, "it": [[id,name,folder,loadable],…]}`. Antworten laufen
+  über den delivery.Sender (force=True) — Chunking für Riesenordner
+  gratis; der Client merged Chunk-Arrays (`it` wird konkateniert).
+  Verlorene Antworten heilt der nächste Tap (kein Seq-Healing nötig).
+- **Node-IDs** vergibt das Script pro Session (Registry hält die
+  BrowserItems am Leben, wie stable_ids) — Laufzeit-IDs, NIE
+  persistieren. Wurzeln = feste Attributliste (sounds…current_project),
+  fehlende werden übersprungen (LOM-defensiv wie überall).
+- **Laden:** `browser.load_item` zielt auf Lives Track-Selektion —
+  dafür neu: `/live/song/set/selected_track [track_ref]`
+  (Song.View). Preview: `preview_item`/`stop_preview`.
+- **Conduit-View:** Breadcrumb + 44-px-Zeilenliste (paint-only im
+  Viewport), Ebenen-Cache (Zurück ohne Re-Request), Tap=Ordner öffnen/
+  Item wählen, Doppeltipp oder LOAD-Kachel = laden, PRE-Kachel =
+  Vorhör-Modus (Tap spielt an, Ausschalten stoppt). Roots werden beim
+  ersten Sichtbarwerden angefordert. `onBrowserList`-Callback am Client
+  wird von der View exklusiv belegt.
+- **Feldtest offen:** Baum-Tiefe/Performance großer Packs (children ist
+  im Tick synchron — bei Riesenordnern spürbar?), Live-12.4b-Eigenheiten
+  der Browser-API, Laden-auf-Chain (M5-Umfeld).
 
 ## 11. Offen
 

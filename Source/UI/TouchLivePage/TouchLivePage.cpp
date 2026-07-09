@@ -14,44 +14,14 @@ namespace
 }
 
 //==============================================================================
-TouchLivePage::PlaceholderView::PlaceholderView (push::Icon iconToUse, juce::String titleToUse,
-                                                 juce::String hintToUse)
-    : icon (iconToUse), title (std::move (titleToUse)), hint (std::move (hintToUse))
-{
-}
-
-void TouchLivePage::PlaceholderView::paint (juce::Graphics& g)
-{
-    g.fillAll (push::colours::background);
-
-    const auto area = getLocalBounds().toFloat();
-    const auto centre = area.getCentre();
-
-    push::draw (g, icon,
-                juce::Rectangle<float> (72.0f, 72.0f).withCentre (centre.translated (0.0f, -40.0f)),
-                push::colours::textDim);
-
-    g.setColour (push::colours::text);
-    g.setFont (push::scaledFont (26.0f));
-    g.drawText (title, area.withTop (centre.y + 16.0f).withHeight (34.0f),
-                juce::Justification::centredTop);
-
-    g.setColour (push::colours::textDim);
-    g.setFont (push::scaledFont (15.0f));
-    g.drawText (hint, area.withTop (centre.y + 52.0f).withHeight (24.0f),
-                juce::Justification::centredTop);
-}
-
-//==============================================================================
 TouchLivePage::TouchLivePage (LiveSetModel& modelToUse, TouchLiveClient& clientToUse,
                               TouchLiveMeterBus& meterBusToUse, TouchLiveSettings& settingsToUse)
     : gridView (clientToUse, modelToUse, settingsToUse),
       mixerView (clientToUse, modelToUse, meterBusToUse, settingsToUse),
       deviceView (clientToUse, modelToUse, meterBusToUse),
+      browserView (clientToUse),
       client (clientToUse),
-      settings (settingsToUse),
-      browserPlaceholder (push::Icon::browserPanel, "Browser",
-                          juce::String::fromUTF8 ("kommt als eigener Meilenstein (M4)"))
+      settings (settingsToUse)
 {
     // Sub-Tabs (Muster PageHost/TransportBar)
     const auto wireTab = [this] (push::TextTile& tile, int tab)
@@ -119,7 +89,7 @@ TouchLivePage::TouchLivePage (LiveSetModel& modelToUse, TouchLiveClient& clientT
     addChildComponent (gridView);
     addChildComponent (mixerView);
     addChildComponent (deviceView);
-    addChildComponent (browserPlaceholder);
+    addChildComponent (browserView);
 
     client.addChangeListener (this);     // Status-LED
     settings.addChangeListener (this);   // Host/Enable/Breite
@@ -142,7 +112,7 @@ void TouchLivePage::setSubTab (int newTab)
     gridView.setVisible (currentTab == tabGrid);
     mixerView.setVisible (currentTab == tabMixer);
     deviceView.setVisible (currentTab == tabDevice);
-    browserPlaceholder.setVisible (currentTab == tabBrowser);
+    browserView.setVisible (currentTab == tabBrowser);
 
     gridTabTile.setActive (currentTab == tabGrid);
     mixerTabTile.setActive (currentTab == tabMixer);
@@ -199,7 +169,7 @@ void TouchLivePage::resized()
     gridView.setBounds (area);
     mixerView.setBounds (area);
     deviceView.setBounds (area);
-    browserPlaceholder.setBounds (area);
+    browserView.setBounds (area);
 }
 
 void TouchLivePage::paint (juce::Graphics& g)

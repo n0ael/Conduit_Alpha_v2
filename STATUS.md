@@ -3,7 +3,25 @@
 > Letzte Aktualisierung: 2026-07-09 | wird nach jedem Meilenstein gepflegt
 > Architektur-Referenz: [CLAUDE.md](CLAUDE.md) | Repo: n0ael/Conduit
 
-## Aktueller Meilenstein (09.07.2026) — TouchLive M3 (DEVICE generisch)
+## Aktueller Meilenstein (10.07.2026) — TouchLive M4 (BROWSER)
+
+**Lives Browser in Conduit — der letzte Sub-Tab-Platzhalter ist Geschichte:**
+
+- **Script:** `browser.py` — Request/Response im load_children-Muster
+  (bewusst keine Domain: der Baum ist riesig und lazy): roots/children
+  per Session-Node-ID → `/remote/browser/list` über den Chunk-Sender;
+  `/live/browser/load|preview|stop_preview`; neu dazu
+  `/live/song/set/selected_track` (Load-Ziel). 6 neue pytest-Tests
+  (139 socketfrei grün).
+- **Conduit:** `TouchLiveBrowserView` — Breadcrumb + 44-px-Liste
+  (paint-only), Ebenen-Cache (Zurück ohne Re-Request), Tap/Doppeltipp/
+  LOAD-Kachel, PRE-Vorhörmodus; Client-Reassembly für gechunkte Listen
+  (Arrays werden gemerged). 3 neue UI-Tests; Suite 604 Cases /
+  27 232 Assertions grün.
+- **Nächster Schritt:** M4-Feldtest (Live-Neustart!), dann M5 bespoke
+  Device-UIs (EQ-Eight-Kurve zuerst) oder M6 Modulator-Zwillinge.
+
+## Meilenstein (09.07.2026) — TouchLive M3 (DEVICE generisch)
 
 **Jedes Live-Device fernsteuerbar — Script-Domain + DeviceView:**
 

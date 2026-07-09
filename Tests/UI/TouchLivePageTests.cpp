@@ -55,6 +55,24 @@ struct FakeRemoteTransport final : conduit::IRemoteTransport
         return true;
     }
 
+    /** Simuliert den Netzwerk-Thread: Message an den Client liefern. */
+    void deliver (const juce::OSCMessage& message)
+    {
+        REQUIRE (handler != nullptr);
+        handler (message);
+    }
+
+    [[nodiscard]] int countSent (const juce::String& address) const
+    {
+        int count = 0;
+
+        for (const auto& message : sent)
+            if (message.getAddressPattern().toString() == address)
+                ++count;
+
+        return count;
+    }
+
     [[nodiscard]] std::vector<juce::OSCMessage> sentTo (const juce::String& address) const
     {
         std::vector<juce::OSCMessage> filtered;
@@ -95,6 +113,13 @@ struct PageRig
         settings.setEnabled (true);          // Kommando-Pfad scharf
         settings.dispatchPendingMessages();
         transport->sent.clear();             // Subscribe-/Ping-Traffic weg
+    }
+
+    /** Deliver + synchroner Message-Thread-Hop. */
+    void deliver (const juce::OSCMessage& message)
+    {
+        transport->deliver (message);
+        client->flushPendingMessages();
     }
 
     void loadDemoSet()
@@ -498,6 +523,108 @@ TEST_CASE ("TouchLiveDeviceView: Kette entfernt → Auswahl fällt sauber zurüc
     REQUIRE (rig.page->deviceView.getDeviceChipCount() == 0);
     REQUIRE (rig.page->deviceView.getParameterSlider (0) != nullptr);
     REQUIRE_FALSE (rig.page->deviceView.getParameterSlider (0)->isVisible());
+}
+
+//==============================================================================
+namespace
+{
+
+/** Browser-Antwort der Gegenseite: /remote/browser/list [seq,1,1,json]. */
+[[nodiscard]] juce::OSCMessage browserList (int seq, const juce::String& json)
+{
+    juce::OSCMessage message { juce::OSCAddressPattern ("/remote/browser/list") };
+    message.addInt32 (seq);
+    message.addInt32 (1);
+    message.addInt32 (1);
+    message.addString (json);
+    return message;
+}
+
+} // namespace
+
+TEST_CASE ("TouchLiveBrowserView: Roots → Ordner → Item → Laden (M4)", "[touchlive][ui]")
+{
+    PageRig rig;
+    auto& browser = rig.page->browserView;
+    browser.setBounds (0, 0, 600, 400);
+
+    // Sichtbar werden fordert die Wurzeln an
+    rig.page->browserTabTile.onClick();
+    REQUIRE (rig.transport->countSent ("/remote/browser/roots") == 1);
+    REQUIRE (browser.isLoading());
+
+    rig.deliver (browserList (1, R"({"p":0,"it":[[1,"Sounds",1,0],[2,"Drums",1,0]]})"));
+    REQUIRE_FALSE (browser.isLoading());
+    REQUIRE (browser.getRowCount() == 2);
+    REQUIRE (browser.getRowName (1) == "Drums");
+    REQUIRE (browser.getDepth() == 1);
+
+    // Ordner antippen → children-Request; Antwort stapelt eine Ebene
+    browser.tapRow (1);
+    const auto sent = rig.transport->sentTo ("/remote/browser/children");
+    REQUIRE (sent.size() == 1);
+    REQUIRE (sent.front()[0].getInt32() == 2);
+
+    rig.deliver (browserList (2, R"({"p":2,"it":[[7,"Kick.adg",0,1],[8,"Snare.adg",0,1]]})"));
+    REQUIRE (browser.getDepth() == 2);
+    REQUIRE (browser.getRowName (0) == "Kick.adg");
+
+    // Ladbares Item: Tap wählt aus, Doppeltipp lädt
+    browser.tapRow (0);
+    REQUIRE (browser.getSelectedNodeId() == 7);
+    REQUIRE (rig.transport->sentTo ("/live/browser/load").empty());
+
+    browser.doubleTapRow (0);
+    const auto loads = rig.transport->sentTo ("/live/browser/load");
+    REQUIRE (loads.size() == 1);
+    REQUIRE (loads.front()[0].getInt32() == 7);
+
+    // Zurück nutzt den Ebenen-Cache (kein weiterer Request)
+    browser.goBack();
+    REQUIRE (browser.getDepth() == 1);
+    REQUIRE (browser.getRowName (0) == "Sounds");
+    REQUIRE (rig.transport->countSent ("/remote/browser/children") == 1);
+}
+
+TEST_CASE ("TouchLiveBrowserView: Preview-Modus spielt beim Antippen an", "[touchlive][ui]")
+{
+    PageRig rig;
+    auto& browser = rig.page->browserView;
+    browser.setBounds (0, 0, 600, 400);
+    rig.page->browserTabTile.onClick();
+    rig.deliver (browserList (1, R"({"p":0,"it":[[3,"Pad.adg",0,1]]})"));
+
+    browser.previewTile.onClick();   // Modus an
+    browser.tapRow (0);
+
+    const auto previews = rig.transport->sentTo ("/live/browser/preview");
+    REQUIRE (previews.size() == 1);
+    REQUIRE (previews.front()[0].getInt32() == 3);
+
+    browser.previewTile.onClick();   // Modus aus → stop_preview
+    REQUIRE (rig.transport->countSent ("/live/browser/stop_preview") == 1);
+}
+
+TEST_CASE ("TouchLiveClient: gechunkte Browser-Liste wird zusammengesetzt", "[touchlive]")
+{
+    PageRig rig;
+    auto& browser = rig.page->browserView;
+    browser.setBounds (0, 0, 600, 400);
+    rig.page->browserTabTile.onClick();
+
+    // Zwei Chunks derselben seq, verkehrte Reihenfolge — Arrays mergen
+    juce::OSCMessage chunk2 { juce::OSCAddressPattern ("/remote/browser/list") };
+    chunk2.addInt32 (5); chunk2.addInt32 (2); chunk2.addInt32 (2);
+    chunk2.addString (R"({"p":0,"it":[[2,"Drums",1,0]]})");
+    rig.deliver (chunk2);
+    REQUIRE (browser.isLoading());   // unvollständig — nichts angewendet
+
+    juce::OSCMessage chunk1 { juce::OSCAddressPattern ("/remote/browser/list") };
+    chunk1.addInt32 (5); chunk1.addInt32 (1); chunk1.addInt32 (2);
+    chunk1.addString (R"({"p":0,"it":[[1,"Sounds",1,0]]})");
+    rig.deliver (chunk1);
+
+    REQUIRE (browser.getRowCount() == 2);
 }
 
 //==============================================================================

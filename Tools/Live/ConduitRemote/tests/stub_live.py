@@ -220,6 +220,7 @@ class Song(_Listenable):
         self.__dict__["current_song_time"] = 0.0
         self.__dict__["signature_numerator"] = 4
         self.__dict__["signature_denominator"] = 4
+        self.__dict__["view"] = SongView()
         self.tracks = [Track("Track %d" % (i + 1), num_slots=num_scenes,
                              num_sends=num_sends)
                        for i in range(num_tracks)]
@@ -249,6 +250,44 @@ class Song(_Listenable):
             self.__dict__[key] = value
         else:
             self._set(key, value)
+
+
+class SongView(object):
+    """LOM Song.View-Ausschnitt: Browser-Load zielt auf selected_track."""
+
+    def __init__(self):
+        self.selected_track = None
+
+
+class BrowserItem(object):
+    """LOM BrowserItem-Ausschnitt (M4): lazy children, Flags, Name."""
+
+    def __init__(self, name, children=None, is_loadable=False, is_folder=None):
+        self.name = name
+        self.children = list(children or [])
+        self.is_loadable = is_loadable
+        self.is_folder = (bool(self.children) if is_folder is None
+                          else is_folder)
+
+
+class Browser(object):
+    """LOM Live.Browser-Ausschnitt: Wurzeln als Attribute + load/preview."""
+
+    def __init__(self, **roots):
+        for attr, item in roots.items():
+            setattr(self, attr, item)
+        self.loaded = []      # test hooks
+        self.previewed = []
+        self.preview_stopped = 0
+
+    def load_item(self, item):
+        self.loaded.append(item)
+
+    def preview_item(self, item):
+        self.previewed.append(item)
+
+    def stop_preview(self):
+        self.preview_stopped += 1
 
 
 class FakeSender(object):

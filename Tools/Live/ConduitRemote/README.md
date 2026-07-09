@@ -97,6 +97,8 @@ den Konventionen von [AbletonOSC](https://github.com/ideoforms/AbletonOSC)
 
 ## Status / Roadmap
 
-M1a fertig, Meter-Hochraten-Pfad (M2) und Device-Domain generisch (M3)
+M1a fertig, Meter-Hochraten-Pfad (M2), Device-Domain generisch (M3) und
+Browser (M4: `/remote/browser/roots|children` → `/remote/browser/list`,
+`/live/browser/load|preview|stop_preview`, `/live/song/set/selected_track`)
 drin. Es folgen laut `TOUCHLIVE.md` (im Conduit-Repo: docs/TouchLive.md):
-Browser (M4), bespoke Device-UIs (M5), Modulator-Zwillinge (M6).
+bespoke Device-UIs (M5), Modulator-Zwillinge (M6).

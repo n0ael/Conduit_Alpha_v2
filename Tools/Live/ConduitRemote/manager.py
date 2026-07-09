@@ -12,6 +12,7 @@ from .handlers import device as device_handlers
 from .handlers import song as song_handlers
 from .handlers import track as track_handlers
 from .handlers import session as session_handlers
+from .browser import BrowserService, default_get_browser
 from .heartbeat import Heartbeat
 from .sync.base import to_json
 from .sync.delivery import Sender
@@ -89,7 +90,7 @@ def _default_domain_factory(song, sender):
 
 class Manager(ControlSurface):
     def __init__(self, c_instance, song=None, domain_factory=None,
-                 timer_factory=None):
+                 timer_factory=None, browser_factory=None):
         ControlSurface.__init__(self, c_instance)
         self._c_instance = c_instance
         self._song = song if song is not None else c_instance.song()
@@ -134,6 +135,13 @@ class Manager(ControlSurface):
                 "/remote/state/%s/subscribe" % name, self._make_subscribe_handler(domain))
             self.server.add_handler(
                 "/remote/state/%s/unsubscribe" % name, self._make_unsubscribe_handler(domain))
+
+        # Browser-Remote (M4): Request/Response, kein Domain-Sync
+        self.browser = BrowserService(
+            browser_factory if browser_factory is not None
+            else default_get_browser,
+            self._sender)
+        self.browser.register_handlers(self.server)
 
         # Meter-Hochraten-Pfad (M2): kein Domain-Diff, ein kompaktes
         # Datagramm pro Tick (sync/meters.py)

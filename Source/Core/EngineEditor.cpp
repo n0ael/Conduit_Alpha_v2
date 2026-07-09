@@ -993,9 +993,8 @@ void EngineEditor::refreshLooperStatus (bool devMode)
                                   playing);
     looperPage.getStopTile().setEnabled (playing);
 
-    // Gemeinsame Puls-Phase der Target-Zellen (1-Hz-Puls)
-    const auto pulse = (float) (juce::Time::getMillisecondCounter() % 1000u) / 1000.0f;
-    looperPage.setPulsePhase (pulse);
+    // Puls-Phase + Abspielposition tickt der VBlank-Pfad monitor-synchron
+    // (tickLooperPlayheads) — hier nur Struktur, Labels, Meter
 
     for (int l = 0; l < looperPage.getLooperCount(); ++l)
     {
@@ -1116,6 +1115,51 @@ void EngineEditor::refreshLooperStatus (bool devMode)
             status << juce::String::fromUTF8 (" · RAM ")
                    << juce::String (bank.getRamBytesUsed() / 1'000'000) << " MB";
         looperPage.setStatus (status);
+    }
+}
+
+void EngineEditor::tickLooperPlayheads()
+{
+    // Nur wenn die Looper-Page wirklich zu sehen ist — sonst kostenlos
+    if (pageHost.getPage() != TransportBar::pageLooper)
+        return;
+
+    // Target-Puls (1 Hz) monitor-synchron statt in 15-Hz-Stufen
+    const auto pulse = (float) (juce::Time::getMillisecondCounter() % 1000u) / 1000.0f;
+    looperPage.setPulsePhase (pulse);
+
+    auto& session = engine.getLooperSession();
+
+    for (int l = 0; l < looperPage.getLooperCount(); ++l)
+    {
+        auto& panel = looperPage.getPanel (l);
+
+        for (int t = 0; t < panel.getTrackCount(); ++t)
+        {
+            auto& track = panel.getTrack (t);
+
+            const auto playingSlot = session.getPlayingSlot (l, t);
+            if (playingSlot < 0 || playingSlot >= track.getVisibleSlots())
+                continue;
+
+            auto* clip = session.clipAt (l, t, playingSlot);
+            if (clip == nullptr)
+                continue;
+
+            // Dieselben Atomics wie der Timer — nur eben pro Frame
+            const auto progress = clip->displayPhase01.load (std::memory_order_relaxed);
+            track.getSlotCell (playingSlot).setProgress (progress);
+
+            const auto lengthBeats = clip->stagedLengthBeats.load (std::memory_order_relaxed);
+            if (lengthBeats > 0.0)
+            {
+                const auto totalBars = juce::jmax (1, (int) std::lround (lengthBeats / 4.0));
+                const auto currentBar = juce::jlimit (1, totalBars,
+                                                      1 + (int) std::floor (progress
+                                                                            * (float) totalBars));
+                track.setBarDisplay (currentBar, totalBars, progress);
+            }
+        }
     }
 }
 

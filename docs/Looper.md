@@ -130,9 +130,21 @@
     Kontrast-Regel: Aufbauten nehmen auf überwiegend schwarzen Stellen die
     Quellfarbe an (computeInkCoverage, Zonen-Deckung VORBERECHNET in
     setThumbnail — nie in paint messen). Lifecycle über clipId-Bindung:
-    setThumbnail beim Commit [Editor], der 30-Hz-Timer cleart bei
+    setThumbnail beim Commit [Editor], der 15-Hz-Timer cleart bei
     clipId-Mismatch oder leerem Slot (Delete, Überschreib-Commit,
     clearAllClips) — kein Zustand außerhalb der Zelle.
+  - **Abspielposition monitor-synchron (09.07.2026):** der 15-Hz-Editor-
+    Timer (refreshLooperStatus) liefert Struktur, Labels, Meter; die
+    ABSPIELPOSITION (Zell-Sweep via `LooperSlotCell::setProgress`,
+    Takt-Pie via setBarDisplay) und der Target-Puls laufen über einen
+    eigenen VBlank-Pfad (`EngineEditor::tickLooperPlayheads`,
+    juce::VBlankAttachment — UI-Regel „Animationen via VBlank"): pro
+    Frame nur lock-freie Atomic-Reads (displayPhase01/stagedLengthBeats)
+    der SPIELENDEN Slots, no-op wenn die Looper-Page nicht sichtbar ist.
+    setProgress wirkt nur auf Zellen mit playing-State (Konsistenz mit
+    dem Timer-Zustand); die Change-Guards von setProgress/setBarDisplay
+    vergleichen EXAKT (juce::exactlyEqual) — Epsilons würden den Sweep
+    wieder quantisieren (15-fps-Stufigkeit, User-Feedback 09.07.2026).
   - **OSC-Actions** (`/conduit/looper/…`, Indizes 1-basiert): stop |
     {n}/commit i:bars | {n}/stop | {n}/track/{t}/stop | {n}/target
     i:track i:slot — Muster /conduit/sync (Erkennung vor Endpoint-Lookup,

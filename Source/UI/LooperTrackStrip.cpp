@@ -37,6 +37,15 @@ void LooperSlotCell::setState (const State& newState)
         repaint();
 }
 
+void LooperSlotCell::setProgress (float progress01)
+{
+    if (! state.playing || juce::exactlyEqual (state.progress01, progress01))
+        return;
+
+    state.progress01 = progress01;
+    repaint();
+}
+
 float LooperSlotCell::computeInkCoverage (const juce::Image& ink,
                                           juce::Rectangle<float> normalisedZone)
 {
@@ -383,8 +392,10 @@ void LooperTrackStrip::setMeter (float rmsLeft, float rmsRight, bool audible)
 
 void LooperTrackStrip::setBarDisplay (int currentBar, int totalBars, float progress01)
 {
+    // Exakter Vergleich statt Epsilon: der VBlank-Pfad des Editors treibt
+    // den Pie monitor-synchron — jede echte Phasen-Änderung wird sichtbar
     const auto changed = barCurrent != currentBar || barTotal != totalBars
-                      || std::abs (barProgress - progress01) > 0.01f;
+                      || ! juce::exactlyEqual (barProgress, progress01);
     barCurrent = currentBar;
     barTotal = totalBars;
     barProgress = progress01;

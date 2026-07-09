@@ -17,8 +17,10 @@ namespace conduit
     Übergabe-Dokument §3: leer / Target (rot pulsierend) / Clip
     (spielend mit Progress-Sweep + Play-Dreieck, gestoppt gedimmt);
     orthogonal: Aktiv-Kontur (Clip-Controls-Ziel), Badges (Rate ≠ 1×,
-    Reverse ◁). Pulsieren über die vom Besitzer getickte Animations-Phase
-    (setPulsePhase, Editor-Timer 30 Hz — kein eigener Timer pro Zelle).
+    Reverse ◁). Animations-Phasen (Puls, Sweep) tickt der Besitzer —
+    kein eigener Timer/VBlank pro Zelle: Struktur/Labels kommen vom
+    15-Hz-Editor-Timer (setState), die Abspielposition monitor-synchron
+    vom VBlank-Pfad des Editors (setProgress, User 09.07.2026).
 */
 class LooperSlotCell final : public juce::Component
 {
@@ -40,6 +42,11 @@ public:
     /** [Editor-Timer] Repaint nur bei sichtbarer Änderung. */
     void setState (const State& newState);
     [[nodiscard]] const State& getState() const noexcept { return state; }
+
+    /** [Editor-VBlank] NUR die Loop-Phase nachziehen — der monitor-
+        synchrone Sweep-Pfad: wirkt ausschließlich auf spielende Zellen
+        (sonst no-op), der volle Zustand bleibt Sache von setState. */
+    void setProgress (float progress01);
 
     /** [Editor, beim Commit] „Geschnappte" Strip-Ansicht des Clips
         (renderCommitThumbnail, Tinte auf transparent) + Quellfarbe: die

@@ -21,6 +21,12 @@ Strip-Optik):**
   zyklisch über die Loop-Grenze wickelnder Fade-Schweif.
 - Details/Invarianten: docs/Looper.md; Tests: Thumbnail-Rendering,
   Menü-Struktur, Deckungs-Messung, Lifecycle (560 Cases grün, ASan grün).
+- Abspielposition monitor-synchron: eigener VBlank-Pfad
+  (`EngineEditor::tickLooperPlayheads`) treibt Zell-Sweep, Takt-Pie und
+  Target-Puls pro Frame (lock-freie Atomic-Reads, no-op außerhalb der
+  Looper-Page); der 15-Hz-Timer behält Struktur/Labels/Meter. Die
+  Change-Guards vergleichen exakt — die alten Epsilons quantisierten
+  den Sweep auf ~15 fps (User-Feedback 09.07.2026).
 
 ## Meilenstein (08.07.2026)
 

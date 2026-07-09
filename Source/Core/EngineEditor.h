@@ -118,8 +118,15 @@ private:
         geben — sie zeigt sie invertiert auf Quellfarbe (09.07.2026). */
     void captureLooperClipThumbnail (int looperIndex);
 
-    /** Looper-Status in die Page spiegeln (Editor-Timer, 30 Hz). */
+    /** Looper-Status in die Page spiegeln (Editor-Timer, 15 Hz):
+        Struktur, Labels, Meter, Thumbnail-Aufräumen. */
     void refreshLooperStatus (bool devMode);
+
+    /** Monitor-synchroner Leichtgewichts-Pfad (VBlank, User 09.07.2026):
+        NUR Abspielposition der spielenden Clips (Zell-Sweep + Takt-Pie)
+        und Target-Puls — lock-freie Atomic-Reads, no-op wenn die
+        Looper-Page nicht sichtbar ist. Alles andere bleibt beim Timer. */
+    void tickLooperPlayheads();
 
     /** Labels der Hardware-Ausgangs-Paare (Kanäle 2n/2n+1) aus dem
         audio_out-Tree-Node + ChannelNames — Metronom-Ausgang (Link-Menü)
@@ -199,6 +206,9 @@ private:
     // Schwebendes Dev-Panel (nur im Dev Mode) — Toggle über das Dev-Tile
     // der Bar; Dev Mode aus schließt es automatisch
     std::unique_ptr<DevPanel> devPanel;
+
+    // Letzter Member: tickt erst mit Peer, stirbt vor allen Referenzen
+    juce::VBlankAttachment looperPlayheadVBlank { this, [this] { tickLooperPlayheads(); } };
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (EngineEditor)
 };

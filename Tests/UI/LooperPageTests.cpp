@@ -255,6 +255,28 @@ TEST_CASE ("LooperTrackStrip: Hooks liefern Track-lokale Indizes und Werte", "[l
         cell.setState (state);
         REQUIRE_FALSE (cell.getState().playing);
     }
+
+    SECTION ("setProgress (VBlank-Sweep) wirkt nur auf spielende Zellen")
+    {
+        auto& cell = strip.getSlotCell (0);
+
+        conduit::LooperSlotCell::State state;
+        state.hasClip = true;
+        state.playing = false;
+        cell.setState (state);
+
+        cell.setProgress (0.75f);   // gestoppt → no-op
+        REQUIRE (cell.getState().progress01 == Approx (0.0f).margin (1.0e-6f));
+
+        state.playing = true;
+        cell.setState (state);
+        cell.setProgress (0.75f);
+        REQUIRE (cell.getState().progress01 == Approx (0.75f));
+
+        // Struktur bleibt Sache von setState — setProgress ändert nur die Phase
+        REQUIRE (cell.getState().playing);
+        REQUIRE (cell.getState().hasClip);
+    }
 }
 
 TEST_CASE ("LooperClipControlsRow: Dispatch nur mit Aktiv-Clip, VARI-Mapping", "[looper][ui]")

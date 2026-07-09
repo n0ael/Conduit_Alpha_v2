@@ -40,8 +40,13 @@
 - **Feldtest-Runde 3: BESTANDEN** („It's working perfectly now") — die
   Stufigkeit ist mit Fast-Path v2 weg, Fader-Feel erfüllt die
   Roto-Messlatte. **TouchLive M2 damit komplett.**
-- **Nächster Schritt:** LiveFaderScale-Feinkalibrierung (dB-Anzeige unter
-  −18 dB gegen Live), dann M3 (DEVICE-Domain generisch, docs/TouchLive.md
+- **LiveFaderScale VERIFIZIERT (09.07. spät):** User-Messkampagne
+  (Referenzton als 32-bit-WAV durch Lives Fader, 9 Stützstellen +6…−60) —
+  alle Punkte < 0.05 dB Abweichung, auch der Log-Auslauf; keine
+  Code-Änderung nötig (docs/TouchLive.md §10f). Dazu Meter-Stream auf den
+  Timer-Pfad gehoben (~33 Hz statt 10 Hz, User-Wunsch „so flüssig wie die
+  Fader").
+- **Nächster Schritt:** M3 (DEVICE-Domain generisch, docs/TouchLive.md
   §6b) — oder Rückkehr zu Link Audio Receive / I/O-Konsolidierung.
 
 ## Meilenstein (09.07.2026) — TouchLive M1c

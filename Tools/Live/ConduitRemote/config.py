@@ -26,7 +26,8 @@ FAST_TIMER_INTERVAL_MS = 10   # pump()-Kadenz; Anwendung limitiert Conduits 60-H
 
 # --- Rates & limits ----------------------------------------------------------
 TICK_INTERVAL = 1           # Live scheduler ticks between manager ticks (~100 ms)
-METER_TICK_DIVIDER = 1      # send meters every N manager ticks (~10 Hz)
+METER_TICK_DIVIDER = 1      # tick-rate fallback: meters every N manager ticks (~10 Hz)
+METER_PUMP_DIVIDER = 3      # timer path: meters every N pumps (3 x 10 ms ~= 33 Hz)
 MAX_OSC_PAYLOAD_BYTES = 9000  # keep UDP datagrams well under typical MTU limits
 HEARTBEAT_TIMEOUT_TICKS = 60  # ~6 s without /remote/ping -> client considered gone
 

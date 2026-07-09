@@ -98,15 +98,8 @@ class Manager(ControlSurface):
         self.server = OscServer(
             config.BIND_HOST, config.LISTEN_PORT, config.RESPONSE_PORT,
             fast_apply=config.FAST_APPLY)
-
-        # Hochraten-Pump via Live.Base.Timer (Main Thread) - ohne Timer
-        # bleibt pump_active False und process() liest den Socket im Tick
         self._fast_timer = None
-        if config.FAST_APPLY:
-            factory = (timer_factory if timer_factory is not None
-                       else _default_timer_factory)
-            self._fast_timer = factory(self._pump_fast)
-            self.server.pump_active = self._fast_timer is not None
+        self._pump_count = 0
 
         # Real delivery layer: JSON chunking + per-address dedupe.
         # (ServerSenderAdapter above is kept as a minimal fallback/reference.)
@@ -150,6 +143,16 @@ class Manager(ControlSurface):
             lambda address, args: self.meters.on_unsubscribe())
 
         self.server.add_handler("/remote/ping", self._on_ping)
+
+        # Hochraten-Pump via Live.Base.Timer (Main Thread) — bewusst als
+        # LETZTES: der Timer kann sofort feuern und _pump_fast braucht
+        # server + meters. Ohne Timer bleibt pump_active False und
+        # process()/tick() übernimmt (Tick-Raten-Fallback).
+        if config.FAST_APPLY:
+            factory = (timer_factory if timer_factory is not None
+                       else _default_timer_factory)
+            self._fast_timer = factory(self._pump_fast)
+            self.server.pump_active = self._fast_timer is not None
 
         self.schedule_message(1, self.tick)
 
@@ -201,9 +204,15 @@ class Manager(ControlSurface):
 
     def _pump_fast(self):
         """Live.Base.Timer-Callback [Main Thread] - darf NIE in den Host
-        werfen."""
+        werfen. Traegt neben dem Socket-Drain auch die Meter-Kadenz
+        (~33 Hz, User-Feedback 09.07.2026: Meter sollen so fluessig sein
+        wie die Fader)."""
         try:
             self.server.pump()
+
+            self._pump_count += 1
+            if self._pump_count % config.METER_PUMP_DIVIDER == 0:
+                self.meters.on_tick(self._pump_count)
         except Exception:
             logger.exception("fast pump failed")
 
@@ -254,10 +263,13 @@ class Manager(ControlSurface):
                     del self.domains[name]
                     del self._domain_failures[name]
 
-        try:
-            self.meters.on_tick(self._tick_count)
-        except Exception:
-            logger.exception("meter stream on_tick failed")
+        # Meter: im Timer-Modus traegt _pump_fast die Kadenz (~33 Hz);
+        # ohne Timer bleibt der Tick-Pfad (~10 Hz)
+        if self._fast_timer is None:
+            try:
+                self.meters.on_tick(self._tick_count)
+            except Exception:
+                logger.exception("meter stream on_tick failed")
 
         self.heartbeat.check(self._tick_count)
         self.schedule_message(config.TICK_INTERVAL, self.tick)

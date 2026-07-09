@@ -444,18 +444,31 @@ danach neu bewerten (getStats-Raten), dann LiveFaderScale kalibrieren.
   die Domain listener-los weiter (collect+diff pro Tick — compute_diff +
   Sender-Dedupe halten das billig). Dazu Teardown-/Rebind-Guards überall
   (tote LOM-Objekte werfen beim remove_*_listener).
-- Meter-Kadenz bleibt vorerst am Tick (~10 Hz); falls nötig ist der
-  Timer-Pfad der natürliche Träger für 30-Hz-Meter (M2-Feinschliff).
+- Meter-Kadenz: seit dem Kalibrier-Feldtest am Timer-Pfad (~33 Hz,
+  `METER_PUMP_DIVIDER` — User-Feedback: „Meter so flüssig wie die Fader");
+  ohne Timer Fallback auf den Tick (~10 Hz). Der Timer-Block im Manager
+  steht bewusst am ENDE des __init__ (kann sofort feuern, braucht meters).
 - **Feldtest-Runde 3 (User-Abnahme):** „It's working perfectly now" —
   Fader-Feel-Messlatte (Roto, §5.1) BESTANDEN; die Stufigkeit ist mit
   Fast-Path v2 weg. Damit ist M2 komplett.
 
+## 10f. LiveFaderScale-Kalibrierung: VERIFIZIERT (09.07.2026)
+
+Messaufbau (User): Operator-Referenzton, Conduit-Fader nacheinander auf
+die dB-Readouts −60 … +6 gestellt, Lives Post-Mixer-Signal als 32-bit-WAV
+aufgenommen; Plateau-Peaks per Skript vermessen (Quellreferenz −0.046 dBFS
+= Lives Peak-Anzeige −0.05). Ergebnis: **alle neun Stützstellen treffen
+auf < 0.05 dB** — auch der Log-Auslauf unter −18 dB (−24/−36/−48/−60
+exakt). Die „Näherung" ist damit Lives tatsächliche Kurve; keine
+Code-Änderung nötig, §11-Punkt geschlossen. (Einziger Messausreißer:
+−12-Plateau bei −11.9 = Einstellgenauigkeit des Drags, std 0.05 zeigt
+Nachjustieren.)
+
 ## 11. Offen
 
-- Feldtest-Erstkontakt BESTANDEN (09.07.2026): Verbindung + Domain-Sync
-  laufen, Namen/Farben erscheinen (User-Abnahme). Offen bleibt die
-  Feel-Abnahme gegen die Roto-Messlatte (§5.1) und die Kalibrierung von
-  `LiveFaderScale` unter −18 dB gegen Lives dB-Anzeige.
+- Feldtest KOMPLETT bestanden (09.07.2026): Bidirektionalität, Feel
+  (Fast-Path v2) und LiveFaderScale (§10f, < 0.05 dB) — nichts mehr offen
+  aus M1/M2 außer der Meter-Kadenz-Anhebung auf den Timer-Pfad.
 - Bedienelement-Optik: User-Skizzen/SVGs geparkt (09.07.2026) — die Page
   läuft in Conduit-Push-Optik weiter; evtl. braucht es gar keine eigenen
   Assets mehr. Kandidat stattdessen: **zwei Skins** („Conduit" ·

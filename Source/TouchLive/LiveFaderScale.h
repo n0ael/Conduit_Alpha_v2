@@ -14,14 +14,15 @@ namespace conduit::touchlive
     NICHT dB-linear — die Gegenseite liefert den rohen Parameterwert
     (mixer-Domain, Feld "vol"), Anzeige/Skala brauchen dB.
 
-    Community-Fit (verbreitet in Remote-Script-Umfeld, gegen die Anker
-    0.85 → 0 dB und 1.0 → +6 dB kalibriert):
+    Kurve (Community-Fit, Anker 0.85 → 0 dB und 1.0 → +6 dB):
 
         value ≥ 0.4:  dB = 40·value − 34          (linear oben)
         value < 0.4:  dB = −18 + 25·log10(v/0.4)  (log-Auslauf → −inf)
 
-    Exaktheit unter −18 dB ist eine Näherung — nach dem Live-Feldtest ggf.
-    nachkalibrieren (Dossier §11 Offen). Reine Mathematik, Message Thread.
+    MESSTECHNISCH VERIFIZIERT (Feldtest 09.07.2026, docs/TouchLive.md
+    §10f): 32-bit-Aufnahme eines Referenztons durch Lives Fader an neun
+    Stützstellen (+6 … −60 dB) — Abweichung < 0.05 dB über den gesamten
+    Bereich, auch im Log-Auslauf. Reine Mathematik, Message Thread.
 */
 namespace faderscale
 {

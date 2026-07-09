@@ -147,6 +147,43 @@ def test_fast_timer_pumps_whitelisted_writes_between_ticks():
         assert timers[0].stopped
 
 
+def test_meters_stream_at_pump_rate(response_listener):
+    """Meter haengen im Timer-Modus an der Pump-Kadenz (~33 Hz), nicht am
+    100-ms-Tick (User-Feedback 09.07.2026: Meter so fluessig wie Fader)."""
+    timers = []
+
+    def factory(callback):
+        timer = FakeTimer(callback)
+        timers.append(timer)
+        return timer
+
+    manager, song = make_manager(lambda song_, sender: {}, timer_factory=factory)
+    try:
+        song.tracks[0].output_meter_left = 0.5
+
+        # client_addr lernen + Meter abonnieren (non-fast -> tick)
+        send_to_manager("/remote/ping", [])
+        send_to_manager("/remote/meters/subscribe", [])
+        assert poll_until(lambda: (timers[0].fire(), manager.tick(),
+                                   manager.meters.subscribed)[2])
+
+        # METER_PUMP_DIVIDER Pumps ohne tick() -> ein Meter-Frame
+        for _ in range(config.METER_PUMP_DIVIDER):
+            timers[0].fire()
+
+        def got_meter_frame():
+            try:
+                data, _ = response_listener.recvfrom(65535)
+            except socket.timeout:
+                return False
+            return any(address == "/remote/meters"
+                       for address, _args in codec.decode_packet(data))
+
+        assert poll_until(got_meter_frame, timeout=2.0)
+    finally:
+        manager.disconnect()
+
+
 def test_unsubscribe_reaches_dummy_domain():
     domain = DummyDomain()
     manager, _song = make_manager(lambda song, sender: {"dummy": domain})

@@ -1,5 +1,7 @@
 #include "EditorDockPanel.h"
 
+#include <algorithm>
+
 namespace conduit
 {
 
@@ -32,6 +34,16 @@ void EditorDockPanel::addTab (const juce::String& id, const juce::String& title,
 
 void EditorDockPanel::setActiveTab (const juce::String& id)
 {
+    // Dokumentiertes Verhalten: kein Effekt (und kein Callback) bei
+    // unbekannter id.
+    const auto isKnown = std::any_of (tabs.begin(), tabs.end(),
+                                      [&id] (const TabEntry& tab) { return tab.id == id; });
+    if (! isKnown)
+        return;
+
+    const auto changed = activeTabId != id;
+    activeTabId = id;
+
     for (auto& tab : tabs)
     {
         const auto isActive = tab.id == id;
@@ -44,6 +56,9 @@ void EditorDockPanel::setActiveTab (const juce::String& id)
     }
 
     resized();
+
+    if (changed && onActiveTabChanged != nullptr)
+        onActiveTabChanged (activeTabId);
 }
 
 void EditorDockPanel::setPanelOpen (bool shouldBeOpen) noexcept

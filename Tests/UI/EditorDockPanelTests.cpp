@@ -45,6 +45,37 @@ TEST_CASE ("EditorDockPanel: geschlossen liefert getPreferredWidth 0", "[ui]")
     REQUIRE (panel.getPreferredWidth() == 300);
 }
 
+TEST_CASE ("EditorDockPanel: onActiveTabChanged feuert nur bei tatsaechlichem Wechsel", "[ui]")
+{
+    juce::ScopedJuceInitialiser_GUI juceRuntime;
+
+    conduit::EditorDockPanel panel;
+
+    juce::StringArray fired;
+    panel.onActiveTabChanged = [&fired] (const juce::String& id) { fired.add (id); };
+
+    // Auto-Aktivierung des ersten Tabs feuert (Callback ist schon gesetzt)
+    panel.addTab ("a", "A", std::make_unique<ProbeComponent>());
+    REQUIRE (fired.size() == 1);
+    REQUIRE (fired[0] == "a");
+    REQUIRE (panel.getActiveTabId() == "a");
+
+    // Zweiter Tab aktiviert sich nicht selbst
+    panel.addTab ("b", "B", std::make_unique<ProbeComponent>());
+    REQUIRE (fired.size() == 1);
+
+    panel.setActiveTab ("b");
+    REQUIRE (fired.size() == 2);
+    REQUIRE (fired[1] == "b");
+    REQUIRE (panel.getActiveTabId() == "b");
+
+    // Gleicher Tab erneut / unbekannte id: kein Callback, kein Wechsel
+    panel.setActiveTab ("b");
+    panel.setActiveTab ("unbekannt");
+    REQUIRE (fired.size() == 2);
+    REQUIRE (panel.getActiveTabId() == "b");
+}
+
 TEST_CASE ("EditorDockPanel: setPanelWidth klemmt auf [kMinWidth, kMaxWidth]", "[ui]")
 {
     juce::ScopedJuceInitialiser_GUI juceRuntime;

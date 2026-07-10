@@ -47,6 +47,16 @@ public:
         dessen Content wird sichtbar, alle anderen unsichtbar. */
     void setActiveTab (const juce::String& id);
 
+    /** Id des aktiven Tabs — leer solange kein Tab existiert. */
+    [[nodiscard]] juce::String getActiveTabId() const noexcept { return activeTabId; }
+
+    /** Feuert bei jedem TATSÄCHLICHEN Wechsel des aktiven Tabs — auch beim
+        Auto-Aktivieren des ersten addTab, falls der Callback dann schon
+        gesetzt ist (GridPage verdrahtet ihn nach den addTab-Aufrufen und
+        setzt den Initialzustand selbst). Unbekannte ids wechseln nichts
+        und feuern nicht. */
+    std::function<void (const juce::String&)> onActiveTabChanged;
+
     void setPanelOpen (bool shouldBeOpen) noexcept;
     [[nodiscard]] bool isPanelOpen() const noexcept { return open; }
 
@@ -84,6 +94,7 @@ private:
 
     juce::Component contentHost;
     std::vector<TabEntry> tabs;
+    juce::String activeTabId;
 
     bool open = false;
     int  panelWidth = kMinWidth;

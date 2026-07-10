@@ -4,6 +4,8 @@
 #include <juce_data_structures/juce_data_structures.h>
 #include <juce_gui_basics/juce_gui_basics.h>
 
+#include "CcControlLayer.h"
+#include "Core/CcControlModel.h"
 #include "Core/GridPanelSettings.h"
 #include "Core/GridVoiceEngine.h"
 #include "Core/MidiDeviceTarget.h"
@@ -34,11 +36,18 @@ namespace conduit
     Rechtes Editor-Dock-Panel (S2-Vorstufe MPE-Shaping): EditorDockPanel
     dockt via bounds.removeFromRight (dockPanel.getPreferredWidth()) --
     koexistiert mit dem Browser-Panel (das dockt eine Ebene höher im
-    EngineEditor). Genau ein Tab „MPE" mit MpeShapingView (S2c) -- drei
+    EngineEditor). Tab „MPE" mit MpeShapingView (S2c) -- drei
     Kurven (Pressure/Slide/PitchBend) + Live-Noten-Kreise, reine Anzeige
     (Touch-Bearbeitung folgt in S2c-2). Toggle über einen eigenen
     TransportBar-Button (setDockPanelOpen), Breite/Offen-Zustand persistiert
     über GridPanelSettings (App-Zustand, Muster MeterSettings).
+
+    CC-Baukasten (Grid-Page v2): zweiter Tab „CC" (CcPanel, Werkzeuge
+    Fader/Push/Toggle/XY) + CcControlLayer als Overlay exakt über den
+    Keyboard-Bounds (nach keyboard deklariert/hinzugefügt = darüber).
+    CC-Modus (Bearbeiten) gilt, wenn das Dock-Panel offen ist UND der
+    aktive Tab „cc" — aktualisiert in setDockPanelOpen und über
+    EditorDockPanel::onActiveTabChanged (updateCcMode).
 
     Session-Skala (Grid-Page v2, Design-Mock): Root- und Skala-Kachel in der
     Top-Row zykeln scaleRoot/scaleType per Tap; geschrieben wird NUR in den
@@ -87,6 +96,9 @@ private:
         + Keyboard-Einfärbung — Anzeige folgt IMMER dem ValueTree (5.3). */
     void refreshScaleFromState();
 
+    /** CC-Modus des Overlays = (Dock-Panel offen) UND (aktiver Tab "cc"). */
+    void updateCcMode();
+
     void valueTreePropertyChanged (juce::ValueTree& tree,
                                    const juce::Identifier& property) override;
 
@@ -109,6 +121,8 @@ private:
     ExpressionRibbon slideOffsetRibbon   { "Slide", true };     // bipolar
     ExpressionRibbon pitchOffsetRibbon   { "Pitch", true };     // bipolar
     GridKeyboardComponent keyboard;
+    grid::CcControlModel ccModel;     // CC-Baukasten (Grid-Page v2)
+    CcControlLayer ccLayer;           // Overlay ÜBER dem Keyboard (nach keyboard deklariert)
     EditorDockPanel dockPanel;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (GridPage)

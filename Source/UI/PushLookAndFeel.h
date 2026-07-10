@@ -32,6 +32,9 @@ namespace colours
     inline const juce::Colour padRoot      { 0xff383838 };  // Grid-Pad: Grundton der Session-Skala
     inline const juce::Colour padUnlit     { 0xff1a1a1a };  // Grid-Pad: skalenfremd (unbeleuchtet)
     inline const juce::Colour padGlow      { 0xff454545 };  // Grid-Pad: Aufhellung nahe einer Sonne
+
+    inline const juce::Colour controlSurface { 0xff1e1e1e };  // CC-Control: Fläche (Grid-Page v2 Baukasten)
+    inline const juce::Colour controlOutline { 0xff4a4a4a };  // CC-Control: Kontur
 }
 
 //==============================================================================

@@ -40,6 +40,21 @@
     wiederverwendbar: SV-Fläche + Hue-Slider + 8×5-Preset-Raster,
     interner Zustand HSV (Hue bleibt bei s=0/v=0 erhalten), HSV↔RGB als
     pure statics (h01 in [0,1), Roundtrip 8-bit-exakt, Catch2-getestet).
+  - **CC-Baukasten (Grid-Page v2, 07/2026):** zweiter Tab „CC" im
+    EditorDockPanel (CcPanel: Werkzeuge Fader/Push/Toggle/XY) + CcControlLayer
+    als Overlay exakt über dem Pad-Raster (GridPage: nach keyboard, identische
+    Bounds). CC-Modus = Panel offen UND aktiver Tab „cc"
+    (EditorDockPanel::onActiveTabChanged/getActiveTabId → GridPage::
+    updateCcMode → CcControlLayer::setCcMode): Drag mit Werkzeug zieht ein
+    Control auf dem Zellraster auf (CcControlModel, Source/Core — UI-frei,
+    Catch2-getestet), Drag verschiebt grid-snapped (moveTo klemmt), ×-Zone
+    entfernt; ohne Werkzeug schluckt der Layer Events (keine Noten im
+    CC-Modus). MPE-Modus: freie Flächen fallen per hitTest zum Keyboard
+    durch (Pads UNTER Controls stumm), Controls multi-touch bedienbar
+    (Fader vertikal, Push halten, Toggle-Tap, XY-Drag). Wertänderungen sind
+    vorerst reiner UI-State — der MIDI-CC-Versand dockt später an
+    (CcControlLayer::onControlValueChanged, TODO(design)); ebenso offen:
+    CC-Nummern-Zuweisung pro Control.
   - **Sinks/Stränge später:** OSC (Remote + Transcoder) und CV (Software-CVC)
     docken am selben Voice-Modell an; Gesten-State-Machine (Drone/Latch/
     Pinch/Drift), Chord-Squares, Hardware-MPE-Input, MPE-Shaping (Kurven +

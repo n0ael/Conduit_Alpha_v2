@@ -94,6 +94,7 @@ juce_add_gui_app(Conduit
 set(CONDUIT_CPP_SOURCES
     Source/Core/Main.cpp
     Source/Core/AudioDeviceController.cpp
+    Source/Core/CcControlModel.cpp
     Source/Core/ChannelNames.cpp
     Source/Core/CurveEditInteraction.cpp
     Source/Core/EngineProcessor.cpp
@@ -234,6 +235,8 @@ set(CONDUIT_CPP_SOURCES
     Source/UI/CapturePanel.cpp
     Source/UI/CaptureSettingsComponent.cpp
     Source/UI/CaptureToast.cpp
+    Source/UI/CcControlLayer.cpp
+    Source/UI/CcPanel.cpp
     Source/UI/ChannelAttributePanel.cpp
     Source/UI/ColourSwatchStrip.cpp
     Source/UI/ConduitColorPicker.cpp
@@ -281,6 +284,7 @@ set(CONDUIT_CPP_SOURCES
 target_sources(Conduit PRIVATE
     ${CONDUIT_CPP_SOURCES}
     Source/Core/AudioDeviceController.h
+    Source/Core/CcControlModel.h
     Source/Core/ChannelNames.h
     Source/Core/CurveEditInteraction.h
     Source/Core/EngineProcessor.h
@@ -430,6 +434,8 @@ target_sources(Conduit PRIVATE
     Source/UI/CaptureAllButton.h
     Source/UI/CapturePanel.h
     Source/UI/CaptureToast.h
+    Source/UI/CcControlLayer.h
+    Source/UI/CcPanel.h
     Source/UI/ChannelAttributePanel.h
     Source/UI/ColourSwatchStrip.h
     Source/UI/ConduitColorPicker.h
@@ -559,6 +565,7 @@ if(CONDUIT_BUILD_TESTS)
         Tests/Core/CaptureStressTests.cpp
         Tests/Core/CaptureTapTests.cpp
         Tests/Core/CaptureWriterTests.cpp
+        Tests/Core/CcControlModelTests.cpp
         Tests/Core/ChannelNamesTests.cpp
         Tests/Core/ClockTests.cpp
         Tests/Core/CurveEditInteractionTests.cpp
@@ -635,6 +642,7 @@ if(CONDUIT_BUILD_TESTS)
     target_sources(ConduitTests PRIVATE
         ${CONDUIT_TEST_CPP_SOURCES}
         Source/Core/AudioDeviceController.cpp
+        Source/Core/CcControlModel.cpp
         Source/Core/ChannelNames.cpp
         Source/Core/CurveEditInteraction.cpp
         Source/Core/EngineEditor.cpp
@@ -775,6 +783,8 @@ if(CONDUIT_BUILD_TESTS)
         Source/UI/CapturePanel.cpp
         Source/UI/CaptureSettingsComponent.cpp
         Source/UI/CaptureToast.cpp
+        Source/UI/CcControlLayer.cpp
+        Source/UI/CcPanel.cpp
         Source/UI/ChannelAttributePanel.cpp
         Source/UI/ColourSwatchStrip.cpp
         Source/UI/ConduitColorPicker.cpp

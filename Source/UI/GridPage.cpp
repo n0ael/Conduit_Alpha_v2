@@ -1,5 +1,6 @@
 #include "GridPage.h"
 
+#include "CcPanel.h"
 #include "Modules/ConduitModule.h"
 #include "MpeShapingView.h"
 
@@ -11,7 +12,10 @@ GridPage::GridPage (juce::ValueTree rootStateToUse,
                      GridPanelSettings& panelSettingsToUse, UiSettings& uiSettingsToUse)
     : rootState (std::move (rootStateToUse)),
       engine (engineToUse), midiTarget (midiTargetToUse), panelSettings (panelSettingsToUse),
-      uiSettings (uiSettingsToUse), keyboard (engineToUse)
+      uiSettings (uiSettingsToUse), keyboard (engineToUse),
+      // cols/rows aus der PadGridLayout-Default-Config — dasselbe Raster,
+      // das auch das Keyboard nutzt (GridKeyboardComponent-Default).
+      ccLayer (ccModel, grid::PadGridLayout::Config{}.cols, grid::PadGridLayout::Config{}.rows)
 {
     addAndMakeVisible (outputCombo);
     addAndMakeVisible (rootTile);
@@ -21,6 +25,7 @@ GridPage::GridPage (juce::ValueTree rootStateToUse,
     addAndMakeVisible (slideOffsetRibbon);
     addAndMakeVisible (pitchOffsetRibbon);
     addAndMakeVisible (keyboard);
+    addAndMakeVisible (ccLayer);     // NACH keyboard hinzugefügt = liegt darüber
     addChildComponent (dockPanel);   // sichtbar nur wenn offen (setPanelOpen)
 
     rebuildDeviceList();
@@ -78,11 +83,22 @@ GridPage::GridPage (juce::ValueTree rootStateToUse,
         }
     };
     dockPanel.addTab ("mpe", "MPE", std::move (mpeView));
+
+    // Tab 2 „CC" (Grid-Page v2, CC-Baukasten): Werkzeugwahl geht ans
+    // Overlay; der CC-Modus (Bearbeiten) gilt bei offenem Panel + aktivem
+    // CC-Tab (updateCcMode).
+    auto ccPanel = std::make_unique<CcPanel>();
+    ccPanel->onToolChanged = [this] (grid::CcTool tool) { ccLayer.setActiveTool (tool); };
+    dockPanel.addTab ("cc", "CC", std::move (ccPanel));
+
     dockPanel.setPanelWidth (panelSettings.getEditorPanelWidth());
     dockPanel.setPanelOpen (panelSettings.isEditorPanelOpen());
 
     dockPanel.onWidthChanged   = [this] { resized(); };
     dockPanel.onWidthCommitted = [this] (int width) { panelSettings.setEditorPanelWidth (width); };
+    dockPanel.onActiveTabChanged = [this] (const juce::String&) { updateCcMode(); };
+
+    updateCcMode();   // Initialzustand (Panel-Open aus panelSettings, aktiver Tab "mpe")
 }
 
 GridPage::~GridPage()
@@ -144,7 +160,13 @@ void GridPage::setDockPanelOpen (bool shouldBeOpen) noexcept
 {
     dockPanel.setPanelOpen (shouldBeOpen);
     panelSettings.setEditorPanelOpen (shouldBeOpen);
+    updateCcMode();
     resized();
+}
+
+void GridPage::updateCcMode()
+{
+    ccLayer.setCcMode (dockPanel.isPanelOpen() && dockPanel.getActiveTabId() == "cc");
 }
 
 void GridPage::rebuildDeviceList()
@@ -206,6 +228,7 @@ void GridPage::resized()
     atOffsetRibbon.setBounds    (rightColumn.removeFromTop (rightColumn.getHeight() / 2));
     slideOffsetRibbon.setBounds (rightColumn);
     keyboard.setBounds (bounds);
+    ccLayer.setBounds (bounds);   // Overlay exakt über den Keyboard-Bounds
 }
 
 } // namespace conduit

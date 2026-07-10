@@ -7,6 +7,7 @@
 #include "Core/GridVoiceEngine.h"
 #include "Core/PadGridLayout.h"
 #include "Core/RingTouchModel.h"
+#include "Util/ScaleQuantizer.h"
 
 namespace conduit
 {
@@ -26,9 +27,9 @@ namespace conduit
     Bewusst weiterhin ohne Drone/Latch, Pinch, Doppeltipp, Drift-über-Rand,
     Rand-Ribbons, Release-All — eigene Meilensteine.
 
-    Hält keinen eigenen Zustand außer der Per-Finger-Zuordnung (primär) und
-    dem RingTouchModel; ruft die GridVoiceEngine& direkt (Message Thread,
-    CLAUDE.md 4.2 ITouchMacro).
+    Hält keinen eigenen Zustand außer der Per-Finger-Zuordnung (primär),
+    der Session-Skala (setScale) und dem RingTouchModel; ruft die
+    GridVoiceEngine& direkt (Message Thread, CLAUDE.md 4.2 ITouchMacro).
 */
 class GridKeyboardComponent final : public juce::Component
 {
@@ -42,13 +43,21 @@ public:
     void mouseDrag (const juce::MouseEvent& event) override;
     void mouseUp   (const juce::MouseEvent& event) override;
 
+    /** Session-Skala (Root-Tree scaleRoot/scaleType, Schema 6.2) — färbt die
+        Pad-Grundfarben (Grundton/Skalenton/skalenfremd). Message Thread. */
+    void setScale (int newRootNote, ScaleType newScaleType);
+
+    /** Pad-Grundfarbe nach Session-Skala (Design-Mock Grid-Page v2):
+        Grundton padRoot, Skalenton tile, skalenfremd padUnlit — pure
+        function, testbar ohne Component. */
+    [[nodiscard]] static juce::Colour padBaseColour (int midiNote, int rootNote,
+                                                     ScaleType type) noexcept;
+
 private:
     struct FingerState
     {
         float startNormX = 0.0f;
         float startNormY = 0.0f;
-        int   padIndex    = -1;
-        juce::Point<float> currentPos; // Pixel, live -- für den Helligkeits-Fade des Ursprungs-Pads
     };
 
     [[nodiscard]] juce::Point<float> normalisedPosition (const juce::MouseEvent& event) const noexcept;
@@ -57,6 +66,9 @@ private:
     grid::GridVoiceEngine& engine;
     grid::PadGridLayout    layout;
     grid::RingTouchModel   ring;
+
+    int       scaleRootNote = 0;
+    ScaleType sessionScale  = ScaleType::chromatic;
 
     std::map<int, FingerState> fingers;
 

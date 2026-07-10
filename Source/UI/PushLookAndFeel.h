@@ -28,6 +28,10 @@ namespace colours
     inline const juce::Colour ledCyan      { 0xff00bfd8 };  // Link (Ableton-Cyan)
     inline const juce::Colour ledOrange    { 0xffffa726 };  // Capture aktiv
     inline const juce::Colour ledWhite     { 0xfff0f0f0 };  // neutrale LED
+
+    inline const juce::Colour padRoot      { 0xff383838 };  // Grid-Pad: Grundton der Session-Skala
+    inline const juce::Colour padUnlit     { 0xff1a1a1a };  // Grid-Pad: skalenfremd (unbeleuchtet)
+    inline const juce::Colour padGlow      { 0xff454545 };  // Grid-Pad: Aufhellung nahe einer Sonne
 }
 
 //==============================================================================

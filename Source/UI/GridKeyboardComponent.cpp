@@ -29,6 +29,28 @@ int GridKeyboardComponent::fingerIdFor (const juce::MouseEvent& event) noexcept
     return event.source.getIndex() + 1;
 }
 
+void GridKeyboardComponent::setScale (int newRootNote, ScaleType newScaleType)
+{
+    if (scaleRootNote == newRootNote && sessionScale == newScaleType)
+        return;
+
+    scaleRootNote = newRootNote;
+    sessionScale  = newScaleType;
+    repaint();
+}
+
+juce::Colour GridKeyboardComponent::padBaseColour (int midiNote, int rootNote,
+                                                   ScaleType type) noexcept
+{
+    const auto semitoneAboveRoot = ((midiNote - rootNote) % 12 + 12) % 12;
+
+    if (semitoneAboveRoot == 0)
+        return push::colours::padRoot;
+
+    return scale::isInScale (semitoneAboveRoot, type) ? push::colours::tile
+                                                      : push::colours::padUnlit;
+}
+
 void GridKeyboardComponent::mouseDown (const juce::MouseEvent& event)
 {
     const auto fingerId = fingerIdFor (event);
@@ -50,7 +72,7 @@ void GridKeyboardComponent::mouseDown (const juce::MouseEvent& event)
     if (pad < 0)
         return;
 
-    fingers[fingerId] = { pos.x, pos.y, pad, event.position };
+    fingers[fingerId] = { pos.x, pos.y };
 
     // MPE-Member-Kanäle sind gepoolt (VoiceAllocator) und behalten Bend/
     // Pressure vom LETZTEN Voice-Nutzer, bis die neue Note etwas Eigenes
@@ -85,7 +107,6 @@ void GridKeyboardComponent::mouseDrag (const juce::MouseEvent& event)
                           layout.pitchBendSemitones (it->second.startNormX, pos.x));
     engine.setPressure (static_cast<uint32_t> (fingerId),
                          layout.expressionFromDrag (it->second.startNormY, pos.y));
-    it->second.currentPos = event.position;
     repaint();
 }
 
@@ -126,14 +147,13 @@ void GridKeyboardComponent::paint (juce::Graphics& g)
     const auto padHeight = bounds.getHeight() / (float) rows;
     constexpr float gap = 2.0f;
 
-    // Ursprungs-Pad je Finger -> dessen LIVE-Position (für den Helligkeits-
-    // Fade, User 06.07.2026: je weiter die Sonne vom Antipp-Pad wegwandert,
-    // desto mehr fällt die Aufhellung zurück; nähert sie sich wieder, hellt
-    // das Pad wieder auf).
-    std::map<int, juce::Point<float>> activePads;
-    for (const auto& entry : fingers)
-        activePads[entry.second.padIndex] = entry.second.currentPos;
+    // Sonnen/Monde EINMAL holen — Basis für den Pad-Glow und die
+    // Kreis-Zeichnung darunter.
+    const auto circles = ring.activeCircles();
 
+    // Pad-Glow (Design-Mock Grid-Page v2): JEDES Pad hellt nach Distanz zur
+    // nächstgelegenen Sonne auf (Maximum über alle Kreis-Zentren) — ersetzt
+    // das frühere Nur-Ursprungs-Pad-Highlight; fadeDistance unverändert.
     const auto fadeDistance = juce::jmax (padWidth, padHeight);
 
     for (int row = 0; row < rows; ++row)
@@ -145,22 +165,20 @@ void GridKeyboardComponent::paint (juce::Graphics& g)
                                                             padWidth, padHeight)
                                         .reduced (gap * 0.5f);
 
-            const auto activeIt = activePads.find (padIndex);
-            const auto isActive = activeIt != activePads.end();
+            // Grundfarbe nach Session-Skala: Grundton > Skalenton > skalenfremd.
+            const auto baseColour = padBaseColour (layout.noteForPad (padIndex),
+                                                   scaleRootNote, sessionScale);
 
-            if (isActive)
-            {
-                const auto padCentre = padBounds.getCentre();
-                const auto distance  = activeIt->second.getDistanceFrom (padCentre);
-                const auto closeness = juce::jlimit (0.0f, 1.0f, 1.0f - distance / fadeDistance);
+            auto glow = 0.0f;
+            const auto padCentre = padBounds.getCentre();
 
-                g.setColour (push::colours::tile.interpolatedWith (push::colours::tileActive, closeness));
-            }
-            else
+            for (const auto& circle : circles)
             {
-                g.setColour (push::colours::tile);
+                const auto distance = circle.center.getDistanceFrom (padCentre);
+                glow = juce::jmax (glow, juce::jlimit (0.0f, 1.0f, 1.0f - distance / fadeDistance));
             }
 
+            g.setColour (baseColour.interpolatedWith (push::colours::padGlow, glow));
             g.fillRoundedRectangle (padBounds, 4.0f);
         }
     }
@@ -168,7 +186,7 @@ void GridKeyboardComponent::paint (juce::Graphics& g)
     const auto sunDiameter  = ring.restRadiusPx() * 2.0f;
     const auto moonDiameter = sunDiameter * 0.6f; // 60% der Sonnengröße (User 06.07.2026)
 
-    for (const auto& circle : ring.activeCircles())
+    for (const auto& circle : circles)
     {
         g.setColour (push::colours::ledWhite);
 

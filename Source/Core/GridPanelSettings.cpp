@@ -1,5 +1,7 @@
 #include "GridPanelSettings.h"
 
+#include "UI/PushLookAndFeel.h"   // Default-Achsenfarben (push::colours-Tokens)
+
 namespace conduit
 {
 
@@ -9,6 +11,17 @@ namespace
     constexpr const char* editorPanelOpenKey      = "editorPanelOpen";
     constexpr const char* editorThresholdWidthKey = "editorThresholdWidth";
     constexpr const char* noteCircleFadeMsKey     = "noteCircleFadeMs";
+
+    // Achsen-Farben (Grid-Page v2) — Index = GridPanelSettings::axisIndex
+    // (Pressure 0, Slide 1, PitchBend 2).
+    constexpr const char* axisColourKeys[] = { "axisColourPressure",
+                                               "axisColourSlide",
+                                               "axisColourPitchBend" };
+
+    [[nodiscard]] std::array<juce::Colour, 3> defaultAxisColours()
+    {
+        return { push::colours::ledOrange, push::colours::ledCyan, push::colours::ledGreen };
+    }
 }
 
 //==============================================================================
@@ -38,6 +51,8 @@ GridPanelSettings::~GridPanelSettings()
 //==============================================================================
 void GridPanelSettings::loadFromFile()
 {
+    axisColours = defaultAxisColours();
+
     if (auto* file = applicationProperties.getUserSettings())
     {
         editorPanelWidth = file->getIntValue (editorPanelWidthKey, defaultWidth);
@@ -47,6 +62,13 @@ void GridPanelSettings::loadFromFile()
             file->getIntValue (editorThresholdWidthKey, defaultThresholdWidth));
         noteCircleFadeMs = juce::jlimit (minNoteCircleFadeMs, maxNoteCircleFadeMs,
             file->getIntValue (noteCircleFadeMsKey, defaultNoteCircleFadeMs));
+
+        for (size_t i = 0; i < axisColours.size(); ++i)
+        {
+            const auto text = file->getValue (axisColourKeys[i], axisColours[i].toString());
+            if (text.isNotEmpty())
+                axisColours[i] = juce::Colour::fromString (text);
+        }
     }
 }
 
@@ -106,6 +128,41 @@ void GridPanelSettings::setNoteCircleFadeMs (int newFadeMs)
     if (auto* file = applicationProperties.getUserSettings())
     {
         file->setValue (noteCircleFadeMsKey, noteCircleFadeMs);
+        file->saveIfNeeded();
+    }
+}
+
+//==============================================================================
+size_t GridPanelSettings::axisIndex (grid::GridVoiceEngine::Axis axis) noexcept
+{
+    switch (axis)
+    {
+        case grid::GridVoiceEngine::Axis::Pressure:  return 0;
+        case grid::GridVoiceEngine::Axis::Slide:     return 1;
+        case grid::GridVoiceEngine::Axis::PitchBend: return 2;
+    }
+
+    jassertfalse;
+    return 0;
+}
+
+juce::Colour GridPanelSettings::getAxisColour (grid::GridVoiceEngine::Axis axis) const noexcept
+{
+    return axisColours[axisIndex (axis)];
+}
+
+void GridPanelSettings::setAxisColour (grid::GridVoiceEngine::Axis axis, juce::Colour newColour)
+{
+    const auto index = axisIndex (axis);
+
+    if (axisColours[index] == newColour)
+        return;
+
+    axisColours[index] = newColour;
+
+    if (auto* file = applicationProperties.getUserSettings())
+    {
+        file->setValue (axisColourKeys[index], axisColours[index].toString());
         file->saveIfNeeded();
     }
 }

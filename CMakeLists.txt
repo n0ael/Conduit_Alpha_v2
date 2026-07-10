@@ -236,6 +236,7 @@ set(CONDUIT_CPP_SOURCES
     Source/UI/CaptureToast.cpp
     Source/UI/ChannelAttributePanel.cpp
     Source/UI/ColourSwatchStrip.cpp
+    Source/UI/ConduitColorPicker.cpp
     Source/UI/CurveEditor.cpp
     Source/UI/EditorDockPanel.cpp
     Source/UI/ExpressionRibbon.cpp
@@ -431,6 +432,7 @@ target_sources(Conduit PRIVATE
     Source/UI/CaptureToast.h
     Source/UI/ChannelAttributePanel.h
     Source/UI/ColourSwatchStrip.h
+    Source/UI/ConduitColorPicker.h
     Source/UI/CurveEditor.h
     Source/UI/CurvedSlider.h
     Source/UI/EditorDockPanel.h
@@ -609,6 +611,7 @@ if(CONDUIT_BUILD_TESTS)
         Tests/TouchLive/TouchLiveClientTests.cpp
         Tests/UI/TouchLivePageTests.cpp
         Tests/UI/BrowserPanelTests.cpp
+        Tests/UI/ConduitColorPickerTests.cpp
         Tests/UI/EditorDockPanelTests.cpp
         Tests/UI/NoteCircleFadeTrackerTests.cpp
         Tests/UI/TouchKeyboardTests.cpp
@@ -774,6 +777,7 @@ if(CONDUIT_BUILD_TESTS)
         Source/UI/CaptureToast.cpp
         Source/UI/ChannelAttributePanel.cpp
         Source/UI/ColourSwatchStrip.cpp
+        Source/UI/ConduitColorPicker.cpp
         Source/UI/CurveEditor.cpp
         Source/UI/EditorDockPanel.cpp
         Source/UI/ExpressionRibbon.cpp

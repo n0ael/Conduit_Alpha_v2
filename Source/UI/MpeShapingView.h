@@ -1,6 +1,7 @@
 #pragma once
 
 #include <array>
+#include <functional>
 #include <map>
 
 #include <juce_gui_basics/juce_gui_basics.h>
@@ -29,9 +30,16 @@ namespace conduit
 
     Rein Anzeige -- keine Touch-Bearbeitung der Kurve (Punkte/Krümmung/
     Min-Max-Griffe kommen erst mit S2c-2). Ab editorThresholdWidth (Dev-Wert)
-    klappt pro Sektion eine Detailspalte auf (reiner Platzhalter-Text, noch
-    nicht interaktiv). Zwei Dev-Slider unten (Schwellbreite, Fade-Zeit) sind
-    nur im Dev-Modus sichtbar und persistieren über GridPanelSettings.
+    klappt pro Sektion eine Detailspalte auf (Platzhalter-Text oben,
+    Offset-Schloss + „Color"-Zeile unten). Zwei Dev-Slider unten
+    (Schwellbreite, Fade-Zeit) sind nur im Dev-Modus sichtbar und
+    persistieren über GridPanelSettings.
+
+    Achsen-Farben (Grid-Page v2): section.colour kommt aus GridPanelSettings
+    (persistent); die „Color"-Zeile je Achse wählt per Quick-Swatch-Tap
+    sofort bzw. öffnet per Gedrückthalten den ConduitColorPicker
+    (CallOutBox, live). onAxisColourChanged meldet Änderungen an die
+    GridPage (Ribbon-Füllfarben).
 
     Frame-Update über EIN juce::VBlankAttachment: liest pro Achse
     readActiveVoices in einen vorreservierten Vektor, füttert den
@@ -43,6 +51,13 @@ class MpeShapingView final : public juce::Component
 public:
     MpeShapingView (grid::GridVoiceEngine& engineToUse, GridPanelSettings& panelSettingsToUse,
                     UiSettings& uiSettingsToUse);
+    ~MpeShapingView() override;
+
+    /** Feuert bei jeder Achsen-Farbänderung (Quick-Swatch-Tap oder
+        ConduitColorPicker, live) — der Besitzer (GridPage) aktualisiert
+        damit die ExpressionRibbon-Füllfarben. Persistenz (GridPanelSettings)
+        übernimmt die View selbst. */
+    std::function<void (grid::GridVoiceEngine::Axis, juce::Colour)> onAxisColourChanged;
 
     void paint (juce::Graphics& g) override;
     void resized() override;
@@ -52,6 +67,50 @@ public:
     void mouseUp   (const juce::MouseEvent& event) override;
 
 private:
+    //==========================================================================
+    /** „Color"-Zeile einer Achsen-Sektion (unterster Punkt der Detailspalte):
+        Überschrift „Color" + 5 Quick-Swatches (16×16 px). Kurzer Tap wählt
+        die Farbe sofort (onColourPicked), Gedrückthalten ~450 ms öffnet den
+        ConduitColorPicker (onLongPress — der Besitzer launcht die
+        CallOutBox). Hit-Zone je Swatch: volle Zeilenhöhe (Touch,
+        CLAUDE.md 10 — die 16-px-Optik ist Design-Vorgabe). */
+    class AxisColourRow final : public juce::Component, private juce::Timer
+    {
+    public:
+        AxisColourRow() = default;
+
+        void setSelectedColour (juce::Colour colour);
+        [[nodiscard]] juce::Colour getSelectedColour() const noexcept { return selected; }
+
+        std::function<void (juce::Colour)> onColourPicked;   // kurzer Tap
+        std::function<void()> onLongPress;                   // Picker öffnen
+
+        void paint (juce::Graphics& g) override;
+        void mouseDown (const juce::MouseEvent& event) override;
+        void mouseUp   (const juce::MouseEvent& event) override;
+
+        static constexpr int kHeadingGapTop    = 8;
+        static constexpr int kHeadingHeight    = 12;
+        static constexpr int kHeadingGapBottom = 4;
+        static constexpr int kSwatchSize       = 16;
+        static constexpr int kSwatchGap        = 5;
+        static constexpr int kLongPressMs      = 450;
+        static constexpr int kRowHeight        = kHeadingGapTop + kHeadingHeight
+                                                     + kHeadingGapBottom + kSwatchSize;
+
+    private:
+        void timerCallback() override;
+
+        [[nodiscard]] juce::Rectangle<int> swatchBounds (int index) const noexcept;
+        [[nodiscard]] int swatchIndexAt (juce::Point<int> pos) const noexcept;
+
+        juce::Colour selected;
+        bool longPressTriggered = false;
+        juce::Point<int> pressPosition;
+
+        JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (AxisColourRow)
+    };
+
     struct AxisSection
     {
         grid::GridVoiceEngine::Axis axis;
@@ -93,6 +152,16 @@ private:
     void setupOffsetToggle (LockToggle& toggle, juce::Label& label,
                             grid::GridVoiceEngine::Axis axis, juce::Colour accentColour);
 
+    /** Zentrale Farb-Anwendung einer Achse: section.colour, Quick-Swatch-
+        Auswahl, LockToggle-Akzent, Persistenz (GridPanelSettings) und
+        onAxisColourChanged (GridPage → Ribbons) — sofort, live. */
+    void applyAxisColour (int sectionIndex, juce::Colour colour);
+
+    /** Öffnet den ConduitColorPicker als CallOutBox über der Color-Zeile
+        der Sektion, initialisiert mit der aktuellen Achsfarbe; Änderungen
+        wirken live via applyAxisColour. */
+    void openColourPicker (int sectionIndex);
+
     /** Index der Achsen-Sektion, deren curveBounds pos enthält, sonst -1. */
     [[nodiscard]] int sectionIndexAt (juce::Point<float> pos) const noexcept;
 
@@ -123,6 +192,7 @@ private:
     static constexpr float kMarkerWidth        = 6.0f; // Höhenmarke (combinedValue)
     static constexpr float kMarkerHeight       = 2.5f;
     static constexpr int   kOffsetToggleRowHeight = LockToggle::kComponentSize + 4; // Schloss + Rand
+    static constexpr int   kColourRowBottomPad    = 4;   // Rand unter der Color-Zeile
 
     // Achsen-Kapazität (ExpressionAxis::Config::outMin/outMax) aller drei
     // Grid-Achsen ist seit S2c-1 immer [0,1] -- ExpressionAxis/GridVoiceEngine
@@ -159,6 +229,16 @@ private:
     juce::Label pressureOffsetLabel { {}, "Offset" };
     LockToggle  slideOffsetToggle;
     juce::Label slideOffsetLabel { {}, "Offset" };
+
+    // „Color"-Zeile je Achse (unterster Punkt der Detailspalte, ALLE drei
+    // Achsen) — Index parallel zu sections. Eigene Member statt Teil von
+    // AxisSection (Components sind nicht kopier-/verschiebbar).
+    std::array<AxisColourRow, 3> colourRows;
+
+    // Offene Picker-CallOutBox (höchstens eine) — SafePointer, damit der
+    // Destruktor eine noch offene Box schließen kann, ohne einem bereits
+    // geschlossenen Fenster hinterherzuzeigen.
+    juce::Component::SafePointer<juce::CallOutBox> activeColourPicker;
 
     bool devSlidersVisible = false;   // gecachter Dev-Modus-Zustand (tick())
     double lastTickMs = 0.0;

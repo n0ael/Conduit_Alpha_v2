@@ -1,6 +1,11 @@
 #pragma once
 
+#include <array>
+
 #include <juce_data_structures/juce_data_structures.h>
+#include <juce_graphics/juce_graphics.h>
+
+#include "GridVoiceEngine.h"
 
 namespace conduit
 {
@@ -55,14 +60,25 @@ public:
     [[nodiscard]] int getNoteCircleFadeMs() const noexcept { return noteCircleFadeMs; }
     void setNoteCircleFadeMs (int newFadeMs);
 
+    /** Farbe einer Grid-Achse (MpeShapingView-Kurve/Label/Noten-Kreise,
+        LockToggle-Akzent, ExpressionRibbon-Füllung) — persistiert als
+        Hex-String (juce::Colour::toString). Defaults: Pressure = ledOrange,
+        Slide = ledCyan, PitchBend = ledGreen (Design-Mock Grid-Page v2). */
+    [[nodiscard]] juce::Colour getAxisColour (grid::GridVoiceEngine::Axis axis) const noexcept;
+    void setAxisColour (grid::GridVoiceEngine::Axis axis, juce::Colour newColour);
+
 private:
     void loadFromFile();
+
+    /** Axis → Index in axisColours (Pressure 0, Slide 1, PitchBend 2). */
+    [[nodiscard]] static size_t axisIndex (grid::GridVoiceEngine::Axis axis) noexcept;
 
     juce::ApplicationProperties applicationProperties;
     int  editorPanelWidth     = defaultWidth;
     bool editorPanelOpen      = false;
     int  editorThresholdWidth = defaultThresholdWidth;
     int  noteCircleFadeMs     = defaultNoteCircleFadeMs;
+    std::array<juce::Colour, 3> axisColours {};   // geladen in loadFromFile()
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (GridPanelSettings)
 };

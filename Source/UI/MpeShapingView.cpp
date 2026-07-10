@@ -1,17 +1,131 @@
 #include "MpeShapingView.h"
 
+#include "ConduitColorPicker.h"
 #include "PushLookAndFeel.h"
 
 namespace conduit
 {
 
+namespace
+{
+    // Quick-Swatches der „Color"-Zeile (Design-Mock Grid-Page v2) — die
+    // fünf LED-Akzent-Tokens, keine Roh-Hex.
+    [[nodiscard]] const std::array<juce::Colour, 5>& quickSwatchColours()
+    {
+        static const std::array<juce::Colour, 5> swatches {
+            push::colours::ledOrange, push::colours::ledCyan, push::colours::ledGreen,
+            push::colours::ledRed,    push::colours::ledWhite,
+        };
+        return swatches;
+    }
+}
+
+//==============================================================================
+void MpeShapingView::AxisColourRow::setSelectedColour (juce::Colour colour)
+{
+    if (selected == colour)
+        return;
+
+    selected = colour;
+    repaint();
+}
+
+void MpeShapingView::AxisColourRow::paint (juce::Graphics& g)
+{
+    auto area = getLocalBounds();
+    area.removeFromTop (kHeadingGapTop);
+
+    const auto heading = area.removeFromTop (kHeadingHeight);
+    g.setColour (push::colours::textDim);
+    g.setFont (push::scaledFont (10.0f));
+    g.drawText ("Color", heading, juce::Justification::centredLeft);
+
+    const auto& swatchColours = quickSwatchColours();
+    for (int i = 0; i < (int) swatchColours.size(); ++i)
+    {
+        const auto cell   = swatchBounds (i).toFloat();
+        const auto colour = swatchColours[(size_t) i];
+
+        g.setColour (colour);
+        g.fillRoundedRectangle (cell, 3.0f);
+
+        g.setColour (colour == selected ? push::colours::ledWhite : push::colours::outline);
+        g.drawRoundedRectangle (cell.reduced (0.75f), 3.0f, 1.5f);
+    }
+}
+
+juce::Rectangle<int> MpeShapingView::AxisColourRow::swatchBounds (int index) const noexcept
+{
+    return { index * (kSwatchSize + kSwatchGap),
+             kHeadingGapTop + kHeadingHeight + kHeadingGapBottom,
+             kSwatchSize, kSwatchSize };
+}
+
+int MpeShapingView::AxisColourRow::swatchIndexAt (juce::Point<int> pos) const noexcept
+{
+    // Hit-Zone großzügig (Touch): x-Band des Swatches + halber Gap, volle
+    // Zeilenhöhe — die 16-px-Optik bleibt Design-Vorgabe.
+    for (int i = 0; i < (int) quickSwatchColours().size(); ++i)
+    {
+        const auto band = swatchBounds (i)
+                              .withY (0).withHeight (getHeight())
+                              .expanded (kSwatchGap / 2, 0);
+        if (band.contains (pos))
+            return i;
+    }
+
+    return -1;
+}
+
+void MpeShapingView::AxisColourRow::mouseDown (const juce::MouseEvent& event)
+{
+    pressPosition      = event.getPosition();
+    longPressTriggered = false;
+    startTimer (kLongPressMs);
+}
+
+void MpeShapingView::AxisColourRow::mouseUp (const juce::MouseEvent&)
+{
+    stopTimer();
+
+    if (longPressTriggered)
+    {
+        longPressTriggered = false;
+        return;   // Picker ist bereits offen — kein zusätzlicher Swatch-Tap
+    }
+
+    // Kurzer Tap: Swatch unter dem AUFSETZ-Punkt (Finger-Wackeln tolerant).
+    const auto index = swatchIndexAt (pressPosition);
+    if (index < 0)
+        return;
+
+    const auto colour = quickSwatchColours()[(size_t) index];
+    setSelectedColour (colour);
+
+    if (onColourPicked != nullptr)
+        onColourPicked (colour);
+}
+
+void MpeShapingView::AxisColourRow::timerCallback()
+{
+    stopTimer();
+    longPressTriggered = true;
+
+    if (onLongPress != nullptr)
+        onLongPress();
+}
+
+//==============================================================================
 MpeShapingView::MpeShapingView (grid::GridVoiceEngine& engineToUse, GridPanelSettings& panelSettingsToUse,
                                 UiSettings& uiSettingsToUse)
     : engine (engineToUse), panelSettings (panelSettingsToUse), uiSettings (uiSettingsToUse),
       sections {{
-          AxisSection { grid::GridVoiceEngine::Axis::Pressure,  "Pressure",  push::colours::ledOrange },
-          AxisSection { grid::GridVoiceEngine::Axis::Slide,     "Slide",     push::colours::ledCyan },
-          AxisSection { grid::GridVoiceEngine::Axis::PitchBend, "PitchBend", push::colours::ledGreen },
+          AxisSection { grid::GridVoiceEngine::Axis::Pressure,  "Pressure",
+                        panelSettingsToUse.getAxisColour (grid::GridVoiceEngine::Axis::Pressure) },
+          AxisSection { grid::GridVoiceEngine::Axis::Slide,     "Slide",
+                        panelSettingsToUse.getAxisColour (grid::GridVoiceEngine::Axis::Slide) },
+          AxisSection { grid::GridVoiceEngine::Axis::PitchBend, "PitchBend",
+                        panelSettingsToUse.getAxisColour (grid::GridVoiceEngine::Axis::PitchBend) },
       }}
 {
     for (auto& section : sections)
@@ -64,7 +178,75 @@ MpeShapingView::MpeShapingView (grid::GridVoiceEngine& engineToUse, GridPanelSet
     setupOffsetToggle (slideOffsetToggle, slideOffsetLabel,
                       grid::GridVoiceEngine::Axis::Slide, sections[1].colour);
 
+    // „Color"-Zeile je Achse (alle drei): Tap wählt sofort, Gedrückthalten
+    // öffnet den ConduitColorPicker — beides läuft durch applyAxisColour.
+    for (size_t i = 0; i < colourRows.size(); ++i)
+    {
+        auto& row = colourRows[i];
+        addChildComponent (row);
+        row.setSelectedColour (sections[i].colour);
+
+        const auto index = (int) i;
+        row.onColourPicked = [this, index] (juce::Colour colour) { applyAxisColour (index, colour); };
+        row.onLongPress    = [this, index] { openColourPicker (index); };
+    }
+
     updateDevSliderVisibility (uiSettings.isDevModeEnabled());
+}
+
+MpeShapingView::~MpeShapingView()
+{
+    // Offene Picker-CallOutBox schließen — ihr Callback hält zwar nur einen
+    // SafePointer, aber eine verwaiste Box über einer verschwundenen View
+    // wäre Zombie-UI.
+    if (activeColourPicker != nullptr)
+        activeColourPicker->dismiss();
+}
+
+//==============================================================================
+void MpeShapingView::applyAxisColour (int sectionIndex, juce::Colour colour)
+{
+    if (sectionIndex < 0 || sectionIndex >= (int) sections.size())
+        return;
+
+    auto& section = sections[(size_t) sectionIndex];
+    section.colour = colour;
+
+    colourRows[(size_t) sectionIndex].setSelectedColour (colour);
+
+    // LockToggle-Akzent folgt der Achsfarbe (setAccentColour repaintet selbst).
+    if (section.axis == grid::GridVoiceEngine::Axis::Pressure)
+        pressureOffsetToggle.setAccentColour (colour);
+    else if (section.axis == grid::GridVoiceEngine::Axis::Slide)
+        slideOffsetToggle.setAccentColour (colour);
+
+    panelSettings.setAxisColour (section.axis, colour);
+
+    if (onAxisColourChanged != nullptr)
+        onAxisColourChanged (section.axis, colour);
+
+    repaint();
+}
+
+void MpeShapingView::openColourPicker (int sectionIndex)
+{
+    if (sectionIndex < 0 || sectionIndex >= (int) sections.size())
+        return;
+
+    auto picker = std::make_unique<ConduitColorPicker>();
+    picker->setColour (sections[(size_t) sectionIndex].colour);
+
+    // SafePointer: die CallOutBox kann die View überleben (Page-Wechsel) —
+    // dann darf der Live-Callback nicht mehr feuern.
+    juce::Component::SafePointer<MpeShapingView> safeThis (this);
+    picker->onColourChanged = [safeThis, sectionIndex] (juce::Colour colour)
+    {
+        if (safeThis != nullptr)
+            safeThis->applyAxisColour (sectionIndex, colour);
+    };
+
+    activeColourPicker = &juce::CallOutBox::launchAsynchronously (
+        std::move (picker), colourRows[(size_t) sectionIndex].getScreenBounds(), nullptr);
 }
 
 void MpeShapingView::setupOffsetToggle (LockToggle& toggle, juce::Label& label,
@@ -327,8 +509,22 @@ void MpeShapingView::resized()
                                           : juce::Rectangle<int>{};
         section.curveBounds  = sectionBounds;
 
-        // Schloss-Toggle + Label: unteres Ende der Detailspalte (letzter
-        // Eintrag), Rest bleibt für den Platzhalter-Text oben (paintAxis
+        // „Color"-Zeile: UNTERSTER Punkt der Detailspalte, alle drei Achsen
+        // (bei PitchBend unter dem freien Platzhalter-Bereich). Zuerst von
+        // unten abziehen, damit das Offset-Schloss darüber landet.
+        auto& colourRow = colourRows[(size_t) i];
+        colourRow.setVisible (showDetail);
+
+        if (showDetail)
+        {
+            auto rowArea = section.detailBounds.removeFromBottom (
+                AxisColourRow::kRowHeight + kColourRowBottomPad);
+            rowArea.removeFromBottom (kColourRowBottomPad);
+            colourRow.setBounds (rowArea.reduced (8, 0));
+        }
+
+        // Schloss-Toggle + Label: über der Color-Zeile (Detailspalte von
+        // unten), Rest bleibt für den Platzhalter-Text oben (paintAxis
         // liest section.detailBounds live). PitchBend: kein Toggle, Platz
         // bleibt frei.
         // TODO: PitchBend-Range-Element (¼…×8 / Halbtöne) -- späterer Schritt.

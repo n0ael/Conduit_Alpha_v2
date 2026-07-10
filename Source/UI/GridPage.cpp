@@ -56,17 +56,28 @@ GridPage::GridPage (juce::ValueTree rootStateToUse,
         engine.setPitchBendOffset ((value - 0.5f) * 2.0f * kPitchBendOffsetSemitones);
     };
 
-    // Achsen-Farben (Design-Mock Grid-Page v2) — spaeter user-konfigurierbar,
-    // setFillColour ist die Andockstelle dafuer.
-    pitchOffsetRibbon.setFillColour (push::colours::ledGreen);
-    atOffsetRibbon.setFillColour    (push::colours::ledOrange);
-    slideOffsetRibbon.setFillColour (push::colours::ledCyan);
+    // Achsen-Farben (Grid-Page v2): user-konfigurierbar und persistent in
+    // GridPanelSettings — Initialwerte von dort statt hart kodiert.
+    using Axis = grid::GridVoiceEngine::Axis;
+    pitchOffsetRibbon.setFillColour (panelSettings.getAxisColour (Axis::PitchBend));
+    atOffsetRibbon.setFillColour    (panelSettings.getAxisColour (Axis::Pressure));
+    slideOffsetRibbon.setFillColour (panelSettings.getAxisColour (Axis::Slide));
 
     // Editor-Dock-Panel: ein Tab „MPE" mit dem MPE-Shaping-Editor (S2c),
     // Breite/Offen-Zustand aus der Persistenz laden, Live-Resize + Commit
-    // verdrahten.
-    dockPanel.addTab ("mpe", "MPE",
-                      std::make_unique<MpeShapingView> (engine, panelSettings, uiSettings));
+    // verdrahten. Farbwahl in der MpeShapingView (Quick-Swatch/Picker)
+    // aktualisiert die Ribbon-Füllfarben live (Persistenz macht die View).
+    auto mpeView = std::make_unique<MpeShapingView> (engine, panelSettings, uiSettings);
+    mpeView->onAxisColourChanged = [this] (Axis axis, juce::Colour colour)
+    {
+        switch (axis)
+        {
+            case Axis::Pressure:  atOffsetRibbon.setFillColour (colour); break;
+            case Axis::Slide:     slideOffsetRibbon.setFillColour (colour); break;
+            case Axis::PitchBend: pitchOffsetRibbon.setFillColour (colour); break;
+        }
+    };
+    dockPanel.addTab ("mpe", "MPE", std::move (mpeView));
     dockPanel.setPanelWidth (panelSettings.getEditorPanelWidth());
     dockPanel.setPanelOpen (panelSettings.isEditorPanelOpen());
 

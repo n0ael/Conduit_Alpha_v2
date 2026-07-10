@@ -23,10 +23,23 @@
     Bereich) — links „Pitch" in voller Höhe (±12 HT, setPitchBendOffset,
     grün), rechts eine 72-px-Spalte mit „Pressure" oben (setPressureOffset,
     orange) über „Slide" unten (setSlideOffset, cyan); Füllfarbe pro Achse
-    via ExpressionRibbon::setFillColour (Andockstelle für spätere
-    Konfigurierbarkeit). Das M1-Volume-Ribbon ist entfallen —
+    via ExpressionRibbon::setFillColour (aus GridPanelSettings, s. u.).
+    Das M1-Volume-Ribbon ist entfallen —
     GridVoiceEngine::setGlobalVolume (Master-CC7) bleibt für
     Tests/Zukunft. Release-All → GridVoiceEngine::allNotesOff.
+  - **Achsen-Farben (Grid-Page v2, 07/2026):** Farbe pro Achse
+    (Pressure/Slide/PitchBend) user-konfigurierbar, persistent in
+    GridPanelSettings (Hex-String-Keys `axisColour{Pressure,Slide,
+    PitchBend}`, Defaults ledOrange/ledCyan/ledGreen). Quelle der Wahrheit
+    für MpeShapingView (Kurve/Label/Endpunkte/Noten-Kreise + LockToggle-
+    Akzent) UND die ExpressionRibbon-Füllungen (GridPage liest initial aus
+    den Settings, live via MpeShapingView::onAxisColourChanged). UI: pro
+    Detailspalten-Sektion unterster Punkt „Color" — 5 Quick-Swatches
+    (LED-Tokens; Tap = sofort, Gedrückthalten ~450 ms = ConduitColorPicker
+    als CallOutBox, live). ConduitColorPicker (Source/UI) ist app-weit
+    wiederverwendbar: SV-Fläche + Hue-Slider + 8×5-Preset-Raster,
+    interner Zustand HSV (Hue bleibt bei s=0/v=0 erhalten), HSV↔RGB als
+    pure statics (h01 in [0,1), Roundtrip 8-bit-exakt, Catch2-getestet).
   - **Sinks/Stränge später:** OSC (Remote + Transcoder) und CV (Software-CVC)
     docken am selben Voice-Modell an; Gesten-State-Machine (Drone/Latch/
     Pinch/Drift), Chord-Squares, Hardware-MPE-Input, MPE-Shaping (Kurven +

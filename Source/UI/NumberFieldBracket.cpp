@@ -40,7 +40,9 @@ void NumberFieldBracket::setValue (double newValue, juce::NotificationType notif
 {
     const auto clamped = clampAndStep (newValue, config);
 
-    if (clamped == value)
+    // Bewusst exakter Vergleich (No-Op-Guard) -- juce::exactlyEqual statt
+    // ==, Clang -Wfloat-equal.
+    if (juce::exactlyEqual (clamped, value))
         return;
 
     value = clamped;

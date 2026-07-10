@@ -41,9 +41,13 @@
   jetzt RELATIV mit Schwelle (kein Punkt-Springen). Scale-Messkampagne
   (11 Bilder, −200…+190 %): Scale skaliert Band-Gains (clamp ±15,
   Cuts fix, negativ invertiert) — in der Kurve eingerechnet.
-- **Nächster Schritt:** Spektrum-Hintergrund via Link Audio + lokaler
-  Average (User-Wunsch, eigene Runde); dann M5-Folgerunden
-  Compressor/Glue (Kennlinie+GR), Delay/Reverb — oder M6 Modulatoren.
+- **Spektrum (10.07.2026, docs §10k):** LiveSpectrumTap — FFT komplett
+  auf dem Message Thread, Quellen Link-Audio-Peer-Kanal ODER
+  Hardware-Input (atomic-gated RT-Tap im EngineProcessor), SPEC/AVG
+  im DeviceView-Footer, lokales Averaging, 0-dBFS-Normierung
+  Unit-getestet; Y-Drag-Q-Anfasser wandert mit (Live-Verhalten).
+- **Nächster Schritt:** M5-Folgerunden Compressor/Glue (Kennlinie+GR),
+  Delay/Reverb — oder M6 Modulator-Zwillinge.
 
 ## Meilenstein (10.07.2026) — TouchLive M4 (BROWSER)
 

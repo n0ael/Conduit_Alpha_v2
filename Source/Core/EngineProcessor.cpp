@@ -595,6 +595,7 @@ void EngineProcessor::prepareToPlay (double sampleRate, int samplesPerBlock)
     graphFader.prepare (sampleRate);
     linkClock.prepare (sampleRate);
     metronome.prepare (sampleRate);
+    liveSpectrumTap.setAudioSampleRate (sampleRate);
     captureService.prepare (sampleRate, samplesPerBlock, getTotalNumInputChannels());
     barAnchors.reset();  // SampleClock-Reset invalidiert alle Anker-Positionen
 
@@ -679,6 +680,12 @@ void EngineProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::Midi
         const rt::ScopedRealtimeSection rtAudit;
         captureService.processInputTap (buffer, getTotalNumInputChannels());
         inputLevels.process (buffer, getTotalNumInputChannels());  // Sicht-Metering In
+
+        // Spektrum-Zubringer der EQ-Anzeige (§10k, atomic-gated, RT-safe)
+        liveSpectrumTap.pushAudioBlock (buffer.getArrayOfReadPointers(),
+                                        juce::jmin (getTotalNumInputChannels(),
+                                                    buffer.getNumChannels()),
+                                        buffer.getNumSamples());
     }
 
     // Pfad 1 des OSC-Dual-State (6.1): Queue VOR dem Graph vollständig

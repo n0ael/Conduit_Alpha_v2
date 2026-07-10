@@ -667,10 +667,33 @@ analoge RBJ-Prototypen mit eigener Q-Semantik** — kalibriert auf
   bleiben beim nominellen Gain (wie Live).
 - Feldtest-Kreuzcheck: Band 2 auf +12.4 dB gezogen — Lives Display
   zeigt identische Werte UND identische Kurvenform.
-- **Nächster Politur-Schritt (User-Wunsch):** Spektrum-Hintergrund via
-  Link Audio (Signal des Tracks heimlich empfangen → FFT hinter der
-  Kurve, eigener Average-Parameter LOKAL, nicht an Lives Regler
-  gebunden) — eigene Runde, Audio-Thread + docs/LinkAudio.md-Pflicht.
+## 10k. Spektrum hinter der EQ-Kurve (10.07.2026)
+
+`Source/TouchLive/LiveSpectrumTap` — „heimlich" mithören, ohne den
+Patch zu berühren; die FFT (juce::dsp, 2048, Hann) läuft KOMPLETT auf
+dem Message Thread (30-Hz-Timer) — das Spektrum ist reine Anzeige.
+
+- **Quellen (SPEC-Kachel im DeviceView-Footer: aus → Link → Input):**
+  1. `linkAudio`: abonniert den ERSTEN verfügbaren Peer-Kanal
+     (LinkClock::Source, Auto-Rebind bei ChannelsChanged; ohne Peer
+     bleibt es leer — availableChannels listet nur Peers!). Der
+     Link-Thread konvertiert int16→float mono und pusht Chunks — fürs
+     Anzeige-Spektrum ist der Link-Thread nicht RT-kritisch (anders
+     als der Receive-MODUL-Pfad).
+  2. `audioInput`: der EngineProcessor pusht die rohen Hardware-Inputs
+     (atomic-gated, RT-safe: Mono-Mixdown + Queue-Push, Drop bei voll).
+     Live→Interface-Loopback→Conduit-Input ist damit der Weg für Lives
+     Signal auf demselben Rechner.
+- **SPSC-Disziplin:** es pusht immer nur EINE Quelle (Moduswechsel
+  stoppt erst die alte, dann leert der Message Thread die Queue);
+  LinkClock als WeakReference (Rule linkaudio).
+- **Averaging** = exponentielle dB-Glättung, LOKAL (AVG-ValueTile,
+  Drag) — bewusst nicht an Lives Analyzer-Regler gebunden
+  (User-Wunsch). Normierung: Vollaussteuerungs-Sinus = 0 dBFS
+  (Unit-Test-verifiziert); Anzeige 0…−78 dB über die Plot-Höhe,
+  Lives Grau hinter Raster/Kurve.
+- Eq8Panel repainted per MultiTimer nur bei neuen Analyse-Frames
+  (Revision-Zähler) und nur sichtbar.
 
 ## 11. Offen
 

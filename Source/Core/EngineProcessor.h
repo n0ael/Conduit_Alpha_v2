@@ -17,6 +17,7 @@
 #include "GridVoiceEngine.h"
 #include "MidiDeviceTarget.h"
 #include "TouchLive/LiveSetModel.h"
+#include "TouchLive/LiveSpectrumTap.h"
 #include "TouchLive/TouchLiveClient.h"
 #include "TouchLive/TouchLiveMeterBus.h"
 #include "TouchLive/TouchLiveSettings.h"
@@ -270,6 +271,7 @@ public:
     [[nodiscard]] LiveSetModel& getLiveSetModel() noexcept { return liveSetModel; }
     [[nodiscard]] TouchLiveMeterBus& getTouchLiveMeterBus() noexcept { return touchLiveMeterBus; }
     [[nodiscard]] TouchLiveClient& getTouchLiveClient() noexcept { return touchLiveClient; }
+    [[nodiscard]] LiveSpectrumTap& getLiveSpectrumTap() noexcept { return liveSpectrumTap; }
 
 private:
     /** Legt die reservierten I/O-Tree-Nodes (audio_input/audio_output) an,
@@ -484,6 +486,11 @@ private:
     LiveSetModel liveSetModel;
     TouchLiveMeterBus touchLiveMeterBus;
     TouchLiveClient touchLiveClient { liveSetModel, touchLiveMeterBus, touchLiveSettings };
+
+    // Spektrum-Zubringer der EQ-Anzeige (§10k): hält die LinkClock als
+    // WeakReference, stirbt VOR ihr (nach linkClock deklariert);
+    // processBlock speist ihn nur im audioInput-Modus (atomic-gated)
+    LiveSpectrumTap liveSpectrumTap { &linkClock };
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (EngineProcessor)
 };

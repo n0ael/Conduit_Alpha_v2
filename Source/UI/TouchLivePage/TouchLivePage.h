@@ -3,6 +3,7 @@
 #include <juce_gui_basics/juce_gui_basics.h>
 
 #include "TouchLive/LiveSetModel.h"
+#include "TouchLive/LiveSpectrumTap.h"
 #include "TouchLive/TouchLiveClient.h"
 #include "TouchLive/TouchLiveSettings.h"
 #include "TouchLiveBrowserView.h"
@@ -33,8 +34,10 @@ class TouchLivePage final : public juce::Component,
                             private juce::ChangeListener
 {
 public:
+    /** spectrumTap darf nullptr sein (Tests) — dann gibt es kein Spektrum. */
     TouchLivePage (LiveSetModel& modelToUse, TouchLiveClient& clientToUse,
-                   TouchLiveMeterBus& meterBusToUse, TouchLiveSettings& settingsToUse);
+                   TouchLiveMeterBus& meterBusToUse, TouchLiveSettings& settingsToUse,
+                   LiveSpectrumTap* spectrumTapToUse = nullptr);
     ~TouchLivePage() override;
 
     enum SubTab { tabGrid = 0, tabMixer = 1, tabDevice = 2, tabBrowser = 3 };

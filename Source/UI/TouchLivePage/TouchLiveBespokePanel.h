@@ -4,6 +4,7 @@
 
 #include <juce_gui_basics/juce_gui_basics.h>
 
+#include "TouchLive/LiveSpectrumTap.h"
 #include "TouchLive/TouchLiveClient.h"
 
 namespace conduit
@@ -41,8 +42,10 @@ public:
     [[nodiscard]] virtual bool isUsable() const = 0;
 };
 
-/** Registry (§6b): class_name → Panel; nullptr = kein bespoke UI. */
+/** Registry (§6b): class_name → Panel; nullptr = kein bespoke UI.
+    spectrumTap darf nullptr sein (Tests) — dann ohne Spektrum. */
 [[nodiscard]] std::unique_ptr<TouchLiveBespokePanel>
-createBespokePanel (const juce::String& className, TouchLiveClient& client);
+createBespokePanel (const juce::String& className, TouchLiveClient& client,
+                    LiveSpectrumTap* spectrumTap = nullptr);
 
 } // namespace conduit

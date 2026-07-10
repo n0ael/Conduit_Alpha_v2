@@ -34,7 +34,8 @@ EngineEditor::EngineEditor (EngineProcessor& engineProcessor,
       gridPage (engineProcessor.getGridVoiceEngine(), engineProcessor.getGridMidiDeviceTarget(),
                engineProcessor.getGridPanelSettings(), engineProcessor.getUiSettings()),
       touchLivePage (engineProcessor.getLiveSetModel(), engineProcessor.getTouchLiveClient(),
-                     engineProcessor.getTouchLiveMeterBus(), engineProcessor.getTouchLiveSettings()),
+                     engineProcessor.getTouchLiveMeterBus(), engineProcessor.getTouchLiveSettings(),
+                     &engineProcessor.getLiveSpectrumTap()),
       browserModel (engineProcessor.getModuleFactory(), browserContext, browserWorker),
       browserPanel (browserModel, engineProcessor.getUiSettings())
 {

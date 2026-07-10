@@ -27,10 +27,12 @@ namespace
 //==============================================================================
 TouchLiveDeviceView::TouchLiveDeviceView (TouchLiveClient& clientToUse,
                                           LiveSetModel& modelToUse,
-                                          TouchLiveMeterBus& meterBusToUse)
+                                          TouchLiveMeterBus& meterBusToUse,
+                                          LiveSpectrumTap* spectrumTapToUse)
     : client (clientToUse),
       model (modelToUse),
       meterBus (meterBusToUse),
+      spectrumTap (spectrumTapToUse),
       modelState (model.getState())
 {
     modelState.addListener (this);
@@ -76,6 +78,31 @@ TouchLiveDeviceView::TouchLiveDeviceView (TouchLiveClient& clientToUse,
         "Bespoke-UI und Parameter-Bank umschalten"));
     viewTile.onClick = [this] { setBespokePreferred (! bespokePreferred); };
     addChildComponent (viewTile);
+
+    // Spektrum hinter der EQ-Kurve (§10k): SPEC schaltet aus → Link → Input
+    spectrumTile.setTooltip (juce::String::fromUTF8 (
+        "Spektrum: aus → Link-Audio-Kanal → Hardware-Input"));
+    spectrumTile.onClick = [this] { cycleSpectrumMode(); };
+    addChildComponent (spectrumTile);
+
+    averagingTile.setCaption ("AVG");
+    averagingTile.setTooltip (juce::String::fromUTF8 (
+        "Spektrum-Glättung (lokal — unabhängig von Lives Analyzer)"));
+    averagingTile.onDragStart = [this]
+    {
+        if (spectrumTap != nullptr)
+            averagingAtDragStart = spectrumTap->getAveraging();
+    };
+    averagingTile.onDrag = [this] (float totalDeltaY)
+    {
+        if (spectrumTap == nullptr)
+            return;
+
+        spectrumTap->setAveraging (averagingAtDragStart
+                                   - (double) totalDeltaY / 200.0);
+        refreshSpectrumTiles();
+    };
+    addChildComponent (averagingTile);
 
     rebuild();
     startTimerHz (30);   // GR-Meter-Refresh (roh, §5.1); ohne Sicht kostenlos
@@ -380,7 +407,7 @@ void TouchLiveDeviceView::rebuild()
     if (className != bespokeClassName)
     {
         bespokeClassName = className;
-        bespokePanel = createBespokePanel (className, client);
+        bespokePanel = createBespokePanel (className, client, spectrumTap);
 
         if (bespokePanel != nullptr)
             addChildComponent (*bespokePanel);
@@ -406,6 +433,42 @@ void TouchLiveDeviceView::rebuild()
 bool TouchLiveDeviceView::isBespokeActive() const noexcept
 {
     return bespokePreferred && bespokePanel != nullptr && bespokePanel->isUsable();
+}
+
+void TouchLiveDeviceView::cycleSpectrumMode()
+{
+    if (spectrumTap == nullptr)
+        return;
+
+    using Mode = LiveSpectrumTap::SourceMode;
+
+    switch (spectrumTap->getMode())
+    {
+        case Mode::off:        spectrumTap->setMode (Mode::linkAudio);  break;
+        case Mode::linkAudio:  spectrumTap->setMode (Mode::audioInput); break;
+        case Mode::audioInput:
+        default:               spectrumTap->setMode (Mode::off);        break;
+    }
+
+    refreshSpectrumTiles();
+}
+
+void TouchLiveDeviceView::refreshSpectrumTiles()
+{
+    const auto active = spectrumTap != nullptr
+                        && spectrumTap->getMode() != LiveSpectrumTap::SourceMode::off;
+
+    spectrumTile.setActive (active);
+    spectrumTile.setTooltip (spectrumTap != nullptr && active
+                                 ? "Spektrum: " + spectrumTap->getSourceLabel()
+                                 : juce::String::fromUTF8 (
+                                       "Spektrum: aus → Link-Audio-Kanal → Hardware-Input"));
+
+    if (spectrumTap != nullptr)
+        averagingTile.setText (juce::String (
+            juce::roundToInt (spectrumTap->getAveraging() * 100.0)) + " %");
+
+    averagingTile.setVisible (active && isBespokeActive());
 }
 
 void TouchLiveDeviceView::setBespokePreferred (bool shouldPreferBespoke)
@@ -435,6 +498,9 @@ void TouchLiveDeviceView::updateBespokeVisibility()
 
     bankPrevTile.setVisible (! bespoke);
     bankNextTile.setVisible (! bespoke);
+
+    spectrumTile.setVisible (bespoke && spectrumTap != nullptr);
+    refreshSpectrumTiles();
 }
 
 void TouchLiveDeviceView::rebuildParameterBank()
@@ -590,6 +656,10 @@ void TouchLiveDeviceView::resized()
     onTile.setBounds (footer.removeFromRight (56));
     footer.removeFromRight (4);
     viewTile.setBounds (footer.removeFromRight (64));
+    footer.removeFromRight (4);
+    spectrumTile.setBounds (footer.removeFromRight (56));
+    footer.removeFromRight (4);
+    averagingTile.setBounds (footer.removeFromRight (64));
 
     // Bank-Spalten; rechts die (immer reservierte) GR-Spalte
     auto bankArea = area.reduced (0, 4);

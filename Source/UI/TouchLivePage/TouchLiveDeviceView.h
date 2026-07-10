@@ -7,6 +7,7 @@
 #include <juce_gui_basics/juce_gui_basics.h>
 
 #include "TouchLive/LiveSetModel.h"
+#include "TouchLive/LiveSpectrumTap.h"
 #include "TouchLive/TouchLiveClient.h"
 #include "TouchLive/TouchLiveMeterBus.h"
 #include "TouchLive/TouchLiveSettings.h"
@@ -55,8 +56,10 @@ class TouchLiveDeviceView final : public juce::Component,
                                   private juce::Timer
 {
 public:
+    /** spectrumTap darf nullptr sein (Tests) — dann keine SPEC-Kachel. */
     TouchLiveDeviceView (TouchLiveClient& clientToUse, LiveSetModel& modelToUse,
-                         TouchLiveMeterBus& meterBusToUse);
+                         TouchLiveMeterBus& meterBusToUse,
+                         LiveSpectrumTap* spectrumTapToUse = nullptr);
     ~TouchLiveDeviceView() override;
 
     static constexpr int parametersPerBank = 8;
@@ -100,6 +103,8 @@ public:
     push::TextTile bankPrevTile { "<" };
     push::TextTile bankNextTile { ">" };
     push::TextTile viewTile { "BANK", push::colours::ledCyan };
+    push::TextTile spectrumTile { "SPEC", push::colours::ledCyan };
+    push::ValueTile averagingTile { "spectrumAvg" };
 
 private:
     //==========================================================================
@@ -133,9 +138,14 @@ private:
     [[nodiscard]] juce::var chainOf (const juce::String& trackKey) const;
     [[nodiscard]] static juce::String valueTextFor (const ParameterStrip& strip, double value);
 
+    void cycleSpectrumMode();
+    void refreshSpectrumTiles();
+
     TouchLiveClient& client;
     LiveSetModel& model;
     TouchLiveMeterBus& meterBus;
+    LiveSpectrumTap* spectrumTap = nullptr;   // nullptr in Tests
+    double averagingAtDragStart = 0.5;
 
     // Listener-Handle als Member (Lektion M1b)
     juce::ValueTree modelState;

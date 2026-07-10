@@ -15,10 +15,11 @@ namespace
 
 //==============================================================================
 TouchLivePage::TouchLivePage (LiveSetModel& modelToUse, TouchLiveClient& clientToUse,
-                              TouchLiveMeterBus& meterBusToUse, TouchLiveSettings& settingsToUse)
+                              TouchLiveMeterBus& meterBusToUse, TouchLiveSettings& settingsToUse,
+                              LiveSpectrumTap* spectrumTapToUse)
     : gridView (clientToUse, modelToUse, settingsToUse),
       mixerView (clientToUse, modelToUse, meterBusToUse, settingsToUse),
-      deviceView (clientToUse, modelToUse, meterBusToUse),
+      deviceView (clientToUse, modelToUse, meterBusToUse, spectrumTapToUse),
       browserView (clientToUse),
       client (clientToUse),
       settings (settingsToUse)

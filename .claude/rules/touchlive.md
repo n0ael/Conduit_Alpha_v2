@@ -92,6 +92,10 @@ Bespoke-UIs (M5):
 - EQ8-Scale skaliert die BAND-GAINS (clamp ±15, Cuts/Notch unberührt,
   negativ invertiert; Range −2..+2) — in der Anzeige-Kurve
   eingerechnet, Punkte bleiben beim nominellen Gain (§10j).
+- Spektrum (§10k, LiveSpectrumTap): FFT NUR auf dem Message Thread;
+  SPSC mit genau EINEM Producer (Link-Thread ODER Audio-Thread,
+  Moduswechsel stoppt erst die alte Quelle); LinkClock als
+  WeakReference; Averaging ist LOKAL (nie an Lives Regler binden).
 - Thinning-Kanal von sendTouchValue = Adresse + Argumente OHNE den Wert
   (`touchKeyFor`) — NIE auf die nackte Adresse zurückbauen, sonst
   latchen sich Freq+Gain bzw. Multi-Touch-Fader gegenseitig weg.

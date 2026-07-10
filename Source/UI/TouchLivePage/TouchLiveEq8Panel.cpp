@@ -47,15 +47,21 @@ namespace
 }
 
 //==============================================================================
-TouchLiveEq8Panel::TouchLiveEq8Panel (TouchLiveClient& clientToUse)
-    : client (clientToUse)
+TouchLiveEq8Panel::TouchLiveEq8Panel (TouchLiveClient& clientToUse,
+                                      LiveSpectrumTap* spectrumTapToUse)
+    : client (clientToUse),
+      spectrumTap (spectrumTapToUse)
 {
-    // Alles läuft über Gesten (§10j) — keine Footer-Bedienelemente
+    // Alles läuft über Gesten (§10j) — keine Footer-Bedienelemente.
+    // Der Spektrum-Timer repainted nur bei neuen Analyse-Frames.
+    if (spectrumTap != nullptr)
+        startTimer (spectrumTimerId, 33);
 }
 
 TouchLiveEq8Panel::~TouchLiveEq8Panel()
 {
-    stopTimer();
+    stopTimer (longPressTimerId);
+    stopTimer (spectrumTimerId);
 }
 
 //==============================================================================
@@ -364,7 +370,7 @@ void TouchLiveEq8Panel::touchDown (int touchIndex, juce::Point<float> position)
         {
             // freier zweiter Finger = Pinch-Q am aktiven Band
             // (nicht während des Typ-Selectors)
-            stopTimer();
+            stopTimer (longPressTimerId);
             pinchTouchIndex = touchIndex;
             pinchStartDistance = juce::jmax (1.0f, position.getDistanceFrom (
                 touches[primaryTouchIndex].current));
@@ -394,7 +400,7 @@ void TouchLiveEq8Panel::touchDown (int touchIndex, juce::Point<float> position)
         dragStartFrequencyNorm = bands[(size_t) hit].frequencyNorm;
         dragStartGainDb = bands[(size_t) hit].gainDb;
         dragStartResonanceNorm = bands[(size_t) hit].resonanceNorm;
-        startTimer (longPressMs);
+        startTimer (longPressTimerId, longPressMs);
         return;
     }
 
@@ -403,10 +409,26 @@ void TouchLiveEq8Panel::touchDown (int touchIndex, juce::Point<float> position)
 }
 
 //==============================================================================
-void TouchLiveEq8Panel::timerCallback()
+void TouchLiveEq8Panel::timerCallback (int timerId)
 {
-    stopTimer();
-    triggerLongPress();
+    if (timerId == longPressTimerId)
+    {
+        stopTimer (longPressTimerId);
+        triggerLongPress();
+        return;
+    }
+
+    // Spektrum: nur repainten, wenn ein neuer Analyse-Frame vorliegt
+    if (timerId == spectrumTimerId && spectrumTap != nullptr && isShowing())
+    {
+        const auto revisionNow = spectrumTap->getRevision();
+
+        if (revisionNow != lastSpectrumRevision)
+        {
+            lastSpectrumRevision = revisionNow;
+            repaint();
+        }
+    }
 }
 
 void TouchLiveEq8Panel::triggerLongPress()
@@ -491,7 +513,7 @@ void TouchLiveEq8Panel::touchMove (int touchIndex, juce::Point<float> position)
             if (! dragMoved)
             {
                 dragMoved = true;
-                stopTimer();
+                stopTimer (longPressTimerId);
             }
 
             dragActiveBandBy (delta);
@@ -608,7 +630,7 @@ void TouchLiveEq8Panel::touchUp (int touchIndex)
 
     if (touchIndex == primaryTouchIndex)
     {
-        stopTimer();
+        stopTimer (longPressTimerId);
 
         if (gesture == Gesture::typeSelect)
             commitTypeSelector();   // Loslassen übernimmt die Hover-Wahl
@@ -1070,6 +1092,9 @@ void TouchLiveEq8Panel::paint (juce::Graphics& g)
         }
     }
 
+    // Spektrum-Hintergrund (Link Audio / Input, §10k) — hinter der Kurve
+    drawSpectrum (g, area);
+
     // dB-Raster ±12/±6, 0-Linie heller — Zahlen links wie Live
     g.setFont (push::scaledFont (10.0f));
 
@@ -1229,11 +1254,59 @@ void TouchLiveEq8Panel::paint (juce::Graphics& g)
 }
 
 //==============================================================================
+void TouchLiveEq8Panel::drawSpectrum (juce::Graphics& g, juce::Rectangle<float> area)
+{
+    if (spectrumTap == nullptr || ! spectrumTap->isReceiving())
+        return;
+
+    const auto& magnitudes = spectrumTap->getMagnitudesDb();
+    const auto logSpan = std::log (maxHz / minHz);
+
+    // dB-Skala des Spektrums: 0 dBFS oben, −78 dB am Boden (Lives Look)
+    constexpr float topDb = 0.0f, bottomDb = -78.0f;
+
+    juce::Path spectrum;
+    spectrum.startNewSubPath (area.getX(), area.getBottom());
+    auto lastX = area.getX();
+
+    for (int bin = 1; bin < LiveSpectrumTap::numBins; ++bin)
+    {
+        const auto hz = spectrumTap->binToHz (bin);
+
+        if (hz < minHz)
+            continue;
+
+        if (hz > maxHz)
+            break;
+
+        const auto x = area.getX()
+                     + (float) (std::log (hz / minHz) / logSpan) * area.getWidth();
+
+        if (x - lastX < 1.0f && bin > 1)
+            continue;   // mehrere Bins pro Pixel: erster gewinnt (log-x)
+
+        lastX = x;
+        const auto db = juce::jlimit (bottomDb, topDb,
+                                      magnitudes[(size_t) bin]);
+        const auto y = juce::jmap (db, bottomDb, topDb,
+                                   area.getBottom(), area.getY());
+        spectrum.lineTo (x, y);
+    }
+
+    spectrum.lineTo (area.getRight(), area.getBottom());
+    spectrum.closeSubPath();
+
+    g.setColour (juce::Colour (0xff3a3f43).withAlpha (0.55f));   // Lives Grau
+    g.fillPath (spectrum);
+}
+
+//==============================================================================
 std::unique_ptr<TouchLiveBespokePanel>
-createBespokePanel (const juce::String& className, TouchLiveClient& client)
+createBespokePanel (const juce::String& className, TouchLiveClient& client,
+                    LiveSpectrumTap* spectrumTap)
 {
     if (className == "Eq8")
-        return std::make_unique<TouchLiveEq8Panel> (client);
+        return std::make_unique<TouchLiveEq8Panel> (client, spectrumTap);
 
     return nullptr;   // kein bespoke UI → generische Bank (§6b)
 }

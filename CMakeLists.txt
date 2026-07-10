@@ -147,6 +147,7 @@ set(CONDUIT_CPP_SOURCES
     Source/Core/Capture/InputMeter.cpp
     Source/Core/Capture/LevelMeter.cpp
     Source/TouchLive/LiveSetModel.cpp
+    Source/TouchLive/LiveSpectrumTap.cpp
     Source/TouchLive/TouchLiveClient.cpp
     Source/TouchLive/TouchLiveSettings.cpp
     Source/UI/TouchLivePage/TouchLiveBrowserView.cpp
@@ -326,6 +327,7 @@ target_sources(Conduit PRIVATE
     Source/TouchLive/IRemoteTransport.h
     Source/TouchLive/LiveFaderScale.h
     Source/TouchLive/LiveSetModel.h
+    Source/TouchLive/LiveSpectrumTap.h
     Source/TouchLive/TouchLiveClient.h
     Source/TouchLive/TouchLiveMeterBus.h
     Source/TouchLive/TouchLiveSettings.h
@@ -603,6 +605,7 @@ if(CONDUIT_BUILD_TESTS)
         Tests/Core/VoiceAllocatorTests.cpp
         Tests/TouchLive/LiveFaderScaleTests.cpp
         Tests/TouchLive/LiveSetModelTests.cpp
+        Tests/TouchLive/LiveSpectrumTapTests.cpp
         Tests/TouchLive/TouchLiveClientTests.cpp
         Tests/UI/TouchLivePageTests.cpp
         Tests/UI/BrowserPanelTests.cpp
@@ -682,6 +685,7 @@ if(CONDUIT_BUILD_TESTS)
         Source/Core/Capture/InputMeter.cpp
         Source/Core/Capture/LevelMeter.cpp
         Source/TouchLive/LiveSetModel.cpp
+        Source/TouchLive/LiveSpectrumTap.cpp
         Source/TouchLive/TouchLiveClient.cpp
         Source/TouchLive/TouchLiveSettings.cpp
         Source/UI/TouchLivePage/TouchLiveBrowserView.cpp

@@ -46,10 +46,11 @@ namespace conduit
     Gain direkt dB.
 */
 class TouchLiveEq8Panel final : public TouchLiveBespokePanel,
-                                private juce::Timer
+                                private juce::MultiTimer
 {
 public:
-    explicit TouchLiveEq8Panel (TouchLiveClient& clientToUse);
+    explicit TouchLiveEq8Panel (TouchLiveClient& clientToUse,
+                                LiveSpectrumTap* spectrumTapToUse = nullptr);
     ~TouchLiveEq8Panel() override;
 
     static constexpr int bandCount = 8;
@@ -145,8 +146,9 @@ private:
 
     void dragActiveBandBy (juce::Point<float> delta);
     void beginFreeGesture();
-    void timerCallback() override;
+    void timerCallback (int timerId) override;
     void commitTypeSelector();
+    void drawSpectrum (juce::Graphics& g, juce::Rectangle<float> area);
     [[nodiscard]] juce::Rectangle<float> typeSelectorBounds() const;
     [[nodiscard]] juce::Point<float> touchCentroid() const;
     [[nodiscard]] int heldBandTouchIndex() const;   // −1 = kein Punkt gehalten
@@ -171,7 +173,12 @@ private:
     /** Lives effektiver RBJ-Q fürs Display (§10j-Kalibrierung). */
     [[nodiscard]] double effectiveQ (Shape shape, double q, double gainDb) const;
 
+    static constexpr int longPressTimerId = 1;
+    static constexpr int spectrumTimerId = 2;
+
     TouchLiveClient& client;
+    LiveSpectrumTap* spectrumTap = nullptr;   // nullptr in Tests
+    juce::uint32 lastSpectrumRevision = 0;
     juce::String deviceKey;
 
     std::array<Band, bandCount> bands;

@@ -1,9 +1,11 @@
 #pragma once
 
 #include <map>
+#include <vector>
 
 #include <juce_gui_basics/juce_gui_basics.h>
 
+#include "Core/ChordMemory.h"
 #include "Core/GridVoiceEngine.h"
 #include "Core/PadGridLayout.h"
 #include "Core/RingTouchModel.h"
@@ -53,12 +55,55 @@ public:
     [[nodiscard]] static juce::Colour padBaseColour (int midiNote, int rootNote,
                                                      ScaleType type) noexcept;
 
+    //==========================================================================
+    // Akkord-Speicher (Grid-Page v2, Feature 6): eine abgerufene
+    // Konstellation liegt "latched" auf dem Grid — ohne physische Finger —
+    // und wird wie Sonnen/Monde gerendert (inkl. Pad-Glow). Message Thread.
+
+    /** Ruft eine gespeicherte Konstellation ab: beendet zuerst den evtl.
+        liegenden Akkord (clearLatched), dann pro Sonne noteOn +
+        Startwerte (Bend 0, Pressure neutral, Slide aus dem Mond-Offset).
+        Sonnen außerhalb des Rasters werden nur visuell gelatched. */
+    void latchConstellation (const std::vector<grid::StoredSun>& suns);
+
+    /** Verschiebt die latched Konstellation starr um das Pixel-Delta —
+        KEIN Clamping (Sonnen dürfen über den Rand, nur visuell geclippt).
+        X-Bewegung = Pitch-Bend, Y = Ausdruck — exakt wie ein Finger-Drag;
+        der Mond-Offset (Slide) bleibt starr. */
+    void moveLatchedBy (float dxPx, float dyPx);
+
+    /** Beendet den latched Akkord (noteOff, releaseVelocity 0) und
+        entfernt die Konstellation. */
+    void clearLatched();
+
+    /** Aktuelle Konstellation = live Sonnen (RingTouchModel) PLUS latched —
+        normalisiert (x über Breite, y über Höhe, ox/oy BEIDE über die
+        Breite, ChordMemory-Konvention). */
+    [[nodiscard]] std::vector<grid::StoredSun> constellationNormalized() const;
+
 private:
     struct FingerState
     {
         float startNormX = 0.0f;
         float startNormY = 0.0f;
     };
+
+    /** Latched Sonne (Akkord-Abruf): Pixel-Positionen wie die Live-Kreise,
+        note = -1, wenn die Sonne außerhalb des Rasters lag (kein noteOn). */
+    struct LatchedSun
+    {
+        juce::Point<float> centre;
+        juce::Point<float> orbitOffset;
+        bool hasOrbit = false;
+        uint32_t fingerId = 0;
+        float startNormX = 0.0f;
+        float startNormY = 0.0f;
+        int note = -1;
+    };
+
+    // Synthetische fingerIds der latched Sonnen — kollidiert nie mit
+    // Touch-Ids (= sourceIndex + 1, kleine Werte).
+    static constexpr uint32_t kLatchedFingerBase = 0x10000u;
 
     [[nodiscard]] juce::Point<float> normalisedPosition (const juce::MouseEvent& event) const noexcept;
     [[nodiscard]] static int fingerIdFor (const juce::MouseEvent& event) noexcept;
@@ -71,6 +116,7 @@ private:
     ScaleType sessionScale  = ScaleType::chromatic;
 
     std::map<int, FingerState> fingers;
+    std::vector<LatchedSun> latched;   // Akkord-Speicher-Abruf (leer = keiner)
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (GridKeyboardComponent)
 };

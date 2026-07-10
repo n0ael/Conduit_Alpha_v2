@@ -26,12 +26,24 @@ GridPage::GridPage (juce::ValueTree rootStateToUse,
     addAndMakeVisible (pitchOffsetRibbon);
     addAndMakeVisible (keyboard);
     addAndMakeVisible (ccLayer);     // NACH keyboard hinzugefügt = liegt darüber
+    addAndMakeVisible (chordStrip);  // eigene Spalte NEBEN Keyboard/ccLayer
     addChildComponent (dockPanel);   // sichtbar nur wenn offen (setPanelOpen)
 
     rebuildDeviceList();
     outputCombo.onChange = [this] { handleDeviceSelected(); };
 
-    releaseAllButton.onClick = [this] { engine.allNotesOff(); };
+    releaseAllButton.onClick = [this]
+    {
+        engine.allNotesOff();
+        keyboard.clearLatched();   // latched Akkord mit beenden (dessen
+                                   // noteOffs verpuffen nach allNotesOff)
+    };
+
+    // Akkord-Speicher (Grid-Page v2, Feature 6): Strip ↔ Keyboard/Memory.
+    chordStrip.getConstellation = [this] { return keyboard.constellationNormalized(); };
+    chordStrip.onRecall = [this] (int slot) { keyboard.latchConstellation (chordMemory.slot (slot)); };
+    chordStrip.onMoveBy = [this] (float dx, float dy) { keyboard.moveLatchedBy (dx, dy); };
+    chordStrip.isCcMode = [this] { return ccLayer.isCcMode(); };
 
     // Session-Skala (Schema 6.2): Taps zykeln Root/Typ NUR über den
     // Root-ValueTree — die Anzeige aktualisiert der Listener, damit auch
@@ -227,8 +239,18 @@ void GridPage::resized()
     auto rightColumn = bounds.removeFromRight (ribbonWidth);
     atOffsetRibbon.setBounds    (rightColumn.removeFromTop (rightColumn.getHeight() / 2));
     slideOffsetRibbon.setBounds (rightColumn);
+
+    // Akkord-Speicher-Strip (Grid-Page v2, Feature 6) zwischen Pad-Raster
+    // und rechter Ribbon-Spalte — Mock-Formel: quadratische Slots aus der
+    // verbleibenden Höhe (8 Slots, 2 px Gap, 1 px Padding).
+    const auto stripW = juce::jmax (40, juce::roundToInt (((float) bounds.getHeight() - 16.0f) / 8.0f) + 2);
+    chordStrip.setBounds (bounds.removeFromRight (stripW));
+
     keyboard.setBounds (bounds);
     ccLayer.setBounds (bounds);   // Overlay exakt über den Keyboard-Bounds
+
+    if (bounds.getHeight() > 0)
+        chordStrip.setSurfaceAspect ((float) bounds.getWidth() / (float) bounds.getHeight());
 }
 
 } // namespace conduit

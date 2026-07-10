@@ -1,8 +1,10 @@
+#include <catch2/catch_approx.hpp>
 #include <catch2/catch_test_macros.hpp>
 
 #include "UI/GridKeyboardComponent.h"
 #include "UI/GridPage.h"
 #include "UI/PushLookAndFeel.h"
+#include "Core/ChordMemory.h"
 #include "Core/GridVoiceEngine.h"
 #include "../Core/FakeVoiceSink.h"
 
@@ -92,6 +94,110 @@ TEST_CASE ("GridKeyboardComponent: padBaseColour folgt der Session-Skala", "[gri
 
     // Pentatonik-Gegenprobe: Dur-Pentatonik (0 2 4 7 9) kennt keine Quarte
     REQUIRE (GridKeyboardComponent::padBaseColour (53, 0, ScaleType::pentatonic) == colours::padUnlit);
+}
+
+//==============================================================================
+// Akkord-Speicher (Grid-Page v2, Feature 6): latched Konstellation
+
+TEST_CASE ("GridKeyboardComponent: latchConstellation spielt die gespeicherten Noten", "[grid][ui]")
+{
+    juce::ScopedJuceInitialiser_GUI juceRuntime;
+
+    grid::FakeVoiceSink fake;
+    grid::GridVoiceEngine engine (fake);
+    conduit::GridKeyboardComponent keyboard (engine);
+    keyboard.setSize (320, 160);   // 8x4 Raster -> 40x40 px pro Pad
+
+    // Sonne mit Mond in Pad-Mitte (col=2, row=3): (100, 140) -> Note 50.
+    // Mond-Offset 130 px (ueber die BREITE normalisiert, 130/320) ->
+    // Slide = (130 - minRadius 40) / (maxRadius 220 - 40) = 0.5.
+    keyboard.latchConstellation ({ { 100.0f / 320.0f, 140.0f / 160.0f,
+                                     130.0f / 320.0f, 0.0f, true } });
+
+    REQUIRE (fake.calls.size() == 4);
+    REQUIRE (fake.calls[0].kind == grid::FakeVoiceSink::Kind::VoiceStart);
+    REQUIRE (fake.calls[0].intValue == 50);   // lowestNote(48) + col(2)
+    REQUIRE (fake.calls[0].intValue2 == 100);
+    REQUIRE (fake.calls[1].kind == grid::FakeVoiceSink::Kind::PitchBend);
+    REQUIRE (juce::exactlyEqual (fake.calls[1].floatValue, 0.0f));
+    REQUIRE (fake.calls[2].kind == grid::FakeVoiceSink::Kind::Pressure);
+    REQUIRE (juce::exactlyEqual (fake.calls[2].floatValue, 0.5f));   // neutral am Aufsetzpunkt
+    REQUIRE (fake.calls[3].kind == grid::FakeVoiceSink::Kind::Slide);
+    REQUIRE (fake.calls[3].floatValue == Catch::Approx (0.5));
+
+    // clearLatched beendet den Akkord per noteOff.
+    keyboard.clearLatched();
+    REQUIRE (fake.calls.size() == 5);
+    REQUIRE (fake.calls[4].kind == grid::FakeVoiceSink::Kind::VoiceStop);
+    REQUIRE (fake.calls[4].voiceIndex == 0);
+}
+
+TEST_CASE ("GridKeyboardComponent: moveLatchedBy verschiebt starr und aktualisiert Bend/Pressure", "[grid][ui]")
+{
+    juce::ScopedJuceInitialiser_GUI juceRuntime;
+
+    grid::FakeVoiceSink fake;
+    grid::GridVoiceEngine engine (fake);
+    conduit::GridKeyboardComponent keyboard (engine);
+    keyboard.setSize (320, 160);
+
+    keyboard.latchConstellation ({ { 100.0f / 320.0f, 140.0f / 160.0f, 0.0f, 0.0f, false } });
+    REQUIRE (fake.calls.size() == 3);   // Start + Bend 0 + Pressure 0.5 (kein Orbit -> kein Slide)
+
+    // 1 Pad nach rechts (40 px = 2 HT) und 1 Pad hoch (40 px = +0.25 norm
+    // bei yRangeNorm 0.5 -> Pressure 0.5 + 0.5 = 1.0) -- X = Pitch,
+    // Y = Ausdruck, exakt wie ein Finger-Drag.
+    keyboard.moveLatchedBy (40.0f, -40.0f);
+
+    REQUIRE (fake.calls.size() == 5);
+    REQUIRE (fake.calls[3].kind == grid::FakeVoiceSink::Kind::PitchBend);
+    REQUIRE (fake.calls[3].floatValue == Catch::Approx (2.0).margin (1.0e-4));
+    REQUIRE (fake.calls[4].kind == grid::FakeVoiceSink::Kind::Pressure);
+    REQUIRE (fake.calls[4].floatValue == Catch::Approx (1.0));
+}
+
+TEST_CASE ("GridKeyboardComponent: latched Sonne ausserhalb des Rasters spielt keine Note", "[grid][ui]")
+{
+    juce::ScopedJuceInitialiser_GUI juceRuntime;
+
+    grid::FakeVoiceSink fake;
+    grid::GridVoiceEngine engine (fake);
+    conduit::GridKeyboardComponent keyboard (engine);
+    keyboard.setSize (320, 160);
+
+    // x = 1.5 liegt rechts ausserhalb -> kein noteOn, aber visuell gelatched
+    // (constellationNormalized fuehrt die Sonne weiter).
+    keyboard.latchConstellation ({ { 1.5f, 0.5f, 0.0f, 0.0f, false } });
+
+    REQUIRE (fake.calls.empty());
+    REQUIRE (keyboard.constellationNormalized().size() == 1);
+
+    // Verschieben und Loeschen bleiben ohne Engine-Aufrufe (note = -1).
+    keyboard.moveLatchedBy (-10.0f, 0.0f);
+    keyboard.clearLatched();
+    REQUIRE (fake.calls.empty());
+    REQUIRE (keyboard.constellationNormalized().empty());
+}
+
+TEST_CASE ("GridKeyboardComponent: constellationNormalized liefert live Finger in ChordMemory-Konvention", "[grid][ui]")
+{
+    juce::ScopedJuceInitialiser_GUI juceRuntime;
+
+    grid::FakeVoiceSink fake;
+    grid::GridVoiceEngine engine (fake);
+    conduit::GridKeyboardComponent keyboard (engine);
+    keyboard.setSize (320, 160);
+
+    keyboard.mouseDown (makeEvent (keyboard, { 100.0f, 140.0f }));
+
+    const auto suns = keyboard.constellationNormalized();
+    REQUIRE (suns.size() == 1);
+    REQUIRE (suns[0].x == Catch::Approx (100.0 / 320.0));
+    REQUIRE (suns[0].y == Catch::Approx (140.0 / 160.0));
+    REQUIRE_FALSE (suns[0].hasOrbit);
+
+    keyboard.mouseUp (makeEvent (keyboard, { 100.0f, 140.0f }));
+    REQUIRE (keyboard.constellationNormalized().empty());
 }
 
 TEST_CASE ("GridPage: Skala-Kacheln zykeln Root und Typ wie im Mock", "[grid][ui]")

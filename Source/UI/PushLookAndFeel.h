@@ -35,6 +35,8 @@ namespace colours
 
     inline const juce::Colour controlSurface { 0xff1e1e1e };  // CC-Control: Fläche (Grid-Page v2 Baukasten)
     inline const juce::Colour controlOutline { 0xff4a4a4a };  // CC-Control: Kontur
+
+    inline const juce::Colour lcdScreen      { 0xff0a0a0a };  // Akkord-Speicher: LCD-Screen-Fläche (Grid-Page v2)
 }
 
 //==============================================================================

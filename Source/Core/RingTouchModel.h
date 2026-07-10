@@ -74,6 +74,11 @@ public:
         Zeichen-Parameter, keine Logik). */
     [[nodiscard]] float restRadiusPx() const noexcept { return config.minRadiusPx; }
 
+    /** Radius, bei dem Slide = 1 erreicht ist — der Akkord-Abruf
+        (GridKeyboardComponent::latchConstellation) rechnet gespeicherte
+        Mond-Offsets mit derselben Formel wie onMove in Slide um. */
+    [[nodiscard]] float maxRadiusPx() const noexcept { return config.maxRadiusPx; }
+
 private:
     struct PrimaryFinger
     {

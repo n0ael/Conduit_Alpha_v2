@@ -55,6 +55,24 @@
     vorerst reiner UI-State — der MIDI-CC-Versand dockt später an
     (CcControlLayer::onControlValueChanged, TODO(design)); ebenso offen:
     CC-Nummern-Zuweisung pro Control.
+  - **Akkord-Speicher (Grid-Page v2, Feature 6, 07/2026):** 8 vertikale
+    „LCD-Screens" (ChordMemoryStrip, push::colours::lcdScreen) zwischen
+    Pad-Raster und rechter Ribbon-Spalte; ChordMemory (Source/Core, UI-frei,
+    Catch2-getestet) hält pro Slot eine Sonnen-/Mond-Konstellation
+    normalisiert (x über Flächen-Breite, y über -Höhe, Mond-Offset ox/oy
+    BEIDE über die Breite — Orbit bleibt beim Rescale rund). MPE-Modus:
+    Tap auf leeren Slot speichert die aktuelle Konstellation (live +
+    latched), Tap auf belegten Slot ruft sie „latched" aufs Grid ab
+    (GridKeyboardComponent::latchConstellation — synthetische fingerIds ab
+    0x10000, noteOn + Startwerte + Slide aus dem Mond-Offset; Sonnen
+    außerhalb des Rasters nur visuell) und Ziehen verschiebt den Akkord
+    starr (moveLatchedBy: X = Pitch-Bend, Y = Ausdruck wie ein Finger-Drag,
+    kein Clamping). CC-Modus: Tap löscht den Slot (belegte Slots werden nie
+    überschrieben). Release-All beendet auch den latched Akkord
+    (clearLatched). Mini-Ansicht pro Slot: Sonne 6 px/Mond 4 px ledWhite +
+    Orbit-Ellipse (y-Radius über den Spielflächen-Aspekt gestaucht).
+    Offen: Persistenz der Slots (TODO(design)), Save/Load-Browser +
+    Factory-Sets (Meilensteinleiter).
   - **Sinks/Stränge später:** OSC (Remote + Transcoder) und CV (Software-CVC)
     docken am selben Voice-Modell an; Gesten-State-Machine (Drone/Latch/
     Pinch/Drift), Chord-Squares, Hardware-MPE-Input, MPE-Shaping (Kurven +
@@ -68,5 +86,5 @@
     - Gesten-State-Machine (Drone/Latch per Abhebe-Reihenfolge, Pinch-weg, Doppeltipp, Drift-über-Rand-und-Faden)
     - CV-Sink (Software-CVC)
     - Hardware-MPE-Input (macht Conduit zum Hub; mit CV-Sink = Haken CVC in Software)
-    - Chord-Squares + Save/Load (Browser, Factory-Sets zum Losjammen ohne Theorie)
+    - Chord-Squares + Save/Load (Browser, Factory-Sets zum Losjammen ohne Theorie) — Akkord-Speicher (8 LCD-Slots, Abruf + starres Verschieben) erledigt 07/2026; Save/Load-Browser + Factory-Sets offen
     - Omnichord-Strings

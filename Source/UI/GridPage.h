@@ -5,7 +5,9 @@
 #include <juce_gui_basics/juce_gui_basics.h>
 
 #include "CcControlLayer.h"
+#include "ChordMemoryStrip.h"
 #include "Core/CcControlModel.h"
+#include "Core/ChordMemory.h"
 #include "Core/GridPanelSettings.h"
 #include "Core/GridVoiceEngine.h"
 #include "Core/MidiDeviceTarget.h"
@@ -123,6 +125,8 @@ private:
     GridKeyboardComponent keyboard;
     grid::CcControlModel ccModel;     // CC-Baukasten (Grid-Page v2)
     CcControlLayer ccLayer;           // Overlay ÜBER dem Keyboard (nach keyboard deklariert)
+    grid::ChordMemory chordMemory;    // Akkord-Speicher (Grid-Page v2, 8 LCD-Slots)
+    ChordMemoryStrip chordStrip { chordMemory };   // liegt räumlich NEBEN dem Keyboard/ccLayer
     EditorDockPanel dockPanel;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (GridPage)

@@ -133,6 +133,137 @@ void GridKeyboardComponent::mouseUp (const juce::MouseEvent& event)
     }
 }
 
+//==============================================================================
+// Akkord-Speicher (Grid-Page v2, Feature 6)
+
+void GridKeyboardComponent::latchConstellation (const std::vector<grid::StoredSun>& suns)
+{
+    clearLatched();   // vorherigen Akkord sauber per noteOff beenden
+
+    const auto bounds = getLocalBounds().toFloat();
+    const auto w = bounds.getWidth();
+    const auto h = bounds.getHeight();
+    if (w <= 0.0f || h <= 0.0f)
+        return;
+
+    latched.reserve (suns.size());
+
+    for (size_t i = 0; i < suns.size(); ++i)
+    {
+        const auto& sun = suns[i];
+
+        LatchedSun entry;
+        entry.fingerId    = kLatchedFingerBase + (uint32_t) i;
+        entry.centre      = { sun.x * w, sun.y * h };
+        // ox/oy sind BEIDE über die Flächen-BREITE normalisiert
+        // (ChordMemory-Konvention — der Orbit bleibt beim Rescale rund).
+        entry.orbitOffset = { sun.ox * w, sun.oy * w };
+        entry.hasOrbit    = sun.hasOrbit;
+        entry.startNormX  = sun.x;
+        entry.startNormY  = sun.y;
+
+        const auto pad = layout.padIndexAt (sun.x, sun.y);
+
+        if (pad >= 0)
+        {
+            entry.note = layout.noteForPad (pad);
+
+            // Startwerte wie beim physischen Touch (Fund 06.07.2026, s.
+            // mouseDown): Bend 0, Pressure neutral am Aufsetzpunkt.
+            engine.noteOn (entry.fingerId, entry.note, 100);
+            engine.setPitchBend (entry.fingerId, 0.0f);
+            engine.setPressure (entry.fingerId, layout.expressionFromDrag (sun.y, sun.y));
+
+            if (sun.hasOrbit)
+            {
+                // Mond-Offset → Slide mit derselben Formel wie
+                // RingTouchModel::onMove (Ring-Config-Werte, ungeklemmt —
+                // die slideAxis klemmt am Ausgang).
+                const auto radius = entry.orbitOffset.getDistanceFromOrigin();
+                const auto range  = ring.maxRadiusPx() - ring.restRadiusPx();
+                const auto slide  = range > 0.0f ? (radius - ring.restRadiusPx()) / range : 0.0f;
+                engine.setSlide (entry.fingerId, slide);
+            }
+        }
+
+        // Pad ungültig (außerhalb): kein noteOn, Sonne trotzdem visuell
+        // latchen (note bleibt -1).
+        latched.push_back (entry);
+    }
+
+    repaint();
+}
+
+void GridKeyboardComponent::moveLatchedBy (float dxPx, float dyPx)
+{
+    if (latched.empty())
+        return;
+
+    const auto bounds = getLocalBounds().toFloat();
+    const auto w = bounds.getWidth();
+    const auto h = bounds.getHeight();
+
+    for (auto& sun : latched)
+    {
+        // KEIN Clamping — Sonnen dürfen über den Rand (Komponentengrenzen
+        // clippen die Zeichnung ohnehin).
+        sun.centre += juce::Point<float> (dxPx, dyPx);
+
+        if (sun.note >= 0 && w > 0.0f && h > 0.0f)
+        {
+            // X = Pitch, Y = Ausdruck — exakt wie ein Finger-Drag; der
+            // Mond-Offset (Slide) bleibt starr.
+            engine.setPitchBend (sun.fingerId,
+                                 layout.pitchBendSemitones (sun.startNormX, sun.centre.x / w));
+            engine.setPressure (sun.fingerId,
+                                layout.expressionFromDrag (sun.startNormY, sun.centre.y / h));
+        }
+    }
+
+    repaint();
+}
+
+void GridKeyboardComponent::clearLatched()
+{
+    if (latched.empty())
+        return;
+
+    for (const auto& sun : latched)
+        if (sun.note >= 0)
+            engine.noteOff (sun.fingerId, 0);
+
+    latched.clear();
+    repaint();
+}
+
+std::vector<grid::StoredSun> GridKeyboardComponent::constellationNormalized() const
+{
+    std::vector<grid::StoredSun> result;
+
+    const auto bounds = getLocalBounds().toFloat();
+    const auto w = bounds.getWidth();
+    const auto h = bounds.getHeight();
+    if (w <= 0.0f || h <= 0.0f)
+        return result;
+
+    const auto circles = ring.activeCircles();
+    result.reserve (circles.size() + latched.size());
+
+    for (const auto& circle : circles)
+    {
+        const auto offset = circle.orbitPos - circle.center;
+        result.push_back ({ circle.center.x / w, circle.center.y / h,
+                            offset.x / w, offset.y / w, circle.hasOrbit });
+    }
+
+    for (const auto& sun : latched)
+        result.push_back ({ sun.centre.x / w, sun.centre.y / h,
+                            sun.orbitOffset.x / w, sun.orbitOffset.y / w, sun.hasOrbit });
+
+    return result;
+}
+
+//==============================================================================
 void GridKeyboardComponent::paint (juce::Graphics& g)
 {
     g.fillAll (push::colours::background);
@@ -178,6 +309,14 @@ void GridKeyboardComponent::paint (juce::Graphics& g)
                 glow = juce::jmax (glow, juce::jlimit (0.0f, 1.0f, 1.0f - distance / fadeDistance));
             }
 
+            // Latched Sonnen (Akkord-Speicher) glimmen wie Live-Finger —
+            // Maximum über beide Mengen.
+            for (const auto& sun : latched)
+            {
+                const auto distance = sun.centre.getDistanceFrom (padCentre);
+                glow = juce::jmax (glow, juce::jlimit (0.0f, 1.0f, 1.0f - distance / fadeDistance));
+            }
+
             g.setColour (baseColour.interpolatedWith (push::colours::padGlow, glow));
             g.fillRoundedRectangle (padBounds, 4.0f);
         }
@@ -217,6 +356,21 @@ void GridKeyboardComponent::paint (juce::Graphics& g)
             g.setColour (push::colours::ledWhite);
             g.drawEllipse (juce::Rectangle<float> (orbitDiameter, orbitDiameter).withCentre (circle.center), 1.5f);
             fillSoftCircle (circle.orbitPos, moonDiameter, 2.0f);
+        }
+    }
+
+    // Latched Konstellation (Akkord-Speicher): identische Optik zu den
+    // Live-Kreisen — Orbit nur bei hasOrbit (Design-Mock).
+    for (const auto& sun : latched)
+    {
+        fillSoftCircle (sun.centre, sunDiameter, 2.5f);
+
+        if (sun.hasOrbit)
+        {
+            const auto orbitDiameter = sun.orbitOffset.getDistanceFromOrigin() * 2.0f;
+            g.setColour (push::colours::ledWhite);
+            g.drawEllipse (juce::Rectangle<float> (orbitDiameter, orbitDiameter).withCentre (sun.centre), 1.5f);
+            fillSoftCircle (sun.centre + sun.orbitOffset, moonDiameter, 2.0f);
         }
     }
 }

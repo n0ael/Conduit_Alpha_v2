@@ -96,6 +96,7 @@ set(CONDUIT_CPP_SOURCES
     Source/Core/AudioDeviceController.cpp
     Source/Core/CcControlModel.cpp
     Source/Core/ChannelNames.cpp
+    Source/Core/ChordMemory.cpp
     Source/Core/CurveEditInteraction.cpp
     Source/Core/EngineProcessor.cpp
     Source/Core/EngineEditor.cpp
@@ -238,6 +239,7 @@ set(CONDUIT_CPP_SOURCES
     Source/UI/CcControlLayer.cpp
     Source/UI/CcPanel.cpp
     Source/UI/ChannelAttributePanel.cpp
+    Source/UI/ChordMemoryStrip.cpp
     Source/UI/ColourSwatchStrip.cpp
     Source/UI/ConduitColorPicker.cpp
     Source/UI/CurveEditor.cpp
@@ -286,6 +288,7 @@ target_sources(Conduit PRIVATE
     Source/Core/AudioDeviceController.h
     Source/Core/CcControlModel.h
     Source/Core/ChannelNames.h
+    Source/Core/ChordMemory.h
     Source/Core/CurveEditInteraction.h
     Source/Core/EngineProcessor.h
     Source/Core/EngineEditor.h
@@ -437,6 +440,7 @@ target_sources(Conduit PRIVATE
     Source/UI/CcControlLayer.h
     Source/UI/CcPanel.h
     Source/UI/ChannelAttributePanel.h
+    Source/UI/ChordMemoryStrip.h
     Source/UI/ColourSwatchStrip.h
     Source/UI/ConduitColorPicker.h
     Source/UI/CurveEditor.h
@@ -567,6 +571,7 @@ if(CONDUIT_BUILD_TESTS)
         Tests/Core/CaptureWriterTests.cpp
         Tests/Core/CcControlModelTests.cpp
         Tests/Core/ChannelNamesTests.cpp
+        Tests/Core/ChordMemoryTests.cpp
         Tests/Core/ClockTests.cpp
         Tests/Core/CurveEditInteractionTests.cpp
         Tests/Core/EngineIOChannelTests.cpp
@@ -644,6 +649,7 @@ if(CONDUIT_BUILD_TESTS)
         Source/Core/AudioDeviceController.cpp
         Source/Core/CcControlModel.cpp
         Source/Core/ChannelNames.cpp
+        Source/Core/ChordMemory.cpp
         Source/Core/CurveEditInteraction.cpp
         Source/Core/EngineEditor.cpp
         Source/Core/EngineProcessor.cpp
@@ -786,6 +792,7 @@ if(CONDUIT_BUILD_TESTS)
         Source/UI/CcControlLayer.cpp
         Source/UI/CcPanel.cpp
         Source/UI/ChannelAttributePanel.cpp
+        Source/UI/ChordMemoryStrip.cpp
         Source/UI/ColourSwatchStrip.cpp
         Source/UI/ConduitColorPicker.cpp
         Source/UI/CurveEditor.cpp

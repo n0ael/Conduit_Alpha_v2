@@ -1396,6 +1396,18 @@ bool EngineEditor::keyPressed (const juce::KeyPress& key)
         || key == juce::KeyPress ('z', modifier | juce::ModifierKeys::shiftModifier, 0))
         return undoManager.redo();
 
+    if (key == juce::KeyPress (juce::KeyPress::F11Key))
+    {
+        // Kiosk-Mode statt setFullScreen: randlos, ohne native Titelleiste
+        // und ohne Taskbar (allowMenusAndBars = false) — nur Conduit sichtbar.
+        auto& desktop = juce::Desktop::getInstance();
+        if (desktop.getKioskModeComponent() == nullptr)
+            desktop.setKioskModeComponent (getTopLevelComponent(), false);
+        else
+            desktop.setKioskModeComponent (nullptr, false);
+        return true;
+    }
+
     return false;
 }
 

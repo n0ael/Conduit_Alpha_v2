@@ -152,3 +152,28 @@ TEST_CASE ("GridPanelSettings: Achsen-Farbe uebersteht den Roundtrip", "[gridpan
     REQUIRE (reloaded.getAxisColour (Axis::Pressure)  == conduit::push::colours::ledOrange);
     REQUIRE (reloaded.getAxisColour (Axis::PitchBend) == conduit::push::colours::ledGreen);
 }
+
+TEST_CASE ("GridPanelSettings: gridLayoutMode default fullPads + Roundtrip", "[gridpanelsettings]")
+{
+    juce::ScopedJuceInitialiser_GUI juceRuntime;
+    TempGridPanelSettings temp;
+
+    using Mode = conduit::GridPanelSettings::GridLayoutMode;
+
+    {
+        conduit::GridPanelSettings settings (temp.options());
+        REQUIRE (settings.getGridLayoutMode() == Mode::fullPads);   // Default 0
+
+        settings.setGridLayoutMode (Mode::xyFaders);
+        REQUIRE (settings.getGridLayoutMode() == Mode::xyFaders);
+    }
+
+    {
+        conduit::GridPanelSettings reloaded (temp.options());
+        REQUIRE (reloaded.getGridLayoutMode() == Mode::xyFaders);
+        reloaded.setGridLayoutMode (Mode::fullPads);
+    }
+
+    conduit::GridPanelSettings again (temp.options());
+    REQUIRE (again.getGridLayoutMode() == Mode::fullPads);
+}

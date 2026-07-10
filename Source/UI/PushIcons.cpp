@@ -371,6 +371,63 @@ juce::Path touchLiveStrips()
 }
 
 //==============================================================================
+// Grid-Page-Symbole (User-SVGs 10.07.2026, viewBox 44×44 — das 44er-Rect ist
+// die KACHEL, nur die Glyph-Formen zählen): Inhalt (x 14..32, y 13..31,
+// 18×18) zentriert hochskaliert wie touchLiveStrips (Hausstil für die
+// User-SVG-Familie — reine /44-Normierung bliebe nach dem IconTile-Inset
+// unlesbar klein).
+
+void addGridSvgRect (juce::Path& p, float x, float y, float w, float h)
+{
+    constexpr float scale = 0.68f / 18.0f;              // Inhaltshöhe → 0.68
+    constexpr float x0 = (1.0f - 18.0f * scale) / 2.0f;
+    constexpr float y0 = (1.0f - 18.0f * scale) / 2.0f;
+    p.addRectangle (x0 + (x - 14.0f) * scale, y0 + (y - 13.0f) * scale,
+                    w * scale, h * scale);
+}
+
+juce::Path gridMpeMatrix()
+{
+    // 5×5-Punktmatrix aus 2×2-Rects (x/y-Zentren im 4er-Raster ab 14/13) —
+    // Grid-Page-Tab + 64-Pad-Modus (Push-Style).
+    juce::Path p;
+
+    for (int row = 0; row < 5; ++row)
+        for (int col = 0; col < 5; ++col)
+            addGridSvgRect (p, 14.0f + 4.0f * (float) col,
+                            13.0f + 4.0f * (float) row, 2.0f, 2.0f);
+
+    return p;
+}
+
+juce::Path gridMpeXyGlyph()
+{
+    // XY+Fader-Modus: untere 3 Punktreihen + oben links XY-Block (1×1-
+    // Handle-Aussparung) + oben rechts Fader-Block (drei 2×4-Schlitze).
+    // Aussparungen per Even-Odd-Füllregel — wie die fill-rule des User-SVGs
+    // (PushIcons hatte bisher keine Fill-Cutouts, das ist der neue Hausweg).
+    juce::Path p;
+    p.setUsingNonZeroWinding (false);   // Even-Odd: innere Rects werden Löcher
+
+    for (int row = 0; row < 3; ++row)
+        for (int col = 0; col < 5; ++col)
+            addGridSvgRect (p, 14.0f + 4.0f * (float) col,
+                            21.0f + 4.0f * (float) row, 2.0f, 2.0f);
+
+    // XY-Block (14,13)-(20,19) minus 1×1-Loch bei (16,17)
+    addGridSvgRect (p, 14.0f, 13.0f, 6.0f, 6.0f);
+    addGridSvgRect (p, 16.0f, 17.0f, 1.0f, 1.0f);
+
+    // Fader-Block (22,13)-(32,19) minus drei 2×4-Schlitze bei x=23/26/29
+    addGridSvgRect (p, 22.0f, 13.0f, 10.0f, 6.0f);
+    addGridSvgRect (p, 23.0f, 14.0f, 2.0f, 4.0f);
+    addGridSvgRect (p, 26.0f, 14.0f, 2.0f, 4.0f);
+    addGridSvgRect (p, 29.0f, 14.0f, 2.0f, 4.0f);
+
+    return p;
+}
+
+//==============================================================================
 juce::AffineTransform fitToBounds (const juce::Rectangle<float>& bounds)
 {
     // Größtes einbeschriebenes Quadrat, zentriert — Icons bleiben proportional
@@ -396,6 +453,8 @@ juce::Path strokeGeometry (Icon icon)
         case Icon::nudgeRight:
         case Icon::chevronDown:
         case Icon::pageTouchLive:
+        case Icon::gridMpe:
+        case Icon::gridMpeXy:
             return {};
         case Icon::pageMixer:    return mixerBars();
         case Icon::pageClip:     return clipBoxOutline();
@@ -430,6 +489,8 @@ juce::Path fillGeometry (Icon icon)
         case Icon::metronome:   return metronomeDot();
         case Icon::pageClip:    return clipBoxTriangle();
         case Icon::pageTouchLive: return touchLiveStrips();
+        case Icon::gridMpe:     return gridMpeMatrix();
+        case Icon::gridMpeXy:   return gridMpeXyGlyph();
         case Icon::chevronDown: return chevronDownSmall();
         case Icon::fader:       return faderThumb();
         case Icon::browserPanel: return browserPanelFill();

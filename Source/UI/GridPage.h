@@ -56,6 +56,19 @@ namespace conduit
     Root-ValueTree, die Anzeige (Kacheln + Pad-Einfärbung des Keyboards)
     folgt dem ValueTree-Listener — so kommen auch Änderungen aus der
     TransportBar an (UI bindet nie an den Processor, CLAUDE.md 5.3).
+
+    Pad-Layout-Modi (User 10.07.2026): das Raster ist 8×8 (64 Pads,
+    Push-Style, padLayoutConfig()). Zwei IconTiles (gridMpe/gridMpeXy) links
+    neben Release-All schalten zwischen „64 Pads" und „XY+Fader" um
+    (persistent, GridPanelSettings::gridLayoutMode). Im XY+Fader-Modus
+    überdeckt ein eigener systemLayer (CcControlLayer über systemCcModel,
+    8×2-Zellraster, IMMER Play-Modus) die oberen zwei Pad-Reihen mit fester
+    Bestückung (grid::buildXyFaderLayout: 1× XY + 6 Fader) — das
+    8×8-Noten-Mapping des Keyboards bleibt unverändert, die überdeckten
+    Pads sind schlicht unspielbar. Der systemLayer liegt ÜBER dem User-
+    ccLayer (nach ihm hinzugefügt) und gewinnt dessen Hit-Tests auch im
+    CC-Tab-Modus — dass die System-Controls dort SPIELBAR bleiben, ist
+    akzeptiert (TODO(design)).
 */
 class GridPage final : public juce::Component,
                        private juce::ValueTree::Listener
@@ -90,6 +103,12 @@ public:
         ("Chromatic", "Major", "Minor", "Pentatonic"). */
     [[nodiscard]] static juce::String scaleDisplayNameFor (ScaleType type);
 
+    /** Pad-Raster der Grid-Page: 8×8 (64 Pads, Push-Style, User 10.07.2026).
+        Die PadGridLayout-Config-Defaults bleiben bewusst 8×4 (andere
+        Nutzer/Tests) — nur die Grid-Page setzt rows explizit; lowestNote 48
+        unverändert, die neuen Reihen wachsen nach OBEN dazu. */
+    [[nodiscard]] static grid::PadGridLayout::Config padLayoutConfig() noexcept;
+
 private:
     void rebuildDeviceList();
     void handleDeviceSelected();
@@ -101,12 +120,24 @@ private:
     /** CC-Modus des Overlays = (Dock-Panel offen) UND (aktiver Tab "cc"). */
     void updateCcMode();
 
+    /** Modus-Kachel-Tap: persistiert den Layout-Modus und wendet ihn an. */
+    void setLayoutMode (GridPanelSettings::GridLayoutMode newMode);
+
+    /** Kachel-Aktivzustand + Sichtbarkeit/Bestückung der System-Controls
+        (XY+Fader-Modus) — resized() positioniert den systemLayer immer,
+        die Sichtbarkeit entscheidet. */
+    void applyLayoutMode();
+
     void valueTreePropertyChanged (juce::ValueTree& tree,
                                    const juce::Identifier& property) override;
 
     // Bereich des PitchBend-Offset-Ribbons: Mitte = 0, ±Ende = ±12 Halbtöne.
     // Spätere 1–96-Range-UI ersetzt diese Konstante.
     static constexpr float kPitchBendOffsetSemitones = 12.0f;
+
+    // XY+Fader-Modus: die System-Controls überdecken die oberen zwei
+    // Pad-Reihen (eigenes 8×2-Zellraster des systemLayer).
+    static constexpr int kSystemControlRows = 2;
 
     juce::ValueTree rootState;  // ref-counted Handle (Session-Skala), nie der Processor (5.3)
     grid::GridVoiceEngine& engine;
@@ -118,6 +149,8 @@ private:
     juce::ComboBox outputCombo;
     push::TextTile rootTile  { "C" };            // Session-Skala: Grundton (Tap = weiterzykeln)
     push::TextTile scaleTile { "Chromatic" };    // Session-Skala: Typ (Tap = weiterzykeln)
+    push::IconTile padsModeTile { push::Icon::gridMpe,   "padLayoutFullPads" };  // 64 Pads
+    push::IconTile xyModeTile   { push::Icon::gridMpeXy, "padLayoutXyFaders" };  // XY+Fader oben
     push::TextTile releaseAllButton { "Release All", push::colours::ledRed };
     ExpressionRibbon atOffsetRibbon      { "Pressure", true };  // bipolar
     ExpressionRibbon slideOffsetRibbon   { "Slide", true };     // bipolar
@@ -125,6 +158,8 @@ private:
     GridKeyboardComponent keyboard;
     grid::CcControlModel ccModel;     // CC-Baukasten (Grid-Page v2)
     CcControlLayer ccLayer;           // Overlay ÜBER dem Keyboard (nach keyboard deklariert)
+    grid::CcControlModel systemCcModel;  // System-Controls des XY+Fader-Modus (User 10.07.2026)
+    CcControlLayer systemLayer;          // ÜBER dem ccLayer, IMMER Play-Modus (kein Werkzeug)
     grid::ChordMemory chordMemory;    // Akkord-Speicher (Grid-Page v2, 8 LCD-Slots)
     ChordMemoryStrip chordStrip { chordMemory };   // liegt räumlich NEBEN dem Keyboard/ccLayer
     EditorDockPanel dockPanel;

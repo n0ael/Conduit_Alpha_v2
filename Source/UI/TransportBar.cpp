@@ -138,7 +138,9 @@ TransportBar::TransportBar (juce::ValueTree rootTree, LinkClock& linkClockToUse,
     linkTile.onClick = [this] { openLinkMenu(); };
 
     // -- Pages (Reihenfolge wie auf dem Push-Controller) ----------------------
-    const push::Icon pageIcons[] = { push::Icon::pageGrid, push::Icon::pageMixer,
+    // Grid-Tab: 5×5-Punktmatrix (User-SVG 10.07.2026) statt Ω — pageGrid
+    // bleibt im Icon-Enum erhalten.
+    const push::Icon pageIcons[] = { push::Icon::gridMpe, push::Icon::pageMixer,
                                      push::Icon::pageTouchLive, push::Icon::pageDevice };
     const char* pageNames[] = { "Grid", "Mixer", "TouchLive", "Device" };
 

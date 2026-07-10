@@ -11,6 +11,7 @@ namespace
     constexpr const char* editorPanelOpenKey      = "editorPanelOpen";
     constexpr const char* editorThresholdWidthKey = "editorThresholdWidth";
     constexpr const char* noteCircleFadeMsKey     = "noteCircleFadeMs";
+    constexpr const char* gridLayoutModeKey       = "gridLayoutMode";
 
     // Achsen-Farben (Grid-Page v2) — Index = GridPanelSettings::axisIndex
     // (Pressure 0, Slide 1, PitchBend 2).
@@ -62,6 +63,11 @@ void GridPanelSettings::loadFromFile()
             file->getIntValue (editorThresholdWidthKey, defaultThresholdWidth));
         noteCircleFadeMs = juce::jlimit (minNoteCircleFadeMs, maxNoteCircleFadeMs,
             file->getIntValue (noteCircleFadeMsKey, defaultNoteCircleFadeMs));
+
+        // Unbekannte Werte fallen defensiv auf fullPads (Default 0) zurück.
+        gridLayoutMode = file->getIntValue (gridLayoutModeKey, 0) == 1
+                             ? GridLayoutMode::xyFaders
+                             : GridLayoutMode::fullPads;
 
         for (size_t i = 0; i < axisColours.size(); ++i)
         {
@@ -128,6 +134,20 @@ void GridPanelSettings::setNoteCircleFadeMs (int newFadeMs)
     if (auto* file = applicationProperties.getUserSettings())
     {
         file->setValue (noteCircleFadeMsKey, noteCircleFadeMs);
+        file->saveIfNeeded();
+    }
+}
+
+void GridPanelSettings::setGridLayoutMode (GridLayoutMode newMode)
+{
+    if (newMode == gridLayoutMode)
+        return;
+
+    gridLayoutMode = newMode;
+
+    if (auto* file = applicationProperties.getUserSettings())
+    {
+        file->setValue (gridLayoutModeKey, (int) gridLayoutMode);
         file->saveIfNeeded();
     }
 }

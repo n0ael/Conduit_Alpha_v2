@@ -26,6 +26,12 @@ void CcControlModel::remove (int id) noexcept
                  items.end());
 }
 
+void CcControlModel::clear() noexcept
+{
+    items.clear();
+    nextId = 1;
+}
+
 bool CcControlModel::moveTo (int id, int c0, int r0, int cols, int rows) noexcept
 {
     auto* control = find (id);
@@ -70,6 +76,18 @@ bool CcControlModel::coversCell (const CcControl& control, int cellC, int cellR)
 {
     return cellC >= control.c0 && cellC <= control.c1
         && cellR >= control.r0 && cellR <= control.r1;
+}
+
+//==============================================================================
+void buildXyFaderLayout (CcControlModel& model)
+{
+    // TODO(design): Anzahl/Anordnung der Controls + CC-Zuweisung final vom
+    // User — vorerst XY links (2×2 Zellen) + 6 vertikale Fader (User-SVG
+    // gridMpeXy als Vorlage).
+    model.addControl (CcTool::xy, 0, 0, 1, 1);
+
+    for (int col = 2; col < 8; ++col)
+        model.addControl (CcTool::fader, col, 0, col, 1);
 }
 
 } // namespace conduit::grid

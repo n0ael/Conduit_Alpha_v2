@@ -12,22 +12,39 @@ GridPage::GridPage (juce::ValueTree rootStateToUse,
                      GridPanelSettings& panelSettingsToUse, UiSettings& uiSettingsToUse)
     : rootState (std::move (rootStateToUse)),
       engine (engineToUse), midiTarget (midiTargetToUse), panelSettings (panelSettingsToUse),
-      uiSettings (uiSettingsToUse), keyboard (engineToUse),
-      // cols/rows aus der PadGridLayout-Default-Config — dasselbe Raster,
-      // das auch das Keyboard nutzt (GridKeyboardComponent-Default).
-      ccLayer (ccModel, grid::PadGridLayout::Config{}.cols, grid::PadGridLayout::Config{}.rows)
+      uiSettings (uiSettingsToUse),
+      // 8×8-Raster der Grid-Page (padLayoutConfig, User 10.07.2026) — Keyboard
+      // und ccLayer teilen sich dieselbe Zellgeometrie.
+      keyboard (engineToUse, padLayoutConfig()),
+      ccLayer (ccModel, padLayoutConfig().cols, padLayoutConfig().rows),
+      // System-Controls des XY+Fader-Modus: eigenes 8×2-Zellraster exakt über
+      // den oberen zwei Pad-Reihen (resized).
+      systemLayer (systemCcModel, padLayoutConfig().cols, kSystemControlRows)
 {
     addAndMakeVisible (outputCombo);
     addAndMakeVisible (rootTile);
     addAndMakeVisible (scaleTile);
+    addAndMakeVisible (padsModeTile);
+    addAndMakeVisible (xyModeTile);
     addAndMakeVisible (releaseAllButton);
     addAndMakeVisible (atOffsetRibbon);
     addAndMakeVisible (slideOffsetRibbon);
     addAndMakeVisible (pitchOffsetRibbon);
     addAndMakeVisible (keyboard);
     addAndMakeVisible (ccLayer);     // NACH keyboard hinzugefügt = liegt darüber
+    addChildComponent (systemLayer); // NACH ccLayer = darüber: System-Controls
+                                     // gewinnen die Hit-Tests auch im CC-Tab-
+                                     // Modus (dort SPIELBAR — TODO(design));
+                                     // sichtbar nur im XY+Fader-Modus.
     addAndMakeVisible (chordStrip);  // eigene Spalte NEBEN Keyboard/ccLayer
     addChildComponent (dockPanel);   // sichtbar nur wenn offen (setPanelOpen)
+
+    // Layout-Modus-Kacheln (User 10.07.2026): 64 Pads (Push-Style) vs.
+    // XY+Fader über den oberen zwei Pad-Reihen — Tap setzt Persistenz und
+    // wendet den Modus an. systemLayer bleibt IMMER im Play-Modus
+    // (setCcMode(false) ist der Ctor-Default, es gibt keinen Umschalter).
+    padsModeTile.onClick = [this] { setLayoutMode (GridPanelSettings::GridLayoutMode::fullPads); };
+    xyModeTile.onClick   = [this] { setLayoutMode (GridPanelSettings::GridLayoutMode::xyFaders); };
 
     rebuildDeviceList();
     outputCombo.onChange = [this] { handleDeviceSelected(); };
@@ -111,6 +128,7 @@ GridPage::GridPage (juce::ValueTree rootStateToUse,
     dockPanel.onActiveTabChanged = [this] (const juce::String&) { updateCcMode(); };
 
     updateCcMode();   // Initialzustand (Panel-Open aus panelSettings, aktiver Tab "mpe")
+    applyLayoutMode();   // Initialer Layout-Modus aus der Persistenz
 }
 
 GridPage::~GridPage()
@@ -151,6 +169,16 @@ juce::String GridPage::scaleDisplayNameFor (ScaleType type)
     return name.substring (0, 1).toUpperCase() + name.substring (1);
 }
 
+grid::PadGridLayout::Config GridPage::padLayoutConfig() noexcept
+{
+    // 64 Pads (8×8, Push-Style, User 10.07.2026): die Config-Defaults bleiben
+    // 8×4 — nur die Grid-Page setzt rows explizit. lowestNote 48 unverändert,
+    // die neuen Reihen wachsen nach OBEN dazu (+5 HT/Reihe).
+    grid::PadGridLayout::Config config;
+    config.rows = 8;
+    return config;
+}
+
 void GridPage::refreshScaleFromState()
 {
     const auto rootNote = juce::jlimit (0, 11, (int) rootState.getProperty (id::scaleRoot, 0));
@@ -179,6 +207,33 @@ void GridPage::setDockPanelOpen (bool shouldBeOpen) noexcept
 void GridPage::updateCcMode()
 {
     ccLayer.setCcMode (dockPanel.isPanelOpen() && dockPanel.getActiveTabId() == "cc");
+}
+
+void GridPage::setLayoutMode (GridPanelSettings::GridLayoutMode newMode)
+{
+    panelSettings.setGridLayoutMode (newMode);
+    applyLayoutMode();
+}
+
+void GridPage::applyLayoutMode()
+{
+    const auto xyFaders = panelSettings.getGridLayoutMode()
+                              == GridPanelSettings::GridLayoutMode::xyFaders;
+
+    padsModeTile.setActive (! xyFaders);
+    xyModeTile.setActive (xyFaders);
+
+    // Sauberer Zustand bei jedem Wechsel: Modell leeren, im XY+Fader-Modus
+    // frisch bestücken — der Werte-Reset ist akzeptiert (TODO(design):
+    // Persistenz der Control-Werte über den Moduswechsel).
+    systemCcModel.clear();
+
+    if (xyFaders)
+        grid::buildXyFaderLayout (systemCcModel);
+
+    systemLayer.setVisible (xyFaders);
+    systemLayer.repaint();
+    resized();
 }
 
 void GridPage::rebuildDeviceList()
@@ -230,6 +285,14 @@ void GridPage::resized()
     rootTile.setBounds  (comboArea.getRight() + 6, comboArea.getY(), 44, comboArea.getHeight());
     scaleTile.setBounds (rootTile.getRight() + 4, comboArea.getY(), 104, comboArea.getHeight());
 
+    // Layout-Modus-Kacheln (User 10.07.2026): 64 Pads / XY+Fader — LINKS
+    // neben Release-All, 24×24 wie die Nachbarkacheln, 4 px Abstand.
+    const auto modeTileSide = comboArea.getHeight();
+    xyModeTile.setBounds (releaseAllButton.getX() - 8 - modeTileSide,
+                          comboArea.getY(), modeTileSide, modeTileSide);
+    padsModeTile.setBounds (xyModeTile.getX() - 4 - modeTileSide,
+                            comboArea.getY(), modeTileSide, modeTileSide);
+
     constexpr int ribbonWidth = 72;
 
     // Design-Mock Grid-Page v2: links Pitch in voller Höhe, rechts EINE
@@ -248,6 +311,13 @@ void GridPage::resized()
 
     keyboard.setBounds (bounds);
     ccLayer.setBounds (bounds);   // Overlay exakt über den Keyboard-Bounds
+
+    // System-Controls (XY+Fader-Modus): exakt die oberen zwei Zellreihen der
+    // Keyboard-Fläche — IMMER positioniert, die Sichtbarkeit entscheidet.
+    const auto systemHeight = juce::roundToInt ((float) bounds.getHeight()
+                                  * (float) kSystemControlRows
+                                  / (float) padLayoutConfig().rows);
+    systemLayer.setBounds (bounds.withHeight (systemHeight));
 
     if (bounds.getHeight() > 0)
         chordStrip.setSurfaceAspect ((float) bounds.getWidth() / (float) bounds.getHeight());

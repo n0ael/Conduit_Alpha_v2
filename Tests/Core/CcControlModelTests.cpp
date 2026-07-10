@@ -77,3 +77,51 @@ TEST_CASE ("CcControlModel: controlAt liefert das oberste Control, coversCell di
     REQUIRE_FALSE (grid::CcControlModel::coversCell (*control, 4, 3));
     REQUIRE_FALSE (grid::CcControlModel::coversCell (*control, 3, 4));
 }
+
+TEST_CASE ("CcControlModel: clear entfernt alles und setzt die Id-Vergabe zurueck", "[grid]")
+{
+    grid::CcControlModel model;
+    model.addControl (grid::CcTool::fader, 0, 0, 0, 1);
+    model.addControl (grid::CcTool::xy, 1, 0, 2, 1);
+
+    model.clear();
+    REQUIRE (model.controls().empty());
+
+    // Id-Vergabe beginnt wieder bei 1 (deterministische System-Bestueckung).
+    REQUIRE (model.addControl (grid::CcTool::toggle, 0, 0, 0, 0) == 1);
+}
+
+//==============================================================================
+TEST_CASE ("buildXyFaderLayout: XY + 6 Fader decken alle 16 Zellen des 8x2-Rasters", "[grid]")
+{
+    grid::CcControlModel model;
+    grid::buildXyFaderLayout (model);
+
+    // 1 XY-Pad ueber (0,0)-(1,1) plus 6 vertikale Fader (c,0)-(c,1), c=2..7.
+    const auto& controls = model.controls();
+    REQUIRE (controls.size() == 7);
+
+    REQUIRE (controls[0].type == grid::CcTool::xy);
+    REQUIRE (controls[0].c0 == 0);
+    REQUIRE (controls[0].r0 == 0);
+    REQUIRE (controls[0].c1 == 1);
+    REQUIRE (controls[0].r1 == 1);
+
+    int faderCount = 0;
+    for (size_t i = 1; i < controls.size(); ++i)
+    {
+        REQUIRE (controls[i].type == grid::CcTool::fader);
+        REQUIRE (controls[i].c0 == (int) i + 1);   // Spalten 2..7
+        REQUIRE (controls[i].c1 == controls[i].c0);
+        REQUIRE (controls[i].r0 == 0);
+        REQUIRE (controls[i].r1 == 1);
+        ++faderCount;
+    }
+    REQUIRE (faderCount == 6);
+
+    // Keine freie Zelle: im Play-Modus faellt damit nichts zum Keyboard
+    // durch -- die ueberdeckten Pads sind unspielbar (GridPage, 10.07.2026).
+    for (int r = 0; r < 2; ++r)
+        for (int c = 0; c < 8; ++c)
+            REQUIRE (model.controlAt (c, r) >= 0);
+}

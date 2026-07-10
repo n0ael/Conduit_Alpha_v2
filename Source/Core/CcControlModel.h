@@ -44,6 +44,11 @@ public:
     /** Entfernt das Control mit dieser id (kein Effekt bei unbekannter id). */
     void remove (int id) noexcept;
 
+    /** Entfernt ALLE Controls und setzt die Id-Vergabe zurück — sauberer
+        Zustand beim Moduswechsel der System-Controls (Grid-Page-Layout-Modi,
+        User 10.07.2026). */
+    void clear() noexcept;
+
     /** Verschiebt das Control mit erhaltener Größe an die neue Ursprungszelle,
         geklemmt in die Rastergrenzen [0,cols) × [0,rows). true, wenn die id
         existiert (auch wenn die geklemmte Position unverändert bleibt). */
@@ -65,5 +70,14 @@ private:
     std::vector<CcControl> items;
     int nextId = 1;
 };
+
+//==============================================================================
+/** Feste System-Bestückung des XY+Fader-Modus der Grid-Page (User
+    10.07.2026) über einem 8×2-Zellraster (die oberen zwei Pad-Reihen):
+    EIN XY-Pad über den Zellen (0,0)-(1,1) plus 6 vertikale Fader je
+    (c,0)-(c,1) für c = 2..7 — alle 16 Zellen abgedeckt. Fügt nur hinzu,
+    der Aufrufer leert das Modell vorher (clear()).
+    TODO(design): Anzahl/Anordnung + CC-Zuweisung final vom User. */
+void buildXyFaderLayout (CcControlModel& model);
 
 } // namespace conduit::grid

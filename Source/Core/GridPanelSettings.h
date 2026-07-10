@@ -67,6 +67,15 @@ public:
     [[nodiscard]] juce::Colour getAxisColour (grid::GridVoiceEngine::Axis axis) const noexcept;
     void setAxisColour (grid::GridVoiceEngine::Axis axis, juce::Colour newColour);
 
+    //==========================================================================
+    /** Pad-Layout der Grid-Page (User 10.07.2026): fullPads = alle 64 Pads
+        (Push-Style), xyFaders = obere zwei Pad-Reihen als XY-Pad + Fader
+        (System-Controls). Persistiert als int (Key "gridLayoutMode"). */
+    enum class GridLayoutMode { fullPads = 0, xyFaders = 1 };
+
+    [[nodiscard]] GridLayoutMode getGridLayoutMode() const noexcept { return gridLayoutMode; }
+    void setGridLayoutMode (GridLayoutMode newMode);
+
 private:
     void loadFromFile();
 
@@ -78,6 +87,7 @@ private:
     bool editorPanelOpen      = false;
     int  editorThresholdWidth = defaultThresholdWidth;
     int  noteCircleFadeMs     = defaultNoteCircleFadeMs;
+    GridLayoutMode gridLayoutMode = GridLayoutMode::fullPads;
     std::array<juce::Colour, 3> axisColours {};   // geladen in loadFromFile()
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (GridPanelSettings)

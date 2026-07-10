@@ -55,6 +55,26 @@
     vorerst reiner UI-State — der MIDI-CC-Versand dockt später an
     (CcControlLayer::onControlValueChanged, TODO(design)); ebenso offen:
     CC-Nummern-Zuweisung pro Control.
+  - **Pad-Layout-Modi + Grid-Symbole (User 10.07.2026):** das Pad-Raster der
+    Grid-Page ist 8×8 (64 Pads, Push-Style; GridPage::padLayoutConfig —
+    die PadGridLayout-Config-Defaults bleiben 8×4, lowestNote 48 unten
+    links, die Reihen wachsen nach oben). Zwei neue PushIcons aus User-SVGs
+    (44er-ViewBox, Inhalt zentriert hochskaliert wie pageTouchLive):
+    `gridMpe` (5×5-Punktmatrix — ersetzt das Ω als Grid-Tab-Symbol,
+    pageGrid bleibt im Enum) und `gridMpeXy` (halbes Raster + XY-Block +
+    Fader-Block, Aussparungen per Even-Odd-Füllregel). Zwei IconTiles in
+    der Top-Row (links neben Release-All) schalten den Modus um, persistent
+    als `gridLayoutMode` in GridPanelSettings (0 = fullPads, 1 = xyFaders).
+    XY+Fader-Modus: ein eigener systemLayer (CcControlLayer über
+    systemCcModel, 8×2-Zellraster, IMMER Play-Modus — kein Aufziehen/
+    Verschieben/Löschen) überdeckt die oberen zwei Pad-Reihen mit fester
+    Bestückung `grid::buildXyFaderLayout` (1× XY über (0,0)-(1,1) + 6
+    vertikale Fader, alle 16 Zellen abgedeckt); das 8×8-Noten-Mapping
+    bleibt unverändert, die überdeckten Pads sind unspielbar. Der
+    systemLayer liegt ÜBER dem User-ccLayer und gewinnt dessen Hit-Tests
+    auch im CC-Tab-Modus (System-Controls dort spielbar — akzeptiert).
+    TODO(design): Anzahl/Anordnung + CC-Zuweisung der System-Controls,
+    Persistenz der Control-Werte über den Moduswechsel.
   - **Akkord-Speicher (Grid-Page v2, Feature 6, 07/2026):** 8 vertikale
     „LCD-Screens" (ChordMemoryStrip, push::colours::lcdScreen) zwischen
     Pad-Raster und rechter Ribbon-Spalte; ChordMemory (Source/Core, UI-frei,

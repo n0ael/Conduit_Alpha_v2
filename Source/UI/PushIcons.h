@@ -25,7 +25,9 @@ namespace conduit::push
       pageClip      (▷ im Rechteck)     → Clip-Page (Fugue-Machine-Sequencer,
                                           bekommt später wieder einen Slot)
       pageDevice    (|||)               → Device-Page (Patch-Canvas)
-      pageGrid      (Ω-Schleife)        → Grid-Page (MPE-Touch-Controller)
+      gridMpe       (5×5-Punktmatrix)   → Grid-Page (MPE-Touch-Controller,
+                                          User-SVG 10.07.2026 — ersetzt das
+                                          Ω von pageGrid als Tab-Symbol)
 */
 enum class Icon
 {
@@ -41,8 +43,12 @@ enum class Icon
     pageMixer,      // Fader-Balken
     pageClip,       // ▷ im Rechteck
     pageDevice,     // |||
-    pageGrid,       // Ω
+    pageGrid,       // Ω (Alt-Symbol der Grid-Page — Tab nutzt seit 10.07. gridMpe)
     pageTouchLive,  // drei Mini-Kanalzüge (User-SVG TouchLive.svg, 09.07.2026)
+
+    // Grid-Page-Symbole (User-SVGs 10.07.2026): Page-Tab + Pad-Layout-Modi
+    gridMpe,        // 5×5-Punktmatrix — Grid-Page-Tab + 64-Pad-Modus (Push-Style)
+    gridMpeXy,      // halbes Raster + XY-Block + Fader-Block — XY+Fader-Modus
 
     // Dev-Zeile des FxModulePanel (4.6) — Symbole statt Text (User 03.07.:
     // Text war bei 28px-Buttons unlesbar; Vektor-Icons skalieren immer)

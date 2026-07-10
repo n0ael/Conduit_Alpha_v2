@@ -22,16 +22,31 @@ namespace
 } // namespace
 
 //==============================================================================
+TEST_CASE ("GridPage: padLayoutConfig ist das 8x8-Push-Raster (64 Pads)", "[grid][ui]")
+{
+    // User 10.07.2026: 64 Pads — Config-Defaults von PadGridLayout bleiben
+    // 8x4, nur die Grid-Page setzt rows explizit; lowestNote 48 bleibt,
+    // die Reihen wachsen nach OBEN dazu (+5 HT/Reihe).
+    const auto config = conduit::GridPage::padLayoutConfig();
+    REQUIRE (config.cols == 8);
+    REQUIRE (config.rows == 8);
+    REQUIRE (config.lowestNote == 48);
+
+    const grid::PadGridLayout layout (config);
+    REQUIRE (layout.noteForPad (7 * 8) == 48);       // unten links unverändert C3
+    REQUIRE (layout.noteForPad (0) == 48 + 7 * 5);   // oben links = 83
+}
+
 TEST_CASE ("GridKeyboardComponent: Tap in ein Pad startet die erwartete Note", "[grid][ui]")
 {
     juce::ScopedJuceInitialiser_GUI juceRuntime;
 
     grid::FakeVoiceSink fake;
     grid::GridVoiceEngine engine (fake);
-    conduit::GridKeyboardComponent keyboard (engine);
-    keyboard.setSize (320, 160);   // 8x4 Raster -> 40x40 px pro Pad (Default-Config)
+    conduit::GridKeyboardComponent keyboard (engine, conduit::GridPage::padLayoutConfig());
+    keyboard.setSize (320, 320);   // 8x8 Raster -> 40x40 px pro Pad (Grid-Page-Config)
 
-    // Pad (col=2, row=3 -- unterste Reihe): Mitte bei (100, 140)
+    // Pad (col=2, row=3 von oben -- rowFromBottom 4): Mitte bei (100, 140)
     keyboard.mouseDown (makeEvent (keyboard, { 100.0f, 140.0f }));
 
     // noteOn + expliziter Startwert für Bend/Pressure (sonst läse das MPE-
@@ -40,7 +55,7 @@ TEST_CASE ("GridKeyboardComponent: Tap in ein Pad startet die erwartete Note", "
     REQUIRE (fake.calls.size() == 3);
     REQUIRE (fake.calls[0].kind == grid::FakeVoiceSink::Kind::VoiceStart);
     REQUIRE (fake.calls[0].voiceIndex == 0);
-    REQUIRE (fake.calls[0].intValue == 50);   // lowestNote(48) + col(2) + rowFromBottom(0)*5
+    REQUIRE (fake.calls[0].intValue == 70);   // lowestNote(48) + col(2) + rowFromBottom(4)*5
     REQUIRE (fake.calls[0].intValue2 == 100); // feste Velocity (Platzhalter)
     REQUIRE (fake.calls[1].kind == grid::FakeVoiceSink::Kind::PitchBend);
     REQUIRE (juce::exactlyEqual (fake.calls[1].floatValue, 0.0f));
@@ -54,14 +69,36 @@ TEST_CASE ("GridKeyboardComponent: Tap in ein Pad startet die erwartete Note", "
     REQUIRE (fake.calls[3].voiceIndex == 0);
 }
 
+TEST_CASE ("GridKeyboardComponent: unterste Reihe bleibt bei 8 Reihen identisch", "[grid][ui]")
+{
+    juce::ScopedJuceInitialiser_GUI juceRuntime;
+
+    grid::FakeVoiceSink fake;
+    grid::GridVoiceEngine engine (fake);
+    conduit::GridKeyboardComponent keyboard (engine, conduit::GridPage::padLayoutConfig());
+    keyboard.setSize (320, 320);
+
+    // Pad (col=2, row=7 -- unterste Reihe): Mitte bei (100, 300) -> Note 50
+    // wie im früheren 8x4-Raster (lowestNote bleibt unten links).
+    keyboard.mouseDown (makeEvent (keyboard, { 100.0f, 300.0f }));
+
+    REQUIRE (fake.calls.size() == 3);
+    REQUIRE (fake.calls[0].kind == grid::FakeVoiceSink::Kind::VoiceStart);
+    REQUIRE (fake.calls[0].intValue == 50);   // lowestNote(48) + col(2) + rowFromBottom(0)*5
+
+    keyboard.mouseUp (makeEvent (keyboard, { 100.0f, 300.0f }));
+    REQUIRE (fake.calls.size() == 4);
+    REQUIRE (fake.calls[3].kind == grid::FakeVoiceSink::Kind::VoiceStop);
+}
+
 TEST_CASE ("GridKeyboardComponent: Tap außerhalb des Rasters bleibt wirkungslos", "[grid][ui]")
 {
     juce::ScopedJuceInitialiser_GUI juceRuntime;
 
     grid::FakeVoiceSink fake;
     grid::GridVoiceEngine engine (fake);
-    conduit::GridKeyboardComponent keyboard (engine);
-    keyboard.setSize (320, 160);
+    conduit::GridKeyboardComponent keyboard (engine, conduit::GridPage::padLayoutConfig());
+    keyboard.setSize (320, 320);
 
     // padIndexAt clamped auf -1 kann bei gültigen Component-Bounds nicht
     // vorkommen -- Drag ohne vorherigen Down darf trotzdem nichts auslösen.
@@ -105,13 +142,14 @@ TEST_CASE ("GridKeyboardComponent: latchConstellation spielt die gespeicherten N
 
     grid::FakeVoiceSink fake;
     grid::GridVoiceEngine engine (fake);
-    conduit::GridKeyboardComponent keyboard (engine);
-    keyboard.setSize (320, 160);   // 8x4 Raster -> 40x40 px pro Pad
+    conduit::GridKeyboardComponent keyboard (engine, conduit::GridPage::padLayoutConfig());
+    keyboard.setSize (320, 320);   // 8x8 Raster -> 40x40 px pro Pad
 
-    // Sonne mit Mond in Pad-Mitte (col=2, row=3): (100, 140) -> Note 50.
-    // Mond-Offset 130 px (ueber die BREITE normalisiert, 130/320) ->
+    // Sonne mit Mond in Pad-Mitte (col=2, row=7 -- unterste Reihe):
+    // (100, 300) -> Note 50. Mond-Offset 130 px (ueber die BREITE
+    // normalisiert, 130/320) ->
     // Slide = (130 - minRadius 40) / (maxRadius 220 - 40) = 0.5.
-    keyboard.latchConstellation ({ { 100.0f / 320.0f, 140.0f / 160.0f,
+    keyboard.latchConstellation ({ { 100.0f / 320.0f, 300.0f / 320.0f,
                                      130.0f / 320.0f, 0.0f, true } });
 
     REQUIRE (fake.calls.size() == 4);
@@ -138,22 +176,22 @@ TEST_CASE ("GridKeyboardComponent: moveLatchedBy verschiebt starr und aktualisie
 
     grid::FakeVoiceSink fake;
     grid::GridVoiceEngine engine (fake);
-    conduit::GridKeyboardComponent keyboard (engine);
-    keyboard.setSize (320, 160);
+    conduit::GridKeyboardComponent keyboard (engine, conduit::GridPage::padLayoutConfig());
+    keyboard.setSize (320, 320);
 
-    keyboard.latchConstellation ({ { 100.0f / 320.0f, 140.0f / 160.0f, 0.0f, 0.0f, false } });
+    keyboard.latchConstellation ({ { 100.0f / 320.0f, 300.0f / 320.0f, 0.0f, 0.0f, false } });
     REQUIRE (fake.calls.size() == 3);   // Start + Bend 0 + Pressure 0.5 (kein Orbit -> kein Slide)
 
-    // 1 Pad nach rechts (40 px = 2 HT) und 1 Pad hoch (40 px = +0.25 norm
-    // bei yRangeNorm 0.5 -> Pressure 0.5 + 0.5 = 1.0) -- X = Pitch,
-    // Y = Ausdruck, exakt wie ein Finger-Drag.
+    // 1 Pad nach rechts (40 px = 2 HT) und 1 Pad hoch (40 px = +0.125 norm
+    // bei Hoehe 320 und yRangeNorm 0.5 -> Pressure 0.5 + 0.25 = 0.75) --
+    // X = Pitch, Y = Ausdruck, exakt wie ein Finger-Drag.
     keyboard.moveLatchedBy (40.0f, -40.0f);
 
     REQUIRE (fake.calls.size() == 5);
     REQUIRE (fake.calls[3].kind == grid::FakeVoiceSink::Kind::PitchBend);
     REQUIRE (fake.calls[3].floatValue == Catch::Approx (2.0).margin (1.0e-4));
     REQUIRE (fake.calls[4].kind == grid::FakeVoiceSink::Kind::Pressure);
-    REQUIRE (fake.calls[4].floatValue == Catch::Approx (1.0));
+    REQUIRE (fake.calls[4].floatValue == Catch::Approx (0.75));
 }
 
 TEST_CASE ("GridKeyboardComponent: latched Sonne ausserhalb des Rasters spielt keine Note", "[grid][ui]")
@@ -162,8 +200,8 @@ TEST_CASE ("GridKeyboardComponent: latched Sonne ausserhalb des Rasters spielt k
 
     grid::FakeVoiceSink fake;
     grid::GridVoiceEngine engine (fake);
-    conduit::GridKeyboardComponent keyboard (engine);
-    keyboard.setSize (320, 160);
+    conduit::GridKeyboardComponent keyboard (engine, conduit::GridPage::padLayoutConfig());
+    keyboard.setSize (320, 320);
 
     // x = 1.5 liegt rechts ausserhalb -> kein noteOn, aber visuell gelatched
     // (constellationNormalized fuehrt die Sonne weiter).
@@ -185,15 +223,15 @@ TEST_CASE ("GridKeyboardComponent: constellationNormalized liefert live Finger i
 
     grid::FakeVoiceSink fake;
     grid::GridVoiceEngine engine (fake);
-    conduit::GridKeyboardComponent keyboard (engine);
-    keyboard.setSize (320, 160);
+    conduit::GridKeyboardComponent keyboard (engine, conduit::GridPage::padLayoutConfig());
+    keyboard.setSize (320, 320);
 
     keyboard.mouseDown (makeEvent (keyboard, { 100.0f, 140.0f }));
 
     const auto suns = keyboard.constellationNormalized();
     REQUIRE (suns.size() == 1);
     REQUIRE (suns[0].x == Catch::Approx (100.0 / 320.0));
-    REQUIRE (suns[0].y == Catch::Approx (140.0 / 160.0));
+    REQUIRE (suns[0].y == Catch::Approx (140.0 / 320.0));
     REQUIRE_FALSE (suns[0].hasOrbit);
 
     keyboard.mouseUp (makeEvent (keyboard, { 100.0f, 140.0f }));

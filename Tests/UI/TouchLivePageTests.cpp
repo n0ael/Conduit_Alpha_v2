@@ -549,7 +549,7 @@ namespace
 
     // Globale Parameter am Ende (Band-Indizes bleiben stabil)
     meta << R"(,{"name":"Output","min":-12,"max":12,"quant":false})"
-         << R"(,{"name":"Scale","min":0,"max":2,"quant":false})"
+         << R"(,{"name":"Scale","min":-2,"max":2,"quant":false})"
          << R"(,{"name":"Adaptive Q","min":0,"max":1,"quant":true})";
     meta << "]";
     return meta;
@@ -689,7 +689,6 @@ TEST_CASE ("TouchLiveEq8Panel: Gesten — Multi-Select, Pinch-Q, Auswahl schiebe
         panel->touchMove (1, p.translated (0.0f, 300.0f));   // Abstand verdoppelt
 
         REQUIRE (panel->getResonanceNorm (2) == Approx (before + 0.25).margin (1e-4));
-        REQUIRE (panel->qSlider.getValue() == Approx (before + 0.25).margin (1e-4));
 
         const auto sent = rig.transport->sentTo ("/live/device/set/parameter");
         REQUIRE (sent.size() == 1);
@@ -768,18 +767,104 @@ TEST_CASE ("TouchLiveEq8Panel: Gesten — Multi-Select, Pinch-Q, Auswahl schiebe
         REQUIRE (panel->getGesture() == Gesture::trimScale);
 
         rig.transport->sent.clear();
-        panel->touchMove (3, { 400.0f, y - 120.0f });  // Zentroid −30 px → +0.03
+        panel->touchMove (3, { 400.0f, y - 120.0f });  // Zentroid −30 px → +0.06
 
         sent = rig.transport->sentTo ("/live/device/set/parameter");
         REQUIRE (sent.size() == 1);
         REQUIRE (sent.front()[1].getInt32() == panel->scaleIndexOf());
-        REQUIRE (sent.front()[2].getFloat32() == Approx (1.03f).margin (1e-3f));
+        REQUIRE (sent.front()[2].getFloat32() == Approx (1.06f).margin (1e-3f));
 
         panel->touchUp (0);
         panel->touchUp (1);
         panel->touchUp (2);
         panel->touchUp (3);
         REQUIRE (panel->getGesture() == Gesture::none);
+    }
+
+    SECTION ("Drag ist relativ mit Schwelle — der Punkt springt nie zum Finger")
+    {
+        const auto start = panel->bandPosition (2);
+        const auto freqBefore = panel->getFrequencyNorm (2);
+
+        // Antippen leicht NEBEN der Punktmitte (in der Trefferzone)
+        panel->touchDown (0, start.translated (12.0f, 0.0f));
+        rig.transport->sent.clear();
+
+        // Zittern unter der Schwelle: nichts passiert
+        panel->touchMove (0, start.translated (16.0f, 2.0f));
+        REQUIRE (rig.transport->sentTo ("/live/device/set/parameter").empty());
+        REQUIRE (panel->getFrequencyNorm (2) == Approx (freqBefore));
+
+        // Über der Schwelle: Punkt folgt dem Finger-DELTA (relativ),
+        // nicht der absoluten Fingerposition
+        panel->touchMove (0, start.translated (52.0f, 0.0f));   // +40 px Delta
+        const auto area = panel->getLocalBounds().toFloat().reduced (8.0f, 4.0f)
+                              .withTrimmedBottom (40.0f);
+        REQUIRE (panel->getFrequencyNorm (2)
+                 == Approx (freqBefore + 40.0 / area.getWidth()).margin (1e-4));
+
+        panel->touchUp (0);
+    }
+
+    SECTION ("Long-Press öffnet den Typ-Selector, Wischen wählt, Loslassen übernimmt")
+    {
+        const auto p = panel->bandPosition (2);
+        panel->touchDown (0, p);
+        REQUIRE (panel->getGesture() == Gesture::bandDrag);
+
+        panel->triggerLongPress();
+        REQUIRE (panel->isTypeSelectorOpen());
+        REQUIRE (panel->getTypeSelectorHover() == 3);   // aktueller Typ: Bell
+
+        // Nach oben wischen → andere Zeile hovern (Zeile 0 = erster Typ)
+        panel->touchMove (0, p.translated (0.0f, -500.0f));
+        REQUIRE (panel->getTypeSelectorHover() == 0);
+
+        rig.transport->sent.clear();
+        panel->touchUp (0);   // Loslassen übernimmt
+
+        const auto sent = rig.transport->sentTo ("/live/device/set/parameter");
+        REQUIRE (sent.size() == 1);
+        REQUIRE (sent.front()[1].getInt32() == 2 + 5 * 2);   // Filter Type A Band 3
+        REQUIRE (sent.front()[2].getFloat32() == Approx (0.0f));
+        REQUIRE_FALSE (panel->isTypeSelectorOpen());
+        REQUIRE (panel->getGesture() == Gesture::none);
+
+        // Bewegung VOR dem Long-Press verhindert ihn
+        panel->touchDown (0, panel->bandPosition (1));
+        panel->touchMove (0, panel->bandPosition (1).translated (40.0f, 0.0f));
+        panel->triggerLongPress();
+        REQUIRE_FALSE (panel->isTypeSelectorOpen());
+        panel->touchUp (0);
+    }
+
+    SECTION ("Scale verformt die Kurve: Gains skaliert + geclampt, invertierbar")
+    {
+        // Band 3 (Bell, ~100 Hz) auf +10 dB; Scale-Wert steht am Ende
+        juce::String parvals = "[1.0";
+        for (int n = 1; n <= 8; ++n)
+            parvals << ",1,3," << juce::String (0.1 * n, 2)
+                    << (n == 3 ? ",10.0" : ",0.0") << ",0.5";
+        parvals << ",0.0,1.0,1.0]";
+        rig.model.applyDiff ("devices",
+                             parse (("{\"parvals:dv:1\":" + parvals + "}").toRawUTF8()));
+
+        const auto f3 = 10.0 * std::pow (2200.0, 0.3);   // Band-3-Frequenz
+        const auto at100 = panel->curveDbAt (f3);
+        REQUIRE (at100 > 8.0);
+
+        // Scale 0.5 → Peak deutlich kleiner; Scale −1 → invertiert
+        juce::String half = parvals.replace (",0.0,1.0,1.0]", ",0.0,0.5,1.0]");
+        rig.model.applyDiff ("devices",
+                             parse (("{\"parvals:dv:1\":" + half + "}").toRawUTF8()));
+        const auto at50 = panel->curveDbAt (f3);
+        REQUIRE (at50 < at100 - 3.0);
+        REQUIRE (at50 > 2.0);
+
+        juce::String inverted = parvals.replace (",0.0,1.0,1.0]", ",0.0,-1.0,1.0]");
+        rig.model.applyDiff ("devices",
+                             parse (("{\"parvals:dv:1\":" + inverted + "}").toRawUTF8()));
+        REQUIRE (panel->curveDbAt (f3) == Approx (-at100).margin (0.2));
     }
 
     SECTION ("Haltender Finger weg → Restfinger wirkungslos (idle)")

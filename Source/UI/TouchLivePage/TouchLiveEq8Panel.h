@@ -28,8 +28,12 @@ namespace conduit
     der "Adaptive Q"-Parameter der Gegenseite schaltet den Gain-Term.
 
     Gesten (User-Spezifikation 10.07.2026, Kernpfade touchDown/Move/Up):
-    - Punkt ziehen = Frequenz (X) + Gain (Y, nur Bell/Shelf), Doppeltipp
-      = Band an/aus — alles lokal-optimistisch (§5.1).
+    - Punkt ziehen = Frequenz (X) + Gain (Y, nur Bell/Shelf) — RELATIV
+      mit Bewegungsschwelle (der Punkt springt NIE zum Finger);
+      Doppeltipp = Band an/aus — alles lokal-optimistisch (§5.1).
+    - Punkt berühren und ~1 s STILL halten = Typ-Selector öffnet
+      (vertikale Symbolliste wie Lives Dropdown): hoch/runter wischen
+      wählt, Loslassen übernimmt. Kernpfad triggerLongPress().
     - Punkt HALTEN + weitere Punkte antippen = Mehrfachauswahl;
       Punkt halten + freier zweiter Finger = Pinch ändert den Q des
       aktiven Bandes (Q-Geste NUR bei berührtem Punkt).
@@ -40,16 +44,20 @@ namespace conduit
     Wertesemantik (verifiziert): Hz = 10·2200^norm, Q = 0.1·180^norm,
     Gain direkt dB.
 */
-class TouchLiveEq8Panel final : public TouchLiveBespokePanel
+class TouchLiveEq8Panel final : public TouchLiveBespokePanel,
+                                private juce::Timer
 {
 public:
     explicit TouchLiveEq8Panel (TouchLiveClient& clientToUse);
+    ~TouchLiveEq8Panel() override;
 
     static constexpr int bandCount = 8;
     static constexpr int footerHeight = 40;
     static constexpr float handleDiameter = 44.0f;      // "Zeigefinger"-Punkt
     static constexpr float selectedHandleDiameter = 54.0f;
     static constexpr float touchRadius = 34.0f;         // Trefferzone
+    static constexpr float dragThreshold = 9.0f;        // px bis Drag greift
+    static constexpr int longPressMs = 1000;            // Typ-Selector
 
     //==========================================================================
     // TouchLiveBespokePanel
@@ -62,13 +70,17 @@ public:
     // touchIndex = MouseInputSource-Index, Maus ist 0)
 
     enum class Gesture { none, idle, bandDrag, pinchQ, moveSelection,
-                         trimOutput, trimScale };
+                         trimOutput, trimScale, typeSelect };
 
     [[nodiscard]] int bandAt (juce::Point<float> position) const;
 
     void touchDown (int touchIndex, juce::Point<float> position);
     void touchMove (int touchIndex, juce::Point<float> position);
     void touchUp (int touchIndex);
+
+    /** [Tests/Timer] Öffnet den Typ-Selector, wenn der Primärfinger
+        noch still auf seinem Punkt liegt (Long-Press-Bedingungen). */
+    void triggerLongPress();
 
     void selectBand (int band);
     void toggleBandOn (int band);
@@ -89,8 +101,12 @@ public:
     [[nodiscard]] int resonanceIndexOf (int band) const;
     [[nodiscard]] int outputIndexOf() const noexcept { return outputIndex; }
     [[nodiscard]] int scaleIndexOf() const noexcept { return scaleIndex; }
+    [[nodiscard]] bool isTypeSelectorOpen() const noexcept { return gesture == Gesture::typeSelect; }
+    [[nodiscard]] int getTypeSelectorHover() const noexcept { return typeSelectorHover; }
 
-    juce::Slider qSlider { juce::Slider::LinearHorizontal, juce::Slider::NoTextBox };
+    /** [Tests] Anzeige-Kurve in dB bei hz (inkl. Scale-Wirkung, §10j). */
+    [[nodiscard]] double curveDbAt (double hz) const { return responseDbAt (hz); }
+
     push::TextTile typePrevTile { "<" };
     push::TextTile typeNextTile { ">" };
     push::TextTile bandOnTile { "ON", push::colours::ledOrange };
@@ -133,11 +149,16 @@ private:
     void rebuildCurve();
     void setResonanceNorm (Band& band, double newNorm);
 
-    void dragActiveBandTo (juce::Point<float> position);
+    void dragActiveBandBy (juce::Point<float> delta);
     void beginFreeGesture();
+    void timerCallback() override;
+    void commitTypeSelector();
+    [[nodiscard]] juce::Rectangle<float> typeSelectorBounds() const;
     [[nodiscard]] juce::Point<float> touchCentroid() const;
     [[nodiscard]] int heldBandTouchIndex() const;   // −1 = kein Punkt gehalten
 
+    [[nodiscard]] static Shape shapeForType (const juce::StringArray& typeItems,
+                                             int typeValue);
     [[nodiscard]] Shape shapeOf (const Band& band) const;
     [[nodiscard]] bool shapeHasGain (Shape shape) const noexcept;
     [[nodiscard]] juce::Rectangle<float> plotArea() const;
@@ -148,6 +169,10 @@ private:
 
     /** Summen-Magnitude in dB (analoge Prototypen, Live-kalibriert). */
     [[nodiscard]] double responseDbAt (double hz) const;
+
+    /** Magnitude EINES Typs in dB bei hz/f0 (auch für die Selector-Icons). */
+    [[nodiscard]] static double shapeResponseDb (Shape shape, double hzRatio,
+                                                 double q, double gainDb);
 
     /** Lives effektiver RBJ-Q fürs Display (§10j-Kalibrierung). */
     [[nodiscard]] double effectiveQ (Shape shape, double q, double gainDb) const;
@@ -162,10 +187,11 @@ private:
     bool adaptiveQ = true;      // Parameter "Adaptive Q" der Gegenseite
     int adaptiveQIndex = -1;
 
-    // Globale EQ8-Parameter (3-/4-Finger-Trim)
+    // Globale EQ8-Parameter (3-/4-Finger-Trim); Scale-Range in Live:
+    // −200 % … +200 % (negativ = Kurve invertiert, §10j)
     int outputIndex = -1, scaleIndex = -1;
     double outputValue = 0.0, outputMin = -12.0, outputMax = 12.0;
-    double scaleValue = 1.0, scaleMin = 0.0, scaleMax = 2.0;
+    double scaleValue = 1.0, scaleMin = -2.0, scaleMax = 2.0;
 
     // Touch-/Gesten-Zustand (Kernpfade touchDown/Move/Up)
     struct TouchPoint
@@ -183,6 +209,13 @@ private:
     juce::Point<float> gestureStartCentroid;
     double gestureStartValue = 0.0;      // Output/Scale beim Gesten-Start
     std::array<std::pair<double, double>, bandCount> selectionStart {};
+
+    // Band-Drag: relativ mit Schwelle (Punkt springt nie zum Finger)
+    bool dragMoved = false;
+    double dragStartFrequencyNorm = 0.0, dragStartGainDb = 0.0;
+
+    // Typ-Selector (Long-Press)
+    int typeSelectorHover = -1;
 
     juce::Path curve;
     bool curveDirty = true;

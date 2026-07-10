@@ -50,18 +50,6 @@ namespace
 TouchLiveEq8Panel::TouchLiveEq8Panel (TouchLiveClient& clientToUse)
     : client (clientToUse)
 {
-    qSlider.setRange (0.0, 1.0, 0.0);
-
-    qSlider.onValueChange = [this]
-    {
-        auto& band = bands[(size_t) selectedBand];
-
-        if (band.isMapped())
-            setResonanceNorm (band, qSlider.getValue());
-    };
-
-    addAndMakeVisible (qSlider);
-
     typePrevTile.onClick = [this] { stepFilterType (-1); };
     typeNextTile.onClick = [this] { stepFilterType (1); };
     addAndMakeVisible (typePrevTile);
@@ -70,6 +58,11 @@ TouchLiveEq8Panel::TouchLiveEq8Panel (TouchLiveClient& clientToUse)
     bandOnTile.setTooltip (juce::String::fromUTF8 ("Band an/aus"));
     bandOnTile.onClick = [this] { toggleBandOn (selectedBand); };
     addAndMakeVisible (bandOnTile);
+}
+
+TouchLiveEq8Panel::~TouchLiveEq8Panel()
+{
+    stopTimer();
 }
 
 //==============================================================================
@@ -272,7 +265,6 @@ void TouchLiveEq8Panel::setResonanceNorm (Band& band, double newNorm)
 {
     band.resonanceNorm = juce::jlimit (0.0, 1.0, newNorm);
     sendParameter (band.resonanceIndex, (float) band.resonanceNorm, true);
-    qSlider.setValue (band.resonanceNorm, juce::dontSendNotification);
     curveDirty = true;
     repaint();
 }
@@ -378,9 +370,11 @@ void TouchLiveEq8Panel::touchDown (int touchIndex, juce::Point<float> position)
             bandSelected[(size_t) hit] = true;
             repaint();
         }
-        else if (pinchTouchIndex < 0)
+        else if (pinchTouchIndex < 0 && gesture == Gesture::bandDrag)
         {
             // freier zweiter Finger = Pinch-Q am aktiven Band
+            // (nicht während des Typ-Selectors)
+            stopTimer();
             pinchTouchIndex = touchIndex;
             pinchStartDistance = juce::jmax (1.0f, position.getDistanceFrom (
                 touches[primaryTouchIndex].current));
@@ -393,7 +387,9 @@ void TouchLiveEq8Panel::touchDown (int touchIndex, juce::Point<float> position)
 
     if (hit >= 0 && touches.size() == 1)
     {
-        // Erster Finger auf einem Punkt → aktives Band, Drag beginnt
+        // Erster Finger auf einem Punkt → aktives Band; Drag greift erst
+        // ab Bewegungsschwelle (RELATIV — der Punkt springt nie zum
+        // Finger), Stillhalten öffnet den Typ-Selector (Long-Press)
         primaryTouchIndex = touchIndex;
 
         if (! bandSelected[(size_t) hit])
@@ -404,11 +400,78 @@ void TouchLiveEq8Panel::touchDown (int touchIndex, juce::Point<float> position)
 
         selectBand (hit);
         gesture = Gesture::bandDrag;
+        dragMoved = false;
+        dragStartFrequencyNorm = bands[(size_t) hit].frequencyNorm;
+        dragStartGainDb = bands[(size_t) hit].gainDb;
+        startTimer (longPressMs);
         return;
     }
 
     // freie Familie (kein Punkt gehalten): Finger-Anzahl wählt die Geste
     beginFreeGesture();
+}
+
+//==============================================================================
+void TouchLiveEq8Panel::timerCallback()
+{
+    stopTimer();
+    triggerLongPress();
+}
+
+void TouchLiveEq8Panel::triggerLongPress()
+{
+    // Nur wenn der Primärfinger noch still und allein auf seinem Punkt liegt
+    if (gesture != Gesture::bandDrag || dragMoved || touches.size() != 1
+        || primaryTouchIndex < 0)
+        return;
+
+    const auto& band = bands[(size_t) selectedBand];
+
+    if (! band.isMapped() || band.typeItems.isEmpty())
+        return;
+
+    gesture = Gesture::typeSelect;
+    typeSelectorHover = band.typeValue;
+    repaint();
+}
+
+juce::Rectangle<float> TouchLiveEq8Panel::typeSelectorBounds() const
+{
+    const auto& band = bands[(size_t) selectedBand];
+    const auto rows = juce::jmax (1, band.typeItems.size());
+    const auto rowHeight = 40.0f;
+    const auto area = plotArea();
+
+    auto bounds = juce::Rectangle<float> (76.0f, rowHeight * (float) rows)
+                      .withCentre (bandPosition (selectedBand));
+
+    // vollständig in den Plot schieben
+    bounds.setX (juce::jlimit (area.getX() + 2.0f,
+                               juce::jmax (area.getX() + 2.0f,
+                                           area.getRight() - bounds.getWidth() - 2.0f),
+                               bounds.getX()));
+    bounds.setY (juce::jlimit (area.getY() + 2.0f,
+                               juce::jmax (area.getY() + 2.0f,
+                                           area.getBottom() - bounds.getHeight() - 2.0f),
+                               bounds.getY()));
+    return bounds;
+}
+
+void TouchLiveEq8Panel::commitTypeSelector()
+{
+    auto& band = bands[(size_t) selectedBand];
+
+    if (band.isMapped() && typeSelectorHover >= 0
+        && typeSelectorHover < band.typeItems.size()
+        && typeSelectorHover != band.typeValue)
+    {
+        band.typeValue = typeSelectorHover;
+        sendParameter (band.typeIndex, (float) band.typeValue, false);
+        curveDirty = true;
+    }
+
+    typeSelectorHover = -1;
+    repaint();
 }
 
 void TouchLiveEq8Panel::touchMove (int touchIndex, juce::Point<float> position)
@@ -423,9 +486,41 @@ void TouchLiveEq8Panel::touchMove (int touchIndex, juce::Point<float> position)
     switch (gesture)
     {
         case Gesture::bandDrag:
-            if (touchIndex == primaryTouchIndex)
-                dragActiveBandTo (position);
+        {
+            if (touchIndex != primaryTouchIndex)
+                break;
+
+            const auto delta = position - it->second.start;
+
+            // Schwelle: kleine Zitterbewegungen starten keinen Drag
+            // (und lassen dem Long-Press seine Ruhe)
+            if (! dragMoved && delta.getDistanceFromOrigin() < dragThreshold)
+                break;
+
+            if (! dragMoved)
+            {
+                dragMoved = true;
+                stopTimer();
+            }
+
+            dragActiveBandBy (delta);
             break;
+        }
+
+        case Gesture::typeSelect:
+        {
+            if (touchIndex != primaryTouchIndex)
+                break;
+
+            const auto& band = bands[(size_t) selectedBand];
+            const auto bounds = typeSelectorBounds();
+            const auto rows = juce::jmax (1, band.typeItems.size());
+            const auto row = (int) std::floor ((position.y - bounds.getY())
+                                               / (bounds.getHeight() / (float) rows));
+            typeSelectorHover = juce::jlimit (0, band.typeItems.size() - 1, row);
+            repaint();
+            break;
+        }
 
         case Gesture::pinchQ:
         {
@@ -504,6 +599,7 @@ void TouchLiveEq8Panel::touchMove (int touchIndex, juce::Point<float> position)
                                        gestureStartValue
                                            + dy * (scaleMax - scaleMin) * 0.0005);
             sendParameter (scaleIndex, (float) scaleValue, true);
+            curveDirty = true;   // Scale verformt die Kurve (§10j)
             repaint();
             break;
         }
@@ -521,6 +617,11 @@ void TouchLiveEq8Panel::touchUp (int touchIndex)
 
     if (touchIndex == primaryTouchIndex)
     {
+        stopTimer();
+
+        if (gesture == Gesture::typeSelect)
+            commitTypeSelector();   // Loslassen übernimmt die Hover-Wahl
+
         // Haltender Finger weg → Gesten enden; Restfinger bleiben wirkungslos
         primaryTouchIndex = -1;
         pinchTouchIndex = -1;
@@ -553,19 +654,28 @@ void TouchLiveEq8Panel::touchUp (int touchIndex)
         beginFreeGesture();
 }
 
-void TouchLiveEq8Panel::dragActiveBandTo (juce::Point<float> position)
+void TouchLiveEq8Panel::dragActiveBandBy (juce::Point<float> delta)
 {
     auto& band = bands[(size_t) selectedBand];
 
     if (! band.isMapped())
         return;
 
-    band.frequencyNorm = normForX (position.x);
+    const auto area = plotArea();
+    const auto freqDelta = area.getWidth() > 0.0f
+                               ? (double) (delta.x / area.getWidth()) : 0.0;
+
+    band.frequencyNorm = juce::jlimit (0.0, 1.0, dragStartFrequencyNorm + freqDelta);
     sendParameter (band.frequencyIndex, (float) band.frequencyNorm, true);
 
     if (shapeHasGain (shapeOf (band)))
     {
-        band.gainDb = juce::jlimit (band.gainMin, band.gainMax, dbForY (position.y));
+        const auto dbDelta = area.getHeight() > 0.0f
+                                 ? -(double) delta.y / (area.getHeight() * 0.5)
+                                       * plotDbRange
+                                 : 0.0;
+        band.gainDb = juce::jlimit (band.gainMin, band.gainMax,
+                                    dragStartGainDb + dbDelta);
         sendParameter (band.gainIndex, (float) band.gainDb, true);
     }
 
@@ -658,11 +768,12 @@ juce::Point<float> TouchLiveEq8Panel::bandPosition (int band) const
 }
 
 //==============================================================================
-TouchLiveEq8Panel::Shape TouchLiveEq8Panel::shapeOf (const Band& band) const
+TouchLiveEq8Panel::Shape TouchLiveEq8Panel::shapeForType (const juce::StringArray& typeItems,
+                                                          int typeValue)
 {
     // Semantik aus den items-Strings (nie feste Indizes annehmen)
-    const auto label = band.typeValue >= 0 && band.typeValue < band.typeItems.size()
-                           ? band.typeItems[band.typeValue]
+    const auto label = typeValue >= 0 && typeValue < typeItems.size()
+                           ? typeItems[typeValue]
                                  .toLowerCase().removeCharacters (" -/")
                            : juce::String();
 
@@ -687,7 +798,7 @@ TouchLiveEq8Panel::Shape TouchLiveEq8Panel::shapeOf (const Band& band) const
         return Shape::bell;
 
     // Fallback: Live-12-Reihenfolge (LC48 LC12 LS Bell Notch HS HC12 HC48)
-    switch (band.typeValue)
+    switch (typeValue)
     {
         case 0:  return Shape::lowCut48;
         case 1:  return Shape::lowCut12;
@@ -698,6 +809,11 @@ TouchLiveEq8Panel::Shape TouchLiveEq8Panel::shapeOf (const Band& band) const
         case 7:  return Shape::highCut48;
         default: return Shape::bell;
     }
+}
+
+TouchLiveEq8Panel::Shape TouchLiveEq8Panel::shapeOf (const Band& band) const
+{
+    return shapeForType (band.typeItems, band.typeValue);
 }
 
 bool TouchLiveEq8Panel::shapeHasGain (Shape shape) const noexcept
@@ -736,6 +852,67 @@ double TouchLiveEq8Panel::effectiveQ (Shape shape, double q, double gainDb) cons
     }
 }
 
+double TouchLiveEq8Panel::shapeResponseDb (Shape shape, double hzRatio,
+                                           double q, double gainDb)
+{
+    const auto a = std::pow (10.0, gainDb / 40.0);
+    const auto sqrtA = std::sqrt (a);
+
+    // Analoge Prototypen (s-Domain) — Lives Anzeige zeigt keine
+    // Bilinear-Stauchung, und alle Fits liefen analog (§10j)
+    const std::complex<double> s (0.0, hzRatio);
+    const auto s2 = s * s;
+    std::complex<double> h;
+
+    switch (shape)
+    {
+        case Shape::bell:
+            h = (s2 + s * (a / q) + 1.0) / (s2 + s / (a * q) + 1.0);
+            break;
+
+        case Shape::lowShelf:
+            h = a * (s2 + s * (sqrtA / q) + a)
+                    / (a * s2 + s * (sqrtA / q) + 1.0);
+            break;
+
+        case Shape::highShelf:
+            h = a * (a * s2 + s * (sqrtA / q) + 1.0)
+                    / (s2 + s * (sqrtA / q) + a);
+            break;
+
+        case Shape::notch:
+            h = (s2 + 1.0) / (s2 + s / q + 1.0);
+            break;
+
+        case Shape::lowCut12:
+            h = s2 / (s2 + s / q + 1.0);
+            break;
+
+        case Shape::highCut12:
+            h = 1.0 / (s2 + s / q + 1.0);
+            break;
+
+        case Shape::lowCut48:
+        case Shape::highCut48:
+        default:
+        {
+            // Butterworth-8-Kaskade, alle Stufen-Qs skaliert (§10j)
+            const auto lambda = juce::jmax (
+                0.15, 1.097 + 0.611 * std::log10 (juce::jmax (1.0e-3, q)));
+            h = 1.0;
+
+            for (const auto stageQ : butter8)
+            {
+                const auto denom = s2 + s / (lambda * stageQ) + 1.0;
+                h *= shape == Shape::lowCut48 ? s2 / denom : 1.0 / denom;
+            }
+            break;
+        }
+    }
+
+    return 20.0 * std::log10 (juce::jmax (1.0e-9, std::abs (h)));
+}
+
 double TouchLiveEq8Panel::responseDbAt (double hz) const
 {
     double totalDb = 0.0;
@@ -747,65 +924,20 @@ double TouchLiveEq8Panel::responseDbAt (double hz) const
 
         const auto shape = shapeOf (band);
         const auto f0 = normToHz (band.frequencyNorm);
+
+        // Scale wirkt auf die BAND-GAINS (geclampt, Cuts/Notch unberührt)
+        // — Messkampagne 10.07.2026 (§10j): Cut-Anteile blieben bei jedem
+        // Scale identisch, große Scales sättigen am ±15-dB-Clamp,
+        // negative Scales invertieren die Kurve
+        const auto gain = shapeHasGain (shape)
+                              ? juce::jlimit (band.gainMin, band.gainMax,
+                                              band.gainDb * scaleValue)
+                              : band.gainDb;
         const auto q = juce::jmax (0.025,
                                    effectiveQ (shape, normToQ (band.resonanceNorm),
-                                               band.gainDb));
-        const auto a = std::pow (10.0, band.gainDb / 40.0);
-        const auto sqrtA = std::sqrt (a);
+                                               gain));
 
-        // Analoge Prototypen (s-Domain) — Lives Anzeige zeigt keine
-        // Bilinear-Stauchung, und alle Fits liefen analog (§10j)
-        const std::complex<double> s (0.0, hz / f0);
-        const auto s2 = s * s;
-        std::complex<double> h;
-
-        switch (shape)
-        {
-            case Shape::bell:
-                h = (s2 + s * (a / q) + 1.0) / (s2 + s / (a * q) + 1.0);
-                break;
-
-            case Shape::lowShelf:
-                h = a * (s2 + s * (sqrtA / q) + a)
-                        / (a * s2 + s * (sqrtA / q) + 1.0);
-                break;
-
-            case Shape::highShelf:
-                h = a * (a * s2 + s * (sqrtA / q) + 1.0)
-                        / (s2 + s * (sqrtA / q) + a);
-                break;
-
-            case Shape::notch:
-                h = (s2 + 1.0) / (s2 + s / q + 1.0);
-                break;
-
-            case Shape::lowCut12:
-                h = s2 / (s2 + s / q + 1.0);
-                break;
-
-            case Shape::highCut12:
-                h = 1.0 / (s2 + s / q + 1.0);
-                break;
-
-            case Shape::lowCut48:
-            case Shape::highCut48:
-            default:
-            {
-                // Butterworth-8-Kaskade, alle Stufen-Qs skaliert (§10j)
-                const auto lambda = juce::jmax (
-                    0.15, 1.097 + 0.611 * std::log10 (juce::jmax (1.0e-3, q)));
-                h = 1.0;
-
-                for (const auto stageQ : butter8)
-                {
-                    const auto denom = s2 + s / (lambda * stageQ) + 1.0;
-                    h *= shape == Shape::lowCut48 ? s2 / denom : 1.0 / denom;
-                }
-                break;
-            }
-        }
-
-        totalDb += 20.0 * std::log10 (juce::jmax (1.0e-9, std::abs (h)));
+        totalDb += shapeResponseDb (shape, hz / f0, q, gain);
     }
 
     return totalDb;
@@ -878,14 +1010,10 @@ void TouchLiveEq8Panel::updateFooterFromSelection()
     const auto& band = bands[(size_t) selectedBand];
     const auto usable = band.isMapped();
 
-    qSlider.setEnabled (usable);
     typePrevTile.setEnabled (usable);
     typeNextTile.setEnabled (usable);
     bandOnTile.setEnabled (usable);
     bandOnTile.setActive (usable && band.on);
-
-    if (usable)
-        qSlider.setValue (band.resonanceNorm, juce::dontSendNotification);
 }
 
 void TouchLiveEq8Panel::resized()
@@ -899,8 +1027,6 @@ void TouchLiveEq8Panel::resized()
     typeNextTile.setBounds (footer.removeFromLeft (40));
 
     bandOnTile.setBounds (footer.removeFromRight (56));
-    footer.removeFromRight (6);
-    qSlider.setBounds (footer.reduced (10, 4));
 
     curveDirty = true;
 }
@@ -1030,6 +1156,64 @@ void TouchLiveEq8Panel::paint (juce::Graphics& g)
         g.setFont (push::scaledFont (active ? 18.0f : 15.0f));
         g.drawText (juce::String (bandIndex + 1), circle.toNearestInt(),
                     juce::Justification::centred);
+    }
+
+    // Typ-Selector-Overlay (Long-Press): vertikale Symbolliste wie Lives
+    // Dropdown — hoch/runter wischen wählt, Loslassen übernimmt
+    if (gesture == Gesture::typeSelect)
+    {
+        const auto& band = bands[(size_t) selectedBand];
+        const auto bounds = typeSelectorBounds();
+        const auto rows = juce::jmax (1, band.typeItems.size());
+        const auto rowHeight = bounds.getHeight() / (float) rows;
+
+        g.setColour (juce::Colour (0xff23272b));
+        g.fillRoundedRectangle (bounds.expanded (3.0f), 6.0f);
+
+        for (int row = 0; row < rows; ++row)
+        {
+            const auto rowBounds = juce::Rectangle<float> (
+                bounds.getX(), bounds.getY() + rowHeight * (float) row,
+                bounds.getWidth(), rowHeight);
+            const auto hovered = row == typeSelectorHover;
+
+            if (hovered)
+            {
+                g.setColour (juce::Colour (0xffb9ecf5));   // Lives Hell-Cyan
+                g.fillRect (rowBounds);
+            }
+
+            // Mini-Frequenzgang des Typs — dieselbe Mathematik wie die
+            // grosse Kurve (shapeResponseDb), feste Anschauungswerte
+            const auto shape = shapeForType (band.typeItems, row);
+            const auto gainForIcon = shapeHasGain (shape) ? 9.0 : 0.0;
+            const auto qForIcon = shape == Shape::notch ? 1.5 : 0.8;
+            const auto icon = rowBounds.reduced (16.0f, 11.0f);
+
+            juce::Path miniCurve;
+
+            for (int i = 0; i <= 20; ++i)
+            {
+                const auto ratio = std::pow (10.0, -1.3 + 2.6 * i / 20.0);
+                const auto db = juce::jlimit (-14.0, 14.0,
+                                              shapeResponseDb (shape, ratio,
+                                                               qForIcon, gainForIcon));
+                const juce::Point<float> point {
+                    icon.getX() + icon.getWidth() * (float) i / 20.0f,
+                    icon.getCentreY() - (float) (db / 14.0) * icon.getHeight() * 0.5f };
+
+                if (i == 0)
+                    miniCurve.startNewSubPath (point);
+                else
+                    miniCurve.lineTo (point);
+            }
+
+            g.setColour (hovered ? juce::Colour (0xff10151a)
+                                 : push::colours::text.withAlpha (0.85f));
+            g.strokePath (miniCurve,
+                          juce::PathStrokeType (1.8f, juce::PathStrokeType::curved,
+                                                juce::PathStrokeType::rounded));
+        }
     }
 
     // Gesten-Readout (3/4 Finger): Output-Gain bzw. Scale gross mittig oben

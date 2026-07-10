@@ -34,6 +34,13 @@
   verschieben, 3 = Output-Gain fein, 4 = Scale (Readout im Plot);
   Primär-Release macht Restfinger wirkungslos. 5 Gesten-Sektionen
   Catch2-getestet.
+- **Typ-Selector + Scale (10.07.2026):** Long-Press (~1 s still) auf
+  einem Punkt öffnet Lives Dropdown-Optik als Touch-Overlay
+  (Mini-Frequenzgang-Icons aus der Filtermathematik, wischen wählt,
+  loslassen übernimmt); Q-Fader entfiel (Pinch reicht); Band-Drag
+  jetzt RELATIV mit Schwelle (kein Punkt-Springen). Scale-Messkampagne
+  (11 Bilder, −200…+190 %): Scale skaliert Band-Gains (clamp ±15,
+  Cuts fix, negativ invertiert) — in der Kurve eingerechnet.
 - **Nächster Schritt:** Spektrum-Hintergrund via Link Audio + lokaler
   Average (User-Wunsch, eigene Runde); dann M5-Folgerunden
   Compressor/Glue (Kennlinie+GR), Delay/Reverb — oder M6 Modulatoren.

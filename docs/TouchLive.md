@@ -643,6 +643,21 @@ analoge RBJ-Prototypen mit eigener Q-Semantik** — kalibriert auf
      Parameter „Output"/„Scale" per Name aus parmeta.
   4. Lässt der haltende Finger los, sind Restfinger bis zum Abheben
      wirkungslos (idle) — keine Gesten-Überraschungen.
+  5. **Typ-Selector (User-Wunsch 10.07.2026):** Punkt berühren und
+     ~1 s STILL halten → vertikale Symbolliste (Mini-Frequenzgänge
+     aus derselben Filtermathematik, Lives Dropdown-Optik) öffnet am
+     Punkt; hoch/runter wischen wählt, Loslassen übernimmt. Der
+     Q-Fader im Footer ist entfallen (Pinch reicht). Voraussetzung
+     dafür: **Band-Drag ist RELATIV mit 9-px-Schwelle** — der Punkt
+     springt nie zur Fingerposition (Kernpfade dragActiveBandBy,
+     triggerLongPress).
+- **Scale in der Kurve (Messkampagne 2, 11 Screenshots −200…+190 %):
+  Scale skaliert die BAND-GAINS** (nur gainfähige Typen), geclampt
+  auf ±15 dB, Cuts/Notch unberührt, negative Werte invertieren; die
+  Q_eff-Gesetze wirken auf den skalierten Gain. Belege: Cut-Anteile
+  identisch über alle Scales (ratio-p90 = 1.0), Sättigung großer
+  Scales am Clamp, Lives Scale-Range ist −2..+2. Die Band-PUNKTE
+  bleiben beim nominellen Gain (wie Live).
 - Feldtest-Kreuzcheck: Band 2 auf +12.4 dB gezogen — Lives Display
   zeigt identische Werte UND identische Kurvenform.
 - **Nächster Politur-Schritt (User-Wunsch):** Spektrum-Hintergrund via

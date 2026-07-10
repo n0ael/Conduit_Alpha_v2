@@ -84,8 +84,14 @@ Bespoke-UIs (M5):
   ±15 dB wie Live.
 - EQ8-Gesten (§10j): Punkt halten + Antippen = Mehrfachauswahl;
   Pinch-Q NUR bei berührtem Punkt; frei: 2 Finger = Auswahl schieben,
-  3 = Output, 4 = Scale; Primär-Release → Restfinger idle. Kernpfade
-  touchDown/Move/Up — Maus-Handler NIE eigene Logik geben.
+  3 = Output, 4 = Scale; Primär-Release → Restfinger idle; Long-Press
+  (~1 s still) = Typ-Selector (wischen wählt, loslassen übernimmt).
+  Band-Drag ist RELATIV mit Schwelle — nie zur Fingerposition
+  springen lassen. Kernpfade touchDown/Move/Up — Maus-Handler NIE
+  eigene Logik geben.
+- EQ8-Scale skaliert die BAND-GAINS (clamp ±15, Cuts/Notch unberührt,
+  negativ invertiert; Range −2..+2) — in der Anzeige-Kurve
+  eingerechnet, Punkte bleiben beim nominellen Gain (§10j).
 - Thinning-Kanal von sendTouchValue = Adresse + Argumente OHNE den Wert
   (`touchKeyFor`) — NIE auf die nackte Adresse zurückbauen, sonst
   latchen sich Freq+Gain bzw. Multi-Touch-Fader gegenseitig weg.

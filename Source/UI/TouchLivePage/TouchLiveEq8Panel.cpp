@@ -1,4 +1,4 @@
-#include "TouchLiveEq8Panel.h"
+﻿#include "TouchLiveEq8Panel.h"
 
 #include <cmath>
 #include <complex>
@@ -50,14 +50,7 @@ namespace
 TouchLiveEq8Panel::TouchLiveEq8Panel (TouchLiveClient& clientToUse)
     : client (clientToUse)
 {
-    typePrevTile.onClick = [this] { stepFilterType (-1); };
-    typeNextTile.onClick = [this] { stepFilterType (1); };
-    addAndMakeVisible (typePrevTile);
-    addAndMakeVisible (typeNextTile);
-
-    bandOnTile.setTooltip (juce::String::fromUTF8 ("Band an/aus"));
-    bandOnTile.onClick = [this] { toggleBandOn (selectedBand); };
-    addAndMakeVisible (bandOnTile);
+    // Alles läuft über Gesten (§10j) — keine Footer-Bedienelemente
 }
 
 TouchLiveEq8Panel::~TouchLiveEq8Panel()
@@ -177,7 +170,6 @@ void TouchLiveEq8Panel::setDevice (const juce::String& deviceKeyToUse,
         bandSelected[(size_t) selectedBand] = true;
 
     curveDirty = true;
-    updateFooterFromSelection();
     repaint();
 }
 
@@ -237,7 +229,6 @@ void TouchLiveEq8Panel::setValues (const juce::var& parvals)
     }
 
     curveDirty = true;
-    updateFooterFromSelection();
     repaint();
 }
 
@@ -299,7 +290,6 @@ void TouchLiveEq8Panel::selectBand (int band)
 
     selectedBand = band;
     bandSelected[(size_t) band] = true;
-    updateFooterFromSelection();
     repaint();
 }
 
@@ -403,6 +393,7 @@ void TouchLiveEq8Panel::touchDown (int touchIndex, juce::Point<float> position)
         dragMoved = false;
         dragStartFrequencyNorm = bands[(size_t) hit].frequencyNorm;
         dragStartGainDb = bands[(size_t) hit].gainDb;
+        dragStartResonanceNorm = bands[(size_t) hit].resonanceNorm;
         startTimer (longPressMs);
         return;
     }
@@ -575,8 +566,7 @@ void TouchLiveEq8Panel::touchMove (int touchIndex, juce::Point<float> position)
             }
 
             curveDirty = true;
-            updateFooterFromSelection();
-            repaint();
+                    repaint();
             break;
         }
 
@@ -594,10 +584,11 @@ void TouchLiveEq8Panel::touchMove (int touchIndex, juce::Point<float> position)
 
         case Gesture::trimScale:
         {
+            // gröber als der Output-Trim (User-Feedback 10.07.2026)
             const auto dy = (double) (gestureStartCentroid.y - touchCentroid().y);
             scaleValue = juce::jlimit (scaleMin, scaleMax,
                                        gestureStartValue
-                                           + dy * (scaleMax - scaleMin) * 0.0005);
+                                           + dy * (scaleMax - scaleMin) * 0.0015);
             sendParameter (scaleIndex, (float) scaleValue, true);
             curveDirty = true;   // Scale verformt die Kurve (§10j)
             repaint();
@@ -678,6 +669,17 @@ void TouchLiveEq8Panel::dragActiveBandBy (juce::Point<float> delta)
                                     dragStartGainDb + dbDelta);
         sendParameter (band.gainIndex, (float) band.gainDb, true);
     }
+    else
+    {
+        // Cut/Notch: vertikales Ziehen steuert den Q (Live-Verhalten,
+        // User-Feedback 10.07.2026) — hoch = schärfer
+        const auto qDelta = area.getHeight() > 0.0f
+                                ? -(double) delta.y / area.getHeight()
+                                : 0.0;
+        band.resonanceNorm = juce::jlimit (0.0, 1.0,
+                                           dragStartResonanceNorm + qDelta);
+        sendParameter (band.resonanceIndex, (float) band.resonanceNorm, true);
+    }
 
     curveDirty = true;
     repaint();
@@ -693,28 +695,9 @@ void TouchLiveEq8Panel::toggleBandOn (int band)
     sendParameter (state.onIndex, state.on ? 1.0f : 0.0f, false);
 
     curveDirty = true;
-    updateFooterFromSelection();
     repaint();
 }
 
-void TouchLiveEq8Panel::stepFilterType (int delta)
-{
-    auto& band = bands[(size_t) selectedBand];
-
-    if (! band.isMapped() || band.typeItems.isEmpty())
-        return;
-
-    const auto next = juce::jlimit (0, band.typeItems.size() - 1,
-                                    band.typeValue + delta);
-
-    if (next == band.typeValue)
-        return;
-
-    band.typeValue = next;
-    sendParameter (band.typeIndex, (float) next, false);
-    curveDirty = true;
-    repaint();
-}
 
 //==============================================================================
 bool TouchLiveEq8Panel::isBandOn (int band) const
@@ -971,8 +954,7 @@ void TouchLiveEq8Panel::rebuildCurve()
 //==============================================================================
 juce::Rectangle<float> TouchLiveEq8Panel::plotArea() const
 {
-    return getLocalBounds().toFloat().reduced (8.0f, 4.0f)
-                           .withTrimmedBottom ((float) footerHeight);
+    return getLocalBounds().toFloat().reduced (8.0f, 4.0f);
 }
 
 float TouchLiveEq8Panel::xForNorm (double norm) const
@@ -1005,29 +987,8 @@ double TouchLiveEq8Panel::dbForY (float y) const
 }
 
 //==============================================================================
-void TouchLiveEq8Panel::updateFooterFromSelection()
-{
-    const auto& band = bands[(size_t) selectedBand];
-    const auto usable = band.isMapped();
-
-    typePrevTile.setEnabled (usable);
-    typeNextTile.setEnabled (usable);
-    bandOnTile.setEnabled (usable);
-    bandOnTile.setActive (usable && band.on);
-}
-
 void TouchLiveEq8Panel::resized()
 {
-    auto footer = getLocalBounds().removeFromBottom (footerHeight).reduced (8, 5);
-
-    typePrevTile.setBounds (footer.removeFromLeft (40));
-    footer.removeFromLeft (2);
-    footer.removeFromLeft (110);   // Typ-Label (paint)
-    footer.removeFromLeft (2);
-    typeNextTile.setBounds (footer.removeFromLeft (40));
-
-    bandOnTile.setBounds (footer.removeFromRight (56));
-
     curveDirty = true;
 }
 
@@ -1230,20 +1191,26 @@ void TouchLiveEq8Panel::paint (juce::Graphics& g)
                     juce::Justification::centredTop);
     }
 
-    // Readout des gewählten Bands (oben rechts, Live-Look)
+    // Readout des gewählten Bands (oben rechts, Live-Look) — inkl. Typ,
+    // seit der Footer entfallen ist
     const auto& selected = bands[(size_t) selectedBand];
 
     if (selected.isMapped())
     {
+        const auto separator = juce::String::fromUTF8 ("  \xC2\xB7  ");
         juce::String readout;
+
+        if (selected.typeValue >= 0 && selected.typeValue < selected.typeItems.size())
+            readout << selected.typeItems[selected.typeValue] << separator;
+
         readout << hzText (normToHz (selected.frequencyNorm));
 
         if (shapeHasGain (shapeOf (selected)))
-            readout << juce::String::fromUTF8 ("  \xC2\xB7  ")
+            readout << separator
                     << (selected.gainDb >= 0.0 ? "+" : "")
                     << juce::String (selected.gainDb, 1) << " dB";
 
-        readout << juce::String::fromUTF8 ("  \xC2\xB7  Q ")
+        readout << separator << "Q "
                 << juce::String (normToQ (selected.resonanceNorm), 2);
 
         g.setColour (push::colours::text.withAlpha (0.9f));
@@ -1251,19 +1218,6 @@ void TouchLiveEq8Panel::paint (juce::Graphics& g)
         g.drawText (readout, area.toNearestInt().reduced (8, 4),
                     juce::Justification::topRight);
     }
-
-    // Typ-Label zwischen den Stepper-Kacheln
-    const auto footer = getLocalBounds().removeFromBottom (footerHeight).reduced (8, 5);
-    const auto typeLabel = selected.typeValue >= 0
-                                   && selected.typeValue < selected.typeItems.size()
-                               ? selected.typeItems[selected.typeValue]
-                               : juce::String ("—");
-
-    g.setColour (push::colours::text);
-    g.setFont (push::scaledFont (12.0f));
-    g.drawFittedText (typeLabel,
-                      footer.withX (footer.getX() + 42).withWidth (110),
-                      juce::Justification::centred, 1, 1.0f);
 }
 
 //==============================================================================

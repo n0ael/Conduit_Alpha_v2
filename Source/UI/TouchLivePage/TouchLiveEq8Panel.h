@@ -4,7 +4,6 @@
 #include <map>
 
 #include "TouchLiveBespokePanel.h"
-#include "UI/PushTiles.h"
 
 namespace conduit
 {
@@ -28,9 +27,11 @@ namespace conduit
     der "Adaptive Q"-Parameter der Gegenseite schaltet den Gain-Term.
 
     Gesten (User-Spezifikation 10.07.2026, Kernpfade touchDown/Move/Up):
-    - Punkt ziehen = Frequenz (X) + Gain (Y, nur Bell/Shelf) — RELATIV
-      mit Bewegungsschwelle (der Punkt springt NIE zum Finger);
+    - Punkt ziehen = Frequenz (X) + Gain (Y bei Bell/Shelf; bei
+      Cut/Notch steuert Y den Q wie in Live) — RELATIV mit
+      Bewegungsschwelle (der Punkt springt NIE zum Finger);
       Doppeltipp = Band an/aus — alles lokal-optimistisch (§5.1).
+      Kein Footer: Typ steht im Readout, alles läuft über Gesten.
     - Punkt berühren und ~1 s STILL halten = Typ-Selector öffnet
       (vertikale Symbolliste wie Lives Dropdown): hoch/runter wischen
       wählt, Loslassen übernimmt. Kernpfad triggerLongPress().
@@ -52,7 +53,6 @@ public:
     ~TouchLiveEq8Panel() override;
 
     static constexpr int bandCount = 8;
-    static constexpr int footerHeight = 40;
     static constexpr float handleDiameter = 44.0f;      // "Zeigefinger"-Punkt
     static constexpr float selectedHandleDiameter = 54.0f;
     static constexpr float touchRadius = 34.0f;         // Trefferzone
@@ -84,7 +84,6 @@ public:
 
     void selectBand (int band);
     void toggleBandOn (int band);
-    void stepFilterType (int delta);
 
     //==========================================================================
     [[nodiscard]] Gesture getGesture() const noexcept { return gesture; }
@@ -106,10 +105,6 @@ public:
 
     /** [Tests] Anzeige-Kurve in dB bei hz (inkl. Scale-Wirkung, §10j). */
     [[nodiscard]] double curveDbAt (double hz) const { return responseDbAt (hz); }
-
-    push::TextTile typePrevTile { "<" };
-    push::TextTile typeNextTile { ">" };
-    push::TextTile bandOnTile { "ON", push::colours::ledOrange };
 
     //==========================================================================
     void paint (juce::Graphics& g) override;
@@ -145,7 +140,6 @@ private:
     };
 
     void sendParameter (int parameterIndex, float value, bool continuous);
-    void updateFooterFromSelection();
     void rebuildCurve();
     void setResonanceNorm (Band& band, double newNorm);
 
@@ -213,6 +207,7 @@ private:
     // Band-Drag: relativ mit Schwelle (Punkt springt nie zum Finger)
     bool dragMoved = false;
     double dragStartFrequencyNorm = 0.0, dragStartGainDb = 0.0;
+    double dragStartResonanceNorm = 0.5;   // Y-Drag bei Cut/Notch = Q
 
     // Typ-Selector (Long-Press)
     int typeSelectorHover = -1;

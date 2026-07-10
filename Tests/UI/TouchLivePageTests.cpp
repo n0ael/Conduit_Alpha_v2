@@ -767,12 +767,12 @@ TEST_CASE ("TouchLiveEq8Panel: Gesten — Multi-Select, Pinch-Q, Auswahl schiebe
         REQUIRE (panel->getGesture() == Gesture::trimScale);
 
         rig.transport->sent.clear();
-        panel->touchMove (3, { 400.0f, y - 120.0f });  // Zentroid −30 px → +0.06
+        panel->touchMove (3, { 400.0f, y - 120.0f });  // Zentroid −30 px → +0.18
 
         sent = rig.transport->sentTo ("/live/device/set/parameter");
         REQUIRE (sent.size() == 1);
         REQUIRE (sent.front()[1].getInt32() == panel->scaleIndexOf());
-        REQUIRE (sent.front()[2].getFloat32() == Approx (1.06f).margin (1e-3f));
+        REQUIRE (sent.front()[2].getFloat32() == Approx (1.18f).margin (1e-3f));
 
         panel->touchUp (0);
         panel->touchUp (1);
@@ -835,6 +835,36 @@ TEST_CASE ("TouchLiveEq8Panel: Gesten — Multi-Select, Pinch-Q, Auswahl schiebe
         panel->touchMove (0, panel->bandPosition (1).translated (40.0f, 0.0f));
         panel->triggerLongPress();
         REQUIRE_FALSE (panel->isTypeSelectorOpen());
+        panel->touchUp (0);
+    }
+
+    SECTION ("Cut/Notch: vertikales Ziehen am Punkt steuert den Q (Live-Verhalten)")
+    {
+        // Band 2 per Typ-Selector-Logik auf Notch (Index 4) stellen
+        rig.model.applyDiff ("devices", parse (
+            R"({"parvals:dv:1":[1.0,1,3,0.1,0.0,0.5,1,4,0.2,0.0,0.5,1,3,0.3,0.0,0.5,)"
+            R"(1,3,0.4,0.0,0.5,1,3,0.5,0.0,0.5,1,3,0.6,0.0,0.5,1,3,0.7,0.0,0.5,)"
+            R"(1,3,0.8,0.0,0.5,0.0,1.0,1.0]})"));
+
+        const auto start = panel->bandPosition (1);
+        const auto qBefore = panel->getResonanceNorm (1);
+
+        panel->touchDown (0, start);
+        rig.transport->sent.clear();
+        panel->touchMove (0, start.translated (0.0f, -80.0f));   // hoch = schärfer
+
+        REQUIRE (panel->getResonanceNorm (1) > qBefore + 0.05);
+        REQUIRE (panel->getFrequencyNorm (1) == Approx (0.2));   // X unverändert
+
+        const auto sent = rig.transport->sentTo ("/live/device/set/parameter");
+        std::vector<int> indices;
+        for (const auto& message : sent)
+            indices.push_back (message[1].getInt32());
+        REQUIRE (std::find (indices.begin(), indices.end(),
+                            panel->resonanceIndexOf (1)) != indices.end());
+        REQUIRE (std::find (indices.begin(), indices.end(),
+                            panel->gainIndexOf (1)) == indices.end());
+
         panel->touchUp (0);
     }
 

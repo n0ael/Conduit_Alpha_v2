@@ -651,6 +651,11 @@ analoge RBJ-Prototypen mit eigener Q-Semantik** — kalibriert auf
      dafür: **Band-Drag ist RELATIV mit 9-px-Schwelle** — der Punkt
      springt nie zur Fingerposition (Kernpfade dragActiveBandBy,
      triggerLongPress).
+  6. **Cut/Notch-Punkte steuern per Y-Drag den Q** (Live-Verhalten,
+     Feedback-Runde 2) — hoch = schärfer; Bell/Shelf behalten Y=Gain.
+     Der Panel-Footer ist KOMPLETT entfallen (Band-ON = Doppeltipp,
+     Typ = Long-Press); der Typ-Name steht im Readout oben rechts.
+     Scale-Trim gröber als Output (0.0015/px vs. 0.0005/px).
 - **Scale in der Kurve (Messkampagne 2, 11 Screenshots −200…+190 %):
   Scale skaliert die BAND-GAINS** (nur gainfähige Typen), geclampt
   auf ±15 dB, Cuts/Notch unberührt, negative Werte invertieren; die

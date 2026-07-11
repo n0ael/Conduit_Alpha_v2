@@ -107,16 +107,12 @@ public:
     void setModwheelEnabled (bool shouldBeEnabled);
 
     //==========================================================================
-    // Block H v2 (Track-Fokus-Routing): Follow-Selection + Master-MIDI-Input.
-
-    /** Follow Selection (Track-Selector): das Remote Script hält Lives
-        Selektion im Hintergrund synchron (neu selektierter All-Ins-Track →
-        Master-MIDI-Input + Auto, vorheriger zurück auf All Ins + Off). */
-    [[nodiscard]] bool isMidiFollowSelection() const noexcept { return midiFollowSelection; }
-    void setMidiFollowSelection (bool shouldFollow);
+    // Block H v2 rev5 (Track-Fokus-Routing, statische Aufteilung):
+    // Master-MIDI-Input + Grid-MPE-Port.
 
     /** Ableton-Routing-Name des Master-MIDI-Eingabegeräts (z. B. "FromPush")
         — Auswahl aus den input_options der tracks-Domain (Settings-Tab);
+        alle All-Ins-MIDI-Tracks wandern beim Fokus-Setzen statisch dorthin;
         leer = Routing der anderen Tracks unangetastet lassen. */
     [[nodiscard]] juce::String getMasterMidiInputName() const noexcept { return masterMidiInputName; }
     void setMasterMidiInputName (const juce::String& newName);
@@ -147,7 +143,6 @@ private:
     int  ribbonWidthPx     = defaultRibbonWidthPx;
     bool modwheelEnabled   = false;
 
-    bool midiFollowSelection = true;
     juce::String masterMidiInputName;
     juce::String gridMidiInputName;
 

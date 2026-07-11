@@ -239,7 +239,7 @@ TEST_CASE ("GridPanelSettings: modwheelEnabled Default false + Roundtrip", "[gri
 }
 
 //==============================================================================
-// Block H v2: midiFollowSelection / masterMidiInputName / gridMidiInputName
+// Block H v2 rev5: masterMidiInputName / gridMidiInputName
 
 TEST_CASE ("GridPanelSettings: Track-Fokus-Routing-Werte Default + Roundtrip", "[gridpanelsettings]")
 {
@@ -248,17 +248,14 @@ TEST_CASE ("GridPanelSettings: Track-Fokus-Routing-Werte Default + Roundtrip", "
 
     {
         conduit::GridPanelSettings settings (temp.options());
-        REQUIRE (settings.isMidiFollowSelection());              // Default AN
         REQUIRE (settings.getMasterMidiInputName().isEmpty());
         REQUIRE (settings.getGridMidiInputName().isEmpty());
 
-        settings.setMidiFollowSelection (false);
         settings.setMasterMidiInputName ("FromPush");
         settings.setGridMidiInputName ("Conduit Grid MPE");
     }
 
     conduit::GridPanelSettings reloaded (temp.options());
-    REQUIRE_FALSE (reloaded.isMidiFollowSelection());
     REQUIRE (reloaded.getMasterMidiInputName() == "FromPush");
     REQUIRE (reloaded.getGridMidiInputName() == "Conduit Grid MPE");
 }

@@ -50,33 +50,21 @@ TEST_CASE ("TrackSelectorPanel: leeres Modell ergibt leere Liste (kein Crash)", 
     REQUIRE (conduit::TrackSelectorPanel::midiTrackRowsFrom (model).empty());
     REQUIRE (conduit::TrackSelectorPanel::focusKeyFrom (model).isEmpty());
 
-    conduit::TrackSelectorPanel panel (model, true);
+    conduit::TrackSelectorPanel panel (model);
     REQUIRE (panel.getHeight() == conduit::TrackSelectorPanel::kTitleHeight
-                                      + conduit::TrackSelectorPanel::kFollowHeight
                                       + conduit::TrackSelectorPanel::kRowHeight);
 }
 
-TEST_CASE ("TrackSelectorPanel: makeMidiInputFocusCommand baut das v2-Wire-Format", "[grid][trackselect]")
+TEST_CASE ("TrackSelectorPanel: makeMidiInputFocusCommand baut das rev5-Wire-Format", "[grid][trackselect]")
 {
     const auto message = conduit::TrackSelectorPanel::makeMidiInputFocusCommand (
-        "tr:7", "Conduit Grid MPE", "FromPush", true);
+        "tr:7", "Conduit Grid MPE", "FromPush");
 
     REQUIRE (message.getAddressPattern().toString() == "/live/song/set/midi_input_focus");
-    REQUIRE (message.size() == 4);
+    REQUIRE (message.size() == 3);
     REQUIRE (message[0].getString() == "tr:7");
     REQUIRE (message[1].getString() == "Conduit Grid MPE");
     REQUIRE (message[2].getString() == "FromPush");
-    REQUIRE (message[3].getInt32() == 1);
-}
-
-TEST_CASE ("TrackSelectorPanel: makeFollowCommand baut das Wire-Format", "[grid][trackselect]")
-{
-    const auto onMessage = conduit::TrackSelectorPanel::makeFollowCommand (true);
-    REQUIRE (onMessage.getAddressPattern().toString() == "/live/song/set/midi_input_follow");
-    REQUIRE (onMessage.size() == 1);
-    REQUIRE (onMessage[0].getInt32() == 1);
-
-    REQUIRE (conduit::TrackSelectorPanel::makeFollowCommand (false)[0].getInt32() == 0);
 }
 
 TEST_CASE ("TrackSelectorPanel/TrackFocusBadge: conduit_focus wird aufgeloest", "[grid][trackselect]")

@@ -280,14 +280,6 @@ class Manager(ControlSurface):
         except Exception:
             logger.exception("server.process() failed")
 
-        # Follow-Selection-Poll (Block H v2, Feldtest 11.07.2026): der
-        # selected_track-Listener kann in Live still ausfallen -- der Tick
-        # ist der robuste Pfad (Dedupe im Service verhindert Doppel-Feuer).
-        try:
-            self.input_focus.poll()
-        except Exception:
-            logger.exception("input focus poll failed")
-
         for name in list(self.domains.keys()):
             domain = self.domains.get(name)
             if domain is None:

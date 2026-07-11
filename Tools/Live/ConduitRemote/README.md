@@ -37,8 +37,7 @@ Bewusst getrennt von Conduits eigenem OSC (9000/9001) und AbletonOSC (11000/1100
 | `/live/song/start_playing` · `stop_playing` · `continue_playing` · `undo` · `redo` | — |
 | `/live/song/set/tempo` | `f` |
 | `/live/song/set/metronome` · `session_record` | `i` |
-| `/live/song/set/midi_input_focus` | `track_ref, s grid_input, s master_input, i follow` — Ziel-MIDI-Track: Monitor „In" + Input `grid_input`; andere All-Ins-MIDI-Tracks: Monitor „Off"; Lives selektierter Track (MIDI, All Ins): `master_input` + „Auto". Follow Selection hält das per selected_track-Listener synchron (sync/inputfocus.py). Routing-Match exakter `display_name`, sonst Präfix case-insensitive; „All Ins" = Eintrag 0 der Routing-Typen (Conduit Grid-Track-Selector, Block H v2) |
-| `/live/song/set/midi_input_follow` | `i` — Follow Selection an/aus (ohne Neuauswahl) |
+| `/live/song/set/midi_input_focus` | `track_ref, s grid_input, s master_input` — Ziel-MIDI-Track: Monitor „In" + Input `grid_input`; Ex-Fokus zurück auf `master_input` + „Auto"; alle anderen All-Ins-MIDI-Tracks bekommen statisch `master_input` als Input (Monitor unangetastet, stale „Off" wird auf „Auto" geheilt); fremde Inputs tabu. Kein Selektions-Following — Lives Arm-Mechanik übernimmt (sync/inputfocus.py rev5). Routing-Match exakter `display_name`, sonst Präfix case-insensitive; „All Ins" = Eintrag 0 der Routing-Typen (Conduit Grid-Track-Selector, Block H v2) |
 | `/live/track/set/volume` · `panning` | `track_ref, f` |
 | `/live/track/set/send` | `track_ref, i send, f` |
 | `/live/track/set/mute` · `solo` · `arm` | `track_ref, i` |

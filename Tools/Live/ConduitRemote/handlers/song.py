@@ -97,11 +97,12 @@ def _set_selected_track(ctx, args):
 
 
 def _set_midi_input_focus(ctx, args):
-    """Block H v2 (Conduit Grid-Track-Selector): args = [track_ref,
-    grid_input, master_input, follow]. Semantik + Follow-Selection leben
-    im InputFocusService (sync/inputfocus.py) -- Ziel-Track Monitor In +
-    grid_input, andere All-Ins-MIDI-Tracks Monitor Off, Lives Selektion
-    auf master_input + Auto."""
+    """Block H v2 rev5 (Conduit Grid-Track-Selector): args = [track_ref,
+    grid_input, master_input]. Statische Aufteilung im InputFocusService
+    (sync/inputfocus.py): Ziel-Track Monitor In + grid_input, alle anderen
+    All-Ins-MIDI-Tracks bekommen master_input als Input (Monitor bleibt) --
+    Lives eigene Arm-/Selektions-Mechanik uebernimmt den Rest. Ein
+    ueberzaehliges Legacy-Argument (follow-Flag) wird ignoriert."""
     if len(args) < 2:
         return
     service = getattr(ctx, "input_focus", None)
@@ -114,18 +115,7 @@ def _set_midi_input_focus(ctx, args):
         return
     grid_input = str(args[1] or "")
     master_input = str(args[2] or "") if len(args) > 2 else ""
-    follow = _util.as_bool(args[3]) if len(args) > 3 else True
-    service.set_focus(target, grid_input, master_input, follow)
-
-
-def _set_midi_input_follow(ctx, args):
-    """Follow-Selection live umschalten (ohne Neuauswahl)."""
-    if len(args) < 1:
-        return
-    service = getattr(ctx, "input_focus", None)
-    if service is None:
-        return
-    service.set_follow(_util.as_bool(args[0]))
+    service.set_focus(target, grid_input, master_input)
 
 
 def register_all(registry):
@@ -139,4 +129,3 @@ def register_all(registry):
     registry.register("/live/song/redo", _redo)
     registry.register("/live/song/set/selected_track", _set_selected_track)
     registry.register("/live/song/set/midi_input_focus", _set_midi_input_focus)
-    registry.register("/live/song/set/midi_input_follow", _set_midi_input_follow)

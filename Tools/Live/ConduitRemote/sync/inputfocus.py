@@ -1,29 +1,26 @@
-"""Conduit Grid track focus + follow-selection routing (Conduit Block H v2).
+"""Conduit Grid track focus routing (Conduit Block H v2, rev5).
 
 Live-performance goal: Conduit's MPE grid and the master MIDI device (Push,
 keyboard, ...) play DIFFERENT tracks at the same time, freely switchable.
 
-Focus semantics (set_focus):
-  * focus track: input routing = grid_input (Conduit's grid MIDI-out port),
-    monitor IN - it always hears Conduit, regardless of arm/selection.
-  * every OTHER midi track whose input is "All Ins": monitor OFF ("All Ins"
-    includes the Conduit port - Auto would leak grid notes when armed).
-    Tracks with an explicit input routing are left alone.
-  * Live's currently SELECTED track (midi, on "All Ins", not the focus):
-    input = master_input (e.g. "FromPush"), monitor AUTO - remembered as
-    the "moved" track so it can be restored later.
-  * a PREVIOUS focus track is restored (input back to "All Ins", monitor
-    OFF) but only if its input still is the grid port - i.e. only if WE
-    set it; user re-routings are never overwritten.
+Final semantics (User-Entscheidung 11.07.2026 abends -- STATISCH statt
+Selektions-Following; Lives eigene Arm-/Selektions-Mechanik uebernimmt):
 
-Follow selection (selected_track listener + manager-tick poll, active only
-while follow is on AND a focus exists) is STATE-BASED (Feldtest-Runde 3,
-11.07.2026): every routing pass decides per track from its CURRENT input -
-"All Ins" and master_input/grid_input are "ours" (managed: deselected ->
-"All Ins" + OFF, selected -> master_input + AUTO), any OTHER input
-(sequencer, hardware port, ...) is never touched, neither input nor
-monitor (User-Regel: ein sequencer-gespeister Track darf durch Selektion
-nichts verlieren). No move-tracking -> self-healing and idempotent.
+  * focus track: input = grid_input (Conduit's grid MIDI-out port),
+    monitor IN - it always hears Conduit, regardless of arm/selection.
+  * previous focus track (input still on grid_input): given back to
+    master_input + monitor AUTO (plays normally with Push again).
+  * every other midi track on "All Ins": input = master_input (e.g.
+    "FromPush") - the monitor state is left alone (only a stale OFF from
+    the earlier follow-implementation is healed back to AUTO once).
+    "All Ins" would include the Conduit port, so these tracks would leak
+    grid notes when armed - explicit master routing fixes that for good.
+  * any OTHER input (sequencer, hardware, ...) is NEVER touched, neither
+    input nor monitor (User-Regel: ein sequencer-gespeister Track darf
+    nichts verlieren).
+
+No selection listener, no polling, no monitor juggling - the pass runs
+once per set_focus and is idempotent (writes only on actual change).
 
 "All Ins" detection is robust against localisation: entry 0 of
 available_input_routing_types IS "All Ins" in Live - matched via
@@ -67,17 +64,20 @@ def find_routing_type(track, wanted_name):
     return None
 
 
-def apply_track_input(track, monitor_state, input_name):
-    """Set a track's monitor + input routing; every sub-operation is
-    LOM-defensive, an empty input_name leaves the routing untouched.
-    Writes only on actual change (idempotenter Routing-Pass darf Lives
-    Undo-/Listener-Maschinerie nicht mit No-op-Writes fluten)."""
+def set_monitor(track, monitor_state):
+    """LOM-defensiv; schreibt nur bei echter Aenderung (keine No-op-Writes
+    in Lives Undo-/Listener-Maschinerie)."""
     try:
         if track.current_monitoring_state != monitor_state:
             track.current_monitoring_state = monitor_state
     except Exception:
         logger.debug("input focus: monitoring not settable on %r",
                      getattr(track, "name", "?"))
+
+
+def set_input(track, input_name):
+    """Input-Routing per Name setzen (leer = unangetastet), LOM-defensiv,
+    Write nur bei Aenderung."""
     routing = find_routing_type(track, input_name)
     if routing is None:
         return
@@ -88,6 +88,11 @@ def apply_track_input(track, monitor_state, input_name):
     except Exception:
         logger.debug("input focus: input routing not settable on %r",
                      getattr(track, "name", "?"))
+
+
+def apply_track_input(track, monitor_state, input_name):
+    set_monitor(track, monitor_state)
+    set_input(track, input_name)
 
 
 def _all_ins_name(track):
@@ -108,6 +113,13 @@ def _current_input_name(track):
         return None
 
 
+def _current_monitor(track):
+    try:
+        return track.current_monitoring_state
+    except Exception:
+        return None
+
+
 def _is_on_all_ins(track):
     name = _all_ins_name(track)
     return name is not None and _current_input_name(track) == name
@@ -124,11 +136,8 @@ class InputFocusService(object):
     def __init__(self, song):
         self._song = song
         self._focus_key = None    # stable_ids._identity of the focus track
-        self._follow = True
         self._grid_input = ""
         self._master_input = ""
-        self._listener_bound = False
-        self._last_selected_key = None   # poll()-Dedupe (Feldtest 11.07.2026)
 
         # wired by the manager: tracks domain mark_dirty
         self.on_state_changed = None
@@ -142,59 +151,28 @@ class InputFocusService(object):
             return ""
         return stable_ids.get_id(track, stable_ids.TRACK_PREFIX)
 
-    def follow_enabled(self):
-        return self._follow
-
     # -- commands ---------------------------------------------------------------
 
-    def set_follow(self, enabled):
-        self._follow = bool(enabled)
-        self._notify()
-
-    def set_focus(self, target, grid_input, master_input, follow):
-        """Route target to the grid (monitor IN + grid_input), then apply
-        the state-based routing rules to everything else."""
+    def set_focus(self, target, grid_input, master_input):
+        """Route target to the grid, move every All-Ins midi track to the
+        master input (statische Aufteilung, rev5)."""
         if target is None:
             return
         self._grid_input = str(grid_input or "")
         self._master_input = str(master_input or "")
-        self._follow = bool(follow)
-
         self._focus_key = stable_ids._identity(target)
-        self._last_selected_key = self._selected_key()
-        self._ensure_listener()
 
-        # Diagnose (Feldtest-Runde 4): einmal pro Fokus ins Live-Log --
-        # zeigt follow/grid/master und ob der Listener gebunden ist.
-        logger.info(
-            "input focus rev4: focus=%s grid=%r master=%r follow=%s listener=%s",
-            self.focus_stable_id(), self._grid_input, self._master_input,
-            self._follow, self._listener_bound)
+        logger.info("input focus rev5: focus=%s grid=%r master=%r",
+                    self.focus_stable_id(), self._grid_input,
+                    self._master_input)
 
         self._apply_routing()
         self._notify()
 
     def _apply_routing(self):
-        """State-based routing pass (Feldtest-Runde 3, 11.07.2026 --
-        ersetzt das moved-Tracking, dadurch selbstheilend/idempotent).
-        Pro MIDI-Track entscheidet der IST-Input:
-
-          * focus track          -> grid_input + monitor IN
-          * selected (not focus) -> if on "All Ins" OR master_input:
-                                    master_input + AUTO (playable)
-          * everything else      -> if on grid_input or master_input
-                                    (i.e. WE routed it earlier): back to
-                                    "All Ins" + OFF; if on "All Ins":
-                                    monitor OFF (input untouched)
-          * any OTHER input (sequencer, hardware, ...) -> NEVER touched,
-            neither input nor monitor (User-Regel 11.07.2026: ein Track,
-            den ein Sequencer speist, darf durch Selektion nichts
-            verlieren).
-        """
+        """One idempotent pass over song.tracks (semantics: module docs)."""
         if self._focus_key is None:
             return
-
-        selected_key = self._selected_key()
 
         try:
             tracks = list(self._song.tracks)
@@ -207,82 +185,24 @@ class InputFocusService(object):
             key = stable_ids._identity(track)
             if key == self._focus_key:
                 apply_track_input(track, MONITOR_IN, self._grid_input)
-            elif key == selected_key:
-                if (_is_on_all_ins(track)
-                        or self._input_matches(track, self._master_input)):
-                    apply_track_input(track, MONITOR_AUTO, self._master_input)
-            elif (self._input_matches(track, self._grid_input)
-                  or self._input_matches(track, self._master_input)):
-                # von UNS geroutet (alter Fokus / alte Selektion) -> aufraeumen
-                all_ins = _all_ins_name(track)
-                apply_track_input(track, MONITOR_OFF, all_ins or "")
+            elif self._input_matches(track, self._grid_input):
+                # Ex-Fokus: zurueck ans Master-Device, wieder normal spielbar
+                apply_track_input(track, MONITOR_AUTO, self._master_input)
             elif _is_on_all_ins(track):
-                apply_track_input(track, MONITOR_OFF, "")
-
-    # -- follow selection ---------------------------------------------------------
-
-    def poll(self):
-        """[Manager-Tick, ~100 ms] Selektions-Wechsel erkennen — der
-        ROBUSTE Follow-Pfad (Feldtest 11.07.2026: der selected_track-
-        Listener kann in Live still ausfallen, dann blieb der zuvor
-        selektierte Track auf dem Master-Input hängen). Der Listener
-        bleibt als Schnellpfad; das _last_selected_key-Dedupe verhindert
-        Doppel-Feuern."""
-        self._handle_selection_change()
-
-    def on_selection_changed(self):
-        """selected_track listener body (Schnellpfad; auch Tests)."""
-        self._handle_selection_change()
-
-    def _handle_selection_change(self):
-        selected_key = self._selected_key()
-
-        if selected_key == self._last_selected_key:
-            return   # kein Wechsel (oder Listener war schneller als poll)
-        self._last_selected_key = selected_key
-
-        # Diagnose (Feldtest-Runde 4): jeder erkannte Selektionswechsel.
-        logger.info("input focus rev4: selection change -> %s (follow=%s focus=%s)",
-                    selected_key, self._follow, self._focus_key is not None)
-
-        # Zustandsbasierter Routing-Pass: raeumt den vorher selektierten
-        # Track auf (master -> All Ins + Off, All Ins -> Off) und bewegt
-        # die neue Selektion -- fremde Inputs bleiben komplett unberuehrt.
-        if self._follow and self._focus_key is not None:
-            self._apply_routing()
-        self._notify()   # selected-Feld der Domain in jedem Fall frisch
+                # Statische Umstellung: Input -> Master; Monitor bleibt Sache
+                # des Users -- nur ein stale OFF der frueheren
+                # Follow-Implementierung wird einmalig auf AUTO geheilt.
+                if _current_monitor(track) == MONITOR_OFF:
+                    set_monitor(track, MONITOR_AUTO)
+                set_input(track, self._master_input)
+            # jeder andere Input: komplett tabu (Sequencer/Hardware-Regel)
 
     # -- lifecycle ---------------------------------------------------------------
 
     def detach(self):
-        if not self._listener_bound:
-            return
-        try:
-            self._song.view.remove_selected_track_listener(
-                self.on_selection_changed)
-        except Exception:
-            logger.exception("input focus: listener unbind failed")
-        self._listener_bound = False
+        pass   # rev5: kein Listener mehr -- Hook fuer den Manager-Teardown
 
     # -- internals ---------------------------------------------------------------
-
-    def _ensure_listener(self):
-        if self._listener_bound:
-            return
-        try:
-            self._song.view.add_selected_track_listener(
-                self.on_selection_changed)
-            self._listener_bound = True
-        except Exception:
-            # Kein Listener = kein Follow (Fokus-Command funktioniert
-            # trotzdem); Muster Domain.attach-Poll-Fallback, hier ohne Poll.
-            logger.exception("input focus: selection listener unavailable")
-
-    def _selected_track(self):
-        try:
-            return self._song.view.selected_track
-        except Exception:
-            return None
 
     def _find_by_key(self, key):
         if key is None:
@@ -296,14 +216,9 @@ class InputFocusService(object):
                 return track
         return None
 
-    def _selected_key(self):
-        selected = self._selected_track()
-        return stable_ids._identity(selected) if selected is not None else None
-
     def _input_matches(self, track, wanted_name):
         """IST-Input des Tracks == wanted_name (exakt oder Praefix, wie das
-        Routing-Matching -- Live haengt Port-Suffixe an)? False bei leerem
-        wanted_name oder unlesbarem Routing."""
+        Routing-Matching)? False bei leerem Namen/unlesbarem Routing."""
         if not wanted_name:
             return False
         current = _current_input_name(track)

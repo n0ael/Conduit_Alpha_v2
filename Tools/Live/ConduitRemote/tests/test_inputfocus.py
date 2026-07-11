@@ -1,4 +1,9 @@
-"""InputFocusService (Block H v2): Fokus-Routing + Follow-Selection.
+"""InputFocusService (Block H v2 rev5): statisches Fokus-Routing.
+
+User-Entscheidung 11.07.2026 abends: KEIN Selektions-Following mehr --
+alle All-Ins-MIDI-Tracks wandern einmalig auf das Master-Device, Lives
+eigene Arm-/Selektions-Mechanik uebernimmt; Monitoring bleibt Sache des
+Users (nur ein stale OFF der frueheren Implementierung wird geheilt).
 
 Stub-Realismus: nur regulaere Tracks tragen Monitoring/Routing
 (Returns/Master werfen), Routing-Optionen sind
@@ -37,134 +42,127 @@ def monitor(track):
     return track.current_monitoring_state
 
 
-# -- set_focus -----------------------------------------------------------------
+# -- set_focus (rev5: statische Aufteilung) --------------------------------------
 
-def test_focus_routes_target_others_off_selected_to_master():
+def test_focus_routes_target_and_moves_all_ins_to_master():
     song = make_song()
-    song.view.selected_track = song.tracks[1]
     service = InputFocusService(song)
 
-    service.set_focus(song.tracks[0], GRID, MASTER, True)
+    service.set_focus(song.tracks[0], GRID, MASTER)
 
+    # Ziel: Grid-Port + Monitor In
     assert monitor(song.tracks[0]) == 0 and routing(song.tracks[0]) == GRID
-    assert monitor(song.tracks[1]) == 1 and routing(song.tracks[1]) == MASTER
-    assert monitor(song.tracks[2]) == 2 and routing(song.tracks[2]) == "All Ins"
+    # andere All-Ins-Tracks: Input -> Master, Monitor UNANGETASTET (Auto)
+    assert routing(song.tracks[1]) == MASTER
+    assert monitor(song.tracks[1]) == 1
+    assert routing(song.tracks[2]) == MASTER
+    assert monitor(song.tracks[2]) == 1
+    # Audio-Track unberuehrt
+    assert routing(song.tracks[3]) == "All Ins"
     assert service.focus_stable_id() != ""
 
 
-def test_focus_leaves_explicitly_routed_tracks_alone():
+def test_focus_leaves_foreign_inputs_alone():
+    # User-Regel: Sequencer-/Hardware-Inputs sind tabu -- Input UND Monitor.
     song = make_song()
-    explicit = song.tracks[1]
-    explicit.input_routing_type = explicit.available_input_routing_types[3]  # K1
+    seq = song.tracks[1]
+    seq.input_routing_type = seq.available_input_routing_types[3]  # K1
+    seq.current_monitoring_state = 0   # User hoert den Sequencer (In)
 
     service = InputFocusService(song)
-    service.set_focus(song.tracks[0], GRID, MASTER, True)
+    service.set_focus(song.tracks[0], GRID, MASTER)
 
-    # kein All Ins -> weder Monitor noch Routing angefasst
-    assert monitor(explicit) == 1
-    assert routing(explicit) == "K1 (Port 1)"
+    assert routing(seq) == "K1 (Port 1)"
+    assert monitor(seq) == 0
 
 
-def test_focus_switch_restores_previous_focus():
+def test_focus_does_not_touch_monitor_of_master_tracks():
+    # Bereits auf Master geroutete Tracks (statischer Zustand) bleiben
+    # komplett unangetastet -- auch ihr Monitoring.
+    song = make_song()
+    already = song.tracks[1]
+    already.input_routing_type = already.available_input_routing_types[2]  # FromPush
+    already.current_monitoring_state = 2   # User-gewolltes Off
+
+    service = InputFocusService(song)
+    service.set_focus(song.tracks[0], GRID, MASTER)
+
+    assert routing(already) == MASTER
+    assert monitor(already) == 2
+
+
+def test_focus_heals_stale_off_when_moving_from_all_ins():
+    # Ein All-Ins-Track mit Monitor Off (Altlast der Follow-Implementierung)
+    # wird beim Umstellen einmalig auf Auto geheilt.
+    song = make_song()
+    stale = song.tracks[1]
+    stale.current_monitoring_state = 2
+
+    service = InputFocusService(song)
+    service.set_focus(song.tracks[0], GRID, MASTER)
+
+    assert routing(stale) == MASTER
+    assert monitor(stale) == 1
+
+
+def test_focus_switch_gives_previous_focus_back_to_master():
     song = make_song()
     service = InputFocusService(song)
 
-    service.set_focus(song.tracks[0], GRID, MASTER, True)
-    service.set_focus(song.tracks[1], GRID, MASTER, True)
+    service.set_focus(song.tracks[0], GRID, MASTER)
+    service.set_focus(song.tracks[1], GRID, MASTER)
 
-    # alter Fokus: zurueck auf All Ins + Off (sein Input war noch der Grid-Port)
-    assert monitor(song.tracks[0]) == 2
-    assert routing(song.tracks[0]) == "All Ins"
+    # alter Fokus: Master-Input + Auto (wieder normal mit Push spielbar)
+    assert routing(song.tracks[0]) == MASTER
+    assert monitor(song.tracks[0]) == 1
     assert monitor(song.tracks[1]) == 0 and routing(song.tracks[1]) == GRID
 
 
 def test_focus_switch_never_overwrites_user_rerouting():
     song = make_song()
     service = InputFocusService(song)
-    service.set_focus(song.tracks[0], GRID, MASTER, True)
+    service.set_focus(song.tracks[0], GRID, MASTER)
 
     # User hat den Fokus-Track inzwischen selbst umgeroutet
     old = song.tracks[0]
     old.input_routing_type = old.available_input_routing_types[3]  # K1
 
-    service.set_focus(song.tracks[1], GRID, MASTER, True)
+    service.set_focus(song.tracks[1], GRID, MASTER)
     assert routing(old) == "K1 (Port 1)"   # bleibt unangetastet
 
 
-# -- follow selection -----------------------------------------------------------
-
-def test_follow_moves_new_selection_and_restores_previous():
-    song = make_song()
-    song.view.selected_track = song.tracks[1]
-    service = InputFocusService(song)
-    service.set_focus(song.tracks[0], GRID, MASTER, True)
-    assert routing(song.tracks[1]) == MASTER
-
-    # Push selektiert Track 2 -> Listener feuert (Stub-__setattr__)
-    song.view.selected_track = song.tracks[2]
-
-    assert monitor(song.tracks[1]) == 2                    # restore: Off
-    assert routing(song.tracks[1]) == "All Ins"            # restore: All Ins
-    assert monitor(song.tracks[2]) == 1                    # neu: Auto
-    assert routing(song.tracks[2]) == MASTER
-
-
-def test_follow_never_touches_focus_track():
+def test_empty_master_leaves_all_ins_tracks_alone():
+    # Ohne gewaehltes Master-Device (leerer Name) bleiben die
+    # All-Ins-Tracks stehen -- nur das Ziel wird geroutet.
     song = make_song()
     service = InputFocusService(song)
-    service.set_focus(song.tracks[0], GRID, MASTER, True)
 
-    song.view.selected_track = song.tracks[0]   # Fokus-Track selektiert
+    service.set_focus(song.tracks[0], GRID, "")
 
-    assert monitor(song.tracks[0]) == 0
     assert routing(song.tracks[0]) == GRID
-
-
-def test_follow_disabled_does_nothing():
-    song = make_song()
-    service = InputFocusService(song)
-    service.set_focus(song.tracks[0], GRID, MASTER, False)
-
-    song.view.selected_track = song.tracks[2]
-
-    assert monitor(song.tracks[2]) == 2          # blieb Off (aus set_focus)
-    assert routing(song.tracks[2]) == "All Ins"
-
-
-def test_follow_without_focus_does_nothing():
-    song = make_song()
-    service = InputFocusService(song)
-    service.set_follow(True)
-
-    song.view.selected_track = song.tracks[1]   # kein Listener gebunden
-
-    assert monitor(song.tracks[1]) == 1
     assert routing(song.tracks[1]) == "All Ins"
+    assert monitor(song.tracks[1]) == 1
 
 
-def test_set_follow_toggles_live():
+def test_routing_pass_is_idempotent():
     song = make_song()
     service = InputFocusService(song)
-    service.set_focus(song.tracks[0], GRID, MASTER, True)
+    service.set_focus(song.tracks[0], GRID, MASTER)
 
-    service.set_follow(False)
-    song.view.selected_track = song.tracks[1]
-    assert routing(song.tracks[1]) == "All Ins"   # Follow aus
-
-    service.set_follow(True)
-    song.view.selected_track = song.tracks[2]
-    assert routing(song.tracks[2]) == MASTER      # Follow wieder an
+    before = [(routing(t), monitor(t)) for t in song.tracks[:3]]
+    service._apply_routing()
+    after = [(routing(t), monitor(t)) for t in song.tracks[:3]]
+    assert before == after
 
 
 # -- robustness -------------------------------------------------------------------
 
 def test_service_survives_returns_and_master():
+    # Returns/Master werfen auf Routing-Attribute -- der Pass iteriert nur
+    # song.tracks; focus_stable_id/notify duerfen ebenfalls nie werfen.
     song = make_song()
     service = InputFocusService(song)
-    # Returns/Master werfen auf Routing-Attribute -- set_focus iteriert nur
-    # song.tracks; focus_stable_id/notify duerfen ebenfalls nie werfen.
-    service.set_focus(song.tracks[0], GRID, MASTER, True)
-    song.view.selected_track = song.return_tracks[0]
+    service.set_focus(song.tracks[0], GRID, MASTER)
     assert service.focus_stable_id() != ""
 
 
@@ -174,11 +172,7 @@ def test_state_change_callback_fires():
     calls = []
     service.on_state_changed = lambda: calls.append(1)
 
-    service.set_focus(song.tracks[0], GRID, MASTER, True)
-    assert calls
-
-    calls.clear()
-    song.view.selected_track = song.tracks[1]
+    service.set_focus(song.tracks[0], GRID, MASTER)
     assert calls
 
 
@@ -195,7 +189,7 @@ def test_tracks_domain_exposes_focus_selected_and_options():
     domain.input_focus = service
 
     song.view.selected_track = song.tracks[1]
-    service.set_focus(song.tracks[0], GRID, MASTER, True)
+    service.set_focus(song.tracks[0], GRID, MASTER)
 
     state = domain.collect()
     assert state["conduit_focus"] == service.focus_stable_id()
@@ -203,124 +197,3 @@ def test_tracks_domain_exposes_focus_selected_and_options():
         song.tracks[1], stable_ids.TRACK_PREFIX)
     assert "Conduit Grid MPE" in state["input_options"]
     assert state["input_options"][0] == "All Ins"
-
-
-# -- Feldtest-Fixes 11.07.2026 ---------------------------------------------------
-
-def test_focus_switch_restores_stale_moved_track():
-    # Fokus F, Push-Selektion S wurde auf Master bewegt; Live selektiert
-    # danach etwas anderes, OHNE dass der Follow-Listener lief (Ausfall-
-    # Simulation wie in Live) -- ein neuer set_focus darf S nicht auf dem
-    # Master-Input haengen lassen.
-    song = make_song()   # tracks[0..2] midi, tracks[3] audio
-    song.view.selected_track = song.tracks[1]
-    service = InputFocusService(song)
-    service.set_focus(song.tracks[0], GRID, MASTER, True)
-    assert routing(song.tracks[1]) == MASTER
-
-    service.detach()
-    song.view.selected_track = song.tracks[3]   # Audio-Track, Listener tot
-
-    service.set_focus(song.tracks[2], GRID, MASTER, True)
-
-    assert monitor(song.tracks[1]) == 2
-    assert routing(song.tracks[1]) == "All Ins"   # nicht mehr auf Master
-
-
-def test_poll_follows_selection_without_listener():
-    # Feldtest 11.07.2026: der selected_track-Listener kann in Live still
-    # ausfallen -- poll() (Manager-Tick) muss den Wechsel trotzdem fahren.
-    song = make_song()
-    song.view.selected_track = song.tracks[1]
-    service = InputFocusService(song)
-    service.set_focus(song.tracks[0], GRID, MASTER, True)
-
-    service.detach()   # Listener-Ausfall simulieren
-    song.view.selected_track = song.tracks[2]
-    assert routing(song.tracks[2]) == "All Ins"   # noch nichts passiert
-
-    service.poll()
-
-    assert monitor(song.tracks[1]) == 2
-    assert routing(song.tracks[1]) == "All Ins"
-    assert monitor(song.tracks[2]) == 1
-    assert routing(song.tracks[2]) == MASTER
-
-    # Dedupe: erneuter poll ohne Wechsel tut nichts (kein Flattern)
-    calls = []
-    service.on_state_changed = lambda: calls.append(1)
-    service.poll()
-    assert not calls
-
-
-def test_listener_and_poll_do_not_double_fire():
-    song = make_song()
-    service = InputFocusService(song)
-    service.set_focus(song.tracks[0], GRID, MASTER, True)
-
-    song.view.selected_track = song.tracks[1]   # Listener feuert sofort
-    assert routing(song.tracks[1]) == MASTER
-
-    calls = []
-    service.on_state_changed = lambda: calls.append(1)
-    service.poll()   # gleicher Zustand -> Dedupe greift
-    assert not calls
-
-
-# -- Feldtest-Runde 3 (11.07.2026): zustandsbasiertes Routing ---------------------
-
-def test_follow_previously_selected_all_ins_goes_off():
-    # Der zuvor selektierte Track stand (noch/wieder) auf All Ins --
-    # beim Wechsel muss er wie die anderen auf Monitor Off gehen.
-    song = make_song()
-    service = InputFocusService(song)
-    service.set_focus(song.tracks[0], GRID, MASTER, True)
-
-    song.view.selected_track = song.tracks[1]
-    # Ausfall-Simulation: waehrend der Selektion stellt jemand den Track
-    # manuell zurueck auf All Ins (oder unser Move kam nie an)
-    song.tracks[1].input_routing_type = \
-        song.tracks[1].available_input_routing_types[0]
-    song.tracks[1].current_monitoring_state = 1
-
-    song.view.selected_track = song.tracks[2]
-
-    assert routing(song.tracks[1]) == "All Ins"
-    assert monitor(song.tracks[1]) == 2   # Off wie die anderen
-
-
-def test_follow_never_touches_foreign_inputs():
-    # User-Regel: ein Track mit FREMDER Quelle (Sequencer/Hardware, hier
-    # "K1 (Port 1)") verliert durch Selektion/Deselektion NICHTS --
-    # weder Input noch Monitor.
-    song = make_song()
-    seq = song.tracks[1]
-    seq.input_routing_type = seq.available_input_routing_types[3]  # K1
-    seq.current_monitoring_state = 0   # User hoert den Sequencer (In)
-
-    service = InputFocusService(song)
-    service.set_focus(song.tracks[0], GRID, MASTER, True)
-
-    assert routing(seq) == "K1 (Port 1)"
-    assert monitor(seq) == 0   # set_focus liess ihn in Ruhe
-
-    song.view.selected_track = seq          # selektieren (Knobs drehen)
-    assert routing(seq) == "K1 (Port 1)"
-    assert monitor(seq) == 0
-
-    song.view.selected_track = song.tracks[2]   # wieder deselektieren
-    assert routing(seq) == "K1 (Port 1)"
-    assert monitor(seq) == 0
-
-
-def test_routing_pass_is_idempotent():
-    # Doppelter Pass (Listener + poll-Wettlauf) darf nichts veraendern.
-    song = make_song()
-    song.view.selected_track = song.tracks[1]
-    service = InputFocusService(song)
-    service.set_focus(song.tracks[0], GRID, MASTER, True)
-
-    before = [(routing(t), monitor(t)) for t in song.tracks[:3]]
-    service._apply_routing()
-    after = [(routing(t), monitor(t)) for t in song.tracks[:3]]
-    assert before == after

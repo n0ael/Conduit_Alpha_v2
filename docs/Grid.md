@@ -260,46 +260,39 @@
     für den Fokus-Track (LED aus der mixer-Domain).
 
     Long-Press öffnet den `TrackSelectorPanel` (CallOutBox am Tile):
-    oben ein „Follow Selection"-Toggle (User 11.07.2026: dort, damit
-    entdeckbar; persistent `GridPanelSettings::midiFollowSelection`),
-    darunter die MIDI-Tracks mit Name + Live-Farbe (Fokus markiert).
-    Auswahl sendet `/live/song/set/midi_input_focus [trackKey,
-    gridInput, masterInput, follow]` — gridInput =
-    `MidiDeviceTarget::currentDeviceName` (Portname, beim User
-    „Conduit Grid MPE"), masterInput = `GridPanelSettings::
-    masterMidiInputName` (Dropdown im Settings-Tab aus dem
-    tracks-Domain-Key `input_options`, z. B. „FromPush").
+    MIDI-Tracks mit Name + Live-Farbe, Fokus-Track markiert. Auswahl
+    sendet `/live/song/set/midi_input_focus [trackKey, gridInput,
+    masterInput]` — gridInput = `GridPanelSettings::gridMidiInputName`
+    (Dropdown „Grid MPE Port (independent from selection)", leer =
+    Fallback `MidiDeviceTarget::currentDeviceName`), masterInput =
+    `masterMidiInputName` (Dropdown „MIDI Master (follows selection)");
+    beide in der Settings-Sektion „Ableton - Free From Selection" aus
+    dem tracks-Domain-Key `input_options`.
 
-    **Routing-Semantik v2 (Live-Performance: Grid und Push spielen
-    GLEICHZEITIG verschiedene Tracks), `sync/inputfocus.py`:**
-    Ziel-Track Input = gridInput + Monitor In; alle anderen
-    All-Ins-MIDI-Tracks Monitor OFF (Auto würde Grid-Noten bei Arm
-    durchlassen — All Ins enthält den Conduit-Port!); Lives
-    selektierter Track (MIDI + All Ins) → masterInput + Auto. Follow
-    Selection (selected_track-Listener, nur mit aktivem Fokus): neu
-    selektierter All-Ins-Track → masterInput + Auto, der vorher
-    bewegte zurück auf All Ins + OFF; der Fokus-Track bleibt IMMER
-    unangetastet; ein ALTER Fokus wird nur restauriert, wenn sein
-    Input noch der Grid-Port ist (User-Umroutings nie überschreiben).
-    „All Ins" = Eintrag 0 der available_input_routing_types (nie der
-    lokalisierbare String); Identitäten über `_live_ptr`
-    (stable_ids._identity); Fokus-/Follow-Zustand lebt NUR in der
+    **Routing-Semantik rev5 (FINAL, User-Entscheidung 11.07.2026
+    abends — STATISCH statt Selektions-Following), `sync/inputfocus.py`:**
+    Ziel-Track Input = gridInput + Monitor In; Ex-Fokus (Input noch der
+    Grid-Port) zurück auf masterInput + Auto; alle anderen
+    All-Ins-MIDI-Tracks bekommen EINMALIG masterInput als Input —
+    Monitor bleibt Sache des Users (nur ein stale OFF der früheren
+    Follow-Implementierung wird auf Auto geheilt); JEDER ANDERE Input
+    (Sequencer, Hardware) ist TABU, weder Input noch Monitor. Lives
+    eigene Arm-/Selektions-Mechanik übernimmt danach — KEIN
+    selected_track-Listener, KEIN Poll, KEIN Monitor-Jonglieren mehr
+    (die Runde-2/3-Follow-Implementierung samt Panel-Toggle ist
+    ersatzlos entfallen; das Log bewies: Listener UND Poll erkannten
+    jeden Wechsel, aber die Follow-Semantik war fehleranfällig zu
+    bedienen). Pass läuft einmal pro set_focus, idempotent, Writes nur
+    bei echter Differenz. „All Ins" = Eintrag 0 der
+    available_input_routing_types (nie der lokalisierbare String);
+    Identitäten über `_live_ptr`; Fokus-Zustand lebt NUR in der
     Script-Session. tracks-Domain-Skalarkeys: `selected`,
     `conduit_focus`, `input_options`. **Deploy-Falle (Feldtest
     11.07.2026):** das Script läuft als KOPIE in Lives User Library
     (`robocopy Tools\Live\ConduitRemote → …\Remote Scripts\ConduitRemote
     /MIR /XD __pycache__ tests`) + Live-Neustart — sonst „passiert
-    nichts in Ableton". **Feldtest-Fixes (Runde 2+3, 11.07.2026):** der
-    selected_track-Listener kann in Live STILL ausfallen → Follow läuft
-    zusätzlich als `poll()` im Manager-Tick (~100 ms, Dedupe über
-    `_last_selected_key`, Listener bleibt Schnellpfad). Das Routing ist
-    ZUSTANDSBASIERT (`_apply_routing`, kein moved-Tracking —
-    selbstheilend/idempotent, Writes nur bei echter Differenz): pro
-    MIDI-Track entscheidet der IST-Input — All Ins/master/grid = „von
-    uns verwaltet" (deselektiert → All Ins + Off bzw. Off, selektiert →
-    master + Auto, Fokus → grid + In); JEDER ANDERE Input (Sequencer,
-    Hardware) ist TABU, weder Input noch Monitor (User-Regel: ein
-    sequencer-gespeister Track darf durch Selektion nichts verlieren).
+    nichts in Ableton". Diagnose: set_focus loggt eine INFO-Zeile
+    (`input focus rev5: …`) ins Live-Log.
     Grid-MPE-Port als EIGENES Setting (`gridMidiInputName`, Dropdown
     „Grid MPE Port (independent from selection)" neben „MIDI Master
     (follows selection)" in der Sektion „Ableton -

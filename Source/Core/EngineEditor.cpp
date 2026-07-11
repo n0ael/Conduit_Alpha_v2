@@ -136,16 +136,13 @@ EngineEditor::EngineEditor (EngineProcessor& engineProcessor,
         selectPage (pageIndex);
     };
 
-    // Block H v2: Long-Press auf dem Grid-Page-Button → Track-Selector
-    // (Follow-Toggle + MIDI-Tracks). Auswahl: Ziel-Track Monitor „In" +
-    // Grid-MIDI-Out als Input, andere All-Ins-MIDI-Tracks „Off", Lives
-    // Selektion aufs Master-MIDI-Device — /live/song/set/midi_input_focus;
-    // Follow Selection hält das Script-seitig im Hintergrund synchron.
+    // Block H v2 rev5: Long-Press auf dem Grid-Page-Button → Track-Selector.
+    // Auswahl: Ziel-Track Monitor „In" + Grid-MPE-Port als Input, alle
+    // anderen All-Ins-MIDI-Tracks wandern STATISCH aufs Master-MIDI-Device
+    // (Monitor bleibt) — Lives Arm-/Selektions-Mechanik übernimmt den Rest.
     transportBar.onGridPageHold = [this]
     {
-        auto& panelSettings = engine.getGridPanelSettings();
-        auto panel = std::make_unique<TrackSelectorPanel> (
-            engine.getLiveSetModel(), panelSettings.isMidiFollowSelection());
+        auto panel = std::make_unique<TrackSelectorPanel> (engine.getLiveSetModel());
 
         panel->onTrackChosen = [this] (const juce::String& trackKey)
         {
@@ -162,14 +159,7 @@ EngineEditor::EngineEditor (EngineProcessor& engineProcessor,
             engine.getTouchLiveClient().sendCommand (
                 TrackSelectorPanel::makeMidiInputFocusCommand (
                     trackKey, gridInput,
-                    settings.getMasterMidiInputName(),
-                    settings.isMidiFollowSelection()));
-        };
-        panel->onFollowChanged = [this] (bool shouldFollow)
-        {
-            engine.getGridPanelSettings().setMidiFollowSelection (shouldFollow);
-            engine.getTouchLiveClient().sendCommand (
-                TrackSelectorPanel::makeFollowCommand (shouldFollow));
+                    settings.getMasterMidiInputName()));
         };
 
         juce::CallOutBox::launchAsynchronously (

@@ -22,6 +22,7 @@ namespace
             addAndMakeVisible (gridHeading);
             addAndMakeVisible (thresholdField);
             addAndMakeVisible (fadeField);
+            addAndMakeVisible (tabMinWidthField);
 
             gridHeading.setColour (juce::Label::textColourId, push::colours::textDim);
             gridHeading.setFont (push::scaledFont (12.0f, true));
@@ -33,6 +34,13 @@ namespace
             fadeField.setValue (gridPanelSettings.getNoteCircleFadeMs(), juce::dontSendNotification);
             fadeField.onValueChanged = [this] (double v)
             { gridPanelSettings.setNoteCircleFadeMs ((int) v); };
+
+            // Block H3 Runde 3: Mindestbreite der Track-Tabs (der Strip
+            // pollt den Wert live und wird ggf. horizontal scrollbar).
+            tabMinWidthField.setValue (gridPanelSettings.getTrackTabMinWidthPx(),
+                                       juce::dontSendNotification);
+            tabMinWidthField.onValueChanged = [this] (double v)
+            { gridPanelSettings.setTrackTabMinWidthPx ((int) v); };
         }
 
         void resized() override
@@ -43,11 +51,12 @@ namespace
             gridHeading.setBounds (area.removeFromTop (24).reduced (8, 0));
             thresholdField.setBounds (area.removeFromTop (NumberFieldBracket::kRowHeight).reduced (8, 0));
             fadeField.setBounds (area.removeFromTop (NumberFieldBracket::kRowHeight).reduced (8, 0));
+            tabMinWidthField.setBounds (area.removeFromTop (NumberFieldBracket::kRowHeight).reduced (8, 0));
         }
 
         [[nodiscard]] static int preferredHeight() noexcept
         {
-            return UiSettingsComponent::preferredHeight() + 24 + NumberFieldBracket::kRowHeight * 2;
+            return UiSettingsComponent::preferredHeight() + 24 + NumberFieldBracket::kRowHeight * 3;
         }
 
     private:
@@ -60,6 +69,9 @@ namespace
         NumberFieldBracket fadeField { NumberFieldBracket::Config {
             (double) GridPanelSettings::minNoteCircleFadeMs, (double) GridPanelSettings::maxNoteCircleFadeMs,
             (double) GridPanelSettings::defaultNoteCircleFadeMs, 1.0, 0, 1.0, "Fade" } };
+        NumberFieldBracket tabMinWidthField { NumberFieldBracket::Config {
+            (double) GridPanelSettings::minTrackTabMinWidthPx, (double) GridPanelSettings::maxTrackTabMinWidthPx,
+            (double) GridPanelSettings::defaultTrackTabMinWidthPx, 1.0, 0, 1.0, "TabW" } };
 
         JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (DevPanelContent)
     };

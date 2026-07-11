@@ -18,6 +18,9 @@ namespace
     constexpr const char* masterMidiInputNameKey  = "masterMidiInputName";
     constexpr const char* gridMidiInputNameKey    = "gridMidiInputName";
     constexpr const char* masterMidiFavouritesKey = "masterMidiFavourites";
+    constexpr const char* trackTabsBottomKey      = "trackTabsBottom";
+    constexpr const char* trackTabsFontPxKey      = "trackTabsFontPx";
+    constexpr const char* trackTabMinWidthPxKey   = "trackTabMinWidthPx";
 
     // Achsen-Farben (Grid-Page v2) — Index = GridPanelSettings::axisIndex
     // (Pressure 0, Slide 1, PitchBend 2).
@@ -85,6 +88,12 @@ void GridPanelSettings::loadFromFile()
         masterMidiFavourites.addTokens (file->getValue (masterMidiFavouritesKey, {}),
                                         ";", {});
         masterMidiFavourites.removeEmptyStrings();
+
+        trackTabsBottom = file->getBoolValue (trackTabsBottomKey, false);
+        trackTabsFontPx = juce::jlimit (minTrackTabsFontPx, maxTrackTabsFontPx,
+            file->getIntValue (trackTabsFontPxKey, defaultTrackTabsFontPx));
+        trackTabMinWidthPx = juce::jlimit (minTrackTabMinWidthPx, maxTrackTabMinWidthPx,
+            file->getIntValue (trackTabMinWidthPxKey, defaultTrackTabMinWidthPx));
 
         for (size_t i = 0; i < axisColours.size(); ++i)
         {
@@ -255,6 +264,52 @@ void GridPanelSettings::setMasterMidiFavourites (const juce::StringArray& newFav
     {
         file->setValue (masterMidiFavouritesKey,
                         masterMidiFavourites.joinIntoString (";"));
+        file->saveIfNeeded();
+    }
+}
+
+void GridPanelSettings::setTrackTabsBottom (bool shouldBeBottom)
+{
+    if (shouldBeBottom == trackTabsBottom)
+        return;
+
+    trackTabsBottom = shouldBeBottom;
+
+    if (auto* file = applicationProperties.getUserSettings())
+    {
+        file->setValue (trackTabsBottomKey, trackTabsBottom);
+        file->saveIfNeeded();
+    }
+}
+
+void GridPanelSettings::setTrackTabsFontPx (int newFontPx)
+{
+    const auto clamped = juce::jlimit (minTrackTabsFontPx, maxTrackTabsFontPx, newFontPx);
+
+    if (clamped == trackTabsFontPx)
+        return;
+
+    trackTabsFontPx = clamped;
+
+    if (auto* file = applicationProperties.getUserSettings())
+    {
+        file->setValue (trackTabsFontPxKey, trackTabsFontPx);
+        file->saveIfNeeded();
+    }
+}
+
+void GridPanelSettings::setTrackTabMinWidthPx (int newWidthPx)
+{
+    const auto clamped = juce::jlimit (minTrackTabMinWidthPx, maxTrackTabMinWidthPx, newWidthPx);
+
+    if (clamped == trackTabMinWidthPx)
+        return;
+
+    trackTabMinWidthPx = clamped;
+
+    if (auto* file = applicationProperties.getUserSettings())
+    {
+        file->setValue (trackTabMinWidthPxKey, trackTabMinWidthPx);
         file->saveIfNeeded();
     }
 }

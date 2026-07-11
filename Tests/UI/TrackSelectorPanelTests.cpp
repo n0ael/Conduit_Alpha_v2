@@ -16,6 +16,31 @@ namespace
     return result;
 }
 
+/** Temp-Optionen für GridPanelSettings (Muster ConduitColorPickerTests). */
+struct TempSettingsFolder
+{
+    TempSettingsFolder()
+        : folder (juce::File::getSpecialLocation (juce::File::tempDirectory)
+                      .getChildFile ("ConduitTrackTabsTests")
+                      .getChildFile (juce::Uuid().toString()))
+    {
+        folder.createDirectory();
+    }
+
+    ~TempSettingsFolder() { folder.deleteRecursively(); }
+
+    [[nodiscard]] juce::PropertiesFile::Options options() const
+    {
+        juce::PropertiesFile::Options o;
+        o.applicationName = "ConduitTrackTabsTests";
+        o.filenameSuffix  = ".settings";
+        o.folderName      = folder.getFullPathName();
+        return o;
+    }
+
+    juce::File folder;
+};
+
 } // namespace
 
 //==============================================================================
@@ -156,23 +181,46 @@ TEST_CASE ("HoldIconTile: Loslassen ausserhalb ist kein Tap, Bewegung erlaubt Ta
 //==============================================================================
 // Block H3: TrackTabsStrip + MasterDeviceSwitch + Favoriten
 
-TEST_CASE ("TrackTabsStrip: Tabs aus der tracks-Domain, Tap trifft den Index", "[grid][tracktabs]")
+TEST_CASE ("TrackTabsStrip: Halten waehlt, schneller Tap nicht, Ziehen scrollt", "[grid][tracktabs]")
 {
     juce::ScopedJuceInitialiser_GUI juceRuntime;
     conduit::LiveSetModel model;
+    TempSettingsFolder temp;
+    conduit::GridPanelSettings settings (temp.options());
 
     model.applySnapshot ("tracks",
         parse (R"({"tr:1":{"name":"Bass","color":255,"kind":"midi","index":0},)"
                R"("tr:2":{"name":"Keys","color":65280,"kind":"midi","index":1},)"
                R"("tr:3":{"name":"Audio","color":0,"kind":"audio","index":2}})"));
 
-    conduit::TrackTabsStrip tabs (model);
+    conduit::TrackTabsStrip tabs (model, settings);
     tabs.setSize (400, 28);
 
     REQUIRE (tabs.tabCount() == 2);
     REQUIRE (tabs.tabIndexAt (10) == 0);
     REQUIRE (tabs.tabIndexAt (210) == 1);   // Tab-Breite 200 (400/2 < max 220)
-    REQUIRE (tabs.tabIndexAt (399) == 1);
+
+    juce::StringArray chosen;
+    tabs.onTrackChosen = [&] (const juce::String& key) { chosen.add (key); };
+
+    // Schneller Tap: Loslassen VOR dem Timeout -> KEIN Wechsel (Runde 3)
+    tabs.beginPress (10);
+    tabs.endPress();
+    REQUIRE (chosen.isEmpty());
+
+    // Halten bis zum Timeout -> Wechsel
+    tabs.beginPress (210);
+    tabs.fireSelectTimeout();
+    REQUIRE (chosen.strings.getLast() == "tr:2");
+    tabs.endPress();
+
+    // Ziehen ueber die Toleranz bricht die Auswahl ab (Timeout wirkungslos)
+    chosen.clear();
+    tabs.beginPress (10);
+    tabs.movePress (conduit::TrackTabsStrip::kScrollTolerancePx + 4);
+    tabs.fireSelectTimeout();
+    REQUIRE (chosen.isEmpty());
+    tabs.endPress();
 
     // refresh nach Domain-Update nimmt neue Tracks auf
     model.applySnapshot ("tracks",
@@ -181,6 +229,38 @@ TEST_CASE ("TrackTabsStrip: Tabs aus der tracks-Domain, Tap trifft den Index", "
                R"("tr:4":{"name":"Pad","color":123,"kind":"midi","index":2}})"));
     tabs.refresh();
     REQUIRE (tabs.tabCount() == 3);
+}
+
+TEST_CASE ("TrackTabsStrip: Mindestbreite macht den Strip scrollbar", "[grid][tracktabs]")
+{
+    juce::ScopedJuceInitialiser_GUI juceRuntime;
+    conduit::LiveSetModel model;
+    TempSettingsFolder temp;
+    conduit::GridPanelSettings settings (temp.options());
+
+    // 4 MIDI-Tracks auf 200 px Breite mit 90 px Mindestbreite -> Inhalt
+    // 360 px, Strip scrollt.
+    model.applySnapshot ("tracks",
+        parse (R"({"tr:1":{"name":"A","color":1,"kind":"midi","index":0},)"
+               R"("tr:2":{"name":"B","color":2,"kind":"midi","index":1},)"
+               R"("tr:3":{"name":"C","color":3,"kind":"midi","index":2},)"
+               R"("tr:4":{"name":"D","color":4,"kind":"midi","index":3}})"));
+
+    conduit::TrackTabsStrip tabs (model, settings);
+    tabs.setMinTabWidth (90);
+    tabs.setSize (200, 28);
+
+    REQUIRE (tabs.tabIndexAt (10) == 0);
+
+    tabs.beginPress (100);
+    tabs.movePress (-120);   // nach links ziehen = Inhalt nach rechts scrollen
+    REQUIRE (tabs.scrollOffset() == 120);
+    tabs.movePress (-999);   // weit ueber das Ende -> geklemmt (360-200)
+    REQUIRE (tabs.scrollOffset() == 160);
+    tabs.endPress();
+
+    // Index-Treffer beruecksichtigt den Scroll-Offset (x=10 -> 170 -> Tab 1)
+    REQUIRE (tabs.tabIndexAt (10) == 1);
 }
 
 TEST_CASE ("MasterDeviceSwitch: Tap zykelt, Drag scrollt, Commit meldet", "[grid][masterswitch]")

@@ -132,6 +132,30 @@ public:
     [[nodiscard]] juce::StringArray getMasterMidiFavourites() const { return masterMidiFavourites; }
     void setMasterMidiFavourites (const juce::StringArray& newFavourites);
 
+    //==========================================================================
+    // Block H3 Runde 3 (User-Feedback): Track-Tabs-Darstellung.
+
+    static constexpr int defaultTrackTabsFontPx = 12;
+    static constexpr int minTrackTabsFontPx     = 9;
+    static constexpr int maxTrackTabsFontPx     = 18;
+
+    static constexpr int defaultTrackTabMinWidthPx = 90;
+    static constexpr int minTrackTabMinWidthPx     = 40;
+    static constexpr int maxTrackTabMinWidthPx     = 280;
+
+    /** Track-Tabs unterhalb der Grid statt oben (Settings-Tab). */
+    [[nodiscard]] bool isTrackTabsBottom() const noexcept { return trackTabsBottom; }
+    void setTrackTabsBottom (bool shouldBeBottom);
+
+    /** Schriftgröße der Track-Tabs (kleine Displays, Settings-Tab). */
+    [[nodiscard]] int getTrackTabsFontPx() const noexcept { return trackTabsFontPx; }
+    void setTrackTabsFontPx (int newFontPx);
+
+    /** Mindestbreite eines Track-Tabs (Dev-Panel) — bei großen Projekten
+        wird der Strip damit horizontal scrollbar statt unlesbar schmal. */
+    [[nodiscard]] int getTrackTabMinWidthPx() const noexcept { return trackTabMinWidthPx; }
+    void setTrackTabMinWidthPx (int newWidthPx);
+
 private:
     void loadFromFile();
 
@@ -153,6 +177,10 @@ private:
     juce::String masterMidiInputName;
     juce::String gridMidiInputName;
     juce::StringArray masterMidiFavourites;
+
+    bool trackTabsBottom = false;
+    int  trackTabsFontPx = defaultTrackTabsFontPx;
+    int  trackTabMinWidthPx = defaultTrackTabMinWidthPx;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (GridPanelSettings)
 };

@@ -310,7 +310,19 @@
     Tracks vom ALTEN Master zum neuen (fremde Inputs weiter tabu; bewusste
     Grenze: ein selbst als Master benutzter Port gehört ab dann zum
     verwalteten System). Layout: Arm unten LINKS (unter Pitch), Release
-    All unten RECHTS, beide in Pad-Höhe (User-Feedback).
+    All unten RECHTS, beide in Pad-Höhe (User-Feedback). **Runde 2/3
+    (User-Feedback):** Tabs im Push-Stil (Nummer + Name in Jost in der
+    Track-Farbe, aktiver Track grau unterlegt — KEINE Farbrahmen mehr,
+    weder Tab noch Pad-Fläche); Master-Switch in der Pitch-Spalte über
+    Oct+ (Vollzellen-Abstände wie die Oktav-Buttons); die
+    Favoriten-Liste reist als 4. Command-Argument mit („;"-Liste —
+    Tracks auf JEDEM Favoriten-Port sind verwaltet, sonst hingen sie
+    nach Live-Neustart auf einem „fremden" Alt-Master). Tab-Wechsel
+    braucht HALTEN (kSelectHoldMs 300 — Schutz vor versehentlichen
+    Wechseln), horizontales Ziehen SCROLLT (Mindest-Tab-Breite
+    `trackTabMinWidthPx` im Dev-Panel, Strip pollt per VBlank);
+    Tabs-Position oben/unten (`trackTabsBottom`) + Schriftgröße
+    (`trackTabsFontPx`) in der Settings-Sektion „Track Select".
     Grid-MPE-Port als EIGENES Setting (`gridMidiInputName`, Dropdown
     „Grid MPE Port (independent from selection)" neben „MIDI Master
     (follows selection)" in der Sektion „Ableton -

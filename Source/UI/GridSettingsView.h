@@ -88,6 +88,10 @@ public:
     /** Modwheel-Fader an/aus (bereits in GridPanelSettings persistiert). */
     std::function<void (bool)> onModwheelToggled;
 
+    /** Track-Tabs-Position oben/unten geändert (persistiert) — Besitzer
+        relayoutet (Block H3 Runde 3). */
+    std::function<void()> onTrackTabsChanged;
+
 private:
     void valueTreePropertyChanged (juce::ValueTree& tree,
                                    const juce::Identifier& property) override;
@@ -106,7 +110,7 @@ private:
     // Layout- und Zeichen-Code (Muster MpeShapingView::AxisSection).
     juce::Rectangle<int> pitchHeadingBounds, expressionHeadingBounds,
                          layoutHeadingBounds, modwheelHeadingBounds,
-                         abletonHeadingBounds;
+                         abletonHeadingBounds, trackTabsHeadingBounds;
 
     juce::ValueTree rootState;
     grid::MidiDeviceTarget& midiTarget;
@@ -150,6 +154,11 @@ private:
     juce::Label gridInputLabel   { {}, "Grid MPE Port (independent from selection)" };
     push::TextTile masterFavouritesTile { "+" };
     juce::StringArray masterInputOptions;
+
+    // Track Select (Block H3 Runde 3): Position + Schriftgröße der Tabs.
+    push::TextTile trackTabsTopTile    { "Top" };
+    push::TextTile trackTabsBottomTile { "Bottom" };
+    NumberFieldBracket trackTabsFontField;
 
     void showMasterFavouritesMenu();
 

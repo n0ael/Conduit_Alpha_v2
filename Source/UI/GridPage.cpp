@@ -20,7 +20,7 @@ GridPage::GridPage (juce::ValueTree rootStateToUse,
       liveSetModel (liveSetModelToUse), touchLiveClient (touchLiveClientToUse),
       midiControlInput (midiControlInputToUse),
       systemControlRowsAtStartup (panelSettingsToUse.getSystemControlRows()),
-      trackTabs (liveSetModelToUse),
+      trackTabs (liveSetModelToUse, panelSettingsToUse),
       // 8×8-Raster der Grid-Page (padLayoutConfig, User 10.07.2026) — Keyboard
       // und ccLayer teilen sich dieselbe Zellgeometrie.
       keyboard (engineToUse, padLayoutConfig()),
@@ -230,6 +230,7 @@ GridPage::GridPage (juce::ValueTree rootStateToUse,
     settingsView->onLayoutSettingsChanged = [this] { applyRibbonWidth(); };
     settingsView->onModwheelToggled = [this] (bool enabled) { modwheelRibbon.setVisible (enabled); resized(); };
     settingsView->onMasterFavouritesChanged = [this] { refreshMasterSwitch(); };
+    settingsView->onTrackTabsChanged = [this] { resized(); };
     dockPanel.addTab ("settings", "Settings", std::move (settingsView));
 
     dockPanel.setPanelWidth (panelSettings.getEditorPanelWidth());
@@ -563,9 +564,11 @@ void GridPage::resized()
     dockPanel.setBounds (bounds.removeFromRight (dockPanel.getPreferredWidth()));
 
     // Block H3: Track-Tabs über die volle Breite (alle MIDI-Tracks,
-    // Push-Optik, Tap = Fokus-Wechsel).
-    auto topStrip = bounds.removeFromTop (28);
-    trackTabs.setBounds (topStrip.reduced (2, 0));
+    // Push-Optik, Halten = Fokus-Wechsel, Ziehen = Scrollen) — Position
+    // oben oder unterhalb der Grid (Settings-Tab, Runde 3).
+    auto tabsStrip = panelSettings.isTrackTabsBottom() ? bounds.removeFromBottom (28)
+                                                       : bounds.removeFromTop (28);
+    trackTabs.setBounds (tabsStrip.reduced (2, 0));
 
     const auto ribbonWidth = panelSettings.getRibbonWidthPx();   // Block D1, live
 
@@ -577,13 +580,14 @@ void GridPage::resized()
     const auto padHeight = juce::roundToInt ((float) pitchColumn.getHeight()
                                                  / (float) padLayoutConfig().rows);
     // Master-Quick-Switch oben in der Spalte (User-Feedback 11.07.2026:
-    // „runter" -- der Pitch-Fader darf dafür kürzer werden).
-    masterSwitch.setBounds (pitchColumn.removeFromTop (padHeight).reduced (2));
+    // „runter" -- der Pitch-Fader darf dafür kürzer werden). Abstände wie
+    // die Oktav-Buttons: Vollzellen ohne extra Inset (Runde 3).
+    masterSwitch.setBounds (pitchColumn.removeFromTop (padHeight));
     octaveUpTile.setBounds (pitchColumn.removeFromTop (padHeight));
     octaveDownTile.setBounds (pitchColumn.removeFromTop (padHeight));
     // Block H3 (User-Feedback): Arm unten LINKS (unter Pitch), Release All
     // wandert nach unten rechts -- beide in Pad-Höhe.
-    armButton.setBounds (pitchColumn.removeFromBottom (padHeight).reduced (2));
+    armButton.setBounds (pitchColumn.removeFromBottom (padHeight));
     pitchOffsetRibbon.setBounds (pitchColumn);
 
     // Modwheel (Block D1): eigene Spalte direkt neben Pitch, Breite nur
@@ -594,7 +598,7 @@ void GridPage::resized()
     // Release All (Block H3): unten rechts in Pad-Höhe -- darüber
     // Pressure/Slide je zur Hälfte.
     auto rightColumn = bounds.removeFromRight (ribbonWidth);
-    releaseAllButton.setBounds (rightColumn.removeFromBottom (padHeight).reduced (2));
+    releaseAllButton.setBounds (rightColumn.removeFromBottom (padHeight));
     atOffsetRibbon.setBounds    (rightColumn.removeFromTop (rightColumn.getHeight() / 2));
     slideOffsetRibbon.setBounds (rightColumn);
 

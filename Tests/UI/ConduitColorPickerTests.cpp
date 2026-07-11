@@ -255,6 +255,13 @@ TEST_CASE ("GridPanelSettings: Track-Fokus-Routing-Werte Default + Roundtrip", "
         settings.setMasterMidiInputName ("FromPush");
         settings.setGridMidiInputName ("Conduit Grid MPE");
         settings.setMasterMidiFavourites ({ "FromPush", "K1 (Port 1)" });
+
+        // Block H3 Runde 3: Track-Tabs-Darstellung
+        REQUIRE_FALSE (settings.isTrackTabsBottom());
+        REQUIRE (settings.getTrackTabsFontPx() == conduit::GridPanelSettings::defaultTrackTabsFontPx);
+        settings.setTrackTabsBottom (true);
+        settings.setTrackTabsFontPx (999);   // geklemmt auf max
+        settings.setTrackTabMinWidthPx (120);
     }
 
     conduit::GridPanelSettings reloaded (temp.options());
@@ -262,4 +269,7 @@ TEST_CASE ("GridPanelSettings: Track-Fokus-Routing-Werte Default + Roundtrip", "
     REQUIRE (reloaded.getGridMidiInputName() == "Conduit Grid MPE");
     REQUIRE (reloaded.getMasterMidiFavourites().size() == 2);
     REQUIRE (reloaded.getMasterMidiFavourites()[1] == "K1 (Port 1)");
+    REQUIRE (reloaded.isTrackTabsBottom());
+    REQUIRE (reloaded.getTrackTabsFontPx() == conduit::GridPanelSettings::maxTrackTabsFontPx);
+    REQUIRE (reloaded.getTrackTabMinWidthPx() == 120);
 }

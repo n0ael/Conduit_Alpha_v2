@@ -34,7 +34,10 @@ GridSettingsView::GridSettingsView (juce::ValueTree rootStateToUse, grid::MidiDe
           (double) panelSettingsToUse.getSystemControlRows(), 1.0, 0, 0.05, "Rows" } },
       ribbonWidthField { NumberFieldBracket::Config {
           (double) GridPanelSettings::minRibbonWidthPx, (double) GridPanelSettings::maxRibbonWidthPx,
-          (double) panelSettingsToUse.getRibbonWidthPx(), 1.0, 0, 1.0, "Width" } }
+          (double) panelSettingsToUse.getRibbonWidthPx(), 1.0, 0, 1.0, "Width" } },
+      trackTabsFontField { NumberFieldBracket::Config {
+          (double) GridPanelSettings::minTrackTabsFontPx, (double) GridPanelSettings::maxTrackTabsFontPx,
+          (double) panelSettingsToUse.getTrackTabsFontPx(), 1.0, 0, 0.1, "Font" } }
 {
     addAndMakeVisible (outputCombo);
     addAndMakeVisible (inputCombo);
@@ -55,6 +58,9 @@ GridSettingsView::GridSettingsView (juce::ValueTree rootStateToUse, grid::MidiDe
     addAndMakeVisible (masterInputLabel);
     addAndMakeVisible (gridInputLabel);
     addAndMakeVisible (masterFavouritesTile);
+    addAndMakeVisible (trackTabsTopTile);
+    addAndMakeVisible (trackTabsBottomTile);
+    addAndMakeVisible (trackTabsFontField);
 
     for (auto* label : { &masterInputLabel, &gridInputLabel })
     {
@@ -165,6 +171,32 @@ GridSettingsView::GridSettingsView (juce::ValueTree rootStateToUse, grid::MidiDe
     // Optionsliste, Haekchen = Favorit, Klick toggelt.
     masterFavouritesTile.setTooltip ("Master-Favoriten (Quick-Switch auf der Grid-Page)");
     masterFavouritesTile.onClick = [this] { showMasterFavouritesMenu(); };
+
+    // Track Select (Block H3 Runde 3): Tabs-Position (exklusives Paar,
+    // Muster In-Tune-Location) + Schriftgröße (Live-Poll im Strip).
+    const auto setTabsPositionTiles = [this] (bool bottom)
+    {
+        trackTabsTopTile.setActive (! bottom);
+        trackTabsBottomTile.setActive (bottom);
+    };
+    setTabsPositionTiles (panelSettings.isTrackTabsBottom());
+
+    trackTabsTopTile.onClick = [this, setTabsPositionTiles]
+    {
+        setTabsPositionTiles (false);
+        panelSettings.setTrackTabsBottom (false);
+        if (onTrackTabsChanged != nullptr)
+            onTrackTabsChanged();
+    };
+    trackTabsBottomTile.onClick = [this, setTabsPositionTiles]
+    {
+        setTabsPositionTiles (true);
+        panelSettings.setTrackTabsBottom (true);
+        if (onTrackTabsChanged != nullptr)
+            onTrackTabsChanged();
+    };
+    trackTabsFontField.onValueChanged = [this] (double v)
+    { panelSettings.setTrackTabsFontPx ((int) v); };
 
     modwheelToggle.setActive (panelSettings.isModwheelEnabled());
     modwheelToggle.onClick = [this]
@@ -345,6 +377,7 @@ void GridSettingsView::paint (juce::Graphics& g)
         { layoutHeadingBounds,     "Layout" },
         { modwheelHeadingBounds,   "Modwheel" },
         { abletonHeadingBounds,    "Ableton - Free From Selection" },
+        { trackTabsHeadingBounds,  "Track Select" },
     };
 
     for (const auto& [bounds, text] : headings)
@@ -414,6 +447,17 @@ void GridSettingsView::resized()
     area.removeFromTop (kRowGap);
     gridInputLabel.setBounds (area.removeFromTop (16));
     gridInputCombo.setBounds (area.removeFromTop (kRowHeight));
+    area.removeFromTop (kSectionGap);
+
+    // Track Select (Block H3 Runde 3): Position Top/Bottom + Schriftgröße.
+    trackTabsHeadingBounds = area.removeFromTop (kHeadingHeight);
+    auto tabsPositionRow = area.removeFromTop (kRowHeight);
+    const auto positionTileWidth = (tabsPositionRow.getWidth() - kTileGap) / 2;
+    trackTabsTopTile.setBounds (tabsPositionRow.removeFromLeft (positionTileWidth));
+    tabsPositionRow.removeFromLeft (kTileGap);
+    trackTabsBottomTile.setBounds (tabsPositionRow);
+    area.removeFromTop (kRowGap);
+    trackTabsFontField.setBounds (area.removeFromTop (kRowHeight));
 }
 
 } // namespace conduit

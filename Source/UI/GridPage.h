@@ -14,6 +14,7 @@
 #include "Core/MidiControlInput.h"
 #include "Core/MidiDeviceTarget.h"
 #include "Core/MidiInBindings.h"
+#include "Core/MidiNoteInput.h"
 #include "Core/MpeMidiSink.h"
 #include "EditorDockPanel.h"
 #include "ExpressionRibbon.h"
@@ -107,7 +108,8 @@ public:
               grid::GridVoiceEngine& engineToUse, grid::MidiDeviceTarget& midiTargetToUse,
               GridPanelSettings& panelSettingsToUse, grid::MpeMidiSink& mpeMidiSinkToUse,
               LiveSetModel& liveSetModelToUse, TouchLiveClient& touchLiveClientToUse,
-              grid::MidiControlInput& midiControlInputToUse);
+              grid::MidiControlInput& midiControlInputToUse,
+              grid::MidiNoteInput& noteEchoInputToUse);
     ~GridPage() override;
 
     void resized() override;
@@ -228,6 +230,10 @@ private:
     // (midiControlInput, Referenz).
     grid::MidiControlInput& midiControlInput;
     grid::MidiInBindings midiInBindings;
+
+    // Noten-Echo (Block H4): Lives Wiedergabe-Rueckweg -> Pad-Glow in der
+    // Fokus-Track-Farbe (EngineProcessor besitzt den Eingang).
+    grid::MidiNoteInput& noteEchoInput;
 
     /** Wertfluss Control → Macro-Ziele (beide Layer, Block E). */
     void feedMacros (int layer, const grid::CcControl& control);

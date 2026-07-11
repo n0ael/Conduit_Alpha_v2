@@ -282,6 +282,7 @@ set(CONDUIT_CPP_SOURCES
     Source/UI/PushLookAndFeel.cpp
     Source/UI/PushTiles.cpp
     Source/UI/ScopeDisplay.cpp
+    Source/Core/MidiNoteInput.cpp
     Source/UI/MasterDeviceSwitch.cpp
     Source/UI/TapMenuPanel.cpp
     Source/UI/TrackFocusBadge.cpp
@@ -854,6 +855,7 @@ if(CONDUIT_BUILD_TESTS)
         Source/UI/PushLookAndFeel.cpp
         Source/UI/PushTiles.cpp
         Source/UI/ScopeDisplay.cpp
+        Source/Core/MidiNoteInput.cpp
         Source/UI/MasterDeviceSwitch.cpp
         Source/UI/TapMenuPanel.cpp
         Source/UI/TrackFocusBadge.cpp

@@ -1,5 +1,6 @@
 #pragma once
 
+#include <array>
 #include <map>
 #include <vector>
 
@@ -119,6 +120,20 @@ public:
 
     static constexpr int kMaxOctaveShift = 3;
 
+    //==========================================================================
+    // Noten-Echo (Block H4, User-Wunsch 11.07.2026): extern gespielte Noten
+    // (Lives Wiedergabe über den „Conduit DAW"-Rückweg) leuchten in der
+    // Fokus-Track-Farbe auf ALLEN isomorphen Pad-Positionen der Note —
+    // OHNE Sonne/Mond (reines Feedback, keine Interaktion). Message Thread.
+
+    void setEchoColour (juce::Colour newColour) noexcept;
+    void echoNoteOn (int midiNote, float velocity01) noexcept;
+    void echoNoteOff (int midiNote) noexcept;
+    void clearEchoNotes() noexcept;
+
+    /** Echo-Stärke einer Note [0,1] (0 = aus) — testbarer Zustand. */
+    [[nodiscard]] float echoLevel (int midiNote) const noexcept;
+
 private:
     struct FingerState
     {
@@ -169,6 +184,10 @@ private:
 
     std::map<int, FingerState> fingers;
     std::vector<LatchedSun> latched;   // Akkord-Speicher-Abruf (leer = keiner)
+
+    // Noten-Echo (Block H4): Stärke pro MIDI-Note (0 = aus), Farbe = Fokus-Track.
+    std::array<float, 128> echoVelocity {};
+    juce::Colour echoColour { 0xffaaaaaa };
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (GridKeyboardComponent)
 };

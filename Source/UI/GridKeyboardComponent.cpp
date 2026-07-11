@@ -368,7 +368,16 @@ void GridKeyboardComponent::paint (juce::Graphics& g)
                 glow = juce::jmax (glow, juce::jlimit (0.0f, 1.0f, 1.0f - distance / fadeDistance));
             }
 
-            g.setColour (baseColour.interpolatedWith (push::colours::padGlow, glow));
+            // Noten-Echo (Block H4): extern gespielte Noten färben das Pad
+            // in der Fokus-Track-Farbe (Stärke nach Velocity) — auf ALLEN
+            // isomorphen Positionen der Note, unabhängig vom Finger-Glow.
+            auto colour = baseColour;
+            const auto padNote = layout.noteForPad (padIndex);
+            if (padNote >= 0 && padNote < 128 && echoVelocity[(size_t) padNote] > 0.0f)
+                colour = colour.interpolatedWith (
+                    echoColour, 0.35f + 0.45f * echoVelocity[(size_t) padNote]);
+
+            g.setColour (colour.interpolatedWith (push::colours::padGlow, glow));
             g.fillRoundedRectangle (padBounds, 4.0f);
         }
     }
@@ -424,6 +433,47 @@ void GridKeyboardComponent::paint (juce::Graphics& g)
             fillSoftCircle (sun.centre + sun.orbitOffset, moonDiameter, 2.0f);
         }
     }
+}
+
+//==============================================================================
+// Noten-Echo (Block H4)
+
+void GridKeyboardComponent::setEchoColour (juce::Colour newColour) noexcept
+{
+    if (newColour == echoColour)
+        return;
+
+    echoColour = newColour;
+    repaint();
+}
+
+void GridKeyboardComponent::echoNoteOn (int midiNote, float velocity01) noexcept
+{
+    if (midiNote < 0 || midiNote >= 128)
+        return;
+
+    echoVelocity[(size_t) midiNote] = juce::jlimit (0.0f, 1.0f, velocity01);
+    repaint();
+}
+
+void GridKeyboardComponent::echoNoteOff (int midiNote) noexcept
+{
+    if (midiNote < 0 || midiNote >= 128)
+        return;
+
+    echoVelocity[(size_t) midiNote] = 0.0f;
+    repaint();
+}
+
+void GridKeyboardComponent::clearEchoNotes() noexcept
+{
+    echoVelocity.fill (0.0f);
+    repaint();
+}
+
+float GridKeyboardComponent::echoLevel (int midiNote) const noexcept
+{
+    return midiNote >= 0 && midiNote < 128 ? echoVelocity[(size_t) midiNote] : 0.0f;
 }
 
 } // namespace conduit

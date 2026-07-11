@@ -330,6 +330,18 @@
     Conduit-MIDI-Out-Portnamen — die Namen können abweichen).
     Folgeschritt (User): MPE-MIDI-In-Noten-Echo (Pad-Glow in
     Track-Farbe, ohne Sonne/Mond).
+  - **Noten-Echo (Block H4, User-Wunsch 11.07.2026):** extern gespielte
+    Noten (Lives Wiedergabe der Aufnahme) leuchten auf den Pads in der
+    Fokus-Track-Farbe — OHNE Sonne/Mond, auf ALLEN isomorphen Positionen
+    der Note. `grid::MidiNoteInput` (Core, Muster MidiControlInput:
+    MIDI-Callback [System-Thread] → SpscQueue → 60-Hz-Timer →
+    onNoteOn(note, velocity01)/onNoteOff); Port-Wahl über die dritte
+    Combo „Kein Noten-Echo" im Settings-Slide-Out (z. B. „Conduit DAW").
+    Anzeige: `GridKeyboardComponent::echoNoteOn/Off/clearEchoNotes` +
+    `setEchoColour` (folgt dem Fokus-Track, refreshTrackFocus) — Pad-Farbe
+    wird mit 0.35 + 0.45·velocity zur Echo-Farbe interpoliert, der
+    Finger-Glow bleibt unabhängig. Live-seitiges Routing ist Setup-Sache:
+    ein Monitor-Track (MIDI From: Ziel-Track → MIDI To: Conduit DAW).
   - **Sinks/Stränge später:** OSC (Remote + Transcoder) und CV (Software-CVC)
     docken am selben Voice-Modell an; Gesten-State-Machine (Drone/Latch/
     Pinch/Drift), Chord-Squares, Hardware-MPE-Input, MPE-Shaping (Kurven +

@@ -16,6 +16,7 @@
 #include "Metronome.h"
 #include "GridVoiceEngine.h"
 #include "MidiDeviceTarget.h"
+#include "MidiNoteInput.h"
 #include "TouchLive/LiveSetModel.h"
 #include "TouchLive/LiveSpectrumTap.h"
 #include "TouchLive/TouchLiveClient.h"
@@ -265,6 +266,9 @@ public:
     [[nodiscard]] grid::MpeMidiSink& getMpeMidiSink() noexcept { return mpeMidiSink; }
     /** Block G: MIDI-Eingang fuer die Control-Steuerung (Soft-Takeover). */
     [[nodiscard]] grid::MidiControlInput& getGridMidiControlInput() noexcept { return gridMidiControlInput; }
+    /** Block H4: MIDI-Noten-Eingang fuers Pad-Echo (Lives Wiedergabe-
+        Rueckweg, z. B. "Conduit DAW"). */
+    [[nodiscard]] grid::MidiNoteInput& getGridNoteEchoInput() noexcept { return gridNoteEchoInput; }
 
     /** Chrome-Zustand des rechten Editor-Dock-Panels der Grid-Page (S2,
         App-Zustand) — der Processor lauscht nicht darauf, GridPage lädt/
@@ -486,6 +490,7 @@ private:
     grid::MpeMidiSink      mpeMidiSink      { midiDeviceTarget };
     grid::GridVoiceEngine  gridVoiceEngine  { mpeMidiSink };
     grid::MidiControlInput gridMidiControlInput;   // Block G: MIDI-EINGANG fuer Controls
+    grid::MidiNoteInput    gridNoteEchoInput;      // Block H4: Noten-Echo (Pad-Feedback)
 
     // TouchLive-Remote (docs/TouchLive.md): Message-Thread-only, vom
     // Audio-Graph unabhängig. Settings + Modell + MeterBus VOR dem Client

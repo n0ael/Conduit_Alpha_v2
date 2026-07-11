@@ -13,12 +13,14 @@ GridPage::GridPage (juce::ValueTree rootStateToUse,
                      grid::GridVoiceEngine& engineToUse, grid::MidiDeviceTarget& midiTargetToUse,
                      GridPanelSettings& panelSettingsToUse, grid::MpeMidiSink& mpeMidiSinkToUse,
                      LiveSetModel& liveSetModelToUse, TouchLiveClient& touchLiveClientToUse,
-                     grid::MidiControlInput& midiControlInputToUse)
+                     grid::MidiControlInput& midiControlInputToUse,
+                     grid::MidiNoteInput& noteEchoInputToUse)
     : rootState (std::move (rootStateToUse)),
       engine (engineToUse), midiTarget (midiTargetToUse), panelSettings (panelSettingsToUse),
       mpeMidiSink (mpeMidiSinkToUse),
       liveSetModel (liveSetModelToUse), touchLiveClient (touchLiveClientToUse),
       midiControlInput (midiControlInputToUse),
+      noteEchoInput (noteEchoInputToUse),
       systemControlRowsAtStartup (panelSettingsToUse.getSystemControlRows()),
       trackTabs (liveSetModelToUse, panelSettingsToUse),
       // 8×8-Raster der Grid-Page (padLayoutConfig, User 10.07.2026) — Keyboard
@@ -208,6 +210,13 @@ GridPage::GridPage (juce::ValueTree rootStateToUse,
                              { applyExternalValue (key, value01); });
     };
 
+    // Noten-Echo (Block H4): Lives Wiedergabe (Rueckweg "Conduit DAW") laesst
+    // die Pads in der Fokus-Track-Farbe leuchten -- ohne Sonne/Mond.
+    noteEchoInput.onNoteOn = [this] (int midiNote, float velocity01)
+    { keyboard.echoNoteOn (midiNote, velocity01); };
+    noteEchoInput.onNoteOff = [this] (int midiNote)
+    { keyboard.echoNoteOff (midiNote); };
+
     systemLayer.onLongPressControl = [this] (int controlId)
     { openMacroViewFor (grid::MacroControlKey::system, controlId, systemCcModel); };
     ccLayer.onLongPressControl = [this] (int controlId)
@@ -217,7 +226,7 @@ GridPage::GridPage (juce::ValueTree rootStateToUse,
     // (Block B1/B2/B4), Layout-Feinabstimmung (Edit-Grid-Ersatz), Modwheel-
     // Toggle, Performance-Slide-Out (MIDI-Port + Skala, ehemals Top-Row).
     auto settingsView = std::make_unique<GridSettingsView> (
-        rootState, midiTarget, midiControlInput, panelSettings,
+        rootState, midiTarget, midiControlInput, noteEchoInput, panelSettings,
         keyboard.getInTuneLocation(), padLayoutConfig().inTuneWidthPercent,
         mpeMidiSink.expressionMode());
     settingsPanel = settingsView.get();   // Master-Input-Optionen (Block H v2)
@@ -357,6 +366,10 @@ void GridPage::refreshTrackFocus()
 {
     const auto focus = TrackFocusBadge::focusRowFrom (liveSetModel);
     trackTabs.refresh();
+
+    // Echo-Farbe folgt dem Fokus-Track (Block H4); ohne Fokus neutral.
+    if (focus.key.isNotEmpty())
+        keyboard.setEchoColour (focus.colour);
 
     armButton.setEnabled (focus.key.isNotEmpty());
     auto mixerItem = liveSetModel.findItem ("mixer", focus.key);

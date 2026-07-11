@@ -476,3 +476,35 @@ TEST_CASE ("GridKeyboardComponent: octaveShift klemmt auf +-kMaxOctaveShift", "[
         keyboard.octaveDown();
     REQUIRE (keyboard.octaveShift() == -conduit::GridKeyboardComponent::kMaxOctaveShift);
 }
+
+//==============================================================================
+// Noten-Echo (Block H4): externe Noten leuchten ohne Sonne/Mond
+
+TEST_CASE ("GridKeyboard: Noten-Echo setzt und loescht Pegel (geclampt)", "[grid][echo]")
+{
+    juce::ScopedJuceInitialiser_GUI juceRuntime;
+    grid::FakeVoiceSink fake;
+    grid::GridVoiceEngine engine (fake);
+    conduit::GridKeyboardComponent keyboard (engine);
+
+    REQUIRE (keyboard.echoLevel (60) == 0.0f);
+
+    keyboard.echoNoteOn (60, 0.8f);
+    REQUIRE (keyboard.echoLevel (60) == Catch::Approx (0.8f));
+
+    keyboard.echoNoteOn (61, 5.0f);   // geclampt auf 1
+    REQUIRE (keyboard.echoLevel (61) == Catch::Approx (1.0f));
+
+    keyboard.echoNoteOff (60);
+    REQUIRE (keyboard.echoLevel (60) == 0.0f);
+    REQUIRE (keyboard.echoLevel (61) == Catch::Approx (1.0f));
+
+    keyboard.clearEchoNotes();
+    REQUIRE (keyboard.echoLevel (61) == 0.0f);
+
+    // Ausser-Bereichs-Noten sind wirkungslos (kein Crash)
+    keyboard.echoNoteOn (-1, 1.0f);
+    keyboard.echoNoteOn (128, 1.0f);
+    REQUIRE (keyboard.echoLevel (-1) == 0.0f);
+    REQUIRE (keyboard.echoLevel (128) == 0.0f);
+}

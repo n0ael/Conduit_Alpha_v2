@@ -21,12 +21,14 @@ namespace
 
 GridSettingsView::GridSettingsView (juce::ValueTree rootStateToUse, grid::MidiDeviceTarget& midiTargetToUse,
                                     grid::MidiControlInput& midiControlInputToUse,
+                                    grid::MidiNoteInput& noteEchoInputToUse,
                                     GridPanelSettings& panelSettingsToUse,
                                     grid::InTuneLocation initialInTuneLocation,
                                     float initialInTuneWidthPercent,
                                     grid::ExpressionMode initialExpressionMode)
     : rootState (std::move (rootStateToUse)), midiTarget (midiTargetToUse),
-      midiControlInput (midiControlInputToUse), panelSettings (panelSettingsToUse),
+      midiControlInput (midiControlInputToUse), noteEchoInput (noteEchoInputToUse),
+      panelSettings (panelSettingsToUse),
       inTuneWidthField { NumberFieldBracket::Config { 0.0, 100.0, (double) initialInTuneWidthPercent,
                                                       1.0, 0, 0.5, "Width" } },
       systemRowsField  { NumberFieldBracket::Config {
@@ -41,6 +43,7 @@ GridSettingsView::GridSettingsView (juce::ValueTree rootStateToUse, grid::MidiDe
 {
     addAndMakeVisible (outputCombo);
     addAndMakeVisible (inputCombo);
+    addAndMakeVisible (echoCombo);
     addAndMakeVisible (rootTile);
     addAndMakeVisible (scaleTile);
     addAndMakeVisible (inTuneLocationPadTile);
@@ -77,6 +80,9 @@ GridSettingsView::GridSettingsView (juce::ValueTree rootStateToUse, grid::MidiDe
 
     rebuildInputDeviceList();
     inputCombo.onChange = [this] { handleInputDeviceSelected(); };
+
+    rebuildEchoDeviceList();
+    echoCombo.onChange = [this] { handleEchoDeviceSelected(); };
 
     rootTile.onClick = [this]
     {
@@ -319,6 +325,34 @@ juce::String GridSettingsView::routingNameForSelection (const juce::ComboBox& co
                                                            : juce::String();
 }
 
+void GridSettingsView::rebuildEchoDeviceList()
+{
+    echoDevices = grid::MidiNoteInput::availableDevices();
+
+    echoCombo.clear (juce::dontSendNotification);
+    echoCombo.addItem ("Kein Noten-Echo", 1);
+
+    for (int i = 0; i < echoDevices.size(); ++i)
+        echoCombo.addItem (echoDevices.getReference (i).name, i + 2);
+
+    echoCombo.setSelectedId (1, juce::dontSendNotification);
+}
+
+void GridSettingsView::handleEchoDeviceSelected()
+{
+    const auto selectedId = echoCombo.getSelectedId();
+
+    if (selectedId <= 1)
+    {
+        noteEchoInput.closeDevice();
+        return;
+    }
+
+    const auto index = selectedId - 2;
+    if (index >= 0 && index < echoDevices.size())
+        noteEchoInput.openDevice (echoDevices.getReference (index).identifier);
+}
+
 void GridSettingsView::handleMasterInputSelected()
 {
     panelSettings.setMasterMidiInputName (routingNameForSelection (masterInputCombo));
@@ -399,6 +433,8 @@ void GridSettingsView::resized()
     scaleTile.setBounds (slideOutRow);
     area.removeFromTop (kRowGap);
     inputCombo.setBounds (area.removeFromTop (kRowHeight));
+    area.removeFromTop (kRowGap);
+    echoCombo.setBounds (area.removeFromTop (kRowHeight));
     area.removeFromTop (kSectionGap);
 
     // Pitch: In-Tune Location (zwei Tiles) + Width-Feld.

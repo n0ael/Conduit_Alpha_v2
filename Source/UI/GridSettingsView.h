@@ -8,6 +8,7 @@
 #include "Core/GridVoiceEngine.h"
 #include "Core/MidiControlInput.h"
 #include "Core/MidiDeviceTarget.h"
+#include "Core/MidiNoteInput.h"
 #include "Core/MpeEncoder.h"
 #include "Core/PadGridLayout.h"
 #include "LockToggle.h"
@@ -54,6 +55,7 @@ class GridSettingsView final : public juce::Component,
 public:
     GridSettingsView (juce::ValueTree rootStateToUse, grid::MidiDeviceTarget& midiTargetToUse,
                       grid::MidiControlInput& midiControlInputToUse,
+                      grid::MidiNoteInput& noteEchoInputToUse,
                       GridPanelSettings& panelSettingsToUse,
                       grid::InTuneLocation initialInTuneLocation,
                       float initialInTuneWidthPercent,
@@ -100,6 +102,8 @@ private:
     void handleDeviceSelected();
     void rebuildInputDeviceList();
     void handleInputDeviceSelected();
+    void rebuildEchoDeviceList();
+    void handleEchoDeviceSelected();
     void handleMasterInputSelected();
     void handleGridInputSelected();
     void repopulateRoutingCombo (juce::ComboBox& combo, const juce::String& savedName);
@@ -115,14 +119,17 @@ private:
     juce::ValueTree rootState;
     grid::MidiDeviceTarget& midiTarget;
     grid::MidiControlInput& midiControlInput;
+    grid::MidiNoteInput& noteEchoInput;
     GridPanelSettings& panelSettings;
     juce::Array<juce::MidiDeviceInfo> devices;
     juce::Array<juce::MidiDeviceInfo> inputDevices;
+    juce::Array<juce::MidiDeviceInfo> echoDevices;
 
     // Performance-Slide-Out (umgezogen aus der ehemaligen GridPage-Top-Row);
     // inputCombo = MIDI-EINGANG fuer die Control-Steuerung (Block G).
     juce::ComboBox outputCombo;
     juce::ComboBox inputCombo;
+    juce::ComboBox echoCombo;   // Block H4: Noten-Echo-Eingang (Conduit DAW)
     push::TextTile rootTile  { "C" };
     push::TextTile scaleTile { "Chromatic" };
 

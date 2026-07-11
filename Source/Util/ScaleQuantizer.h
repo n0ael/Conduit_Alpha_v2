@@ -1,6 +1,7 @@
 #pragma once
 
 #include <cmath>
+#include <initializer_list>
 
 #include <juce_core/juce_core.h>
 
@@ -10,34 +11,124 @@ namespace conduit
 //==============================================================================
 /** Globale Session-Tonalität (Ableton-artig): liegt als Root-Tree-Properties
     scaleRoot/scaleType im Patch (Schema 6.2) und reist pro Block im
-    ClockState zu den Modulen. */
+    ClockState zu den Modulen (scaleTypeIndex = int-Cast dieses Enums).
+
+    Skalen-Vollausbau (Block I, docs/DataModel.md): die 25 Scale-Presets in
+    Ableton-/Push-Reihenfolge (Major … Spanish, 12-Bit-Maske pro Skala,
+    verifiziert gegen die Push-Skalenliste/Live Scale Awareness 11.3+) plus
+    chromatic (= „Skala aus", Index 0 — Kompatibilität mit Bestand). Die
+    Enum-Reihenfolge IST der Index in scale::kScaleInfos — nie umsortieren
+    (ClockState/Serialisierungs-Strings hängen an den IDs, nicht an den
+    Indizes; alte Presets mit "pentatonic" laden als majorPentatonic). */
 enum class ScaleType : int
 {
     chromatic = 0,
     major,
-    minor,        // natürlich Moll
-    pentatonic    // Dur-Pentatonik
+    minor,             // natürlich Moll
+    dorian,
+    mixolydian,
+    lydian,
+    phrygian,
+    locrian,
+    diminished,        // half-whole
+    wholeHalf,
+    wholeTone,
+    minorBlues,
+    minorPentatonic,
+    majorPentatonic,   // ehemals "pentatonic"
+    harmonicMinor,
+    melodicMinor,
+    superLocrian,
+    bhairav,
+    hungarianMinor,
+    minorGypsy,
+    hirojoshi,
+    inSen,
+    iwato,
+    kumoi,
+    pelog,
+    spanish
 };
+
+//==============================================================================
+namespace scale
+{
+    inline constexpr int numScaleTypes = 26;   // chromatic + 25 Ableton-Presets
+
+    /** 12-Bit-Maske aus Halbton-Liste (Bit n = Halbton n über dem Root). */
+    [[nodiscard]] constexpr int makeMask (std::initializer_list<int> semitones) noexcept
+    {
+        int mask = 0;
+        for (const auto semitone : semitones)
+            mask |= 1 << (((semitone % 12) + 12) % 12);
+        return mask;
+    }
+
+    struct ScaleInfo
+    {
+        const char* id;            // Serialisierungs-String (stabil, nie ändern)
+        const char* displayName;   // UI-Name (Ableton-Schreibweise)
+        int mask;
+    };
+
+    /** Index == (int) ScaleType — Reihenfolge Ableton/Push (docs/DataModel.md). */
+    inline constexpr ScaleInfo kScaleInfos[numScaleTypes] = {
+        { "chromatic",       "Chromatic",        0b111111111111 },
+        { "major",           "Major",            makeMask ({ 0, 2, 4, 5, 7, 9, 11 }) },
+        { "minor",           "Minor",            makeMask ({ 0, 2, 3, 5, 7, 8, 10 }) },
+        { "dorian",          "Dorian",           makeMask ({ 0, 2, 3, 5, 7, 9, 10 }) },
+        { "mixolydian",      "Mixolydian",       makeMask ({ 0, 2, 4, 5, 7, 9, 10 }) },
+        { "lydian",          "Lydian",           makeMask ({ 0, 2, 4, 6, 7, 9, 11 }) },
+        { "phrygian",        "Phrygian",         makeMask ({ 0, 1, 3, 5, 7, 8, 10 }) },
+        { "locrian",         "Locrian",          makeMask ({ 0, 1, 3, 5, 6, 8, 10 }) },
+        { "diminished",      "Diminished",       makeMask ({ 0, 1, 3, 4, 6, 7, 9, 10 }) },
+        { "wholeHalf",       "Whole-half",       makeMask ({ 0, 2, 3, 5, 6, 8, 9, 11 }) },
+        { "wholeTone",       "Whole Tone",       makeMask ({ 0, 2, 4, 6, 8, 10 }) },
+        { "minorBlues",      "Minor Blues",      makeMask ({ 0, 3, 5, 6, 7, 10 }) },
+        { "minorPentatonic", "Minor Pentatonic", makeMask ({ 0, 3, 5, 7, 10 }) },
+        { "majorPentatonic", "Major Pentatonic", makeMask ({ 0, 2, 4, 7, 9 }) },
+        { "harmonicMinor",   "Harmonic Minor",   makeMask ({ 0, 2, 3, 5, 7, 8, 11 }) },
+        { "melodicMinor",    "Melodic Minor",    makeMask ({ 0, 2, 3, 5, 7, 9, 11 }) },
+        { "superLocrian",    "Super Locrian",    makeMask ({ 0, 1, 3, 4, 6, 8, 10 }) },
+        { "bhairav",         "Bhairav",          makeMask ({ 0, 1, 4, 5, 7, 8, 11 }) },
+        { "hungarianMinor",  "Hungarian Minor",  makeMask ({ 0, 2, 3, 6, 7, 8, 11 }) },
+        { "minorGypsy",      "Minor Gypsy",      makeMask ({ 0, 1, 4, 5, 7, 8, 10 }) },
+        { "hirojoshi",       "Hirojoshi",        makeMask ({ 0, 2, 3, 7, 8 }) },
+        { "inSen",           "In-Sen",           makeMask ({ 0, 1, 5, 7, 10 }) },
+        { "iwato",           "Iwato",            makeMask ({ 0, 1, 5, 6, 10 }) },
+        { "kumoi",           "Kumoi",            makeMask ({ 0, 2, 3, 7, 9 }) },
+        { "pelog",           "Pelog",            makeMask ({ 0, 1, 3, 7, 8 }) },
+        { "spanish",         "Spanish",          makeMask ({ 0, 1, 3, 4, 5, 6, 8, 10 }) },
+    };
+
+    [[nodiscard]] constexpr int clampedIndex (int scaleTypeIndex) noexcept
+    {
+        return scaleTypeIndex >= 0 && scaleTypeIndex < numScaleTypes ? scaleTypeIndex : 0;
+    }
+} // namespace scale
 
 [[nodiscard]] inline juce::String toString (ScaleType type)
 {
-    switch (type)
-    {
-        case ScaleType::chromatic:  return "chromatic";
-        case ScaleType::major:      return "major";
-        case ScaleType::minor:      return "minor";
-        case ScaleType::pentatonic: return "pentatonic";
-    }
+    return scale::kScaleInfos[scale::clampedIndex (static_cast<int> (type))].id;
+}
 
-    jassertfalse;
-    return "chromatic";
+/** UI-Name in Ableton-Schreibweise ("Whole-half", "In-Sen" …). */
+[[nodiscard]] inline juce::String scaleDisplayName (ScaleType type)
+{
+    return scale::kScaleInfos[scale::clampedIndex (static_cast<int> (type))].displayName;
 }
 
 [[nodiscard]] inline ScaleType scaleTypeFromString (const juce::String& text)
 {
-    if (text == "major")      return ScaleType::major;
-    if (text == "minor")      return ScaleType::minor;
-    if (text == "pentatonic") return ScaleType::pentatonic;
+    for (int i = 0; i < scale::numScaleTypes; ++i)
+        if (text == scale::kScaleInfos[i].id)
+            return static_cast<ScaleType> (i);
+
+    // Legacy (Bestands-Presets vor Block I): "pentatonic" war die
+    // Dur-Pentatonik.
+    if (text == "pentatonic")
+        return ScaleType::majorPentatonic;
+
     return ScaleType::chromatic;
 }
 
@@ -51,15 +142,7 @@ namespace scale
     /** Skalen-Maske: Bit n = Halbton n über dem Grundton gehört zur Skala. */
     [[nodiscard]] constexpr int maskFor (ScaleType type) noexcept
     {
-        switch (type)
-        {
-            case ScaleType::chromatic:  return 0b111111111111;
-            case ScaleType::major:      return 0b101010110101;  // 0 2 4 5 7 9 11
-            case ScaleType::minor:      return 0b010101101101;  // 0 2 3 5 7 8 10
-            case ScaleType::pentatonic: return 0b001010010101;  // 0 2 4 7 9
-        }
-
-        return 0b111111111111;
+        return kScaleInfos[clampedIndex (static_cast<int> (type))].mask;
     }
 
     [[nodiscard]] constexpr bool isInScale (int semitoneAboveRoot, ScaleType type) noexcept
@@ -91,7 +174,7 @@ namespace scale
             }
         }
 
-        return cv01;  // unerreichbar (volle Maske garantiert Treffer)
+        return cv01;  // unerreichbar (keine Maske ist leer)
     }
 } // namespace scale
 

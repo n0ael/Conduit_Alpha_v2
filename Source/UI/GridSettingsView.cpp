@@ -64,6 +64,11 @@ GridSettingsView::GridSettingsView (juce::ValueTree rootStateToUse, grid::MidiDe
     addAndMakeVisible (trackTabsTopTile);
     addAndMakeVisible (trackTabsBottomTile);
     addAndMakeVisible (trackTabsFontField);
+    addAndMakeVisible (rootColourToggle);
+    addAndMakeVisible (rootColourLabel);
+
+    rootColourLabel.setJustificationType (juce::Justification::centredLeft);
+    rootColourLabel.setColour (juce::Label::textColourId, push::colours::textDim);
 
     for (auto* label : { &masterInputLabel, &gridInputLabel })
     {
@@ -89,10 +94,26 @@ GridSettingsView::GridSettingsView (juce::ValueTree rootStateToUse, grid::MidiDe
         const auto current = juce::jlimit (0, 11, (int) rootState.getProperty (id::scaleRoot, 0));
         rootState.setProperty (id::scaleRoot, GridPage::nextScaleRoot (current), nullptr);
     };
+    // Block I: bei 26 Skalen ist der Tap-Zyklus unbrauchbar — die Kachel
+    // öffnet ein Menü mit allen Ableton-Presets (Häkchen = aktuell).
     scaleTile.onClick = [this]
     {
+        juce::PopupMenu menu;
         const auto current = scaleTypeFromString (rootState.getProperty (id::scaleType).toString());
-        rootState.setProperty (id::scaleType, toString (GridPage::nextScaleType (current)), nullptr);
+
+        for (int i = 0; i < scale::numScaleTypes; ++i)
+            menu.addItem (juce::PopupMenu::Item (scaleDisplayName (static_cast<ScaleType> (i)))
+                              .setID (i + 1)
+                              .setTicked (i == static_cast<int> (current)));
+
+        menu.showMenuAsync (juce::PopupMenu::Options().withTargetComponent (scaleTile),
+            [this] (int result)
+            {
+                if (result <= 0)
+                    return;
+                rootState.setProperty (id::scaleType,
+                                       toString (static_cast<ScaleType> (result - 1)), nullptr);
+            });
     };
     rootState.addListener (this);
     refreshScaleLabels();
@@ -203,6 +224,18 @@ GridSettingsView::GridSettingsView (juce::ValueTree rootStateToUse, grid::MidiDe
     };
     trackTabsFontField.onValueChanged = [this] (double v)
     { panelSettings.setTrackTabsFontPx ((int) v); };
+
+    // Block I: Root-Pads in Track-Farbe (wie Push).
+    rootColourToggle.setActive (panelSettings.isRootPadTrackColour());
+    rootColourToggle.onClick = [this]
+    {
+        const auto shouldUse = ! rootColourToggle.isActive();
+        rootColourToggle.setActive (shouldUse);
+        panelSettings.setRootPadTrackColour (shouldUse);
+
+        if (onRootColourToggled != nullptr)
+            onRootColourToggled();
+    };
 
     modwheelToggle.setActive (panelSettings.isModwheelEnabled());
     modwheelToggle.onClick = [this]
@@ -494,6 +527,12 @@ void GridSettingsView::resized()
     trackTabsBottomTile.setBounds (tabsPositionRow);
     area.removeFromTop (kRowGap);
     trackTabsFontField.setBounds (area.removeFromTop (kRowHeight));
+    area.removeFromTop (kRowGap);
+
+    // Block I: Root-Pads in Track-Farbe.
+    auto rootColourRow = area.removeFromTop (juce::jmax (LockToggle::kComponentSize, kRowHeight));
+    rootColourToggle.setBounds (rootColourRow.removeFromLeft (LockToggle::kComponentSize));
+    rootColourLabel.setBounds (rootColourRow.reduced (8, 0));
 }
 
 } // namespace conduit

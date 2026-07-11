@@ -13,10 +13,20 @@ GridKeyboardComponent::GridKeyboardComponent (grid::GridVoiceEngine& engineToUse
       baseSemitonesPerPadWidth (layoutConfig.semitonesPerPadWidth),
       baseRingMinPx (grid::RingTouchModel::Config{}.minRadiusPx),
       baseRingSpanPx (grid::RingTouchModel::Config{}.maxRadiusPx - grid::RingTouchModel::Config{}.minRadiusPx),
-      baseLowestNote (layoutConfig.lowestNote)
+      baseLowestNote (layoutConfig.lowestNote),
+      rootPadColour (push::colours::padRoot)
 {
     setWantsKeyboardFocus (false);
     setInterceptsMouseClicks (true, false);
+}
+
+void GridKeyboardComponent::setRootPadColour (juce::Colour newColour) noexcept
+{
+    if (newColour == rootPadColour)
+        return;
+
+    rootPadColour = newColour;
+    repaint();
 }
 
 void GridKeyboardComponent::setPressureSensitivity (double sensitivity0to100) noexcept
@@ -373,6 +383,11 @@ void GridKeyboardComponent::paint (juce::Graphics& g)
             // isomorphen Positionen der Note, unabhängig vom Finger-Glow.
             auto colour = baseColour;
             const auto padNote = layout.noteForPad (padIndex);
+
+            // Block I: Root-Pads optional in der Fokus-Track-Farbe (wie
+            // Push) — padBaseColour bleibt die pure Grau-Referenz.
+            if (((padNote - scaleRootNote) % 12 + 12) % 12 == 0)
+                colour = rootPadColour;
             if (padNote >= 0 && padNote < 128 && echoVelocity[(size_t) padNote] > 0.0f)
                 colour = colour.interpolatedWith (
                     echoColour, 0.35f + 0.45f * echoVelocity[(size_t) padNote]);

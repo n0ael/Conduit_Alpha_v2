@@ -342,6 +342,24 @@
     wird mit 0.35 + 0.45·velocity zur Echo-Farbe interpoliert, der
     Finger-Glow bleibt unabhängig. Live-seitiges Routing ist Setup-Sache:
     ein Monitor-Track (MIDI From: Ziel-Track → MIDI To: Conduit DAW).
+  - **Skala aufs Grid (Block I, 07/2026):** Skalen-Vollausbau — die 25
+    Ableton-/Push-Presets (Major … Spanish, Ableton-Reihenfolge) plus
+    chromatic als `ScaleType`/`scale::kScaleInfos`-Tabelle
+    (Util/ScaleQuantizer.h: stabile Serialisierungs-IDs + UI-displayName +
+    12-Bit-Maske via constexpr `makeMask`; Legacy-String "pentatonic"
+    lädt als majorPentatonic). **Dabei Altbestand-Bugfix: die alte
+    Minor-Maske kodierte den Tritonus statt der Quinte** ({0,2,3,5,6,8,10}
+    → korrekt {0,2,3,5,7,8,10}). ClockState-`scaleTypeIndex` bleibt
+    int-kompatibel; StepSequencer-Clamp via `scale::clampedIndex`.
+    UI: TransportBar-Combo listet alle 26 (displayName); die
+    Skala-Kachel im Settings-Slide-Out öffnet ein PopupMenu (async,
+    Häkchen = aktuell) statt des 26er-Tap-Zyklus (`nextScaleType` bleibt
+    als Ring über alle). Grid-Färbung: In-Scale-Grautöne existierten
+    (padBaseColour: padRoot/tile/padUnlit); NEU sind die Root-Pads
+    optional in der Fokus-Track-Farbe (wie Push):
+    `GridKeyboardComponent::setRootPadColour` + Settings-Toggle
+    „Root-Pads in Track-Farbe" (`GridPanelSettings::rootPadTrackColour`,
+    Default an; ohne Fokus-Track neutrales padRoot).
   - **Sinks/Stränge später:** OSC (Remote + Transcoder) und CV (Software-CVC)
     docken am selben Voice-Modell an; Gesten-State-Machine (Drone/Latch/
     Pinch/Drift), Chord-Squares, Hardware-MPE-Input, MPE-Shaping (Kurven +

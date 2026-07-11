@@ -94,6 +94,10 @@ public:
         relayoutet (Block H3 Runde 3). */
     std::function<void()> onTrackTabsChanged;
 
+    /** Root-Pad-Farbmodus umgeschaltet (persistiert, Block I) — Besitzer
+        aktualisiert die Keyboard-Färbung (refreshTrackFocus). */
+    std::function<void()> onRootColourToggled;
+
 private:
     void valueTreePropertyChanged (juce::ValueTree& tree,
                                    const juce::Identifier& property) override;
@@ -166,6 +170,10 @@ private:
     push::TextTile trackTabsTopTile    { "Top" };
     push::TextTile trackTabsBottomTile { "Bottom" };
     NumberFieldBracket trackTabsFontField;
+
+    // Block I: Root-Pads in Track-Farbe (wie Push).
+    LockToggle  rootColourToggle;
+    juce::Label rootColourLabel { {}, "Root-Pads in Track-Farbe" };
 
     void showMasterFavouritesMenu();
 

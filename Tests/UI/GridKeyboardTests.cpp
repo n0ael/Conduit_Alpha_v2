@@ -293,7 +293,7 @@ TEST_CASE ("GridKeyboardComponent: padBaseColour folgt der Session-Skala", "[gri
     REQUIRE (GridKeyboardComponent::padBaseColour (60, 0, ScaleType::chromatic) == colours::padRoot);
 
     // Pentatonik-Gegenprobe: Dur-Pentatonik (0 2 4 7 9) kennt keine Quarte
-    REQUIRE (GridKeyboardComponent::padBaseColour (53, 0, ScaleType::pentatonic) == colours::padUnlit);
+    REQUIRE (GridKeyboardComponent::padBaseColour (53, 0, ScaleType::majorPentatonic) == colours::padUnlit);
 }
 
 //==============================================================================
@@ -417,17 +417,17 @@ TEST_CASE ("GridPage: Skala-Kacheln zykeln Root und Typ wie im Mock", "[grid][ui
     REQUIRE (GridPage::noteNameFor (1) == "C#");
     REQUIRE (GridPage::noteNameFor (11) == "B");
 
-    // Skala-Kachel: chromatic -> major -> minor -> pentatonic -> chromatic
-    REQUIRE (GridPage::nextScaleType (ScaleType::chromatic)  == ScaleType::major);
-    REQUIRE (GridPage::nextScaleType (ScaleType::major)      == ScaleType::minor);
-    REQUIRE (GridPage::nextScaleType (ScaleType::minor)      == ScaleType::pentatonic);
-    REQUIRE (GridPage::nextScaleType (ScaleType::pentatonic) == ScaleType::chromatic);
+    // Skala-Kachel (Block I): Ring ueber alle 26 Skalen in Ableton-Reihenfolge
+    REQUIRE (GridPage::nextScaleType (ScaleType::chromatic) == ScaleType::major);
+    REQUIRE (GridPage::nextScaleType (ScaleType::major)     == ScaleType::minor);
+    REQUIRE (GridPage::nextScaleType (ScaleType::minor)     == ScaleType::dorian);
+    REQUIRE (GridPage::nextScaleType (ScaleType::spanish)   == ScaleType::chromatic);
 
     // Anzeigenamen mit grossem Anfangsbuchstaben
     REQUIRE (GridPage::scaleDisplayNameFor (ScaleType::chromatic)  == "Chromatic");
     REQUIRE (GridPage::scaleDisplayNameFor (ScaleType::major)      == "Major");
     REQUIRE (GridPage::scaleDisplayNameFor (ScaleType::minor)      == "Minor");
-    REQUIRE (GridPage::scaleDisplayNameFor (ScaleType::pentatonic) == "Pentatonic");
+    REQUIRE (GridPage::scaleDisplayNameFor (ScaleType::majorPentatonic) == "Major Pentatonic");
 }
 
 //==============================================================================

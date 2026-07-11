@@ -94,6 +94,9 @@ RootTree
 - Skalen-Vollausbau: die globale Session-Skala unterstützt die 25 Scale-
   Presets in Ableton-Reihenfolge (Major … Pelog, 12-Bit-Maske pro Skala,
   Quelle: v1 TuringEngine — verifiziert gegen Live Scale Awareness 11.3+).
+  **Umgesetzt Block I (07/2026):** `scale::kScaleInfos` in
+  Util/ScaleQuantizer.h (chromatic + 25, stabile String-IDs; Legacy
+  "pentatonic" → majorPentatonic; dabei Minor-Masken-Bugfix Tritonus→Quinte).
 - `followAbleton`-Pattern: Skala kann via OSC von Live gesetzt werden
   (Root + 12-Bit-Maske als Atomics gestaged, Audio-Thread übernimmt am
   Blockanfang); manuelle Auswahl und OSC-Follow schließen sich pro

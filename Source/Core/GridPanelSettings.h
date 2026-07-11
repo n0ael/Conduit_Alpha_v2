@@ -156,6 +156,11 @@ public:
     [[nodiscard]] int getTrackTabMinWidthPx() const noexcept { return trackTabMinWidthPx; }
     void setTrackTabMinWidthPx (int newWidthPx);
 
+    /** Block I: Root-Pads in der Farbe des Fokus-Tracks hervorheben
+        (wie Push; Settings-Toggle) — aus = neutrales padRoot-Grau. */
+    [[nodiscard]] bool isRootPadTrackColour() const noexcept { return rootPadTrackColour; }
+    void setRootPadTrackColour (bool shouldUseTrackColour);
+
 private:
     void loadFromFile();
 
@@ -181,6 +186,7 @@ private:
     bool trackTabsBottom = false;
     int  trackTabsFontPx = defaultTrackTabsFontPx;
     int  trackTabMinWidthPx = defaultTrackTabMinWidthPx;
+    bool rootPadTrackColour = true;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (GridPanelSettings)
 };

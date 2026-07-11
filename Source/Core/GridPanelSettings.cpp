@@ -21,6 +21,7 @@ namespace
     constexpr const char* trackTabsBottomKey      = "trackTabsBottom";
     constexpr const char* trackTabsFontPxKey      = "trackTabsFontPx";
     constexpr const char* trackTabMinWidthPxKey   = "trackTabMinWidthPx";
+    constexpr const char* rootPadTrackColourKey   = "rootPadTrackColour";
 
     // Achsen-Farben (Grid-Page v2) — Index = GridPanelSettings::axisIndex
     // (Pressure 0, Slide 1, PitchBend 2).
@@ -94,6 +95,7 @@ void GridPanelSettings::loadFromFile()
             file->getIntValue (trackTabsFontPxKey, defaultTrackTabsFontPx));
         trackTabMinWidthPx = juce::jlimit (minTrackTabMinWidthPx, maxTrackTabMinWidthPx,
             file->getIntValue (trackTabMinWidthPxKey, defaultTrackTabMinWidthPx));
+        rootPadTrackColour = file->getBoolValue (rootPadTrackColourKey, true);
 
         for (size_t i = 0; i < axisColours.size(); ++i)
         {
@@ -310,6 +312,20 @@ void GridPanelSettings::setTrackTabMinWidthPx (int newWidthPx)
     if (auto* file = applicationProperties.getUserSettings())
     {
         file->setValue (trackTabMinWidthPxKey, trackTabMinWidthPx);
+        file->saveIfNeeded();
+    }
+}
+
+void GridPanelSettings::setRootPadTrackColour (bool shouldUseTrackColour)
+{
+    if (shouldUseTrackColour == rootPadTrackColour)
+        return;
+
+    rootPadTrackColour = shouldUseTrackColour;
+
+    if (auto* file = applicationProperties.getUserSettings())
+    {
+        file->setValue (rootPadTrackColourKey, rootPadTrackColour);
         file->saveIfNeeded();
     }
 }

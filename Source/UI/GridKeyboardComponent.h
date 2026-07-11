@@ -134,6 +134,11 @@ public:
     /** Echo-Stärke einer Note [0,1] (0 = aus) — testbarer Zustand. */
     [[nodiscard]] float echoLevel (int midiNote) const noexcept;
 
+    /** Block I: Farbe der Root-Pads — Default padRoot-Grau; die GridPage
+        setzt hier die Fokus-Track-Farbe, wenn das Settings-Toggle
+        „Root in Track-Farbe" an ist (wie Push). */
+    void setRootPadColour (juce::Colour newColour) noexcept;
+
 private:
     struct FingerState
     {
@@ -188,6 +193,10 @@ private:
     // Noten-Echo (Block H4): Stärke pro MIDI-Note (0 = aus), Farbe = Fokus-Track.
     std::array<float, 128> echoVelocity {};
     juce::Colour echoColour { 0xffaaaaaa };
+
+    // Block I: Root-Pad-Farbe (padRoot oder Fokus-Track-Farbe) — gesetzt im
+    // Ctor (padBaseColour bleibt die pure Referenz für die Grau-Stufen).
+    juce::Colour rootPadColour;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (GridKeyboardComponent)
 };

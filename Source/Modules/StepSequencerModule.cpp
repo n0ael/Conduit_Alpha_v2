@@ -235,7 +235,7 @@ void StepSequencerModule::renderChain (juce::AudioBuffer<float>& buffer,
 
         if (quantizeToScale)
             cv = scale::quantize (cv, scaleRootNote,
-                                  static_cast<ScaleType> (juce::jlimit (0, 3, scaleTypeIndex)));
+                                  static_cast<ScaleType> (scale::clampedIndex (scaleTypeIndex)));
 
         cvOut[i]   = cv;
         gateOut[i] = (state.triggerArmed && fractionInStep < gateLength) ? 1.0f : 0.0f;

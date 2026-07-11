@@ -216,9 +216,10 @@ TransportBar::TransportBar (juce::ValueTree rootTree, LinkClock& linkClockToUse,
         for (int note = 0; note < 12; ++note)
             rootCombo.addItem (noteNames[note], note + 1);
 
-        for (const auto type : { ScaleType::chromatic, ScaleType::major,
-                                 ScaleType::minor, ScaleType::pentatonic })
-            scaleCombo.addItem (toString (type), static_cast<int> (type) + 1);
+        // Block I: alle 26 Skalen (chromatic + 25 Ableton-Presets) in
+        // Ableton-Reihenfolge, Combo-Id = Enum-Index + 1.
+        for (int i = 0; i < scale::numScaleTypes; ++i)
+            scaleCombo.addItem (scaleDisplayName (static_cast<ScaleType> (i)), i + 1);
 
         rootCombo.setSelectedId (juce::jlimit (0, 11,
             (int) rootState.getProperty (id::scaleRoot, 0)) + 1, juce::dontSendNotification);

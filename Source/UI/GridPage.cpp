@@ -240,6 +240,7 @@ GridPage::GridPage (juce::ValueTree rootStateToUse,
     settingsView->onModwheelToggled = [this] (bool enabled) { modwheelRibbon.setVisible (enabled); resized(); };
     settingsView->onMasterFavouritesChanged = [this] { refreshMasterSwitch(); };
     settingsView->onTrackTabsChanged = [this] { resized(); };
+    settingsView->onRootColourToggled = [this] { refreshTrackFocus(); };
     dockPanel.addTab ("settings", "Settings", std::move (settingsView));
 
     dockPanel.setPanelWidth (panelSettings.getEditorPanelWidth());
@@ -274,16 +275,10 @@ int GridPage::nextScaleRoot (int rootNote) noexcept
 
 ScaleType GridPage::nextScaleType (ScaleType type) noexcept
 {
-    switch (type)
-    {
-        case ScaleType::chromatic:  return ScaleType::major;
-        case ScaleType::major:      return ScaleType::minor;
-        case ScaleType::minor:      return ScaleType::pentatonic;
-        case ScaleType::pentatonic: return ScaleType::chromatic;
-    }
-
-    jassertfalse;
-    return ScaleType::chromatic;
+    // Block I: Ring über alle 26 Skalen (chromatic + 25 Ableton-Presets) —
+    // die Auswahl-UIs bieten zusätzlich das direkte Menü (GridSettingsView).
+    return static_cast<ScaleType> ((scale::clampedIndex (static_cast<int> (type)) + 1)
+                                   % scale::numScaleTypes);
 }
 
 juce::String GridPage::noteNameFor (int rootNote)
@@ -295,8 +290,7 @@ juce::String GridPage::noteNameFor (int rootNote)
 
 juce::String GridPage::scaleDisplayNameFor (ScaleType type)
 {
-    const auto name = toString (type);
-    return name.substring (0, 1).toUpperCase() + name.substring (1);
+    return scaleDisplayName (type);   // Ableton-Schreibweise (Block I)
 }
 
 grid::PadGridLayout::Config GridPage::padLayoutConfig() noexcept
@@ -370,6 +364,12 @@ void GridPage::refreshTrackFocus()
     // Echo-Farbe folgt dem Fokus-Track (Block H4); ohne Fokus neutral.
     if (focus.key.isNotEmpty())
         keyboard.setEchoColour (focus.colour);
+
+    // Block I: Root-Pads optional in der Fokus-Track-Farbe (wie Push).
+    keyboard.setRootPadColour (panelSettings.isRootPadTrackColour()
+                                   && focus.key.isNotEmpty()
+                               ? focus.colour
+                               : push::colours::padRoot);
 
     armButton.setEnabled (focus.key.isNotEmpty());
     auto mixerItem = liveSetModel.findItem ("mixer", focus.key);

@@ -171,13 +171,15 @@ TEST_CASE ("TransportBar: Skala-Toggle schaltet chromatisch <-> letzte Skala", "
     REQUIRE (rig.root.getProperty (conduit::id::scaleType).toString() == "chromatic");
     REQUIRE_FALSE (toggle.isActive());
 
-    // Skala manuell wählen → Toggle-LED an, Toggle merkt sich die Wahl
+    // Skala manuell wählen → Toggle-LED an, Toggle merkt sich die Wahl.
+    // Legacy-String "pentatonic" (Bestand vor Block I) lädt als
+    // majorPentatonic und wird beim nächsten Schreiben migriert.
     rig.root.setProperty (conduit::id::scaleType, "pentatonic", nullptr);
     // (Combo-Weg wäre UI-identisch — Property direkt, dann Toggle-Roundtrip)
     toggle.onClick();   // pentatonic → aus
     REQUIRE (rig.root.getProperty (conduit::id::scaleType).toString() == "chromatic");
-    toggle.onClick();   // wieder an → zuletzt gewählte Skala
-    REQUIRE (rig.root.getProperty (conduit::id::scaleType).toString() == "pentatonic");
+    toggle.onClick();   // wieder an → zuletzt gewählte Skala (neuer String)
+    REQUIRE (rig.root.getProperty (conduit::id::scaleType).toString() == "majorPentatonic");
     REQUIRE (toggle.isActive());
 }
 

@@ -185,8 +185,8 @@ class Track(_Listenable):
             # Tracks (Returns/Master werfen im echten LOM, s. _forbidden)
             self.__dict__["current_monitoring_state"] = 1   # Auto
             self.__dict__["available_input_routing_types"] = [
-                RoutingType("All Ins"), RoutingType("Conduit A"),
-                RoutingType("K1 (Port 1)")]
+                RoutingType("All Ins"), RoutingType("Conduit Grid MPE"),
+                RoutingType("FromPush"), RoutingType("K1 (Port 1)")]
             self.__dict__["input_routing_type"] = \
                 self.__dict__["available_input_routing_types"][0]
         self.__dict__["is_foldable"] = False
@@ -271,10 +271,24 @@ class Song(_Listenable):
 
 
 class SongView(object):
-    """LOM Song.View-Ausschnitt: Browser-Load zielt auf selected_track."""
+    """LOM Song.View-Ausschnitt: Browser-Load zielt auf selected_track;
+    Selektions-Listener fuer Follow-Selection (Block H v2)."""
 
     def __init__(self):
-        self.selected_track = None
+        self.__dict__["selected_track"] = None
+        self.__dict__["_selected_listeners"] = []
+
+    def add_selected_track_listener(self, callback):
+        self.__dict__["_selected_listeners"].append(callback)
+
+    def remove_selected_track_listener(self, callback):
+        self.__dict__["_selected_listeners"].remove(callback)
+
+    def __setattr__(self, key, value):
+        object.__setattr__(self, key, value)
+        if key == "selected_track":
+            for callback in list(self.__dict__["_selected_listeners"]):
+                callback()
 
 
 class BrowserItem(object):

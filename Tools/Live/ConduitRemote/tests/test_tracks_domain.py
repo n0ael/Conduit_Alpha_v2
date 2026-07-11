@@ -25,8 +25,12 @@ def test_snapshot_contains_tracks_returns_master():
     address, seq, payload = sender.last()
     assert address == "/remote/state/tracks/snapshot"
 
-    # 2 regular + 2 return + 1 master
-    assert len(payload) == 5
+    # 2 regular + 2 return + 1 master + 3 Skalar-Keys (Block H v2:
+    # selected / conduit_focus / input_options)
+    assert len(payload) == 8
+    assert payload["selected"] == ""
+    assert payload["conduit_focus"] == ""
+    assert payload["input_options"][0] == "All Ins"
     tr1 = payload["tr:1"]
     assert tr1 == {"name": "Track 1", "color": 0xFF0000, "kind": "audio", "index": 0}
     tr2 = payload["tr:2"]

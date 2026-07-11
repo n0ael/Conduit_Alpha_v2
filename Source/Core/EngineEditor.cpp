@@ -136,20 +136,32 @@ EngineEditor::EngineEditor (EngineProcessor& engineProcessor,
         selectPage (pageIndex);
     };
 
-    // Block H: Long-Press auf dem Grid-Page-Button → Ableton-Track-Selector.
-    // Auswahl: Ziel-Track Monitor „In" + Conduits Grid-MIDI-Out als Input,
-    // alle anderen MIDI-Tracks „Auto" + Conduits MIDI-In-Gerät (leer =
-    // Routing unangetastet, nur Monitor) — /live/song/set/midi_input_focus.
+    // Block H v2: Long-Press auf dem Grid-Page-Button → Track-Selector
+    // (Follow-Toggle + MIDI-Tracks). Auswahl: Ziel-Track Monitor „In" +
+    // Grid-MIDI-Out als Input, andere All-Ins-MIDI-Tracks „Off", Lives
+    // Selektion aufs Master-MIDI-Device — /live/song/set/midi_input_focus;
+    // Follow Selection hält das Script-seitig im Hintergrund synchron.
     transportBar.onGridPageHold = [this]
     {
-        auto panel = std::make_unique<TrackSelectorPanel> (engine.getLiveSetModel());
+        auto& panelSettings = engine.getGridPanelSettings();
+        auto panel = std::make_unique<TrackSelectorPanel> (
+            engine.getLiveSetModel(), panelSettings.isMidiFollowSelection());
+
         panel->onTrackChosen = [this] (const juce::String& trackKey)
         {
+            auto& settings = engine.getGridPanelSettings();
             engine.getTouchLiveClient().sendCommand (
                 TrackSelectorPanel::makeMidiInputFocusCommand (
                     trackKey,
                     engine.getGridMidiDeviceTarget().currentDeviceName(),
-                    engine.getGridMidiControlInput().currentDeviceName()));
+                    settings.getMasterMidiInputName(),
+                    settings.isMidiFollowSelection()));
+        };
+        panel->onFollowChanged = [this] (bool shouldFollow)
+        {
+            engine.getGridPanelSettings().setMidiFollowSelection (shouldFollow);
+            engine.getTouchLiveClient().sendCommand (
+                TrackSelectorPanel::makeFollowCommand (shouldFollow));
         };
 
         juce::CallOutBox::launchAsynchronously (
@@ -157,6 +169,18 @@ EngineEditor::EngineEditor (EngineProcessor& engineProcessor,
             transportBar.getPageTile (TransportBar::pageGrid).getScreenBounds(),
             nullptr);
     };
+
+    // Block H v2: das Grid-Page-Icon zeigt den Pad-Layout-Modus (64 Pads =
+    // Punktmatrix, XY+Fader = gemischtes Symbol) — die Kacheln auf der
+    // Page sind entfallen.
+    gridPage.onLayoutModeChanged = [this] (GridPanelSettings::GridLayoutMode mode)
+    {
+        transportBar.getPageTile (TransportBar::pageGrid)
+            .setIcon (mode == GridPanelSettings::GridLayoutMode::xyFaders
+                          ? push::Icon::gridMpeXy
+                          : push::Icon::gridMpe);
+    };
+    gridPage.onLayoutModeChanged (engine.getGridPanelSettings().getGridLayoutMode());
 
     // Tape (oo) → Retro-Looper-Page (B3): Toggle Looper ↔ Device; die
     // Tape-LED folgt dem Page-Zustand über den Editor-Timer

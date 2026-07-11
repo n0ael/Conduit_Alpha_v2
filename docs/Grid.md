@@ -242,35 +242,55 @@
     LED-Feedback/Motorfader: NUR Schnittstelle
     (`MidiInBindings::onFeedbackEcho(channel, cc, value01)`, feuert beim
     Anwenden — Hardware-Implementierung später). Laufzeit-only (Block K).
-  - **Grid-Page-Button: Mode-Toggle + Track-Select (Block H, 07/2026):**
-    die Page-Tiles der TransportBar sind jetzt `push::HoldIconTile`
-    (wiederverwendbar: onClick bleibt der Tap-Hook — bestehende Tests/
-    Verdrahtung unverändert —, onLongPress feuert nach 450 ms ruhigem
-    Halten, Bewegung > 8 px bricht ab; Kernpfade beginPress/movePress/
-    endPress/firePressTimeout, KEINE Button-Klick-Maschinerie in den
-    Maus-Handlern — setState für die Down-Optik). Tap auf den Grid-Tile
-    bei SCHON aktiver Grid-Page toggelt `gridLayoutMode` (64 Pads ↔
-    XY+Fader, `GridPage::toggleLayoutMode`/`nextLayoutMode` — der
-    persistierte Schalter aus „Pad-Layout-Modi" oben IST dieser Toggle);
-    die Entscheidung trifft der EngineEditor in onPageSelected (Vorher-
-    Zustand nötig). Long-Press öffnet den `TrackSelectorPanel`
-    (Source/UI, CallOutBox am Tile): MIDI-Tracks des Live-Sets mit
-    Name + Live-Farbe (tracks-Domain des LiveSetModel, kind == "midi",
-    nach Live-Index sortiert; Snapshot beim Öffnen, Stable-IDs NIE
-    serialisieren). Auswahl sendet `/live/song/set/midi_input_focus
-    [trackKey, inputName, defaultInputName]`: der Ziel-Track bekommt
-    Monitor „In" + Conduits Grid-MIDI-OUT-Portnamen als Input (beim
-    User „Conduit A", `MidiDeviceTarget::currentDeviceName` — Name,
-    nicht Identifier!), alle anderen MIDI-Tracks Monitor „Auto" + das
-    in den Grid-Settings gewählte MIDI-In-Gerät
-    (`MidiControlInput::currentDeviceName`; leer = Routing unangetastet).
-    Script-Seite (handlers/song.py): Routing-Match exakter display_name,
-    sonst case-insensitive Präfix (Live hängt „ (Port 1)"-Suffixe an);
-    Ziel-Vergleich über die `_live_ptr`-Identität (LOM-Wrapper nicht
-    identitätsstabil!), jede Teiloperation LOM-defensiv; Audio-Tracks/
-    Returns/Master unberührt. Zweck: unabhängig von Push/Keyboard jeden
-    Kanal direkt aus Conduit spielen. TODO(design): Anzeige des aktuell
-    fokussierten Tracks im Selector (Laufzeit-Zustand, Block-K-Umfeld).
+  - **Grid-Page-Button: Mode-Toggle + Track-Fokus-Routing (Block H +
+    v2-Feldtest-Runde, 07/2026):** die Page-Tiles der TransportBar sind
+    `push::HoldIconTile` (wiederverwendbar: onClick bleibt der Tap-Hook,
+    onLongPress nach 450 ms ruhigem Halten, Bewegung > 8 px bricht ab;
+    Kernpfade beginPress/movePress/endPress/firePressTimeout, KEINE
+    Button-Klick-Maschinerie — setState für die Down-Optik). Tap auf den
+    Grid-Tile bei SCHON aktiver Grid-Page toggelt `gridLayoutMode`
+    (64 Pads ↔ XY+Fader, `GridPage::toggleLayoutMode`; Entscheidung im
+    EngineEditor, Vorher-Zustand nötig); das PAGE-ICON zeigt den Modus
+    (gridMpe ↔ gridMpeXy via `GridPage::onLayoutModeChanged` +
+    `IconTile::setIcon`) — die früheren Modus-Kacheln oben links sind
+    ENTFALLEN. Dort sitzt jetzt das `TrackFocusBadge` (Source/UI,
+    wiederverwendbar): Live-Farbe + Name des Tracks, den das Grid
+    spielt (tracks-Domain-Key `conduit_focus`, folgt bewusst NICHT
+    Lives Selektion). Unten rechts ein Arm-Button (Oktav-Button-Maße)
+    für den Fokus-Track (LED aus der mixer-Domain).
+
+    Long-Press öffnet den `TrackSelectorPanel` (CallOutBox am Tile):
+    oben ein „Follow Selection"-Toggle (User 11.07.2026: dort, damit
+    entdeckbar; persistent `GridPanelSettings::midiFollowSelection`),
+    darunter die MIDI-Tracks mit Name + Live-Farbe (Fokus markiert).
+    Auswahl sendet `/live/song/set/midi_input_focus [trackKey,
+    gridInput, masterInput, follow]` — gridInput =
+    `MidiDeviceTarget::currentDeviceName` (Portname, beim User
+    „Conduit Grid MPE"), masterInput = `GridPanelSettings::
+    masterMidiInputName` (Dropdown im Settings-Tab aus dem
+    tracks-Domain-Key `input_options`, z. B. „FromPush").
+
+    **Routing-Semantik v2 (Live-Performance: Grid und Push spielen
+    GLEICHZEITIG verschiedene Tracks), `sync/inputfocus.py`:**
+    Ziel-Track Input = gridInput + Monitor In; alle anderen
+    All-Ins-MIDI-Tracks Monitor OFF (Auto würde Grid-Noten bei Arm
+    durchlassen — All Ins enthält den Conduit-Port!); Lives
+    selektierter Track (MIDI + All Ins) → masterInput + Auto. Follow
+    Selection (selected_track-Listener, nur mit aktivem Fokus): neu
+    selektierter All-Ins-Track → masterInput + Auto, der vorher
+    bewegte zurück auf All Ins + OFF; der Fokus-Track bleibt IMMER
+    unangetastet; ein ALTER Fokus wird nur restauriert, wenn sein
+    Input noch der Grid-Port ist (User-Umroutings nie überschreiben).
+    „All Ins" = Eintrag 0 der available_input_routing_types (nie der
+    lokalisierbare String); Identitäten über `_live_ptr`
+    (stable_ids._identity); Fokus-/Follow-Zustand lebt NUR in der
+    Script-Session. tracks-Domain-Skalarkeys: `selected`,
+    `conduit_focus`, `input_options`. **Deploy-Falle (Feldtest
+    11.07.2026):** das Script läuft als KOPIE in Lives User Library
+    (`robocopy Tools\Live\ConduitRemote → …\Remote Scripts\ConduitRemote
+    /MIR /XD __pycache__ tests`) + Live-Neustart — sonst „passiert
+    nichts in Ableton". Folgeschritt (User): MPE-MIDI-In-Noten-Echo
+    (Pad-Glow in Track-Farbe, ohne Sonne/Mond).
   - **Sinks/Stränge später:** OSC (Remote + Transcoder) und CV (Software-CVC)
     docken am selben Voice-Modell an; Gesten-State-Machine (Drone/Latch/
     Pinch/Drift), Chord-Squares, Hardware-MPE-Input, MPE-Shaping (Kurven +

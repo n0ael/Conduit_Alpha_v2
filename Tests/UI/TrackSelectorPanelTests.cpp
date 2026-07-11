@@ -1,6 +1,7 @@
 #include <catch2/catch_test_macros.hpp>
 
 #include "UI/GridPage.h"
+#include "UI/TrackFocusBadge.h"
 #include "UI/TrackSelectorPanel.h"
 
 namespace
@@ -47,22 +48,59 @@ TEST_CASE ("TrackSelectorPanel: leeres Modell ergibt leere Liste (kein Crash)", 
     conduit::LiveSetModel model;
 
     REQUIRE (conduit::TrackSelectorPanel::midiTrackRowsFrom (model).empty());
+    REQUIRE (conduit::TrackSelectorPanel::focusKeyFrom (model).isEmpty());
 
-    conduit::TrackSelectorPanel panel (model);
+    conduit::TrackSelectorPanel panel (model, true);
     REQUIRE (panel.getHeight() == conduit::TrackSelectorPanel::kTitleHeight
+                                      + conduit::TrackSelectorPanel::kFollowHeight
                                       + conduit::TrackSelectorPanel::kRowHeight);
 }
 
-TEST_CASE ("TrackSelectorPanel: makeMidiInputFocusCommand baut das Wire-Format", "[grid][trackselect]")
+TEST_CASE ("TrackSelectorPanel: makeMidiInputFocusCommand baut das v2-Wire-Format", "[grid][trackselect]")
 {
     const auto message = conduit::TrackSelectorPanel::makeMidiInputFocusCommand (
-        "tr:7", "Conduit A", "K1 (Port 1)");
+        "tr:7", "Conduit Grid MPE", "FromPush", true);
 
     REQUIRE (message.getAddressPattern().toString() == "/live/song/set/midi_input_focus");
-    REQUIRE (message.size() == 3);
+    REQUIRE (message.size() == 4);
     REQUIRE (message[0].getString() == "tr:7");
-    REQUIRE (message[1].getString() == "Conduit A");
-    REQUIRE (message[2].getString() == "K1 (Port 1)");
+    REQUIRE (message[1].getString() == "Conduit Grid MPE");
+    REQUIRE (message[2].getString() == "FromPush");
+    REQUIRE (message[3].getInt32() == 1);
+}
+
+TEST_CASE ("TrackSelectorPanel: makeFollowCommand baut das Wire-Format", "[grid][trackselect]")
+{
+    const auto onMessage = conduit::TrackSelectorPanel::makeFollowCommand (true);
+    REQUIRE (onMessage.getAddressPattern().toString() == "/live/song/set/midi_input_follow");
+    REQUIRE (onMessage.size() == 1);
+    REQUIRE (onMessage[0].getInt32() == 1);
+
+    REQUIRE (conduit::TrackSelectorPanel::makeFollowCommand (false)[0].getInt32() == 0);
+}
+
+TEST_CASE ("TrackSelectorPanel/TrackFocusBadge: conduit_focus wird aufgeloest", "[grid][trackselect]")
+{
+    juce::ScopedJuceInitialiser_GUI juceRuntime;
+    conduit::LiveSetModel model;
+
+    model.applySnapshot ("tracks",
+        parse (R"({"tr:1":{"name":"Bass","color":255,"kind":"midi","index":0},)"
+               R"("conduit_focus":"tr:1","selected":"tr:1",)"
+               R"("input_options":["All Ins","Conduit Grid MPE","FromPush"]})"));
+
+    REQUIRE (conduit::TrackSelectorPanel::focusKeyFrom (model) == "tr:1");
+
+    const auto row = conduit::TrackFocusBadge::focusRowFrom (model);
+    REQUIRE (row.key == "tr:1");
+    REQUIRE (row.name == "Bass");
+    REQUIRE (row.colour == juce::Colour (0xff0000ff));
+
+    // Fokus auf unbekannten/verschwundenen Track -> leere Row (Badge aus)
+    model.applySnapshot ("tracks",
+        parse (R"({"tr:2":{"name":"Keys","color":0,"kind":"midi","index":0},)"
+               R"("conduit_focus":"tr:1"})"));
+    REQUIRE (conduit::TrackFocusBadge::focusRowFrom (model).key.isEmpty());
 }
 
 //==============================================================================

@@ -21,11 +21,13 @@
 #include "PushTiles.h"
 #include "TouchLive/LiveSetModel.h"
 #include "TouchLive/TouchLiveClient.h"
+#include "TrackFocusBadge.h"
 #include "Util/ScaleQuantizer.h"
 
 namespace conduit
 {
 
+class GridSettingsView;
 class MacroPanel;
 
 //==============================================================================
@@ -121,6 +123,11 @@ public:
     [[nodiscard]] static GridPanelSettings::GridLayoutMode
         nextLayoutMode (GridPanelSettings::GridLayoutMode mode) noexcept;
 
+    /** Block H v2: Layout-Modus angewendet (auch initial) — der Editor
+        stellt das Grid-Page-Icon um (gridMpe ↔ gridMpeXy, die früheren
+        Modus-Kacheln oben links sind entfallen). */
+    std::function<void (GridPanelSettings::GridLayoutMode)> onLayoutModeChanged;
+
     //==========================================================================
     // Kachel-Zyklen der Skala-Anzeige (Session-Skala, Design-Mock Grid-Page
     // v2) — pure functions, testbar ohne GridPage-Instanz.
@@ -169,6 +176,13 @@ private:
 
     void valueTreePropertyChanged (juce::ValueTree& tree,
                                    const juce::Identifier& property) override;
+    void valueTreeChildAdded (juce::ValueTree& parent, juce::ValueTree& child) override;
+    void valueTreeChildRemoved (juce::ValueTree& parent, juce::ValueTree& child,
+                                int index) override;
+
+    /** Block H v2: Badge (Fokus-Track), Arm-LED und Master-Input-Optionen
+        aus dem LiveSetModel aktualisieren (tracks-/mixer-Domain). */
+    void refreshTrackFocus();
 
     // Bereich des PitchBend-Offset-Ribbons: Mitte = 0, ±Ende = ±12 Halbtöne.
     // Spätere 1–96-Range-UI ersetzt diese Konstante.
@@ -188,6 +202,13 @@ private:
     // Lebensdauer identisch, roher Zeiger ist hier sicher).
     grid::MacroBindings macroBindings;
     MacroPanel* macroPanel = nullptr;
+
+    // Block H v2: Settings-Tab-Content (roher Zeiger wie macroPanel — das
+    // dockPanel besitzt ihn, Lebensdauer identisch) für die Master-Input-
+    // Optionen; liveSetState = MEMBER-Handle des LiveSetModel-Trees
+    // (Listener hängen an der Instanz — Temporary wäre ein No-op).
+    GridSettingsView* settingsPanel = nullptr;
+    juce::ValueTree liveSetState;
 
     // MIDI-Eingang (Block G): externe CCs bewegen Controls -- Soft-Takeover
     // + Glaettung leben in midiInBindings, die Pumpe im EngineProcessor
@@ -215,8 +236,11 @@ private:
     // (TODO(design): echtes Laufzeit-Resize braucht CcControlLayer-Umbau).
     const int systemControlRowsAtStartup;
 
-    push::IconTile padsModeTile { push::Icon::gridMpe,   "padLayoutFullPads" };  // 64 Pads
-    push::IconTile xyModeTile   { push::Icon::gridMpeXy, "padLayoutXyFaders" };  // XY+Fader oben
+    // Block H v2: Badge „welchen Ableton-Track spielt das Grid" (ersetzt
+    // die Modus-Kacheln — der Layout-Modus wird jetzt über den Page-Button
+    // getoggelt und am Page-Icon abgelesen) + Arm-Button für den Fokus-Track.
+    TrackFocusBadge trackBadge;
+    push::TextTile armButton { "Arm", push::colours::ledRed };
     push::TextTile releaseAllButton { "Release All", push::colours::ledRed };
     push::TextTile octaveUpTile   { "Oct +" };
     push::TextTile octaveDownTile { "Oct -" };

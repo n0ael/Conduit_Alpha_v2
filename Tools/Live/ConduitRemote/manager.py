@@ -16,6 +16,7 @@ from .browser import BrowserService, default_get_browser
 from .heartbeat import Heartbeat
 from .sync.base import to_json
 from .sync.delivery import Sender
+from .sync.inputfocus import InputFocusService
 from .sync.meters import MeterStream
 from .sync import stable_ids
 
@@ -110,12 +111,22 @@ class Manager(ControlSurface):
         factory = domain_factory if domain_factory is not None else _default_domain_factory
         self.domains = factory(self._song, self._sender)
 
+        # Conduit Grid-Track-Fokus (Block H v2): Service haelt Fokus/Follow,
+        # die tracks-Domain zeigt conduit_focus an und wird bei Aenderungen
+        # dirty markiert.
+        self.input_focus = InputFocusService(self._song)
+        tracks_domain = self.domains.get("tracks")
+        if tracks_domain is not None:
+            tracks_domain.input_focus = self.input_focus
+            self.input_focus.on_state_changed = tracks_domain.mark_dirty
+
         self.heartbeat = Heartbeat(on_timeout=self._on_heartbeat_timeout)
 
         self.registry = CommandRegistry()
         self.ctx = CommandContext(self._get_song,
                                   track_resolver=self._resolve_stable_id,
-                                  device_resolver=self._resolve_device)
+                                  device_resolver=self._resolve_device,
+                                  input_focus=self.input_focus)
         song_handlers.register_all(self.registry)
         track_handlers.register_all(self.registry)
         session_handlers.register_all(self.registry)
@@ -311,6 +322,11 @@ class Manager(ControlSurface):
                 logger.exception("fast timer stop failed")
             self._fast_timer = None
             self.server.pump_active = False
+
+        try:
+            self.input_focus.detach()
+        except Exception:
+            logger.exception("input focus detach failed")
 
         for domain in list(self.domains.values()):
             try:

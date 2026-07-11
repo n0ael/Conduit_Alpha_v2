@@ -162,7 +162,9 @@ def test_shares_stable_ids_with_tracks_domain():
 
     tracks_payload = sender_a.last()[2]
     mixer_payload = sender_b.last()[2]
-    assert set(tracks_payload.keys()) == set(mixer_payload.keys())
+    # tracks traegt zusaetzlich die Skalar-Keys aus Block H v2
+    scalar_keys = {"selected", "conduit_focus", "input_options"}
+    assert set(tracks_payload.keys()) - scalar_keys == set(mixer_payload.keys())
 
 
 def test_unsubscribed_emits_nothing():

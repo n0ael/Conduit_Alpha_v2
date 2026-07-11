@@ -18,10 +18,15 @@ logger = logging.getLogger(__name__)
 
 
 class CommandContext(object):
-    def __init__(self, get_song, track_resolver=None, device_resolver=None):
+    def __init__(self, get_song, track_resolver=None, device_resolver=None,
+                 input_focus=None):
         self._get_song = get_song
         self._track_resolver = track_resolver
         self._device_resolver = device_resolver
+        # Conduit Block H v2: InputFocusService (sync/inputfocus.py) fuer
+        # /live/song/set/midi_input_focus|follow -- None ausserhalb des
+        # Managers (Handler loggen dann und tun nichts).
+        self.input_focus = input_focus
 
     @property
     def song(self):

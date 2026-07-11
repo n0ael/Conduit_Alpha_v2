@@ -283,6 +283,7 @@ set(CONDUIT_CPP_SOURCES
     Source/UI/PushTiles.cpp
     Source/UI/ScopeDisplay.cpp
     Source/UI/TapMenuPanel.cpp
+    Source/UI/TrackFocusBadge.cpp
     Source/UI/TrackSelectorPanel.cpp
     Source/UI/TransportBar.cpp
     Source/UI/DevPanel.cpp
@@ -852,6 +853,7 @@ if(CONDUIT_BUILD_TESTS)
         Source/UI/PushTiles.cpp
         Source/UI/ScopeDisplay.cpp
         Source/UI/TapMenuPanel.cpp
+        Source/UI/TrackFocusBadge.cpp
         Source/UI/TrackSelectorPanel.cpp
         Source/UI/TransportBar.cpp
         Source/UI/DevPanel.cpp

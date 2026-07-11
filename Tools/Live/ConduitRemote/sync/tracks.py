@@ -15,7 +15,12 @@ class TracksDomain(Domain):
     def __init__(self, live_song, sender):
         Domain.__init__(self, live_song, sender)
         self._structure_bound = False
+        self._view_bound = False
         self._track_bindings = []   # list of (track, name_cb, color_cb)
+        # Conduit Block H v2: vom Manager injizierter InputFocusService --
+        # liefert conduit_focus fuer collect() und markiert per
+        # on_state_changed die Domain dirty. None ausserhalb des Managers.
+        self.input_focus = None
 
     # -- snapshot -------------------------------------------------------------
 
@@ -30,6 +35,13 @@ class TracksDomain(Domain):
                 "kind": "midi" if track.has_midi_input else "audio",
                 "index": index,
             }
+        # Block H v2 (Conduit Grid-Track-Selector): Lives Selektion, der
+        # Conduit-Fokus-Track und die verfuegbaren MIDI-From-Namen (fuers
+        # Master-MIDI-Dropdown) reisen als Skalar-Keys mit.
+        result["selected"] = self._selected_stable_id()
+        result["conduit_focus"] = (self.input_focus.focus_stable_id()
+                                   if self.input_focus is not None else "")
+        result["input_options"] = self._input_options()
         for index, track in enumerate(song.return_tracks):
             sid = stable_ids.get_id(track, stable_ids.RETURN_PREFIX)
             result[sid] = {
@@ -47,6 +59,41 @@ class TracksDomain(Domain):
             "index": 0,
         }
         return result
+
+    def _selected_stable_id(self):
+        """Stable-ID von Lives selektiertem Track -- NUR regulaere Tracks
+        (fuer Returns/Master keine tr:-ID erfinden), leerer String sonst."""
+        try:
+            selected = self.song.view.selected_track
+        except Exception:
+            return ""
+        if selected is None:
+            return ""
+        key = stable_ids._identity(selected)
+        for track in self.song.tracks:
+            if stable_ids._identity(track) == key:
+                return stable_ids.get_id(track, stable_ids.TRACK_PREFIX)
+        return ""
+
+    def _input_options(self):
+        """display_names der Input-Routing-Typen des ersten regulaeren
+        Tracks (Live-weit identische Liste) -- LOM-defensiv, ggf. leer."""
+        try:
+            tracks = list(self.song.tracks)
+        except Exception:
+            return []
+        for track in tracks:
+            try:
+                available = list(track.available_input_routing_types)
+            except Exception:
+                continue
+            names = []
+            for routing in available:
+                name = getattr(routing, "display_name", None)
+                if name:
+                    names.append(str(name))
+            return names
+        return []
 
     # -- listener plumbing ------------------------------------------------------
 
@@ -86,11 +133,25 @@ class TracksDomain(Domain):
         song.add_return_tracks_listener(self._on_structure_change)
         self._rebind_track_listeners()
         self._structure_bound = True
+        # Selektions-Listener EINZELN geguarded (Block H v2): scheitert nur
+        # er, soll die Domain nicht komplett in den Poll-Fallback kippen --
+        # das selected-Feld heilt dann ueber Struktur-/Feld-Diffs.
+        try:
+            song.view.add_selected_track_listener(self._on_field_change)
+            self._view_bound = True
+        except Exception:
+            self._view_bound = False
 
     def on_detach(self):
         if not self._structure_bound:
             return
         song = self.song
+        if self._view_bound:
+            try:
+                song.view.remove_selected_track_listener(self._on_field_change)
+            except Exception:
+                pass   # View/LOM beim Teardown schon tot
+            self._view_bound = False
         song.remove_tracks_listener(self._on_structure_change)
         song.remove_return_tracks_listener(self._on_structure_change)
         for track, name_cb, color_cb in self._track_bindings:

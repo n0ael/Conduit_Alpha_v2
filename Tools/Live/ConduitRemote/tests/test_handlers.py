@@ -5,6 +5,7 @@ from ConduitRemote.handlers.registry import CommandContext, CommandRegistry
 from ConduitRemote.handlers import song as song_handlers
 from ConduitRemote.handlers import track as track_handlers
 from ConduitRemote.handlers import session as session_handlers
+from ConduitRemote.sync.inputfocus import InputFocusService
 
 
 @pytest.fixture
@@ -14,7 +15,8 @@ def rig():
     song_handlers.register_all(registry)
     track_handlers.register_all(registry)
     session_handlers.register_all(registry)
-    ctx = CommandContext(lambda: song)
+    ctx = CommandContext(lambda: song,
+                         input_focus=InputFocusService(song))
     return song, registry, ctx
 
 
@@ -177,68 +179,64 @@ def test_unknown_address_dispatch_returns_false(rig):
     assert dispatch(rig, "/live/does/not/exist", []) is False
 
 
-# -- midi_input_focus (Block H: Conduit Grid-Track-Selector) -------------------
+# -- midi_input_focus v2 (Block H: Conduit Grid-Track-Selector) ---------------
+# Vollstaendige Fokus-/Follow-Semantik: tests/test_inputfocus.py -- hier nur
+# der Command-Weg (Handler -> Service).
 
 def _make_midi(track):
     track.__dict__["has_midi_input"] = True
 
 
-def test_midi_input_focus_routes_target_and_others(rig):
+def test_midi_input_focus_v2_routes_target_and_silences_all_ins(rig):
     song, _r, _c = rig
     _make_midi(song.tracks[0])
     _make_midi(song.tracks[2])   # tracks[1] bleibt Audio
 
-    dispatch(rig, "/live/song/set/midi_input_focus", [2, "Conduit A", "All Ins"])
+    dispatch(rig, "/live/song/set/midi_input_focus",
+             [2, "Conduit Grid MPE", "FromPush", 1])
 
     target = song.tracks[2]
     other = song.tracks[0]
     assert target.current_monitoring_state == 0                      # In
-    assert target.input_routing_type.display_name == "Conduit A"
-    assert other.current_monitoring_state == 1                       # Auto
+    assert target.input_routing_type.display_name == "Conduit Grid MPE"
+    # anderer All-Ins-MIDI-Track: Monitor OFF, Routing bleibt All Ins
+    assert other.current_monitoring_state == 2
     assert other.input_routing_type.display_name == "All Ins"
 
-    # Audio-Track komplett unberuehrt (Monitoring blieb auf Default Auto,
-    # Routing auf dem Konstruktions-Default)
+    # Audio-Track komplett unberuehrt
     assert song.tracks[1].current_monitoring_state == 1
     assert song.tracks[1].input_routing_type.display_name == "All Ins"
 
 
-def test_midi_input_focus_prefix_match(rig):
+def test_midi_input_focus_v2_moves_selected_to_master(rig):
     song, _r, _c = rig
     _make_midi(song.tracks[0])
+    _make_midi(song.tracks[2])
+    song.view.selected_track = song.tracks[0]
 
-    # "K1" trifft "K1 (Port 1)" per case-insensitive Praefix
-    dispatch(rig, "/live/song/set/midi_input_focus", [0, "k1", ""])
-    assert song.tracks[0].input_routing_type.display_name == "K1 (Port 1)"
+    dispatch(rig, "/live/song/set/midi_input_focus",
+             [2, "Conduit Grid MPE", "K1", 1])
+
+    selected = song.tracks[0]
+    assert selected.current_monitoring_state == 1                    # Auto
+    assert selected.input_routing_type.display_name == "K1 (Port 1)"
 
 
-def test_midi_input_focus_unknown_input_keeps_routing(rig):
-    song, _r, _c = rig
-    _make_midi(song.tracks[0])
-    _make_midi(song.tracks[1])
-    target_before = song.tracks[0].input_routing_type
-    other_before = song.tracks[1].input_routing_type
-
-    dispatch(rig, "/live/song/set/midi_input_focus", [0, "No Such Port", ""])
-
-    # Monitoring greift trotzdem, Routing bleibt stehen
-    assert song.tracks[0].current_monitoring_state == 0
-    assert song.tracks[0].input_routing_type is target_before
-    # leerer default_input_name: der andere Track behaelt sein Routing
-    assert song.tracks[1].current_monitoring_state == 1
-    assert song.tracks[1].input_routing_type is other_before
+def test_midi_input_follow_toggle(rig):
+    _song, _r, ctx = rig
+    dispatch(rig, "/live/song/set/midi_input_follow", [0])
+    assert ctx.input_focus.follow_enabled() is False
+    dispatch(rig, "/live/song/set/midi_input_follow", [1])
+    assert ctx.input_focus.follow_enabled() is True
 
 
 def test_midi_input_focus_unknown_track_ignored(rig):
     assert dispatch(rig, "/live/song/set/midi_input_focus",
-                    [999, "Conduit A", ""]) is True
+                    [999, "Conduit Grid MPE", "", 1]) is True
 
 
-def test_midi_input_focus_survives_returns_and_master(rig):
-    # Returns/Master werfen auf Routing-Attribute (Stub-Realismus) --
-    # der Handler iteriert nur song.tracks und darf nie sterben.
-    song, _r, _c = rig
-    _make_midi(song.tracks[0])
-    assert dispatch(rig, "/live/song/set/midi_input_focus",
-                    [0, "Conduit A", "All Ins"]) is True
-    assert song.tracks[0].current_monitoring_state == 0
+def test_midi_input_focus_without_service_is_noop(rig):
+    song, registry, _c = rig
+    bare = CommandContext(lambda: song)
+    assert registry.dispatch("/live/song/set/midi_input_focus",
+                             [0, "Conduit Grid MPE", "", 1], bare) is True

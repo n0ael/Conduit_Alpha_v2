@@ -63,6 +63,13 @@ public:
     void paint (juce::Graphics& g) override;
     void resized() override;
 
+    /** Master-MIDI-Input-Optionen (Block H v2): Ableton-Routing-Namen aus
+        der tracks-Domain (`input_options`) — die GridPage füttert sie bei
+        Domain-Änderungen. Auswahl persistiert in
+        GridPanelSettings::masterMidiInputName (Ziel-Routing der NICHT vom
+        Grid gespielten Tracks, z. B. "FromPush"). */
+    void setMasterInputOptions (const juce::StringArray& options);
+
     /** In-Tune Location (Block B1) geändert -- Besitzer reicht an
         GridKeyboardComponent::setInTuneLocation durch. */
     std::function<void (grid::InTuneLocation)> onInTuneLocationChanged;
@@ -87,12 +94,14 @@ private:
     void handleDeviceSelected();
     void rebuildInputDeviceList();
     void handleInputDeviceSelected();
+    void handleMasterInputSelected();
 
     // Section-Ueberschriften: Bounds werden in resized() EINMAL berechnet
     // und in paint() gelesen -- verhindert Auseinanderlaufen zwischen
     // Layout- und Zeichen-Code (Muster MpeShapingView::AxisSection).
     juce::Rectangle<int> pitchHeadingBounds, expressionHeadingBounds,
-                         layoutHeadingBounds, modwheelHeadingBounds;
+                         layoutHeadingBounds, modwheelHeadingBounds,
+                         abletonHeadingBounds;
 
     juce::ValueTree rootState;
     grid::MidiDeviceTarget& midiTarget;
@@ -125,6 +134,10 @@ private:
     // Modwheel.
     LockToggle  modwheelToggle;
     juce::Label modwheelLabel { {}, "Modwheel-Fader" };
+
+    // Ableton (Block H v2): Master-MIDI-Input der anderen Tracks.
+    juce::ComboBox masterInputCombo;
+    juce::StringArray masterInputOptions;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (GridSettingsView)
 };

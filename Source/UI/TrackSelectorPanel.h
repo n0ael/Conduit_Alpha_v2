@@ -12,21 +12,26 @@ namespace conduit
 
 //==============================================================================
 /**
-    Ableton-Track-Selector (Block H, Masterplan): klappt beim Long-Press auf
-    den Grid-Page-Button als CallOutBox aus und listet alle MIDI-Tracks des
-    Live-Sets mit Name + Live-Farbe (tracks-Domain des LiveSetModel,
-    kind == "midi", sortiert nach Live-Reihenfolge).
+    Ableton-Track-Selector (Block H v2, Masterplan): klappt beim Long-Press
+    auf den Grid-Page-Button als CallOutBox aus. Oben eine „Follow
+    Selection"-Toggle-Zeile (User-Entscheidung 11.07.2026: direkt hier,
+    damit das Feature entdeckbar ist), darunter alle MIDI-Tracks des
+    Live-Sets mit Name + Live-Farbe (tracks-Domain, kind == "midi",
+    Live-Reihenfolge); der aktuelle Conduit-Fokus-Track (Domain-Key
+    `conduit_focus`) ist gefüllt markiert.
 
     Tap auf einen Track meldet onTrackChosen (Stable-ID) — der EngineEditor
-    sendet daraufhin /live/song/set/midi_input_focus: der gewählte Track
-    bekommt Monitor „In" + Conduits Grid-MIDI-Out als Input („Conduit A"),
-    alle anderen MIDI-Tracks Monitor „Auto" + das in den Grid-Settings
-    gewählte MIDI-Eingabegerät (leer = Routing unangetastet). Zweck:
-    unabhängig von Push/Keyboard jeden Kanal direkt aus Conduit spielen.
+    sendet /live/song/set/midi_input_focus [trackKey, gridInput,
+    masterInput, follow]: der Ziel-Track bekommt Monitor „In" + Conduits
+    Grid-MIDI-Out als Input, alle anderen All-Ins-MIDI-Tracks Monitor
+    „Off", Lives selektierter Track wandert auf das Master-MIDI-Device
+    (Monitor „Auto"). Follow Selection hält das im Hintergrund synchron
+    (Script-seitig, sync/inputfocus.py). Zweck: Conduit-Grid und
+    Push/Keyboard spielen GLEICHZEITIG verschiedene Tracks.
 
     Die Zeilen sind ein Snapshot beim Öffnen (die CallOutBox lebt nur einen
-    Moment — kein Listener nötig). Stable-IDs sind Laufzeit-IDs der
-    Gegenseite und werden NIE serialisiert (CLAUDE.md §6). Message Thread.
+    Moment). Stable-IDs sind Laufzeit-IDs der Gegenseite und werden NIE
+    serialisiert (CLAUDE.md §6). Message Thread.
 */
 class TrackSelectorPanel final : public juce::Component
 {
@@ -39,11 +44,16 @@ public:
         int index = 0;         // Live-Reihenfolge
     };
 
-    explicit TrackSelectorPanel (LiveSetModel& model);
+    /** followEnabled = persistierter Startzustand des Toggles
+        (GridPanelSettings::isMidiFollowSelection). */
+    TrackSelectorPanel (LiveSetModel& model, bool followEnabled);
 
     /** Track angetippt (Stable-ID) — der Besitzer sendet das Command und
         die Box schließt sich selbst. */
     std::function<void (const juce::String& stableKey)> onTrackChosen;
+
+    /** Follow-Selection-Toggle umgeschaltet (persistieren + Command). */
+    std::function<void (bool shouldFollow)> onFollowChanged;
 
     //==========================================================================
     // Headless-Kernpfade (Catch2)
@@ -51,26 +61,40 @@ public:
     /** MIDI-Tracks (kind == "midi") der tracks-Domain, nach index sortiert. */
     [[nodiscard]] static std::vector<TrackRow> midiTrackRowsFrom (LiveSetModel& model);
 
-    /** /live/song/set/midi_input_focus [trackKey, inputName, defaultInputName]. */
+    /** Stable-ID des aktuellen Conduit-Fokus-Tracks (Domain-Key
+        `conduit_focus`, vom Remote Script verwaltet), leer wenn keiner. */
+    [[nodiscard]] static juce::String focusKeyFrom (LiveSetModel& model);
+
+    /** /live/song/set/midi_input_focus [trackKey, gridInput, masterInput,
+        follow] — Block-H-v2-Wire-Format. */
     [[nodiscard]] static juce::OSCMessage
         makeMidiInputFocusCommand (const juce::String& trackKey,
-                                   const juce::String& inputName,
-                                   const juce::String& defaultInputName);
+                                   const juce::String& gridInputName,
+                                   const juce::String& masterInputName,
+                                   bool followSelection);
+
+    /** /live/song/set/midi_input_follow [0|1]. */
+    [[nodiscard]] static juce::OSCMessage makeFollowCommand (bool shouldFollow);
 
     void paint (juce::Graphics& g) override;
     void mouseMove (const juce::MouseEvent& event) override;
     void mouseExit (const juce::MouseEvent& event) override;
     void mouseUp (const juce::MouseEvent& event) override;
 
-    static constexpr int kRowHeight   = 44;   // Touch-Zone (CLAUDE.md 10.0)
-    static constexpr int kTitleHeight = 30;
-    static constexpr int kPanelWidth  = 280;
+    static constexpr int kRowHeight    = 44;   // Touch-Zone (CLAUDE.md 10.0)
+    static constexpr int kTitleHeight  = 30;
+    static constexpr int kFollowHeight = 44;
+    static constexpr int kPanelWidth   = 280;
 
 private:
     [[nodiscard]] int rowIndexAt (juce::Point<int> position) const noexcept;
+    [[nodiscard]] bool isInFollowRow (juce::Point<int> position) const noexcept;
 
     std::vector<TrackRow> rows;
+    juce::String focusKey;
+    bool follow = true;
     int hoveredRow = -1;
+    bool followHovered = false;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (TrackSelectorPanel)
 };

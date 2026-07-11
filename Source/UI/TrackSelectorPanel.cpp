@@ -54,10 +54,12 @@ juce::String TrackSelectorPanel::focusKeyFrom (LiveSetModel& model)
 juce::OSCMessage
 TrackSelectorPanel::makeMidiInputFocusCommand (const juce::String& trackKey,
                                                const juce::String& gridInputName,
-                                               const juce::String& masterInputName)
+                                               const juce::String& masterInputName,
+                                               const juce::String& favouritesJoined)
 {
     return juce::OSCMessage ("/live/song/set/midi_input_focus",
-                             trackKey, gridInputName, masterInputName);
+                             trackKey, gridInputName, masterInputName,
+                             favouritesJoined);
 }
 
 //==============================================================================

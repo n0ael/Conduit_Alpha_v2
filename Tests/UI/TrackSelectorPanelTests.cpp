@@ -60,13 +60,14 @@ TEST_CASE ("TrackSelectorPanel: leeres Modell ergibt leere Liste (kein Crash)", 
 TEST_CASE ("TrackSelectorPanel: makeMidiInputFocusCommand baut das rev5-Wire-Format", "[grid][trackselect]")
 {
     const auto message = conduit::TrackSelectorPanel::makeMidiInputFocusCommand (
-        "tr:7", "Conduit Grid MPE", "FromPush");
+        "tr:7", "Conduit Grid MPE", "FromPush", "FromPush;K1 (Port 1)");
 
     REQUIRE (message.getAddressPattern().toString() == "/live/song/set/midi_input_focus");
-    REQUIRE (message.size() == 3);
+    REQUIRE (message.size() == 4);
     REQUIRE (message[0].getString() == "tr:7");
     REQUIRE (message[1].getString() == "Conduit Grid MPE");
     REQUIRE (message[2].getString() == "FromPush");
+    REQUIRE (message[3].getString() == "FromPush;K1 (Port 1)");
 }
 
 TEST_CASE ("TrackSelectorPanel/TrackFocusBadge: conduit_focus wird aufgeloest", "[grid][trackselect]")

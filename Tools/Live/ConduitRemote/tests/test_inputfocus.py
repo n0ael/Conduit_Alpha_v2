@@ -235,3 +235,18 @@ def test_master_switch_still_respects_foreign_inputs():
     service.set_focus(song.tracks[0], GRID, MASTER)
     assert routing(seq) == "K1 (Port 1)"
     assert monitor(seq) == 0
+
+
+def test_favourites_manage_ports_across_restarts():
+    # Live-Neustart-Simulation: frischer Service (leeres Session-Set),
+    # Tracks stehen noch auf dem alten Master -- die mitgesendeten
+    # Favoriten machen sie wieder verwaltbar.
+    song = make_song()
+    old = song.tracks[1]
+    old.input_routing_type = old.available_input_routing_types[2]  # FromPush
+
+    service = InputFocusService(song)   # kennt FromPush NICHT aus der Session
+    service.set_focus(song.tracks[0], GRID, "K1 (Port 1)",
+                      favourites=["FromPush", "K1 (Port 1)"])
+
+    assert routing(old) == "K1 (Port 1)"

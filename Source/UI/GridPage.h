@@ -132,10 +132,10 @@ public:
 
     /** Block H v2 rev5: Fokus-Command senden (Track-Tabs, Selector,
         Master-Switch-Re-Route) — Grid-MPE-Port aus den Settings (leer =
-        Portname des offenen Grid-MIDI-Outs), Master aus den Settings. */
+        Portname des offenen Grid-MIDI-Outs), Master + Favoriten aus den
+        Settings (Favoriten reisen mit, damit das Script Tracks auf JEDEM
+        Favoriten-Port als verwaltet erkennt — auch nach Live-Neustart). */
     void sendFocusCommand (const juce::String& trackKey);
-
-    void paint (juce::Graphics& g) override;
 
     //==========================================================================
     // Kachel-Zyklen der Skala-Anzeige (Session-Skala, Design-Mock Grid-Page
@@ -249,12 +249,11 @@ private:
     // (TODO(design): echtes Laufzeit-Resize braucht CcControlLayer-Umbau).
     const int systemControlRowsAtStartup;
 
-    // Block H3: Track-Tabs (alle MIDI-Tracks, Tap = Fokus) + Master-Quick-
-    // Switch oben links; currentFocus speist Arm-LED und den Grid-Rahmen
-    // in der Track-Farbe (paint). Arm-Button für den Fokus-Track.
+    // Block H3: Track-Tabs (alle MIDI-Tracks, Push-Optik, Tap = Fokus) +
+    // Master-Quick-Switch oben in der Pitch-Spalte (User-Feedback).
+    // Arm-Button für den Fokus-Track (LED aus der mixer-Domain).
     TrackTabsStrip trackTabs;
     MasterDeviceSwitch masterSwitch;
-    TrackFocusBadge::FocusRow currentFocus;
     push::TextTile armButton { "Arm", push::colours::ledRed };
     push::TextTile releaseAllButton { "Release All", push::colours::ledRed };
     push::TextTile octaveUpTile   { "Oct +" };

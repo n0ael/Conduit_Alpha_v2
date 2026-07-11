@@ -208,12 +208,21 @@ def test_midi_input_focus_routes_target_and_all_ins_to_master(rig):
     assert song.tracks[1].input_routing_type.display_name == "All Ins"
 
 
-def test_midi_input_focus_ignores_legacy_follow_argument(rig):
+def test_midi_input_focus_favourites_make_ports_managed(rig):
+    # 4. Argument = ';'-Favoritenliste: ein Track, der (z.B. aus einer
+    # frueheren Session) auf einem Favoriten-Port steht, wandert beim
+    # Fokus-Setzen zum aktuellen Master.
     song, _r, _c = rig
     _make_midi(song.tracks[0])
-    assert dispatch(rig, "/live/song/set/midi_input_focus",
-                    [0, "Conduit Grid MPE", "FromPush", 1]) is True
+    _make_midi(song.tracks[2])
+    stale = song.tracks[2]
+    stale.input_routing_type = stale.available_input_routing_types[3]  # K1
+
+    dispatch(rig, "/live/song/set/midi_input_focus",
+             [0, "Conduit Grid MPE", "FromPush", "FromPush;K1 (Port 1)"])
+
     assert song.tracks[0].current_monitoring_state == 0
+    assert stale.input_routing_type.display_name == "FromPush"
 
 
 def test_midi_input_focus_unknown_track_ignored(rig):

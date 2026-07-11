@@ -299,17 +299,6 @@ grid::PadGridLayout::Config GridPage::padLayoutConfig() noexcept
     return config;
 }
 
-void GridPage::paint (juce::Graphics& g)
-{
-    // Block H3: dünner Rahmen in der Live-Farbe des Fokus-Tracks um die
-    // Pad-Fläche -- „welchen Track spielt das Grid" auf einen Blick.
-    if (currentFocus.key.isEmpty())
-        return;
-
-    g.setColour (currentFocus.colour);
-    g.drawRect (keyboard.getBounds().expanded (2), 2);
-}
-
 void GridPage::refreshScaleFromState()
 {
     const auto rootNote = juce::jlimit (0, 11, (int) rootState.getProperty (id::scaleRoot, 0));
@@ -353,7 +342,8 @@ void GridPage::sendFocusCommand (const juce::String& trackKey)
         gridInput = midiTarget.currentDeviceName();
 
     touchLiveClient.sendCommand (TrackSelectorPanel::makeMidiInputFocusCommand (
-        trackKey, gridInput, panelSettings.getMasterMidiInputName()));
+        trackKey, gridInput, panelSettings.getMasterMidiInputName(),
+        panelSettings.getMasterMidiFavourites().joinIntoString (";")));
 }
 
 void GridPage::refreshMasterSwitch()
@@ -366,12 +356,6 @@ void GridPage::refreshTrackFocus()
 {
     const auto focus = TrackFocusBadge::focusRowFrom (liveSetModel);
     trackTabs.refresh();
-
-    if (focus.key != currentFocus.key || focus.colour != currentFocus.colour)
-    {
-        currentFocus = focus;
-        repaint();   // Grid-Rahmen in der Track-Farbe (paint)
-    }
 
     armButton.setEnabled (focus.key.isNotEmpty());
     auto mixerItem = liveSetModel.findItem ("mixer", focus.key);
@@ -578,11 +562,9 @@ void GridPage::resized()
     // übergebenen bounds steckt.
     dockPanel.setBounds (bounds.removeFromRight (dockPanel.getPreferredWidth()));
 
-    // Block H3: oben links der Master-Quick-Switch, daneben die Track-Tabs
-    // über die volle Breite (alle MIDI-Tracks, Tap = Fokus-Wechsel).
+    // Block H3: Track-Tabs über die volle Breite (alle MIDI-Tracks,
+    // Push-Optik, Tap = Fokus-Wechsel).
     auto topStrip = bounds.removeFromTop (28);
-    masterSwitch.setBounds (topStrip.removeFromLeft (panelSettings.getRibbonWidthPx() + 28)
-                                .reduced (2, 1));
     trackTabs.setBounds (topStrip.reduced (2, 0));
 
     const auto ribbonWidth = panelSettings.getRibbonWidthPx();   // Block D1, live
@@ -594,6 +576,9 @@ void GridPage::resized()
     auto pitchColumn = bounds.removeFromLeft (ribbonWidth);
     const auto padHeight = juce::roundToInt ((float) pitchColumn.getHeight()
                                                  / (float) padLayoutConfig().rows);
+    // Master-Quick-Switch oben in der Spalte (User-Feedback 11.07.2026:
+    // „runter" -- der Pitch-Fader darf dafür kürzer werden).
+    masterSwitch.setBounds (pitchColumn.removeFromTop (padHeight).reduced (2));
     octaveUpTile.setBounds (pitchColumn.removeFromTop (padHeight));
     octaveDownTile.setBounds (pitchColumn.removeFromTop (padHeight));
     // Block H3 (User-Feedback): Arm unten LINKS (unter Pitch), Release All

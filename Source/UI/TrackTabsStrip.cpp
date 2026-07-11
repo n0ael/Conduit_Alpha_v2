@@ -63,19 +63,19 @@ void TrackTabsStrip::paint (juce::Graphics& g)
 
         const auto isFocus = row.key.isNotEmpty() && row.key == focusKey;
 
+        // Push-Optik (User-Feedback 11.07.2026): Nummer + Name in Jost in
+        // der Track-Farbe, der angewählte Track grau unterlegt — keine
+        // farbigen Rahmen (Farbe kommt später übers Pad-MIDI-Feedback).
         if (isFocus)
         {
-            g.setColour (row.colour.withAlpha (0.30f));
+            g.setColour (push::colours::tileActive);
             g.fillRoundedRectangle (tab, 3.0f);
         }
 
-        // Dünne Umrandung in der Live-Track-Farbe (User-Wunsch)
-        g.setColour (isFocus ? row.colour : row.colour.withAlpha (0.6f));
-        g.drawRoundedRectangle (tab, 3.0f, isFocus ? 1.6f : 1.0f);
-
-        g.setColour (isFocus ? push::colours::text : push::colours::textDim);
+        g.setColour (row.colour);
         g.setFont (push::scaledFont (12.0f));
-        g.drawText (row.name, tab.reduced (7.0f, 0.0f).toNearestInt(),
+        g.drawText (juce::String (row.index + 1) + " " + row.name,
+                    tab.reduced (7.0f, 0.0f).toNearestInt(),
                     juce::Justification::centredLeft);
     }
 }

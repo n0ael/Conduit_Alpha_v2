@@ -98,11 +98,13 @@ def _set_selected_track(ctx, args):
 
 def _set_midi_input_focus(ctx, args):
     """Block H v2 rev5 (Conduit Grid-Track-Selector): args = [track_ref,
-    grid_input, master_input]. Statische Aufteilung im InputFocusService
-    (sync/inputfocus.py): Ziel-Track Monitor In + grid_input, alle anderen
-    All-Ins-MIDI-Tracks bekommen master_input als Input (Monitor bleibt) --
-    Lives eigene Arm-/Selektions-Mechanik uebernimmt den Rest. Ein
-    ueberzaehliges Legacy-Argument (follow-Flag) wird ignoriert."""
+    grid_input, master_input, favourites]. Statische Aufteilung im
+    InputFocusService (sync/inputfocus.py): Ziel-Track Monitor In +
+    grid_input, alle anderen All-Ins-MIDI-Tracks bekommen master_input als
+    Input (Monitor bleibt) -- Lives eigene Arm-/Selektions-Mechanik
+    uebernimmt den Rest. favourites (";"-Liste) = alle Master-Kandidaten
+    des Clients: Tracks auf diesen Ports gelten als verwaltet und wandern
+    beim Master-Wechsel mit (auch ueber Live-Neustarts hinweg)."""
     if len(args) < 2:
         return
     service = getattr(ctx, "input_focus", None)
@@ -115,7 +117,9 @@ def _set_midi_input_focus(ctx, args):
         return
     grid_input = str(args[1] or "")
     master_input = str(args[2] or "") if len(args) > 2 else ""
-    service.set_focus(target, grid_input, master_input)
+    favourites_raw = str(args[3] or "") if len(args) > 3 else ""
+    favourites = [name for name in favourites_raw.split(";") if name]
+    service.set_focus(target, grid_input, master_input, favourites)
 
 
 def register_all(registry):

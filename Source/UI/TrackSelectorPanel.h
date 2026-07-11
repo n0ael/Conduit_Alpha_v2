@@ -58,12 +58,17 @@ public:
         `conduit_focus`, vom Remote Script verwaltet), leer wenn keiner. */
     [[nodiscard]] static juce::String focusKeyFrom (LiveSetModel& model);
 
-    /** /live/song/set/midi_input_focus [trackKey, gridInput, masterInput]
-        — Block-H-v2-rev5-Wire-Format (statische Aufteilung). */
+    /** /live/song/set/midi_input_focus [trackKey, gridInput, masterInput,
+        favourites] — Block-H-v2-rev5-Wire-Format (statische Aufteilung).
+        favourites = „;"-Liste der Master-Favoriten: das Script behandelt
+        Tracks auf JEDEM dieser Ports als verwaltet (Quick-Switch-Wanderung
+        funktioniert damit auch über Live-Neustarts hinweg — Feldtest
+        11.07.2026: Session-Set allein kannte historische Master nicht). */
     [[nodiscard]] static juce::OSCMessage
         makeMidiInputFocusCommand (const juce::String& trackKey,
                                    const juce::String& gridInputName,
-                                   const juce::String& masterInputName);
+                                   const juce::String& masterInputName,
+                                   const juce::String& favouritesJoined);
 
     void paint (juce::Graphics& g) override;
     void mouseMove (const juce::MouseEvent& event) override;

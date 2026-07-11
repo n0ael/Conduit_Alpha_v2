@@ -157,15 +157,20 @@ class InputFocusService(object):
 
     # -- commands ---------------------------------------------------------------
 
-    def set_focus(self, target, grid_input, master_input):
+    def set_focus(self, target, grid_input, master_input, favourites=None):
         """Route target to the grid, move every All-Ins midi track to the
-        master input (statische Aufteilung, rev5)."""
+        master input (statische Aufteilung, rev5). favourites = alle
+        Master-Kandidaten des Clients -- Tracks auf diesen Ports gelten
+        als verwaltet (Quick-Switch-Wanderung auch nach Live-Neustart)."""
         if target is None:
             return
         self._grid_input = str(grid_input or "")
         self._master_input = str(master_input or "")
         if self._master_input:
             self._managed_inputs.add(self._master_input)
+        for name in (favourites or []):
+            if name:
+                self._managed_inputs.add(str(name))
         self._focus_key = stable_ids._identity(target)
 
         logger.info("input focus rev5: focus=%s grid=%r master=%r",

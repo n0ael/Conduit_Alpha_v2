@@ -487,7 +487,7 @@ TEST_CASE ("GridKeyboard: Noten-Echo setzt und loescht Pegel (geclampt)", "[grid
     grid::GridVoiceEngine engine (fake);
     conduit::GridKeyboardComponent keyboard (engine);
 
-    REQUIRE (keyboard.echoLevel (60) == 0.0f);
+    REQUIRE (juce::exactlyEqual (keyboard.echoLevel (60), 0.0f));
 
     keyboard.echoNoteOn (60, 0.8f);
     REQUIRE (keyboard.echoLevel (60) == Catch::Approx (0.8f));
@@ -496,15 +496,15 @@ TEST_CASE ("GridKeyboard: Noten-Echo setzt und loescht Pegel (geclampt)", "[grid
     REQUIRE (keyboard.echoLevel (61) == Catch::Approx (1.0f));
 
     keyboard.echoNoteOff (60);
-    REQUIRE (keyboard.echoLevel (60) == 0.0f);
+    REQUIRE (juce::exactlyEqual (keyboard.echoLevel (60), 0.0f));
     REQUIRE (keyboard.echoLevel (61) == Catch::Approx (1.0f));
 
     keyboard.clearEchoNotes();
-    REQUIRE (keyboard.echoLevel (61) == 0.0f);
+    REQUIRE (juce::exactlyEqual (keyboard.echoLevel (61), 0.0f));
 
     // Ausser-Bereichs-Noten sind wirkungslos (kein Crash)
     keyboard.echoNoteOn (-1, 1.0f);
     keyboard.echoNoteOn (128, 1.0f);
-    REQUIRE (keyboard.echoLevel (-1) == 0.0f);
-    REQUIRE (keyboard.echoLevel (128) == 0.0f);
+    REQUIRE (juce::exactlyEqual (keyboard.echoLevel (-1), 0.0f));
+    REQUIRE (juce::exactlyEqual (keyboard.echoLevel (128), 0.0f));
 }

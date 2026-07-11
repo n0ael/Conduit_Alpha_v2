@@ -17,6 +17,7 @@ namespace
     constexpr const char* modwheelEnabledKey      = "modwheelEnabled";
     constexpr const char* midiFollowSelectionKey  = "midiFollowSelection";
     constexpr const char* masterMidiInputNameKey  = "masterMidiInputName";
+    constexpr const char* gridMidiInputNameKey    = "gridMidiInputName";
 
     // Achsen-Farben (Grid-Page v2) — Index = GridPanelSettings::axisIndex
     // (Pressure 0, Slide 1, PitchBend 2).
@@ -81,6 +82,7 @@ void GridPanelSettings::loadFromFile()
         modwheelEnabled = file->getBoolValue (modwheelEnabledKey, false);
         midiFollowSelection = file->getBoolValue (midiFollowSelectionKey, true);
         masterMidiInputName = file->getValue (masterMidiInputNameKey, {});
+        gridMidiInputName   = file->getValue (gridMidiInputNameKey, {});
 
         for (size_t i = 0; i < axisColours.size(); ++i)
         {
@@ -235,6 +237,20 @@ void GridPanelSettings::setMasterMidiInputName (const juce::String& newName)
     if (auto* file = applicationProperties.getUserSettings())
     {
         file->setValue (masterMidiInputNameKey, masterMidiInputName);
+        file->saveIfNeeded();
+    }
+}
+
+void GridPanelSettings::setGridMidiInputName (const juce::String& newName)
+{
+    if (newName == gridMidiInputName)
+        return;
+
+    gridMidiInputName = newName;
+
+    if (auto* file = applicationProperties.getUserSettings())
+    {
+        file->setValue (gridMidiInputNameKey, gridMidiInputName);
         file->saveIfNeeded();
     }
 }

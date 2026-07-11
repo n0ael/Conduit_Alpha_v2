@@ -289,8 +289,19 @@
     11.07.2026):** das Script läuft als KOPIE in Lives User Library
     (`robocopy Tools\Live\ConduitRemote → …\Remote Scripts\ConduitRemote
     /MIR /XD __pycache__ tests`) + Live-Neustart — sonst „passiert
-    nichts in Ableton". Folgeschritt (User): MPE-MIDI-In-Noten-Echo
-    (Pad-Glow in Track-Farbe, ohne Sonne/Mond).
+    nichts in Ableton". **Feldtest-Fixes (Runde 2, 11.07.2026):** der
+    selected_track-Listener kann in Live STILL ausfallen → Follow läuft
+    zusätzlich als `poll()` im Manager-Tick (~100 ms, Dedupe über
+    `_last_selected_key`, Listener bleibt Schnellpfad); `set_focus`
+    restauriert einen früher bewegten Track IMMER (nicht Ziel, nicht
+    selektiert → All Ins + Off — sonst hing er auf dem Master-Input).
+    Grid-MPE-Port als EIGENES Setting (`gridMidiInputName`, Dropdown
+    „Grid MPE Port (independent from selection)" neben „MIDI Master
+    (follows selection)" in der Sektion „Ableton -
+    Don't-Follow-Selection-Mode"; leer = Fallback auf den
+    Conduit-MIDI-Out-Portnamen — die Namen können abweichen).
+    Folgeschritt (User): MPE-MIDI-In-Noten-Echo (Pad-Glow in
+    Track-Farbe, ohne Sonne/Mond).
   - **Sinks/Stränge später:** OSC (Remote + Transcoder) und CV (Software-CVC)
     docken am selben Voice-Modell an; Gesten-State-Machine (Drone/Latch/
     Pinch/Drift), Chord-Squares, Hardware-MPE-Input, MPE-Shaping (Kurven +

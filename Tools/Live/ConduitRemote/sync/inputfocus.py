@@ -120,6 +120,7 @@ class InputFocusService(object):
         self._grid_input = ""
         self._master_input = ""
         self._listener_bound = False
+        self._last_selected_key = None   # poll()-Dedupe (Feldtest 11.07.2026)
 
         # wired by the manager: tracks domain mark_dirty
         self.on_state_changed = None
@@ -159,13 +160,22 @@ class InputFocusService(object):
         if previous is not None and self._focus_key != target_key:
             self._restore_to_all_ins(previous, only_if_input=self._grid_input)
 
-        self._focus_key = target_key
-        self._moved_key = None
-        self._ensure_listener()
-
         selected = self._selected_track()
         selected_key = (stable_ids._identity(selected)
                         if selected is not None else None)
+
+        # Feldtest-Fix 11.07.2026: einen frueher bewegten Track IMMER
+        # restaurieren, wenn er weder neues Ziel noch aktuell selektiert
+        # ist -- sonst bleibt er auf dem Master-Input haengen.
+        moved = self._find_by_key(self._moved_key)
+        if (moved is not None and self._moved_key != target_key
+                and self._moved_key != selected_key):
+            self._restore_to_all_ins(moved, only_if_input=self._master_input)
+
+        self._focus_key = target_key
+        self._moved_key = None
+        self._last_selected_key = selected_key
+        self._ensure_listener()
 
         for track in song.tracks:
             if not _is_midi(track):
@@ -182,29 +192,44 @@ class InputFocusService(object):
 
     # -- follow selection ---------------------------------------------------------
 
-    def on_selection_changed(self):
-        """selected_track listener body (also callable from tests)."""
-        if not self._follow or self._focus_key is None:
-            return
+    def poll(self):
+        """[Manager-Tick, ~100 ms] Selektions-Wechsel erkennen — der
+        ROBUSTE Follow-Pfad (Feldtest 11.07.2026: der selected_track-
+        Listener kann in Live still ausfallen, dann blieb der zuvor
+        selektierte Track auf dem Master-Input hängen). Der Listener
+        bleibt als Schnellpfad; das _last_selected_key-Dedupe verhindert
+        Doppel-Feuern."""
+        self._handle_selection_change()
 
+    def on_selection_changed(self):
+        """selected_track listener body (Schnellpfad; auch Tests)."""
+        self._handle_selection_change()
+
+    def _handle_selection_change(self):
         selected = self._selected_track()
         selected_key = (stable_ids._identity(selected)
                         if selected is not None else None)
 
-        if selected_key == self._moved_key:
-            return   # nothing changed for us
+        if selected_key == self._last_selected_key:
+            return   # kein Wechsel (oder Listener war schneller als poll)
+        self._last_selected_key = selected_key
 
-        # Restore the previously moved track: All Ins + monitor OFF
-        moved = self._find_by_key(self._moved_key)
-        if moved is not None and self._moved_key != self._focus_key:
-            self._restore_to_all_ins(moved, only_if_input=self._master_input)
-        self._moved_key = None
+        if not self._follow or self._focus_key is None:
+            self._notify()   # selected-Feld der Domain trotzdem frisch
+            return
 
-        # Move the new selection out of All Ins (unless it is the focus)
-        if (selected is not None and selected_key != self._focus_key
-                and _is_midi(selected) and _is_on_all_ins(selected)):
-            apply_track_input(selected, MONITOR_AUTO, self._master_input)
-            self._moved_key = selected_key
+        if selected_key != self._moved_key:
+            # Restore the previously moved track: All Ins + monitor OFF
+            moved = self._find_by_key(self._moved_key)
+            if moved is not None and self._moved_key != self._focus_key:
+                self._restore_to_all_ins(moved, only_if_input=self._master_input)
+            self._moved_key = None
+
+            # Move the new selection out of All Ins (unless it is the focus)
+            if (selected is not None and selected_key != self._focus_key
+                    and _is_midi(selected) and _is_on_all_ins(selected)):
+                apply_track_input(selected, MONITOR_AUTO, self._master_input)
+                self._moved_key = selected_key
         self._notify()
 
     # -- lifecycle ---------------------------------------------------------------

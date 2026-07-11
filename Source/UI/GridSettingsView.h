@@ -63,11 +63,13 @@ public:
     void paint (juce::Graphics& g) override;
     void resized() override;
 
-    /** Master-MIDI-Input-Optionen (Block H v2): Ableton-Routing-Namen aus
-        der tracks-Domain (`input_options`) — die GridPage füttert sie bei
-        Domain-Änderungen. Auswahl persistiert in
-        GridPanelSettings::masterMidiInputName (Ziel-Routing der NICHT vom
-        Grid gespielten Tracks, z. B. "FromPush"). */
+    /** Ableton-Routing-Optionen (Block H v2): Namen aus der tracks-Domain
+        (`input_options`) — die GridPage füttert sie bei Domain-Änderungen.
+        Befüllt BEIDE Combos der Sektion „Ableton — Don't-Follow-Routing":
+        MIDI Master (follows selection, GridPanelSettings::
+        masterMidiInputName) und Grid MPE Port (independent,
+        gridMidiInputName — User-Feldtest 11.07.2026: der Conduit-MIDI-Out-
+        Portname kann vom Ableton-Routing-Namen abweichen). */
     void setMasterInputOptions (const juce::StringArray& options);
 
     /** In-Tune Location (Block B1) geändert -- Besitzer reicht an
@@ -95,6 +97,9 @@ private:
     void rebuildInputDeviceList();
     void handleInputDeviceSelected();
     void handleMasterInputSelected();
+    void handleGridInputSelected();
+    void repopulateRoutingCombo (juce::ComboBox& combo, const juce::String& savedName);
+    [[nodiscard]] juce::String routingNameForSelection (const juce::ComboBox& combo) const;
 
     // Section-Ueberschriften: Bounds werden in resized() EINMAL berechnet
     // und in paint() gelesen -- verhindert Auseinanderlaufen zwischen
@@ -135,8 +140,12 @@ private:
     LockToggle  modwheelToggle;
     juce::Label modwheelLabel { {}, "Modwheel-Fader" };
 
-    // Ableton (Block H v2): Master-MIDI-Input der anderen Tracks.
+    // Ableton (Block H v2): Don't-Follow-Routing — Master-MIDI-Input
+    // (folgt der Selektion) + Grid-MPE-Port (unabhängig davon).
     juce::ComboBox masterInputCombo;
+    juce::ComboBox gridInputCombo;
+    juce::Label masterInputLabel { {}, "MIDI Master (follows selection)" };
+    juce::Label gridInputLabel   { {}, "Grid MPE Port (independent from selection)" };
     juce::StringArray masterInputOptions;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (GridSettingsView)

@@ -203,3 +203,65 @@ def test_tracks_domain_exposes_focus_selected_and_options():
         song.tracks[1], stable_ids.TRACK_PREFIX)
     assert "Conduit Grid MPE" in state["input_options"]
     assert state["input_options"][0] == "All Ins"
+
+
+# -- Feldtest-Fixes 11.07.2026 ---------------------------------------------------
+
+def test_focus_switch_restores_stale_moved_track():
+    # Fokus F, Push-Selektion S wurde auf Master bewegt; Live selektiert
+    # danach etwas anderes, OHNE dass der Follow-Listener lief (Ausfall-
+    # Simulation wie in Live) -- ein neuer set_focus darf S nicht auf dem
+    # Master-Input haengen lassen.
+    song = make_song()   # tracks[0..2] midi, tracks[3] audio
+    song.view.selected_track = song.tracks[1]
+    service = InputFocusService(song)
+    service.set_focus(song.tracks[0], GRID, MASTER, True)
+    assert routing(song.tracks[1]) == MASTER
+
+    service.detach()
+    song.view.selected_track = song.tracks[3]   # Audio-Track, Listener tot
+
+    service.set_focus(song.tracks[2], GRID, MASTER, True)
+
+    assert monitor(song.tracks[1]) == 2
+    assert routing(song.tracks[1]) == "All Ins"   # nicht mehr auf Master
+
+
+def test_poll_follows_selection_without_listener():
+    # Feldtest 11.07.2026: der selected_track-Listener kann in Live still
+    # ausfallen -- poll() (Manager-Tick) muss den Wechsel trotzdem fahren.
+    song = make_song()
+    song.view.selected_track = song.tracks[1]
+    service = InputFocusService(song)
+    service.set_focus(song.tracks[0], GRID, MASTER, True)
+
+    service.detach()   # Listener-Ausfall simulieren
+    song.view.selected_track = song.tracks[2]
+    assert routing(song.tracks[2]) == "All Ins"   # noch nichts passiert
+
+    service.poll()
+
+    assert monitor(song.tracks[1]) == 2
+    assert routing(song.tracks[1]) == "All Ins"
+    assert monitor(song.tracks[2]) == 1
+    assert routing(song.tracks[2]) == MASTER
+
+    # Dedupe: erneuter poll ohne Wechsel tut nichts (kein Flattern)
+    calls = []
+    service.on_state_changed = lambda: calls.append(1)
+    service.poll()
+    assert not calls
+
+
+def test_listener_and_poll_do_not_double_fire():
+    song = make_song()
+    service = InputFocusService(song)
+    service.set_focus(song.tracks[0], GRID, MASTER, True)
+
+    song.view.selected_track = song.tracks[1]   # Listener feuert sofort
+    assert routing(song.tracks[1]) == MASTER
+
+    calls = []
+    service.on_state_changed = lambda: calls.append(1)
+    service.poll()   # gleicher Zustand -> Dedupe greift
+    assert not calls

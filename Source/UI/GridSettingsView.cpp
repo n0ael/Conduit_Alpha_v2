@@ -51,6 +51,16 @@ GridSettingsView::GridSettingsView (juce::ValueTree rootStateToUse, grid::MidiDe
     addAndMakeVisible (modwheelToggle);
     addAndMakeVisible (modwheelLabel);
     addAndMakeVisible (masterInputCombo);
+    addAndMakeVisible (gridInputCombo);
+    addAndMakeVisible (masterInputLabel);
+    addAndMakeVisible (gridInputLabel);
+
+    for (auto* label : { &masterInputLabel, &gridInputLabel })
+    {
+        label->setJustificationType (juce::Justification::centredLeft);
+        label->setColour (juce::Label::textColourId, push::colours::textDim);
+        label->setFont (push::scaledFont (12.0f));
+    }
 
     modwheelLabel.setJustificationType (juce::Justification::centredLeft);
     modwheelLabel.setColour (juce::Label::textColourId, push::colours::textDim);
@@ -141,12 +151,14 @@ GridSettingsView::GridSettingsView (juce::ValueTree rootStateToUse, grid::MidiDe
             onLayoutSettingsChanged();
     };
 
-    // Master-MIDI-Input (Block H v2): Optionen kommen von der GridPage aus
+    // Ableton-Routing (Block H v2): Optionen kommen von der GridPage aus
     // der tracks-Domain (setMasterInputOptions); ohne Ableton-Verbindung
-    // zeigt die Combo nur den Leereintrag.
-    masterInputCombo.setTextWhenNothingSelected ("Master-MIDI-Input (Ableton)");
+    // zeigen die Combos nur den Leereintrag.
+    masterInputCombo.setTextWhenNothingSelected ("MIDI Master");
+    gridInputCombo.setTextWhenNothingSelected ("Grid MPE Port");
     setMasterInputOptions ({});
     masterInputCombo.onChange = [this] { handleMasterInputSelected(); };
+    gridInputCombo.onChange   = [this] { handleGridInputSelected(); };
 
     modwheelToggle.setActive (panelSettings.isModwheelEnabled());
     modwheelToggle.onClick = [this]
@@ -243,28 +255,40 @@ void GridSettingsView::setMasterInputOptions (const juce::StringArray& options)
 
     masterInputOptions = options;
 
-    masterInputCombo.clear (juce::dontSendNotification);
-    masterInputCombo.addItem ("Keins (Routing unangetastet)", 1);
+    repopulateRoutingCombo (masterInputCombo, panelSettings.getMasterMidiInputName());
+    repopulateRoutingCombo (gridInputCombo, panelSettings.getGridMidiInputName());
+}
+
+void GridSettingsView::repopulateRoutingCombo (juce::ComboBox& combo,
+                                               const juce::String& savedName)
+{
+    combo.clear (juce::dontSendNotification);
+    combo.addItem ("Keins (Routing unangetastet)", 1);
 
     for (int i = 0; i < masterInputOptions.size(); ++i)
-        masterInputCombo.addItem (masterInputOptions[i], i + 2);
+        combo.addItem (masterInputOptions[i], i + 2);
 
-    // Persistierte Auswahl wieder anwenden (auch wenn sie aktuell nicht in
-    // den Optionen ist -- dann bleibt der Leereintrag selektiert).
-    const auto saved = panelSettings.getMasterMidiInputName();
-    const auto index = masterInputOptions.indexOf (saved);
-    masterInputCombo.setSelectedId (index >= 0 ? index + 2 : 1,
-                                    juce::dontSendNotification);
+    // Persistierte Auswahl wieder anwenden (fehlt sie in den Optionen,
+    // bleibt der Leereintrag selektiert).
+    const auto index = masterInputOptions.indexOf (savedName);
+    combo.setSelectedId (index >= 0 ? index + 2 : 1, juce::dontSendNotification);
+}
+
+juce::String GridSettingsView::routingNameForSelection (const juce::ComboBox& combo) const
+{
+    const auto index = combo.getSelectedId() - 2;
+    return index >= 0 && index < masterInputOptions.size() ? masterInputOptions[index]
+                                                           : juce::String();
 }
 
 void GridSettingsView::handleMasterInputSelected()
 {
-    const auto selectedId = masterInputCombo.getSelectedId();
-    const auto index = selectedId - 2;
+    panelSettings.setMasterMidiInputName (routingNameForSelection (masterInputCombo));
+}
 
-    panelSettings.setMasterMidiInputName (
-        index >= 0 && index < masterInputOptions.size() ? masterInputOptions[index]
-                                                        : juce::String());
+void GridSettingsView::handleGridInputSelected()
+{
+    panelSettings.setGridMidiInputName (routingNameForSelection (gridInputCombo));
 }
 
 void GridSettingsView::paint (juce::Graphics& g)
@@ -279,7 +303,7 @@ void GridSettingsView::paint (juce::Graphics& g)
         { expressionHeadingBounds, "Expression" },
         { layoutHeadingBounds,     "Layout" },
         { modwheelHeadingBounds,   "Modwheel" },
-        { abletonHeadingBounds,    "Ableton" },
+        { abletonHeadingBounds,    "Ableton - Don't-Follow-Selection-Mode" },
     };
 
     for (const auto& [bounds, text] : headings)
@@ -339,10 +363,14 @@ void GridSettingsView::resized()
     modwheelLabel.setBounds (modwheelRow.reduced (8, 0));
     area.removeFromTop (kSectionGap);
 
-    // Ableton (Block H v2): Master-MIDI-Input der NICHT vom Grid
-    // gespielten Tracks (Ziel-Routing bei Follow Selection).
+    // Ableton (Block H v2): Don't-Follow-Routing — MIDI Master (folgt der
+    // Selektion) + Grid MPE Port (unabhängig, Input des Fokus-Tracks).
     abletonHeadingBounds = area.removeFromTop (kHeadingHeight);
+    masterInputLabel.setBounds (area.removeFromTop (16));
     masterInputCombo.setBounds (area.removeFromTop (kRowHeight));
+    area.removeFromTop (kRowGap);
+    gridInputLabel.setBounds (area.removeFromTop (16));
+    gridInputCombo.setBounds (area.removeFromTop (kRowHeight));
 }
 
 } // namespace conduit

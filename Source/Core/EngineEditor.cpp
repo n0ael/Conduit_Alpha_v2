@@ -150,10 +150,18 @@ EngineEditor::EngineEditor (EngineProcessor& engineProcessor,
         panel->onTrackChosen = [this] (const juce::String& trackKey)
         {
             auto& settings = engine.getGridPanelSettings();
+
+            // Grid-MPE-Port: explizit gewählter Ableton-Routing-Name
+            // (Settings-Tab, User-Feldtest 11.07.2026 — kann vom
+            // Conduit-MIDI-Out-Portnamen abweichen); leer = Fallback
+            // auf den Namen des offenen Grid-MIDI-Out-Ports.
+            auto gridInput = settings.getGridMidiInputName();
+            if (gridInput.isEmpty())
+                gridInput = engine.getGridMidiDeviceTarget().currentDeviceName();
+
             engine.getTouchLiveClient().sendCommand (
                 TrackSelectorPanel::makeMidiInputFocusCommand (
-                    trackKey,
-                    engine.getGridMidiDeviceTarget().currentDeviceName(),
+                    trackKey, gridInput,
                     settings.getMasterMidiInputName(),
                     settings.isMidiFollowSelection()));
         };

@@ -121,6 +121,14 @@ public:
     [[nodiscard]] juce::String getMasterMidiInputName() const noexcept { return masterMidiInputName; }
     void setMasterMidiInputName (const juce::String& newName);
 
+    /** Ableton-Routing-Name des Grid-MPE-Ports (Input des Fokus-Tracks,
+        unabhängig von der Selektion) — User-Feldtest 11.07.2026: explizit
+        wählbar statt vom Conduit-MIDI-Out-Portnamen abgeleitet (die können
+        sich unterscheiden). Leer = Fallback auf
+        MidiDeviceTarget::currentDeviceName(). */
+    [[nodiscard]] juce::String getGridMidiInputName() const noexcept { return gridMidiInputName; }
+    void setGridMidiInputName (const juce::String& newName);
+
 private:
     void loadFromFile();
 
@@ -141,6 +149,7 @@ private:
 
     bool midiFollowSelection = true;
     juce::String masterMidiInputName;
+    juce::String gridMidiInputName;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (GridPanelSettings)
 };

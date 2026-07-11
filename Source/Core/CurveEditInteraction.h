@@ -56,9 +56,10 @@ struct CurveEditInteraction
                                                 juce::Point<float> aNow, juce::Point<float> bNow) noexcept;
 
     /** Drehwinkel → Bauchigkeits-Betrag (stufenlos, User-Feedback 11.07.):
-        amount = -degrees / kFullShapeDegrees, geklemmt auf [-1,1] --
-        Drehung im Uhrzeigersinn (negative Grad in Feld-Koordinaten,
-        y nach oben) ergibt positive Bauchigkeit. */
+        amount = degrees / kFullShapeDegrees, geklemmt auf [-1,1] --
+        Drehung gegen den Uhrzeigersinn (positive Grad in Feld-Koordinaten,
+        y nach oben) ergibt positive Bauchigkeit (Richtung per
+        User-Gefuehlstest festgelegt). */
     [[nodiscard]] static float degreesToShapeAmount (float degrees) noexcept;
 
     /** Zwei-Finger-Drehung anwenden (Block C, stufenlos): |amount| über der

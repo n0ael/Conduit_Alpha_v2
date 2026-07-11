@@ -104,7 +104,9 @@ float CurveEditInteraction::rotationDegrees (juce::Point<float> aStart, juce::Po
 
 float CurveEditInteraction::degreesToShapeAmount (float degrees) noexcept
 {
-    return juce::jlimit (-1.0f, 1.0f, -degrees / kFullShapeDegrees);
+    // Vorzeichen per User-Gefuehlstest 11.07.: Drehung GEGEN den
+    // Uhrzeigersinn (positive Grad, y nach oben) = positive Bauchigkeit.
+    return juce::jlimit (-1.0f, 1.0f, degrees / kFullShapeDegrees);
 }
 
 void CurveEditInteraction::applyShapeAmount (ResponseCurve& curve, float amount,

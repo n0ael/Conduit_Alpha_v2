@@ -189,10 +189,11 @@ TEST_CASE ("CurveEditInteraction: applyShapeAmount laesst eine verschobene Mitte
 
 TEST_CASE ("CurveEditInteraction: degreesToShapeAmount -- Vorzeichen, Skala, Klemme", "[grid]")
 {
-    // Uhrzeigersinn (negative Grad) -> positive Bauchigkeit; 90 Grad = voll.
-    REQUIRE (grid::CurveEditInteraction::degreesToShapeAmount (-90.0f) == Approx (1.0f));
-    REQUIRE (grid::CurveEditInteraction::degreesToShapeAmount (45.0f) == Approx (-0.5f));
-    REQUIRE (grid::CurveEditInteraction::degreesToShapeAmount (-180.0f) == Approx (1.0f));   // geklemmt
+    // Gegen den Uhrzeigersinn (positive Grad) -> positive Bauchigkeit;
+    // 90 Grad = voll (Richtung per User-Gefuehlstest 11.07.).
+    REQUIRE (grid::CurveEditInteraction::degreesToShapeAmount (90.0f) == Approx (1.0f));
+    REQUIRE (grid::CurveEditInteraction::degreesToShapeAmount (-45.0f) == Approx (-0.5f));
+    REQUIRE (grid::CurveEditInteraction::degreesToShapeAmount (180.0f) == Approx (1.0f));   // geklemmt
     REQUIRE (grid::CurveEditInteraction::degreesToShapeAmount (0.0f) == Approx (0.0f));
 }
 

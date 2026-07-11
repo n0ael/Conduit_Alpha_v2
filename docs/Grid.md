@@ -398,6 +398,37 @@
     Delay/Thresh[Pads/s]/FadeF), alles live gepollt, sofort persistent.
     Tests: Tests/Core/GridPhysicsTests.cpp (Konvergenz, Überschwingen,
     Substep-Stabilität, Magnet-Raster, Threshold-Release, Bypass).
+  - **Persistenz gebündelt (Block K, 07/2026):** zwei Ablagen.
+    (1) SKALARE in GridPanelSettings (sofort persistent):
+    pressureSensitivity/slideSensitivity, bendRangeIndex (0..5 =
+    ¼…×8-kMultipliers-Index), inTuneLocationPad/inTuneWidthPercent,
+    expressionModeIndex (mpe 0/polyAT 1/monoAT 2 — Enum-Reihenfolge ist
+    Serialisierungs-API), octaveShift. GridPage wendet sie beim Start an
+    und persistiert in den bestehenden Callbacks.
+    (2) STRUKTURIERTE Session in `Source/Core/GridSessionStore` →
+    `GridSession.xml` NEBEN GridPanel.settings
+    (GridPanelSettings::sessionFile — folgt Test-Temp-Options):
+    DIY-Controls (CcControlModel::restore erhält Ids — die Bindings
+    referenzieren sie, addControl nach remove()-Lücken vergäbe andere!),
+    Akkord-Slots, MIDI-In-Bindungen (nur Kanal/CC — Takeover/Glättung
+    flüchtig), Macro-Bindings (Kurve = Punkte + Krümmungen + OutputRange;
+    Ziel als OPAKES MacroTarget::toState()-Tree, Rückweg via
+    GridPage::makeTargetFromState-Factory), MPE-Achsen (ResponseCurve +
+    offsetBeyondMax je Achse). Save: 30-s-Auto-Save-Timer + GridPage-Dtor;
+    Load im Ctor VOR dem Bau der Dock-Tabs (MpeShapingView seedet
+    Kurven-Schatten/Felder aus den geladenen Werten).
+    **Ableton-Ziel-Re-Resolve** (Rule touchlive: dvid ist Laufzeit-ID):
+    AbletonParamTarget trägt eine `LiveParamSpec` (Track-/Device-/
+    Parameter-NAME + Device-Ordinal = n-tes gleichnamiges Device der
+    Chain); persistiert wird NUR die Spec. `LiveTargetResolver`
+    (Source/TouchLive) löst sie gegen tracks-/devices-Domain neu auf;
+    unaufgelöst = sendValue-No-op, describe zeigt „(?)".
+    Trigger: GridPage-ValueTree-Listener auf chain:/parmeta:/name-Änderungen
+    + Item-Add/Remove (coalesced via callAsync — die heiße parvals-Zeile
+    triggert bewusst nicht). System-Controls werden NICHT gespeichert
+    (buildXyFaderLayout vergibt deterministische Ids).
+    Tests: Tests/Core/GridSessionStoreTests.cpp (Roundtrips inkl.
+    Id-Lücke, Resolver-Matrix, Spec-Roundtrip).
   - **Sinks/Stränge später:** OSC (Remote + Transcoder) und CV (Software-CVC)
     docken am selben Voice-Modell an; Gesten-State-Machine (Drone/Latch/
     Pinch/Drift), Chord-Squares, Hardware-MPE-Input, MPE-Shaping (Kurven +

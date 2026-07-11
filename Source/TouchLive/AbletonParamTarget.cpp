@@ -5,14 +5,19 @@
 namespace conduit::grid
 {
 
-AbletonParamTarget::AbletonParamTarget (TouchLiveClient& clientToUse, juce::String deviceIdToUse,
-                                        int parameterIndexToUse, float minValueToUse, float maxValueToUse,
-                                        bool quantisedToUse, juce::String displayNameToUse)
-    : client (clientToUse), deviceId (std::move (deviceIdToUse)),
-      parameterIndex (parameterIndexToUse),
-      minValue (minValueToUse), maxValue (maxValueToUse),
-      quantised (quantisedToUse), displayName (std::move (displayNameToUse))
+AbletonParamTarget::AbletonParamTarget (TouchLiveClient& clientToUse, LiveParamSpec specToUse)
+    : client (clientToUse), paramSpec (std::move (specToUse))
 {
+}
+
+void AbletonParamTarget::resolve (const juce::String& newDeviceId, int newParameterIndex,
+                                  float newMinValue, float newMaxValue, bool newQuantised) noexcept
+{
+    deviceId       = newDeviceId;
+    parameterIndex = newParameterIndex;
+    minValue       = newMinValue;
+    maxValue       = newMaxValue;
+    quantised      = newQuantised;
 }
 
 float AbletonParamTarget::mapToNative (float value01, float rangeMin, float rangeMax,
@@ -31,8 +36,8 @@ float AbletonParamTarget::mapToNative (float value01, float rangeMin, float rang
 
 void AbletonParamTarget::sendValue (float value01)
 {
-    if (deviceId.isEmpty())
-        return;
+    if (! isResolved())
+        return;   // Block K: nach Live-Neustart bis zum Re-Resolve stumm
 
     // Exakt der Pfad von TouchLiveDeviceView::sendParameter: Suppression
     // fuer die heisse parvals-Zeile + Fast-Path-Versand (16-ms-Thinning).
@@ -48,7 +53,38 @@ void AbletonParamTarget::sendValue (float value01)
 
 juce::String AbletonParamTarget::describe() const
 {
-    return displayName.isNotEmpty() ? displayName : ("Live-Parameter " + juce::String (parameterIndex));
+    const auto name = paramSpec.displayName.isNotEmpty()
+                          ? paramSpec.displayName
+                          : ("Live-Parameter " + juce::String (parameterIndex));
+
+    return isResolved() ? name : name + " (?)";
+}
+
+juce::ValueTree AbletonParamTarget::toState() const
+{
+    return specToState (paramSpec);
+}
+
+juce::ValueTree AbletonParamTarget::specToState (const LiveParamSpec& spec)
+{
+    juce::ValueTree state (kStateType);
+    state.setProperty ("trackName", spec.trackName, nullptr);
+    state.setProperty ("deviceName", spec.deviceName, nullptr);
+    state.setProperty ("deviceOrdinal", spec.deviceOrdinal, nullptr);
+    state.setProperty ("paramName", spec.paramName, nullptr);
+    state.setProperty ("displayName", spec.displayName, nullptr);
+    return state;
+}
+
+LiveParamSpec AbletonParamTarget::specFromState (const juce::ValueTree& state)
+{
+    LiveParamSpec spec;
+    spec.trackName     = state.getProperty ("trackName").toString();
+    spec.deviceName    = state.getProperty ("deviceName").toString();
+    spec.deviceOrdinal = (int) state.getProperty ("deviceOrdinal", 0);
+    spec.paramName     = state.getProperty ("paramName").toString();
+    spec.displayName   = state.getProperty ("displayName").toString();
+    return spec;
 }
 
 } // namespace conduit::grid

@@ -85,6 +85,9 @@ public:
     [[nodiscard]] const Binding* bindingFor (const MacroControlKey& key) const noexcept;
     [[nodiscard]] int count() const noexcept { return (int) bindings.size(); }
 
+    /** Alle Bindungen (Block-K-Persistenz, nur lesen). */
+    [[nodiscard]] const std::vector<Binding>& all() const noexcept { return bindings; }
+
     /** Eingehender CC [Message Thread, vom MidiControlInput gepumpt]. */
     void handleIncomingCc (int channel, int cc, int value7bit);
 

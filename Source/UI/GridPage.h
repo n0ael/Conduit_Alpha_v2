@@ -9,6 +9,7 @@
 #include "Core/CcControlModel.h"
 #include "Core/ChordMemory.h"
 #include "Core/GridPanelSettings.h"
+#include "Core/GridSessionStore.h"
 #include "Core/GridVoiceEngine.h"
 #include "Core/MacroBindings.h"
 #include "Core/MidiControlInput.h"
@@ -101,7 +102,8 @@ class MacroPanel;
     ist akzeptiert (TODO(design)).
 */
 class GridPage final : public juce::Component,
-                       private juce::ValueTree::Listener
+                       private juce::ValueTree::Listener,
+                       private juce::Timer
 {
 public:
     GridPage (juce::ValueTree rootStateToUse,
@@ -199,6 +201,29 @@ private:
     /** Block H3: Quick-Switch mit Favoriten + aktuellem Master füttern. */
     void refreshMasterSwitch();
 
+    //==========================================================================
+    // Block K (Persistenz gebündelt): strukturierte Grid-Session
+    // (GridSessionStore — DIY-Controls, Akkord-Slots, MIDI-In-/Macro-
+    // Bindings, MPE-Achsen-Kurven) laden/speichern + Ableton-Ziel-
+    // Re-Resolve (LiveTargetResolver — dvid ist Laufzeit-ID).
+
+    void loadSession();
+    void saveSession();
+
+    /** Macro-Ziel aus seinem persistierten toState()-Tree bauen
+        (MidiCcTarget/AbletonParamTarget — Live-Ziele starten unresolved). */
+    [[nodiscard]] std::unique_ptr<grid::MacroTarget>
+        makeTargetFromState (const juce::ValueTree& state);
+
+    /** Alle Live-Macro-Ziele gegen den aktuellen Live-Set-Spiegel neu
+        auflösen (nach Laden, Live-Reconnect, Track-/Device-Umbenennung). */
+    void resolveLiveMacroTargets();
+    /** Coalesced-Async-Trigger (devices-Domain-Änderungen feuern in Serien). */
+    void scheduleLiveTargetResolve();
+
+    /** Auto-Save der Session (30 s — plus Save im Destruktor). */
+    void timerCallback() override;
+
     // Bereich des PitchBend-Offset-Ribbons: Mitte = 0, ±Ende = ±12 Halbtöne.
     // Spätere 1–96-Range-UI ersetzt diese Konstante.
     static constexpr float kPitchBendOffsetSemitones = 12.0f;
@@ -274,6 +299,10 @@ private:
     grid::CcControlModel systemCcModel;  // System-Controls des XY+Fader-Modus (User 10.07.2026)
     CcControlLayer systemLayer;          // ÜBER dem ccLayer, IMMER Play-Modus (kein Werkzeug)
     grid::ChordMemory chordMemory;    // Akkord-Speicher (Grid-Page v2, 8 LCD-Slots)
+
+    // Block K: Session-Datei (neben GridPanel.settings) + Resolve-Coalescing.
+    juce::File sessionFile;
+    bool liveResolvePending = false;
     ChordMemoryStrip chordStrip { chordMemory };   // liegt räumlich NEBEN dem Keyboard/ccLayer
     EditorDockPanel dockPanel;
 

@@ -105,6 +105,7 @@ set(CONDUIT_CPP_SOURCES
     Source/Core/GraphManager.cpp
     Source/Core/GridPanelSettings.cpp
     Source/Core/GridPhysics.cpp
+    Source/Core/GridSessionStore.cpp
     Source/Core/GridVoiceEngine.cpp
     Source/Core/InputLinkSend.cpp
     Source/Core/LinkClock.cpp
@@ -155,6 +156,7 @@ set(CONDUIT_CPP_SOURCES
     Source/Core/MacroBindings.cpp
     Source/TouchLive/AbletonParamTarget.cpp
     Source/TouchLive/LiveSetModel.cpp
+    Source/TouchLive/LiveTargetResolver.cpp
     Source/TouchLive/LiveSpectrumTap.cpp
     Source/TouchLive/TouchLiveClient.cpp
     Source/TouchLive/TouchLiveSettings.cpp
@@ -595,6 +597,7 @@ if(CONDUIT_BUILD_TESTS)
         Tests/Core/NamedIdTests.cpp
         Tests/Core/GraphManagerTests.cpp
         Tests/Core/GridPhysicsTests.cpp
+        Tests/Core/GridSessionStoreTests.cpp
         Tests/Core/GridVoiceEngineTests.cpp
         Tests/Core/PadGridLayoutTests.cpp
         Tests/Core/RingTouchModelTests.cpp
@@ -680,6 +683,7 @@ if(CONDUIT_BUILD_TESTS)
         Source/Core/GraphManager.cpp
         Source/Core/GridPanelSettings.cpp
         Source/Core/GridPhysics.cpp
+        Source/Core/GridSessionStore.cpp
         Source/Core/GridVoiceEngine.cpp
         Source/Core/InputLinkSend.cpp
         Source/Core/LinkClock.cpp
@@ -730,6 +734,7 @@ if(CONDUIT_BUILD_TESTS)
     Source/Core/MacroBindings.cpp
         Source/TouchLive/AbletonParamTarget.cpp
         Source/TouchLive/LiveSetModel.cpp
+        Source/TouchLive/LiveTargetResolver.cpp
         Source/TouchLive/LiveSpectrumTap.cpp
         Source/TouchLive/TouchLiveClient.cpp
         Source/TouchLive/TouchLiveSettings.cpp

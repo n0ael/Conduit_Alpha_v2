@@ -55,6 +55,12 @@ public:
         User 10.07.2026). */
     void clear() noexcept;
 
+    /** Stellt ein persistiertes Control MIT seiner gespeicherten Id wieder
+        her (Block K — die Macro-/MIDI-In-Bindings referenzieren die Id;
+        addControl wuerde nach remove()-Luecken andere Ids vergeben).
+        Die Id-Vergabe zaehlt danach oberhalb der hoechsten Id weiter. */
+    void restore (const CcControl& control);
+
     /** Verschiebt das Control mit erhaltener Größe an die neue Ursprungszelle,
         geklemmt in die Rastergrenzen [0,cols) × [0,rows). true, wenn die id
         existiert (auch wenn die geklemmte Position unverändert bleibt). */

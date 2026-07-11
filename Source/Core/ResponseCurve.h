@@ -35,6 +35,14 @@ public:
     int numSegments() const noexcept;                                // = numPoints()-1
     const std::vector<Point>& points() const noexcept;
 
+    /** Krümmung eines Segments (Block-K-Persistenz; 0 bei ungültigem Index). */
+    [[nodiscard]] float segmentCurvature (int segmentIndex) const noexcept
+    {
+        return segmentIndex >= 0 && segmentIndex < (int) curvature.size()
+                   ? curvature[(size_t) segmentIndex]
+                   : 0.0f;
+    }
+
 private:
     std::vector<Point> pts { { 0.0f, 0.0f }, { 1.0f, 1.0f } };
     std::vector<float> curvature { 0.0f };       // je Segment

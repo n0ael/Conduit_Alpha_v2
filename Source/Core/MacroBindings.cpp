@@ -29,6 +29,14 @@ juce::String MidiCcTarget::describe() const
     return "CC " + juce::String (cc) + " / Kanal " + juce::String (midiChannel);
 }
 
+juce::ValueTree MidiCcTarget::toState() const
+{
+    juce::ValueTree state (kStateType);
+    state.setProperty ("channel", midiChannel, nullptr);
+    state.setProperty ("cc", cc, nullptr);
+    return state;
+}
+
 //==============================================================================
 MacroBinding* MacroBindings::add (const MacroControlKey& key)
 {
@@ -85,6 +93,18 @@ void MacroBindings::clearControl (int layer, int controlId)
         else
             ++it;
     }
+}
+
+std::vector<MacroControlKey> MacroBindings::allKeys() const
+{
+    std::vector<MacroControlKey> keys;
+    keys.reserve (bindings.size());
+
+    for (const auto& [key, list] : bindings)
+        if (! list.empty())
+            keys.push_back (key);
+
+    return keys;
 }
 
 void MacroBindings::applyValue (const MacroControlKey& key, float value01)

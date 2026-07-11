@@ -231,6 +231,53 @@ public:
     [[nodiscard]] bool isControlSnapToDefault() const noexcept { return controlSnapToDefault; }
     void setControlSnapToDefault (bool shouldSnap);
 
+    //==========================================================================
+    // Block K (Persistenz gebündelt): die bisher Laufzeit-only-Skalare der
+    // Blöcke A/B/D — Sensitivity/Bend-Range (MpeShapingView-Detailspalte),
+    // In-Tune/Expression (Settings-Tab), Oktav-Shift (Grid-Page-Buttons).
+    // Strukturierter Session-Zustand (Bindings/Chords/Kurven) liegt separat
+    // im GridSessionStore (GridSession.xml).
+
+    static constexpr double defaultSensitivity = 50.0;   // 0..100, 50 = neutral
+
+    static constexpr int defaultBendRangeIndex = 2;      // ×1 (kMultipliers-Index)
+    static constexpr int minBendRangeIndex     = 0;
+    static constexpr int maxBendRangeIndex     = 5;
+
+    static constexpr double defaultInTuneWidthPercent = 20.0;   // Block B2
+
+    static constexpr int maxOctaveShift = 3;   // == GridKeyboardComponent::kMaxOctaveShift
+
+    [[nodiscard]] double getPressureSensitivity() const noexcept { return pressureSensitivity; }
+    void setPressureSensitivity (double newSensitivity);
+
+    [[nodiscard]] double getSlideSensitivity() const noexcept { return slideSensitivity; }
+    void setSlideSensitivity (double newSensitivity);
+
+    /** Index in BendRangeSelector::kMultipliers (¼ ½ ×1 ×2 ×4 ×8). */
+    [[nodiscard]] int getBendRangeIndex() const noexcept { return bendRangeIndex; }
+    void setBendRangeIndex (int newIndex);
+
+    /** In-Tune-Anker (Block B1): true = Pad-Zentrum (Default), false = Finger. */
+    [[nodiscard]] bool isInTuneLocationPad() const noexcept { return inTuneLocationPad; }
+    void setInTuneLocationPad (bool shouldBePad);
+
+    [[nodiscard]] double getInTuneWidthPercent() const noexcept { return inTuneWidthPercent; }
+    void setInTuneWidthPercent (double newPercent);
+
+    /** ExpressionMode als int (mpe 0, polyAftertouch 1, monoAftertouch 2 —
+        Enum-Reihenfolge ist Serialisierungs-API). */
+    [[nodiscard]] int getExpressionModeIndex() const noexcept { return expressionModeIndex; }
+    void setExpressionModeIndex (int newIndex);
+
+    [[nodiscard]] int getOctaveShift() const noexcept { return octaveShift; }
+    void setOctaveShift (int newShift);
+
+    /** Ablage der strukturierten Grid-Session (GridSessionStore, Block K):
+        GridSession.xml NEBEN der Settings-Datei — folgt damit automatisch
+        den injizierten Test-Options (Temp-Verzeichnis). */
+    [[nodiscard]] juce::File sessionFile();
+
 private:
     void loadFromFile();
 
@@ -257,6 +304,14 @@ private:
     int  trackTabsFontPx = defaultTrackTabsFontPx;
     int  trackTabMinWidthPx = defaultTrackTabMinWidthPx;
     bool rootPadTrackColour = true;
+
+    double pressureSensitivity  = defaultSensitivity;
+    double slideSensitivity     = defaultSensitivity;
+    int    bendRangeIndex       = defaultBendRangeIndex;
+    bool   inTuneLocationPad    = true;
+    double inTuneWidthPercent   = defaultInTuneWidthPercent;
+    int    expressionModeIndex  = 0;
+    int    octaveShift          = 0;
 
     bool   gridGravityEnabled    = false;
     double physicsForce          = defaultPhysicsForce;

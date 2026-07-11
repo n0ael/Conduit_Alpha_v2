@@ -236,6 +236,21 @@ MpeShapingView::MpeShapingView (grid::GridVoiceEngine& engineToUse, GridPanelSet
     setupOffsetToggle (slideOffsetToggle, slideOffsetLabel,
                       grid::GridVoiceEngine::Axis::Slide, sections[1].colour);
 
+    // Block K: persistierte Zustände anzeigen — Sensitivity/Bend-Range aus
+    // GridPanelSettings (die GridPage hat sie beim Start bereits aufs
+    // Keyboard angewandt), Kurven-Krümmungs-Schatten aus den geladenen
+    // ResponseCurves der Engine (die Session lädt VOR dem Bau dieser View).
+    pressureSensField.setValue (panelSettings.getPressureSensitivity(), juce::dontSendNotification);
+    slideSensField.setValue (panelSettings.getSlideSensitivity(), juce::dontSendNotification);
+    bendRangeSelector.setSelectedIndex (panelSettings.getBendRangeIndex());
+
+    for (auto& section : sections)
+    {
+        const auto& curve = engine.responseCurve (section.axis);
+        for (size_t segment = 0; segment < section.segmentCurvature.size(); ++segment)
+            section.segmentCurvature[segment] = curve.segmentCurvature ((int) segment);
+    }
+
     // Sensitivity-Felder (Block A2): Config kommt aus dem In-Class-
     // Initialisierer (Header) -- hier nur Akzentfarbe + Verdrahtung.
     addChildComponent (pressureSensField);

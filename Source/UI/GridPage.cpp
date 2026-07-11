@@ -1,10 +1,14 @@
 #include "GridPage.h"
 
+#include <cmath>
+
 #include "CcPanel.h"
 #include "GridSettingsView.h"
 #include "MacroPanel.h"
 #include "Modules/ConduitModule.h"
 #include "MpeShapingView.h"
+#include "TouchLive/AbletonParamTarget.h"
+#include "TouchLive/LiveTargetResolver.h"
 
 namespace conduit
 {
@@ -57,6 +61,33 @@ GridPage::GridPage (juce::ValueTree rootStateToUse,
     ccLayer.setPanelSettings (&panelSettings);
     systemLayer.setPanelSettings (&panelSettings);
 
+    // Block K (Persistenz gebündelt): erst die Skalar-Zustände der Blöcke
+    // A/B/D anwenden, dann die strukturierte Session laden (DIY-Controls,
+    // Akkorde, MIDI-In-/Macro-Bindings, MPE-Achsen-Kurven) — VOR dem Bau
+    // der Dock-Tabs, damit MpeShapingView/GridSettingsView die geladenen
+    // Werte anzeigen (Kurven-Schatten, Feld-Initialwerte).
+    keyboard.setPressureSensitivity (panelSettings.getPressureSensitivity());
+    keyboard.setSlideSensitivity (panelSettings.getSlideSensitivity());
+    keyboard.setPitchBendMultiplier (std::exp2 ((float) (panelSettings.getBendRangeIndex() - 2)));
+    keyboard.setInTuneLocation (panelSettings.isInTuneLocationPad()
+                                    ? grid::InTuneLocation::pad
+                                    : grid::InTuneLocation::finger);
+    keyboard.setInTuneWidthPercent ((float) panelSettings.getInTuneWidthPercent());
+    mpeMidiSink.setExpressionMode (
+        static_cast<grid::ExpressionMode> (panelSettings.getExpressionModeIndex()));
+
+    for (int i = 0; i < std::abs (panelSettings.getOctaveShift()); ++i)
+    {
+        if (panelSettings.getOctaveShift() > 0)
+            keyboard.octaveUp();
+        else
+            keyboard.octaveDown();
+    }
+
+    sessionFile = panelSettings.sessionFile();
+    loadSession();
+    startTimer (30 * 1000);   // Auto-Save; zusätzlich Save im Destruktor
+
     // Track-Tabs (Block H3): Tap = Fokus-Wechsel, gleicher Command-Weg wie
     // der Long-Press-Selector (EngineEditor ruft ebenfalls sendFocusCommand).
     trackTabs.onTrackChosen = [this] (const juce::String& trackKey)
@@ -100,8 +131,8 @@ GridPage::GridPage (juce::ValueTree rootStateToUse,
 
     // Oktav-Shift (Block D2): über dem Pitch-Ribbon, geklemmt in
     // GridKeyboardComponent (+-kMaxOctaveShift).
-    octaveUpTile.onClick   = [this] { keyboard.octaveUp(); };
-    octaveDownTile.onClick = [this] { keyboard.octaveDown(); };
+    octaveUpTile.onClick   = [this] { keyboard.octaveUp(); panelSettings.setOctaveShift (keyboard.octaveShift()); };
+    octaveDownTile.onClick = [this] { keyboard.octaveDown(); panelSettings.setOctaveShift (keyboard.octaveShift()); };
 
     // Akkord-Speicher (Grid-Page v2, Feature 6): Strip ↔ Keyboard/Memory.
     chordStrip.getConstellation = [this] { return keyboard.constellationNormalized(); };
@@ -163,13 +194,22 @@ GridPage::GridPage (juce::ValueTree rootStateToUse,
     mpeView->onSensitivityChanged = [this] (Axis axis, double sensitivity)
     {
         if (axis == Axis::Pressure)
+        {
             keyboard.setPressureSensitivity (sensitivity);
+            panelSettings.setPressureSensitivity (sensitivity);   // Block K
+        }
         else if (axis == Axis::Slide)
+        {
             keyboard.setSlideSensitivity (sensitivity);
+            panelSettings.setSlideSensitivity (sensitivity);      // Block K
+        }
     };
     mpeView->onPitchBendMultiplierChanged = [this] (float multiplier)
     {
         keyboard.setPitchBendMultiplier (multiplier);
+        // Block K: Index = log2(¼…×8) + 2 (kMultipliers sind Zweierpotenzen).
+        panelSettings.setBendRangeIndex (
+            juce::jlimit (0, 5, juce::roundToInt (std::log2 (multiplier)) + 2));
     };
     dockPanel.addTab ("mpe", "MPE", std::move (mpeView));
 
@@ -234,15 +274,24 @@ GridPage::GridPage (juce::ValueTree rootStateToUse,
     // Toggle, Performance-Slide-Out (MIDI-Port + Skala, ehemals Top-Row).
     auto settingsView = std::make_unique<GridSettingsView> (
         rootState, midiTarget, midiControlInput, noteEchoInput, panelSettings,
-        keyboard.getInTuneLocation(), padLayoutConfig().inTuneWidthPercent,
+        keyboard.getInTuneLocation(), (float) panelSettings.getInTuneWidthPercent(),
         mpeMidiSink.expressionMode());
     settingsPanel = settingsView.get();   // Master-Input-Optionen (Block H v2)
     settingsView->onInTuneLocationChanged = [this] (grid::InTuneLocation location)
-    { keyboard.setInTuneLocation (location); };
+    {
+        keyboard.setInTuneLocation (location);
+        panelSettings.setInTuneLocationPad (location == grid::InTuneLocation::pad);   // Block K
+    };
     settingsView->onInTuneWidthChanged = [this] (float percent)
-    { keyboard.setInTuneWidthPercent (percent); };
+    {
+        keyboard.setInTuneWidthPercent (percent);
+        panelSettings.setInTuneWidthPercent (percent);   // Block K
+    };
     settingsView->onExpressionModeChanged = [this] (grid::ExpressionMode mode)
-    { mpeMidiSink.setExpressionMode (mode); };
+    {
+        mpeMidiSink.setExpressionMode (mode);
+        panelSettings.setExpressionModeIndex ((int) mode);   // Block K
+    };
     settingsView->onLayoutSettingsChanged = [this] { applyRibbonWidth(); };
     settingsView->onModwheelToggled = [this] (bool enabled) { modwheelRibbon.setVisible (enabled); resized(); };
     settingsView->onMasterFavouritesChanged = [this] { refreshMasterSwitch(); };
@@ -270,6 +319,7 @@ GridPage::GridPage (juce::ValueTree rootStateToUse,
 
 GridPage::~GridPage()
 {
+    saveSession();   // Block K: letzter Stand (zusätzlich zum 30-s-Auto-Save)
     liveSetState.removeListener (this);
     rootState.removeListener (this);
 }
@@ -327,6 +377,14 @@ void GridPage::valueTreePropertyChanged (juce::ValueTree& tree, const juce::Iden
         return;
     }
 
+    // Block K: Struktur-Änderungen des Live-Set-Spiegels (Reconnect-Diff,
+    // Umbenennung, Geräte-Umbau) → Live-Macro-Ziele re-resolven (coalesced;
+    // die heiße parvals-Zeile triggert bewusst NICHT).
+    const auto propertyName = property.toString();
+    if (propertyName.startsWith ("chain:") || propertyName.startsWith ("parmeta:")
+        || propertyName == "name")
+        scheduleLiveTargetResolve();
+
     // Alles Übrige kommt vom LiveSetModel (Block H v2) -- billiger
     // Refresh (Property-Lookups + Änderungs-Guards in den Zielen).
     refreshTrackFocus();
@@ -335,13 +393,19 @@ void GridPage::valueTreePropertyChanged (juce::ValueTree& tree, const juce::Iden
 void GridPage::valueTreeChildAdded (juce::ValueTree& parent, juce::ValueTree&)
 {
     if (parent != rootState)
+    {
+        scheduleLiveTargetResolve();   // Block K: neue Items (Reconnect)
         refreshTrackFocus();
+    }
 }
 
 void GridPage::valueTreeChildRemoved (juce::ValueTree& parent, juce::ValueTree&, int)
 {
     if (parent != rootState)
+    {
+        scheduleLiveTargetResolve();   // Block K: Items weg (Track/Device gelöscht)
         refreshTrackFocus();
+    }
 }
 
 void GridPage::sendFocusCommand (const juce::String& trackKey)
@@ -642,6 +706,90 @@ void GridPage::resized()
 
     if (bounds.getHeight() > 0)
         chordStrip.setSurfaceAspect ((float) bounds.getWidth() / (float) bounds.getHeight());
+}
+
+//==============================================================================
+// Block K: Session-Persistenz + Live-Ziel-Re-Resolve
+
+void GridPage::loadSession()
+{
+    const grid::GridSessionStore::Refs refs { ccModel, chordMemory, midiInBindings,
+                                              macroBindings, engine };
+    grid::GridSessionStore::apply (grid::GridSessionStore::loadFromFile (sessionFile), refs,
+                                   [this] (const juce::ValueTree& state)
+                                   { return makeTargetFromState (state); });
+    resolveLiveMacroTargets();
+    ccLayer.repaint();
+    chordStrip.repaint();
+}
+
+void GridPage::saveSession()
+{
+    if (sessionFile == juce::File())
+        return;
+
+    const grid::GridSessionStore::Refs refs { ccModel, chordMemory, midiInBindings,
+                                              macroBindings, engine };
+    grid::GridSessionStore::saveToFile (sessionFile, grid::GridSessionStore::capture (refs));
+}
+
+void GridPage::timerCallback()
+{
+    saveSession();
+}
+
+std::unique_ptr<grid::MacroTarget> GridPage::makeTargetFromState (const juce::ValueTree& state)
+{
+    if (state.hasType (grid::MidiCcTarget::kStateType))
+        return std::make_unique<grid::MidiCcTarget> (
+            midiTarget, (int) state.getProperty ("channel", 1),
+            (int) state.getProperty ("cc", 74));
+
+    if (state.hasType (grid::AbletonParamTarget::kStateType))
+        return std::make_unique<grid::AbletonParamTarget> (
+            touchLiveClient, grid::AbletonParamTarget::specFromState (state));
+
+    return nullptr;   // unbekannter Typ: Slot bleibt ohne Ziel
+}
+
+void GridPage::resolveLiveMacroTargets()
+{
+    for (const auto& key : macroBindings.allKeys())
+    {
+        for (int i = 0; i < macroBindings.count (key); ++i)
+        {
+            auto* binding = macroBindings.get (key, i);
+            if (binding == nullptr)
+                continue;
+
+            auto* live = dynamic_cast<grid::AbletonParamTarget*> (binding->target.get());
+            if (live == nullptr)
+                continue;
+
+            const auto resolved = grid::resolveLiveParam (liveSetModel, live->spec());
+            if (resolved.found)
+                live->resolve (resolved.deviceId, resolved.parameterIndex,
+                               resolved.minValue, resolved.maxValue, resolved.quantised);
+            else
+                live->unresolve();   // Live-Neustart: dvid ist tot, bis der Spiegel steht
+        }
+    }
+}
+
+void GridPage::scheduleLiveTargetResolve()
+{
+    if (liveResolvePending)
+        return;
+
+    liveResolvePending = true;
+    juce::MessageManager::callAsync ([safeThis = juce::Component::SafePointer<GridPage> (this)]
+    {
+        if (safeThis == nullptr)
+            return;
+
+        safeThis->liveResolvePending = false;
+        safeThis->resolveLiveMacroTargets();
+    });
 }
 
 } // namespace conduit

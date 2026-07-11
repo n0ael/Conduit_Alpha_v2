@@ -5,6 +5,7 @@
 #include <vector>
 
 #include <juce_audio_basics/juce_audio_basics.h>
+#include <juce_data_structures/juce_data_structures.h>
 
 #include "Interfaces/IMidiOutputTarget.h"
 #include "ResponseCurve.h"
@@ -27,10 +28,32 @@ public:
         (z. B. "CC 74 / Kanal 1" oder "Wavetable: Osc 1 Pos"). */
     [[nodiscard]] virtual juce::String describe() const = 0;
 
+    /** Persistenz (Block K): serialisierbarer Zustand des Ziels — ein
+        ungueltiger Tree (Default) heisst "nicht persistierbar". Der
+        GridSessionStore speichert das Tree OPAK; den Rueckweg baut eine
+        Factory des Besitzers (GridPage kennt die konkreten Typen). */
+    [[nodiscard]] virtual juce::ValueTree toState() const { return {}; }
+
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (MacroTarget)
 
 protected:
     MacroTarget() = default;
+};
+
+//==============================================================================
+/** Re-Resolve-Merkmale eines Ableton-Parameter-Ziels (Block K): dvid ist
+    eine LAUFZEIT-Stable-ID (Rule touchlive) — persistiert werden NUR
+    stabile Merkmale, aus denen das Ziel nach Live-Neustart neu aufgeloest
+    wird: Track-NAME, Device-NAME + Ordinal (n-tes gleichnamiges Device in
+    der Chain) und Parameter-NAME. POD, TouchLive-frei (der Store und die
+    Tests brauchen keinen TouchLiveClient). */
+struct LiveParamSpec
+{
+    juce::String trackName;
+    juce::String deviceName;
+    int          deviceOrdinal = 0;   // 0 = erstes gleichnamiges Device
+    juce::String paramName;
+    juce::String displayName;         // Anzeige der Ziel-Zeile ("Device: Param")
 };
 
 //==============================================================================
@@ -45,9 +68,12 @@ public:
 
     void sendValue (float value01) override;
     [[nodiscard]] juce::String describe() const override;
+    [[nodiscard]] juce::ValueTree toState() const override;   // Block K
 
     [[nodiscard]] int channel() const noexcept { return midiChannel; }
     [[nodiscard]] int ccNumber() const noexcept { return cc; }
+
+    static inline const juce::Identifier kStateType { "MidiTarget" };
 
 private:
     IMidiOutputTarget& output;
@@ -116,6 +142,10 @@ public:
     /** Alle Achsen eines Controls entfernen (Control geloescht bzw. Modell
         geleert -- Id-Recycling!). */
     void clearControl (int layer, int controlId);
+
+    /** Alle Keys mit mindestens einem Slot (Block-K-Persistenz, Iteration
+        ueber count/get) — map-sortiert, deterministisch. */
+    [[nodiscard]] std::vector<MacroControlKey> allKeys() const;
 
     /** Wert-Fluss (Block E): value01 → pro Slot Kurve anwenden (geklemmt auf
         [0,1] -- Macro-Ziele kennen keine Achsen-Kapazitaet daruueber) →

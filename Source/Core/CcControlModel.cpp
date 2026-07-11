@@ -19,6 +19,15 @@ int CcControlModel::addControl (CcTool type, int c0, int r0, int c1, int r1)
     return control.id;
 }
 
+void CcControlModel::restore (const CcControl& control)
+{
+    if (control.id <= 0 || find (control.id) != nullptr)
+        return;   // ungueltige oder doppelte Id — defensiv ignorieren
+
+    items.push_back (control);
+    nextId = std::max (nextId, control.id + 1);
+}
+
 void CcControlModel::remove (int id) noexcept
 {
     items.erase (std::remove_if (items.begin(), items.end(),

@@ -31,6 +31,13 @@ namespace
     constexpr const char* gravityFadeMsKey        = "gravityForceFadeMs";
     constexpr const char* controlPhysicsEnabledKey = "controlPhysicsEnabled";
     constexpr const char* controlSnapToDefaultKey  = "controlSnapToDefault";
+    constexpr const char* pressureSensitivityKey  = "pressureSensitivity";
+    constexpr const char* slideSensitivityKey     = "slideSensitivity";
+    constexpr const char* bendRangeIndexKey       = "bendRangeIndex";
+    constexpr const char* inTuneLocationPadKey    = "inTuneLocationPad";
+    constexpr const char* inTuneWidthPercentKey   = "inTuneWidthPercent";
+    constexpr const char* expressionModeIndexKey  = "expressionModeIndex";
+    constexpr const char* octaveShiftKey          = "octaveShift";
 
     // Achsen-Farben (Grid-Page v2) — Index = GridPanelSettings::axisIndex
     // (Pressure 0, Slide 1, PitchBend 2).
@@ -121,6 +128,20 @@ void GridPanelSettings::loadFromFile()
             file->getIntValue (gravityFadeMsKey, defaultGravityFadeMs));
         controlPhysicsEnabled = file->getBoolValue (controlPhysicsEnabledKey, false);
         controlSnapToDefault  = file->getBoolValue (controlSnapToDefaultKey, false);
+
+        pressureSensitivity = juce::jlimit (0.0, 100.0,
+            file->getDoubleValue (pressureSensitivityKey, defaultSensitivity));
+        slideSensitivity = juce::jlimit (0.0, 100.0,
+            file->getDoubleValue (slideSensitivityKey, defaultSensitivity));
+        bendRangeIndex = juce::jlimit (minBendRangeIndex, maxBendRangeIndex,
+            file->getIntValue (bendRangeIndexKey, defaultBendRangeIndex));
+        inTuneLocationPad = file->getBoolValue (inTuneLocationPadKey, true);
+        inTuneWidthPercent = juce::jlimit (0.0, 100.0,
+            file->getDoubleValue (inTuneWidthPercentKey, defaultInTuneWidthPercent));
+        expressionModeIndex = juce::jlimit (0, 2,
+            file->getIntValue (expressionModeIndexKey, 0));
+        octaveShift = juce::jlimit (-maxOctaveShift, maxOctaveShift,
+            file->getIntValue (octaveShiftKey, 0));
 
         for (size_t i = 0; i < axisColours.size(); ++i)
         {
@@ -492,6 +513,127 @@ void GridPanelSettings::setControlSnapToDefault (bool shouldSnap)
     if (auto* file = applicationProperties.getUserSettings())
     {
         file->setValue (controlSnapToDefaultKey, controlSnapToDefault);
+        file->saveIfNeeded();
+    }
+}
+
+juce::File GridPanelSettings::sessionFile()
+{
+    if (auto* file = applicationProperties.getUserSettings())
+        return file->getFile().getSiblingFile ("GridSession.xml");
+
+    return {};
+}
+
+//==============================================================================
+// Block K: Sensitivity/Bend-Range/In-Tune/Expression/Oktav-Shift.
+
+void GridPanelSettings::setPressureSensitivity (double newSensitivity)
+{
+    const auto clamped = juce::jlimit (0.0, 100.0, newSensitivity);
+
+    if (juce::exactlyEqual (clamped, pressureSensitivity))
+        return;
+
+    pressureSensitivity = clamped;
+
+    if (auto* file = applicationProperties.getUserSettings())
+    {
+        file->setValue (pressureSensitivityKey, pressureSensitivity);
+        file->saveIfNeeded();
+    }
+}
+
+void GridPanelSettings::setSlideSensitivity (double newSensitivity)
+{
+    const auto clamped = juce::jlimit (0.0, 100.0, newSensitivity);
+
+    if (juce::exactlyEqual (clamped, slideSensitivity))
+        return;
+
+    slideSensitivity = clamped;
+
+    if (auto* file = applicationProperties.getUserSettings())
+    {
+        file->setValue (slideSensitivityKey, slideSensitivity);
+        file->saveIfNeeded();
+    }
+}
+
+void GridPanelSettings::setBendRangeIndex (int newIndex)
+{
+    const auto clamped = juce::jlimit (minBendRangeIndex, maxBendRangeIndex, newIndex);
+
+    if (clamped == bendRangeIndex)
+        return;
+
+    bendRangeIndex = clamped;
+
+    if (auto* file = applicationProperties.getUserSettings())
+    {
+        file->setValue (bendRangeIndexKey, bendRangeIndex);
+        file->saveIfNeeded();
+    }
+}
+
+void GridPanelSettings::setInTuneLocationPad (bool shouldBePad)
+{
+    if (shouldBePad == inTuneLocationPad)
+        return;
+
+    inTuneLocationPad = shouldBePad;
+
+    if (auto* file = applicationProperties.getUserSettings())
+    {
+        file->setValue (inTuneLocationPadKey, inTuneLocationPad);
+        file->saveIfNeeded();
+    }
+}
+
+void GridPanelSettings::setInTuneWidthPercent (double newPercent)
+{
+    const auto clamped = juce::jlimit (0.0, 100.0, newPercent);
+
+    if (juce::exactlyEqual (clamped, inTuneWidthPercent))
+        return;
+
+    inTuneWidthPercent = clamped;
+
+    if (auto* file = applicationProperties.getUserSettings())
+    {
+        file->setValue (inTuneWidthPercentKey, inTuneWidthPercent);
+        file->saveIfNeeded();
+    }
+}
+
+void GridPanelSettings::setExpressionModeIndex (int newIndex)
+{
+    const auto clamped = juce::jlimit (0, 2, newIndex);
+
+    if (clamped == expressionModeIndex)
+        return;
+
+    expressionModeIndex = clamped;
+
+    if (auto* file = applicationProperties.getUserSettings())
+    {
+        file->setValue (expressionModeIndexKey, expressionModeIndex);
+        file->saveIfNeeded();
+    }
+}
+
+void GridPanelSettings::setOctaveShift (int newShift)
+{
+    const auto clamped = juce::jlimit (-maxOctaveShift, maxOctaveShift, newShift);
+
+    if (clamped == octaveShift)
+        return;
+
+    octaveShift = clamped;
+
+    if (auto* file = applicationProperties.getUserSettings())
+    {
+        file->setValue (octaveShiftKey, octaveShift);
         file->saveIfNeeded();
     }
 }

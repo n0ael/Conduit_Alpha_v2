@@ -219,11 +219,24 @@ void MacroPanel::TargetRow::createAbletonTarget()
     const auto minValue = (float) (double) entry.getProperty ("min", 0.0);
     const auto maxValue = (float) (double) entry.getProperty ("max", 1.0);
     const auto quantised = (bool) entry.getProperty ("quant", false);
-    const auto displayName = deviceCombo.getText() + ": " + parameterCombo.getText();
 
-    b->target = std::make_unique<grid::AbletonParamTarget> (
-        owner.touchLiveClient, deviceIds[deviceIndex], parameterIndex,
-        minValue, maxValue, quantised, displayName);
+    // Block K: Re-Resolve-Merkmale (Rule touchlive — dvid ist Laufzeit-ID;
+    // persistiert werden Track-/Device-/Parameter-NAME + Device-Ordinal =
+    // Anzahl GLEICHNAMIGER Devices davor in der Chain).
+    grid::LiveParamSpec spec;
+    spec.trackName   = trackCombo.getText();
+    spec.deviceName  = deviceCombo.getText();
+    spec.paramName   = parameterCombo.getText();
+    spec.displayName = spec.deviceName + ": " + spec.paramName;
+
+    for (int i = 0; i < deviceIndex; ++i)
+        if (deviceCombo.getItemText (i) == spec.deviceName)
+            ++spec.deviceOrdinal;
+
+    auto target = std::make_unique<grid::AbletonParamTarget> (owner.touchLiveClient,
+                                                              std::move (spec));
+    target->resolve (deviceIds[deviceIndex], parameterIndex, minValue, maxValue, quantised);
+    b->target = std::move (target);
     repaint();
 }
 

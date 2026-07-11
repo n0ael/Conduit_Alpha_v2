@@ -319,3 +319,48 @@ TEST_CASE ("GridPanelSettings: Physics-Werte Default + Clamp + Roundtrip", "[gri
     REQUIRE (reloaded.getGravityThreshold() == Approx (1.25));
     REQUIRE (reloaded.getGravityFadeMs() == 500);
 }
+
+//==============================================================================
+// Block K: Sensitivity/Bend-Range/In-Tune/Expression/Oktav-Shift
+
+TEST_CASE ("GridPanelSettings: Block-K-Skalare Default + Clamp + Roundtrip", "[gridpanelsettings]")
+{
+    juce::ScopedJuceInitialiser_GUI juceRuntime;
+    TempGridPanelSettings temp;
+
+    {
+        conduit::GridPanelSettings settings (temp.options());
+        REQUIRE (settings.getPressureSensitivity()
+                 == Approx (conduit::GridPanelSettings::defaultSensitivity));
+        REQUIRE (settings.getSlideSensitivity()
+                 == Approx (conduit::GridPanelSettings::defaultSensitivity));
+        REQUIRE (settings.getBendRangeIndex() == conduit::GridPanelSettings::defaultBendRangeIndex);
+        REQUIRE (settings.isInTuneLocationPad());
+        REQUIRE (settings.getInTuneWidthPercent()
+                 == Approx (conduit::GridPanelSettings::defaultInTuneWidthPercent));
+        REQUIRE (settings.getExpressionModeIndex() == 0);
+        REQUIRE (settings.getOctaveShift() == 0);
+
+        settings.setPressureSensitivity (70.0);
+        settings.setSlideSensitivity (150.0);   // geklemmt auf 100
+        settings.setBendRangeIndex (5);
+        settings.setInTuneLocationPad (false);
+        settings.setInTuneWidthPercent (35.0);
+        settings.setExpressionModeIndex (2);
+        settings.setOctaveShift (-9);           // geklemmt auf -3
+    }
+
+    conduit::GridPanelSettings reloaded (temp.options());
+    REQUIRE (reloaded.getPressureSensitivity() == Approx (70.0));
+    REQUIRE (reloaded.getSlideSensitivity() == Approx (100.0));
+    REQUIRE (reloaded.getBendRangeIndex() == 5);
+    REQUIRE_FALSE (reloaded.isInTuneLocationPad());
+    REQUIRE (reloaded.getInTuneWidthPercent() == Approx (35.0));
+    REQUIRE (reloaded.getExpressionModeIndex() == 2);
+    REQUIRE (reloaded.getOctaveShift() == -conduit::GridPanelSettings::maxOctaveShift);
+
+    // Session-Datei liegt neben der Settings-Datei (Temp-Ordner der Tests).
+    REQUIRE (reloaded.sessionFile().getFileName() == "GridSession.xml");
+    REQUIRE (reloaded.sessionFile().getParentDirectory().getFullPathName()
+                 .contains ("ConduitGridPanelSettingsTests"));
+}

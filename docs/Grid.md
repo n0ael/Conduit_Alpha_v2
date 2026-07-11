@@ -147,6 +147,44 @@
     Macro-System (Block E); die Component-Extraktion (CurveEditorTile)
     folgt dort. Endpunkt schlägt Mittelpunkt schlägt Krümmung;
     Mittelpunkt-Griff = hohler Ring.
+  - **Settings-Tab + Performance-Layout-Umbau (Block D, 07/2026):** dritter
+    Tab „Settings" im EditorDockPanel (`GridSettingsView`, selbständig --
+    eigener ValueTree-Listener für die Skala-Kacheln, alles andere über
+    Callbacks wie MpeShapingView/CcPanel). Inhalt: Performance-Slide-Out
+    (MIDI-Ausgangsport + Session-Skala-Kacheln, umgezogen aus der
+    ehemaligen GridPage-Top-Row), In-Tune Location (Pad/Finger, Block B1)
+    + In-Tune Width (Block B2, `PadGridLayout::setInTuneWidthPercent`),
+    Expression Mode MPE/Poly-AT/Mono-AT (Block B4, direkt an
+    `MpeMidiSink::setExpressionMode` -- neuer `EngineProcessor::
+    getMpeMidiSink()`-Getter + `GridPage`-Ctor-Parameter, da `IVoiceSink`
+    bewusst keine MPE-Spezifika kennt), Layout-Feinabstimmung (XY-Zeilen
+    + gemeinsame Fader-Breite als `NumberFieldBracket`-Zahlenfelder statt
+    der in der Roadmap beschriebenen freien Drag-Resize-Fläche --
+    TODO(design): die eigentliche Drag-Interaktion folgt separat, die
+    Werte sind bereits voll wirksam/persistent in `GridPanelSettings`
+    (`systemControlRows`, `ribbonWidthPx`, sofort persistent wie
+    `gridLayoutMode`, nicht erst Block K), Modwheel-Toggle (`modwheelEnabled`,
+    unipolares ExpressionRibbon neben Pitch, sendet CC1 direkt über
+    `MidiDeviceTarget.send()` auf dem MPE-Master-Kanal -- kein eigener
+    Sink-Pfad). MIDI-Kanal-/CC-Zuweisung der Performance-Controls (Port/
+    Kanal/CC-Matrix, Empfang) bleibt TODO(design)/Block G -- es gibt
+    aktuell keine MPE-Kanal-Wahl-Infrastruktur (`memberChannelBase` ist
+    `MpeEncoder::Config`-fix).
+
+    `systemControlRowsAtStartup` (GridPage): `CcControlLayer::rows` ist
+    `const` (kein Laufzeit-Resize) -- ein geänderter XY-Zeilen-Wert
+    persistiert sofort, wirkt aber erst beim nächsten Neuaufbau der
+    Grid-Page (TODO(design): echtes Laufzeit-Resize braucht
+    CcControlLayer-Umbau). Die Ribbon-Breite dagegen ist voll live (reine
+    `setBounds`-Geometrie in `resized()`, kein Konstruktions-Fixpunkt).
+
+    Performance-Layout (Block D2): Release-All-Button jetzt UNTER dem
+    Pitch-Ribbon, zwei neue Oktav-Buttons („Oct +"/„Oct -") DARÜBER
+    (`GridKeyboardComponent::octaveUp/octaveDown`, ±`kMaxOctaveShift`=3
+    Oktaven, gecachte `baseLowestNote`-Basis wie die Block-A-Sensitivity-
+    Setter -- nie vom aktuellen Config-Wert weiterspringen). Die
+    Layout-Modus-Kacheln (64 Pads/XY+Fader) sitzen jetzt kompakt oben
+    links (28-px-Streifen) statt neben Release-All.
   - **Sinks/Stränge später:** OSC (Remote + Transcoder) und CV (Software-CVC)
     docken am selben Voice-Modell an; Gesten-State-Machine (Drone/Latch/
     Pinch/Drift), Chord-Squares, Hardware-MPE-Input, MPE-Shaping (Kurven +

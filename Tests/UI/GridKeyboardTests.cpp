@@ -429,3 +429,50 @@ TEST_CASE ("GridPage: Skala-Kacheln zykeln Root und Typ wie im Mock", "[grid][ui
     REQUIRE (GridPage::scaleDisplayNameFor (ScaleType::minor)      == "Minor");
     REQUIRE (GridPage::scaleDisplayNameFor (ScaleType::pentatonic) == "Pentatonic");
 }
+
+//==============================================================================
+// Oktav-Shift (Block D2)
+
+TEST_CASE ("GridKeyboardComponent: octaveUp/octaveDown verschieben um 12 Halbtoene", "[grid][ui]")
+{
+    juce::ScopedJuceInitialiser_GUI juceRuntime;
+
+    grid::FakeVoiceSink fake;
+    grid::GridVoiceEngine engine (fake);
+    conduit::GridKeyboardComponent keyboard (engine, conduit::GridPage::padLayoutConfig());
+    keyboard.setSize (320, 320);
+
+    REQUIRE (keyboard.octaveShift() == 0);
+
+    keyboard.octaveUp();
+    REQUIRE (keyboard.octaveShift() == 1);
+
+    keyboard.mouseDown (makeEvent (keyboard, { 100.0f, 140.0f }));   // Note 70 bei Shift 0
+    REQUIRE (fake.calls[0].intValue == 82);   // 70 + 12
+    keyboard.mouseUp (makeEvent (keyboard, { 100.0f, 140.0f }));
+
+    keyboard.octaveDown();
+    keyboard.octaveDown();
+    REQUIRE (keyboard.octaveShift() == -1);
+
+    fake.calls.clear();
+    keyboard.mouseDown (makeEvent (keyboard, { 100.0f, 140.0f }));
+    REQUIRE (fake.calls[0].intValue == 58);   // 70 - 12
+}
+
+TEST_CASE ("GridKeyboardComponent: octaveShift klemmt auf +-kMaxOctaveShift", "[grid][ui]")
+{
+    juce::ScopedJuceInitialiser_GUI juceRuntime;
+
+    grid::FakeVoiceSink fake;
+    grid::GridVoiceEngine engine (fake);
+    conduit::GridKeyboardComponent keyboard (engine, conduit::GridPage::padLayoutConfig());
+
+    for (int i = 0; i < 10; ++i)
+        keyboard.octaveUp();
+    REQUIRE (keyboard.octaveShift() == conduit::GridKeyboardComponent::kMaxOctaveShift);
+
+    for (int i = 0; i < 20; ++i)
+        keyboard.octaveDown();
+    REQUIRE (keyboard.octaveShift() == -conduit::GridKeyboardComponent::kMaxOctaveShift);
+}

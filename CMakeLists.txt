@@ -249,6 +249,7 @@ set(CONDUIT_CPP_SOURCES
     Source/UI/GainFaderMeter.cpp
     Source/UI/GridKeyboardComponent.cpp
     Source/UI/GridPage.cpp
+    Source/UI/GridSettingsView.cpp
     Source/UI/InputSendButton.cpp
     Source/UI/LevelMeterBar.cpp
     Source/UI/LinkAudioReceivePanel.cpp
@@ -805,6 +806,7 @@ if(CONDUIT_BUILD_TESTS)
         Source/UI/GainFaderMeter.cpp
         Source/UI/GridKeyboardComponent.cpp
         Source/UI/GridPage.cpp
+        Source/UI/GridSettingsView.cpp
         Source/UI/InputSendButton.cpp
         Source/UI/LevelMeterBar.cpp
         Source/UI/LinkAudioReceivePanel.cpp

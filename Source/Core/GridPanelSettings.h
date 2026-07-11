@@ -76,6 +76,36 @@ public:
     [[nodiscard]] GridLayoutMode getGridLayoutMode() const noexcept { return gridLayoutMode; }
     void setGridLayoutMode (GridLayoutMode newMode);
 
+    //==========================================================================
+    // Block D1 (Settings-Tab): strukturelle Layout-Werte, analog zu
+    // gridLayoutMode sofort persistent (kein Warten auf Block K -- das
+    // bündelt nur die MPE-Achsen-/Kurven-Zustände aus Block B/C).
+
+    static constexpr int defaultSystemControlRows = 2;
+    static constexpr int minSystemControlRows     = 1;
+    static constexpr int maxSystemControlRows     = 4;
+
+    static constexpr int defaultRibbonWidthPx = 72;
+    static constexpr int minRibbonWidthPx     = 40;
+    static constexpr int maxRibbonWidthPx     = 140;
+
+    /** Zeilenzahl des systemLayer im XY+Fader-Modus (Edit-Grid, Block D1 --
+        Ersatz für die freie Drag-Resize-UI der Roadmap-Beschreibung;
+        TODO(design): eigentliche Drag-Interaktion folgt separat). */
+    [[nodiscard]] int getSystemControlRows() const noexcept { return systemControlRows; }
+    void setSystemControlRows (int newRows);
+
+    /** Breite der drei Performance-Offset-Ribbons (Pitch/Pressure/Slide),
+        gemeinsam eingestellt (Block D1 "Fader-Breiten"). */
+    [[nodiscard]] int getRibbonWidthPx() const noexcept { return ribbonWidthPx; }
+    void setRibbonWidthPx (int newWidthPx);
+
+    /** Modwheel-Fader neben dem Pitch-Ribbon an/aus (Block D1). Sendet CC1
+        auf dem MPE-Master-Kanal direkt über den MidiDeviceTarget der
+        Grid-Page -- kein eigener Sink-Pfad nötig. */
+    [[nodiscard]] bool isModwheelEnabled() const noexcept { return modwheelEnabled; }
+    void setModwheelEnabled (bool shouldBeEnabled);
+
 private:
     void loadFromFile();
 
@@ -89,6 +119,10 @@ private:
     int  noteCircleFadeMs     = defaultNoteCircleFadeMs;
     GridLayoutMode gridLayoutMode = GridLayoutMode::fullPads;
     std::array<juce::Colour, 3> axisColours {};   // geladen in loadFromFile()
+
+    int  systemControlRows = defaultSystemControlRows;
+    int  ribbonWidthPx     = defaultRibbonWidthPx;
+    bool modwheelEnabled   = false;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (GridPanelSettings)
 };

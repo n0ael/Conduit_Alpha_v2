@@ -104,6 +104,21 @@ public:
     void setInTuneLocation (grid::InTuneLocation newLocation) noexcept { inTuneLocation = newLocation; }
     [[nodiscard]] grid::InTuneLocation getInTuneLocation() const noexcept { return inTuneLocation; }
 
+    /** In-Tune-Width 0..100 % der Pad-Breite (Block B2/D1). */
+    void setInTuneWidthPercent (float newPercent) noexcept { layout.setInTuneWidthPercent (newPercent); }
+
+    //==========================================================================
+    // Oktav-Shift (Block D2, Octave-Up/Down-Buttons ueber dem Pitch-Fader):
+    // verschiebt lowestNote um Vielfache von 12 relativ zur Ctor-Basis.
+    // Laufzeit-only (Block K persistiert), geklemmt auf +-3 Oktaven, damit
+    // das Raster nicht aus dem MIDI-Bereich [0,127] laeuft.
+
+    void octaveUp() noexcept;
+    void octaveDown() noexcept;
+    [[nodiscard]] int octaveShift() const noexcept { return octaveShiftValue; }
+
+    static constexpr int kMaxOctaveShift = 3;
+
 private:
     struct FingerState
     {
@@ -144,11 +159,13 @@ private:
     const float baseSemitonesPerPadWidth;
     const float baseRingMinPx;
     const float baseRingSpanPx;
+    const int   baseLowestNote;
 
     int       scaleRootNote = 0;
     ScaleType sessionScale  = ScaleType::chromatic;
 
     grid::InTuneLocation inTuneLocation = grid::InTuneLocation::pad;   // Block B1, Default Pad
+    int octaveShiftValue = 0;   // Block D2, in Oktaven (nicht Halbtoenen)
 
     std::map<int, FingerState> fingers;
     std::vector<LatchedSun> latched;   // Akkord-Speicher-Abruf (leer = keiner)

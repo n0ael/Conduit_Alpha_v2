@@ -180,3 +180,39 @@ TEST_CASE ("PadGridLayout: pitchBendFromAnchor ist stetig am Zonenrand", "[grid]
     REQUIRE (juce::exactlyEqual (inside, 0.0f));
     REQUIRE (outside < 0.01f);
 }
+
+//==============================================================================
+// Block D1: setInTuneWidthPercent / setLowestNote
+
+TEST_CASE ("PadGridLayout: setInTuneWidthPercent klemmt auf [0,95] und wirkt sofort", "[grid]")
+{
+    grid::PadGridLayout layout;
+    const auto padWidth = 1.0f / (float) layout.cols();
+
+    layout.setInTuneWidthPercent (150.0f);   // ueber 95 geklemmt
+    // Bei einer sehr breiten Zone bleibt selbst 0.4 Pad-Breiten Abstand
+    // noch (nahe) 0 -- Regressionsschutz gegen ungeklemmtes >100%.
+    REQUIRE (layout.pitchBendFromAnchor (0.5f, 0.5f + 0.4f * padWidth) < 0.5f);
+
+    layout.setInTuneWidthPercent (-10.0f);   // unter 0 geklemmt -> exakt linear
+    REQUIRE (layout.pitchBendFromAnchor (0.5f, 0.5f + 0.4f * padWidth)
+             == Catch::Approx (layout.pitchBendSemitones (0.5f, 0.5f + 0.4f * padWidth)).margin (1.0e-4));
+}
+
+TEST_CASE ("PadGridLayout: setLowestNote setzt den Grundton absolut, geklemmt [0,127]", "[grid]")
+{
+    grid::PadGridLayout layout;   // Default lowestNote 48
+
+    REQUIRE (layout.lowestNote() == 48);
+    REQUIRE (layout.noteForPad (24) == 48);   // unterste Reihe, Spalte 0
+
+    layout.setLowestNote (60);   // +1 Oktave
+    REQUIRE (layout.lowestNote() == 60);
+    REQUIRE (layout.noteForPad (24) == 60);
+
+    layout.setLowestNote (200);   // geklemmt auf 127
+    REQUIRE (layout.lowestNote() == 127);
+
+    layout.setLowestNote (-5);   // geklemmt auf 0
+    REQUIRE (layout.lowestNote() == 0);
+}

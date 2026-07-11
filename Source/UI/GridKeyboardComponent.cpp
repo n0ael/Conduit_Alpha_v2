@@ -12,7 +12,8 @@ GridKeyboardComponent::GridKeyboardComponent (grid::GridVoiceEngine& engineToUse
       baseYRangeNorm (layoutConfig.yRangeNorm),
       baseSemitonesPerPadWidth (layoutConfig.semitonesPerPadWidth),
       baseRingMinPx (grid::RingTouchModel::Config{}.minRadiusPx),
-      baseRingSpanPx (grid::RingTouchModel::Config{}.maxRadiusPx - grid::RingTouchModel::Config{}.minRadiusPx)
+      baseRingSpanPx (grid::RingTouchModel::Config{}.maxRadiusPx - grid::RingTouchModel::Config{}.minRadiusPx),
+      baseLowestNote (layoutConfig.lowestNote)
 {
     setWantsKeyboardFocus (false);
     setInterceptsMouseClicks (true, false);
@@ -33,6 +34,24 @@ void GridKeyboardComponent::setSlideSensitivity (double sensitivity0to100) noexc
 void GridKeyboardComponent::setPitchBendMultiplier (float multiplier) noexcept
 {
     layout.setSemitonesPerPadWidth (baseSemitonesPerPadWidth * multiplier);
+}
+
+void GridKeyboardComponent::octaveUp() noexcept
+{
+    if (octaveShiftValue >= kMaxOctaveShift)
+        return;
+
+    ++octaveShiftValue;
+    layout.setLowestNote (baseLowestNote + octaveShiftValue * 12);
+}
+
+void GridKeyboardComponent::octaveDown() noexcept
+{
+    if (octaveShiftValue <= -kMaxOctaveShift)
+        return;
+
+    --octaveShiftValue;
+    layout.setLowestNote (baseLowestNote + octaveShiftValue * 12);
 }
 
 juce::Point<float> GridKeyboardComponent::normalisedPosition (const juce::MouseEvent& event) const noexcept

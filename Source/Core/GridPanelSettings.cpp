@@ -12,6 +12,9 @@ namespace
     constexpr const char* editorThresholdWidthKey = "editorThresholdWidth";
     constexpr const char* noteCircleFadeMsKey     = "noteCircleFadeMs";
     constexpr const char* gridLayoutModeKey       = "gridLayoutMode";
+    constexpr const char* systemControlRowsKey    = "systemControlRows";
+    constexpr const char* ribbonWidthPxKey        = "ribbonWidthPx";
+    constexpr const char* modwheelEnabledKey      = "modwheelEnabled";
 
     // Achsen-Farben (Grid-Page v2) — Index = GridPanelSettings::axisIndex
     // (Pressure 0, Slide 1, PitchBend 2).
@@ -68,6 +71,12 @@ void GridPanelSettings::loadFromFile()
         gridLayoutMode = file->getIntValue (gridLayoutModeKey, 0) == 1
                              ? GridLayoutMode::xyFaders
                              : GridLayoutMode::fullPads;
+
+        systemControlRows = juce::jlimit (minSystemControlRows, maxSystemControlRows,
+            file->getIntValue (systemControlRowsKey, defaultSystemControlRows));
+        ribbonWidthPx = juce::jlimit (minRibbonWidthPx, maxRibbonWidthPx,
+            file->getIntValue (ribbonWidthPxKey, defaultRibbonWidthPx));
+        modwheelEnabled = file->getBoolValue (modwheelEnabledKey, false);
 
         for (size_t i = 0; i < axisColours.size(); ++i)
         {
@@ -148,6 +157,52 @@ void GridPanelSettings::setGridLayoutMode (GridLayoutMode newMode)
     if (auto* file = applicationProperties.getUserSettings())
     {
         file->setValue (gridLayoutModeKey, (int) gridLayoutMode);
+        file->saveIfNeeded();
+    }
+}
+
+void GridPanelSettings::setSystemControlRows (int newRows)
+{
+    const auto clamped = juce::jlimit (minSystemControlRows, maxSystemControlRows, newRows);
+
+    if (clamped == systemControlRows)
+        return;
+
+    systemControlRows = clamped;
+
+    if (auto* file = applicationProperties.getUserSettings())
+    {
+        file->setValue (systemControlRowsKey, systemControlRows);
+        file->saveIfNeeded();
+    }
+}
+
+void GridPanelSettings::setRibbonWidthPx (int newWidthPx)
+{
+    const auto clamped = juce::jlimit (minRibbonWidthPx, maxRibbonWidthPx, newWidthPx);
+
+    if (clamped == ribbonWidthPx)
+        return;
+
+    ribbonWidthPx = clamped;
+
+    if (auto* file = applicationProperties.getUserSettings())
+    {
+        file->setValue (ribbonWidthPxKey, ribbonWidthPx);
+        file->saveIfNeeded();
+    }
+}
+
+void GridPanelSettings::setModwheelEnabled (bool shouldBeEnabled)
+{
+    if (shouldBeEnabled == modwheelEnabled)
+        return;
+
+    modwheelEnabled = shouldBeEnabled;
+
+    if (auto* file = applicationProperties.getUserSettings())
+    {
+        file->setValue (modwheelEnabledKey, modwheelEnabled);
         file->saveIfNeeded();
     }
 }

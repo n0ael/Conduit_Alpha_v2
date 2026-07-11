@@ -1,6 +1,7 @@
 #include "GridPage.h"
 
 #include "CcPanel.h"
+#include "GridSettingsView.h"
 #include "Modules/ConduitModule.h"
 #include "MpeShapingView.h"
 
@@ -9,26 +10,28 @@ namespace conduit
 
 GridPage::GridPage (juce::ValueTree rootStateToUse,
                      grid::GridVoiceEngine& engineToUse, grid::MidiDeviceTarget& midiTargetToUse,
-                     GridPanelSettings& panelSettingsToUse)
+                     GridPanelSettings& panelSettingsToUse, grid::MpeMidiSink& mpeMidiSinkToUse)
     : rootState (std::move (rootStateToUse)),
       engine (engineToUse), midiTarget (midiTargetToUse), panelSettings (panelSettingsToUse),
+      mpeMidiSink (mpeMidiSinkToUse),
+      systemControlRowsAtStartup (panelSettingsToUse.getSystemControlRows()),
       // 8×8-Raster der Grid-Page (padLayoutConfig, User 10.07.2026) — Keyboard
       // und ccLayer teilen sich dieselbe Zellgeometrie.
       keyboard (engineToUse, padLayoutConfig()),
       ccLayer (ccModel, padLayoutConfig().cols, padLayoutConfig().rows),
-      // System-Controls des XY+Fader-Modus: eigenes 8×2-Zellraster exakt über
-      // den oberen zwei Pad-Reihen (resized).
-      systemLayer (systemCcModel, padLayoutConfig().cols, kSystemControlRows)
+      // System-Controls des XY+Fader-Modus: eigenes 8×N-Zellraster exakt über
+      // den oberen N Pad-Reihen (resized), N = systemControlRowsAtStartup.
+      systemLayer (systemCcModel, padLayoutConfig().cols, systemControlRowsAtStartup)
 {
-    addAndMakeVisible (outputCombo);
-    addAndMakeVisible (rootTile);
-    addAndMakeVisible (scaleTile);
     addAndMakeVisible (padsModeTile);
     addAndMakeVisible (xyModeTile);
     addAndMakeVisible (releaseAllButton);
+    addAndMakeVisible (octaveUpTile);
+    addAndMakeVisible (octaveDownTile);
     addAndMakeVisible (atOffsetRibbon);
     addAndMakeVisible (slideOffsetRibbon);
     addAndMakeVisible (pitchOffsetRibbon);
+    addChildComponent (modwheelRibbon);   // sichtbar nur bei aktiviertem Modwheel (Block D1)
     addAndMakeVisible (keyboard);
     addAndMakeVisible (ccLayer);     // NACH keyboard hinzugefügt = liegt darüber
     addChildComponent (systemLayer); // NACH ccLayer = darüber: System-Controls
@@ -45,9 +48,6 @@ GridPage::GridPage (juce::ValueTree rootStateToUse,
     padsModeTile.onClick = [this] { setLayoutMode (GridPanelSettings::GridLayoutMode::fullPads); };
     xyModeTile.onClick   = [this] { setLayoutMode (GridPanelSettings::GridLayoutMode::xyFaders); };
 
-    rebuildDeviceList();
-    outputCombo.onChange = [this] { handleDeviceSelected(); };
-
     releaseAllButton.onClick = [this]
     {
         engine.allNotesOff();
@@ -55,27 +55,20 @@ GridPage::GridPage (juce::ValueTree rootStateToUse,
                                    // noteOffs verpuffen nach allNotesOff)
     };
 
+    // Oktav-Shift (Block D2): über dem Pitch-Ribbon, geklemmt in
+    // GridKeyboardComponent (+-kMaxOctaveShift).
+    octaveUpTile.onClick   = [this] { keyboard.octaveUp(); };
+    octaveDownTile.onClick = [this] { keyboard.octaveDown(); };
+
     // Akkord-Speicher (Grid-Page v2, Feature 6): Strip ↔ Keyboard/Memory.
     chordStrip.getConstellation = [this] { return keyboard.constellationNormalized(); };
     chordStrip.onRecall = [this] (int slot) { keyboard.latchConstellation (chordMemory.slot (slot)); };
     chordStrip.onMoveBy = [this] (float dx, float dy) { keyboard.moveLatchedBy (dx, dy); };
     chordStrip.isCcMode = [this] { return ccLayer.isCcMode(); };
 
-    // Session-Skala (Schema 6.2): Taps zykeln Root/Typ NUR über den
-    // Root-ValueTree — die Anzeige aktualisiert der Listener, damit auch
-    // Änderungen aus der TransportBar ankommen (5.3).
-    rootTile.onClick = [this]
-    {
-        const auto current = juce::jlimit (0, 11, (int) rootState.getProperty (id::scaleRoot, 0));
-        rootState.setProperty (id::scaleRoot, nextScaleRoot (current), nullptr);
-    };
-
-    scaleTile.onClick = [this]
-    {
-        const auto current = scaleTypeFromString (rootState.getProperty (id::scaleType).toString());
-        rootState.setProperty (id::scaleType, toString (nextScaleType (current)), nullptr);
-    };
-
+    // Session-Skala (Schema 6.2): GridPage liest weiterhin für die
+    // Keyboard-Einfärbung mit -- die Anzeige-Kacheln selbst leben seit
+    // Block D1 im Settings-Tab (GridSettingsView).
     rootState.addListener (this);
     refreshScaleFromState();   // Initialwert beim Konstruieren lesen
 
@@ -88,6 +81,17 @@ GridPage::GridPage (juce::ValueTree rootStateToUse,
     {
         engine.setPitchBendOffset ((value - 0.5f) * 2.0f * kPitchBendOffsetSemitones);
     };
+
+    // Modwheel (Block D1, unipolar): sendet CC1 auf dem MPE-Master-Kanal
+    // direkt über den MidiDeviceTarget -- kein eigener Sink-Pfad, da nur
+    // ein globaler Controller-Wert (kein Voice-Bezug) gebraucht wird.
+    modwheelRibbon.onValueChanged = [this] (float value01)
+    {
+        const auto v = juce::jlimit (0, 127, (int) juce::roundToInt (value01 * 127.0f));
+        midiTarget.send (juce::MidiMessage::controllerEvent (
+            grid::MpeEncoder::Config{}.memberChannelBase - 1, 1, v));
+    };
+    modwheelRibbon.setVisible (panelSettings.isModwheelEnabled());
 
     // Achsen-Farben (Grid-Page v2): user-konfigurierbar und persistent in
     // GridPanelSettings — Initialwerte von dort statt hart kodiert.
@@ -132,6 +136,23 @@ GridPage::GridPage (juce::ValueTree rootStateToUse,
     auto ccPanel = std::make_unique<CcPanel>();
     ccPanel->onToolChanged = [this] (grid::CcTool tool) { ccLayer.setActiveTool (tool); };
     dockPanel.addTab ("cc", "CC", std::move (ccPanel));
+
+    // Tab 3 „Settings" (Block D1): In-Tune Location/Width + Expression Mode
+    // (Block B1/B2/B4), Layout-Feinabstimmung (Edit-Grid-Ersatz), Modwheel-
+    // Toggle, Performance-Slide-Out (MIDI-Port + Skala, ehemals Top-Row).
+    auto settingsView = std::make_unique<GridSettingsView> (
+        rootState, midiTarget, panelSettings,
+        keyboard.getInTuneLocation(), padLayoutConfig().inTuneWidthPercent,
+        mpeMidiSink.expressionMode());
+    settingsView->onInTuneLocationChanged = [this] (grid::InTuneLocation location)
+    { keyboard.setInTuneLocation (location); };
+    settingsView->onInTuneWidthChanged = [this] (float percent)
+    { keyboard.setInTuneWidthPercent (percent); };
+    settingsView->onExpressionModeChanged = [this] (grid::ExpressionMode mode)
+    { mpeMidiSink.setExpressionMode (mode); };
+    settingsView->onLayoutSettingsChanged = [this] { applyRibbonWidth(); };
+    settingsView->onModwheelToggled = [this] (bool enabled) { modwheelRibbon.setVisible (enabled); resized(); };
+    dockPanel.addTab ("settings", "Settings", std::move (settingsView));
 
     dockPanel.setPanelWidth (panelSettings.getEditorPanelWidth());
     dockPanel.setPanelOpen (panelSettings.isEditorPanelOpen());
@@ -197,8 +218,6 @@ void GridPage::refreshScaleFromState()
     const auto rootNote = juce::jlimit (0, 11, (int) rootState.getProperty (id::scaleRoot, 0));
     const auto type = scaleTypeFromString (rootState.getProperty (id::scaleType).toString());
 
-    rootTile.setText (noteNameFor (rootNote));
-    scaleTile.setText (scaleDisplayNameFor (type));
     keyboard.setScale (rootNote, type);
 }
 
@@ -249,32 +268,9 @@ void GridPage::applyLayoutMode()
     resized();
 }
 
-void GridPage::rebuildDeviceList()
+void GridPage::applyRibbonWidth()
 {
-    devices = grid::MidiDeviceTarget::availableDevices();
-
-    outputCombo.clear (juce::dontSendNotification);
-    outputCombo.addItem ("Kein Ausgang", 1);
-
-    for (int i = 0; i < devices.size(); ++i)
-        outputCombo.addItem (devices.getReference (i).name, i + 2);
-
-    outputCombo.setSelectedId (1, juce::dontSendNotification);
-}
-
-void GridPage::handleDeviceSelected()
-{
-    const auto selectedId = outputCombo.getSelectedId();
-
-    if (selectedId <= 1)
-    {
-        midiTarget.closeDevice();
-        return;
-    }
-
-    const auto index = selectedId - 2;
-    if (index >= 0 && index < devices.size())
-        midiTarget.openDevice (devices.getReference (index).identifier);
+    resized();   // liest panelSettings.getRibbonWidthPx() live -- voll dynamisch
 }
 
 void GridPage::resized()
@@ -287,30 +283,31 @@ void GridPage::resized()
     // übergebenen bounds steckt.
     dockPanel.setBounds (bounds.removeFromRight (dockPanel.getPreferredWidth()));
 
-    auto topRow = bounds.removeFromTop (32);
-    const auto comboArea = topRow.removeFromLeft (200).reduced (8, 4);
-    outputCombo.setBounds (comboArea);
-    releaseAllButton.setBounds (topRow.removeFromRight (120).reduced (8, 4));
+    // Block D2: die frühere MIDI-Port-/Skala-Top-Row entfällt zugunsten des
+    // Performance-Slide-Outs (Settings-Tab, GridSettingsView) — nur noch
+    // die Layout-Modus-Kacheln oben links, kompakte 28-px-Zeile.
+    auto topStrip = bounds.removeFromTop (28);
+    constexpr int modeTileSide = 24;
+    padsModeTile.setBounds (topStrip.getX() + 4, topStrip.getY() + 2, modeTileSide, modeTileSide);
+    xyModeTile.setBounds (padsModeTile.getRight() + 4, topStrip.getY() + 2, modeTileSide, modeTileSide);
 
-    // Session-Skala-Kacheln rechts neben dem MIDI-Dropdown, in der
-    // 24-px-Kachelhöhe der Top-Row (Design-Mock: Root 44x24 mit 6 px
-    // Abstand, Skala 104x24 mit 4 px Abstand).
-    rootTile.setBounds  (comboArea.getRight() + 6, comboArea.getY(), 44, comboArea.getHeight());
-    scaleTile.setBounds (rootTile.getRight() + 4, comboArea.getY(), 104, comboArea.getHeight());
+    const auto ribbonWidth = panelSettings.getRibbonWidthPx();   // Block D1, live
 
-    // Layout-Modus-Kacheln (User 10.07.2026): 64 Pads / XY+Fader — LINKS
-    // neben Release-All, 24×24 wie die Nachbarkacheln, 4 px Abstand.
-    const auto modeTileSide = comboArea.getHeight();
-    xyModeTile.setBounds (releaseAllButton.getX() - 8 - modeTileSide,
-                          comboArea.getY(), modeTileSide, modeTileSide);
-    padsModeTile.setBounds (xyModeTile.getX() - 4 - modeTileSide,
-                            comboArea.getY(), modeTileSide, modeTileSide);
+    // Block D2: Pitch-Fader-Stapel — Oktav-Buttons darüber, Release All
+    // darunter (ersetzt die frühere Top-Row-Platzierung beider Elemente).
+    auto pitchColumn = bounds.removeFromLeft (ribbonWidth);
+    auto octaveRow = pitchColumn.removeFromTop (28);
+    const auto octaveTileWidth = octaveRow.getWidth() / 2;
+    octaveDownTile.setBounds (octaveRow.removeFromLeft (octaveTileWidth));
+    octaveUpTile.setBounds (octaveRow);
+    auto releaseRow = pitchColumn.removeFromBottom (36);
+    releaseAllButton.setBounds (releaseRow.reduced (2));
+    pitchOffsetRibbon.setBounds (pitchColumn);
 
-    constexpr int ribbonWidth = 72;
-
-    // Design-Mock Grid-Page v2: links Pitch in voller Höhe, rechts EINE
-    // Spalte mit Pressure (oben) über Slide (unten) je halber Höhe.
-    pitchOffsetRibbon.setBounds (bounds.removeFromLeft (ribbonWidth));
+    // Modwheel (Block D1): eigene Spalte direkt neben Pitch, Breite nur
+    // reserviert, wenn aktiviert.
+    if (modwheelRibbon.isVisible())
+        modwheelRibbon.setBounds (bounds.removeFromLeft (ribbonWidth));
 
     auto rightColumn = bounds.removeFromRight (ribbonWidth);
     atOffsetRibbon.setBounds    (rightColumn.removeFromTop (rightColumn.getHeight() / 2));
@@ -325,10 +322,12 @@ void GridPage::resized()
     keyboard.setBounds (bounds);
     ccLayer.setBounds (bounds);   // Overlay exakt über den Keyboard-Bounds
 
-    // System-Controls (XY+Fader-Modus): exakt die oberen zwei Zellreihen der
-    // Keyboard-Fläche — IMMER positioniert, die Sichtbarkeit entscheidet.
+    // System-Controls (XY+Fader-Modus): exakt die oberen systemControlRowsAtStartup
+    // Zellreihen der Keyboard-Fläche — IMMER positioniert, die Sichtbarkeit
+    // entscheidet. Zeilenzahl fix seit Konstruktion (CcControlLayer::rows
+    // ist const, siehe systemControlRowsAtStartup-Kommentar im Header).
     const auto systemHeight = juce::roundToInt ((float) bounds.getHeight()
-                                  * (float) kSystemControlRows
+                                  * (float) systemControlRowsAtStartup
                                   / (float) padLayoutConfig().rows);
     systemLayer.setBounds (bounds.withHeight (systemHeight));
 

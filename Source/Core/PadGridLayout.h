@@ -88,6 +88,17 @@ public:
     void setYRangeNorm (float newRangeNorm) noexcept;
     void setSemitonesPerPadWidth (float newSemitones) noexcept;
 
+    /** Laufzeit-Setter fuer die In-Tune-Width (Block D1, Settings-Tab).
+        Geklemmt auf [0,95] -- siehe pitchBendFromAnchor. */
+    void setInTuneWidthPercent (float newPercent) noexcept;
+
+    /** Laufzeit-Setter fuer Oktav-Shift (Block D2, Octave-Up/Down-Buttons).
+        Verschiebt lowestNote um newOffsetSemitones (typischerweise
+        Vielfache von 12) relativ zur Basis -- der Aufrufer
+        (GridKeyboardComponent) haelt die Basis, dieser Setter setzt absolut. */
+    void setLowestNote (int newLowestNote) noexcept;
+    [[nodiscard]] int lowestNote() const noexcept { return config.lowestNote; }
+
 private:
     Config config;
 };

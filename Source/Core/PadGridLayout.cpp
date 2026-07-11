@@ -99,4 +99,14 @@ void PadGridLayout::setSemitonesPerPadWidth (float newSemitones) noexcept
     config.semitonesPerPadWidth = juce::jmax (0.01f, newSemitones);
 }
 
+void PadGridLayout::setInTuneWidthPercent (float newPercent) noexcept
+{
+    config.inTuneWidthPercent = juce::jlimit (0.0f, 95.0f, newPercent);
+}
+
+void PadGridLayout::setLowestNote (int newLowestNote) noexcept
+{
+    config.lowestNote = juce::jlimit (0, 127, newLowestNote);
+}
+
 } // namespace conduit::grid

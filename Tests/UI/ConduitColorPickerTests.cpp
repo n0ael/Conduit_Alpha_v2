@@ -177,3 +177,63 @@ TEST_CASE ("GridPanelSettings: gridLayoutMode default fullPads + Roundtrip", "[g
     conduit::GridPanelSettings again (temp.options());
     REQUIRE (again.getGridLayoutMode() == Mode::fullPads);
 }
+
+//==============================================================================
+// Block D1: systemControlRows / ribbonWidthPx / modwheelEnabled
+
+TEST_CASE ("GridPanelSettings: systemControlRows Default + Clamp + Roundtrip", "[gridpanelsettings]")
+{
+    juce::ScopedJuceInitialiser_GUI juceRuntime;
+    TempGridPanelSettings temp;
+
+    {
+        conduit::GridPanelSettings settings (temp.options());
+        REQUIRE (settings.getSystemControlRows()
+                 == conduit::GridPanelSettings::defaultSystemControlRows);
+
+        settings.setSystemControlRows (999);   // ueber max geklemmt
+        REQUIRE (settings.getSystemControlRows()
+                 == conduit::GridPanelSettings::maxSystemControlRows);
+
+        settings.setSystemControlRows (3);
+    }
+
+    conduit::GridPanelSettings reloaded (temp.options());
+    REQUIRE (reloaded.getSystemControlRows() == 3);
+}
+
+TEST_CASE ("GridPanelSettings: ribbonWidthPx Default + Clamp + Roundtrip", "[gridpanelsettings]")
+{
+    juce::ScopedJuceInitialiser_GUI juceRuntime;
+    TempGridPanelSettings temp;
+
+    {
+        conduit::GridPanelSettings settings (temp.options());
+        REQUIRE (settings.getRibbonWidthPx() == conduit::GridPanelSettings::defaultRibbonWidthPx);
+
+        settings.setRibbonWidthPx (5);   // unter min geklemmt
+        REQUIRE (settings.getRibbonWidthPx() == conduit::GridPanelSettings::minRibbonWidthPx);
+
+        settings.setRibbonWidthPx (100);
+    }
+
+    conduit::GridPanelSettings reloaded (temp.options());
+    REQUIRE (reloaded.getRibbonWidthPx() == 100);
+}
+
+TEST_CASE ("GridPanelSettings: modwheelEnabled Default false + Roundtrip", "[gridpanelsettings]")
+{
+    juce::ScopedJuceInitialiser_GUI juceRuntime;
+    TempGridPanelSettings temp;
+
+    {
+        conduit::GridPanelSettings settings (temp.options());
+        REQUIRE_FALSE (settings.isModwheelEnabled());
+
+        settings.setModwheelEnabled (true);
+        REQUIRE (settings.isModwheelEnabled());
+    }
+
+    conduit::GridPanelSettings reloaded (temp.options());
+    REQUIRE (reloaded.isModwheelEnabled());
+}

@@ -258,6 +258,10 @@ public:
         Grid-Page füllt das Port-Dropdown aus dem MidiDeviceTarget. */
     [[nodiscard]] grid::GridVoiceEngine& getGridVoiceEngine() noexcept { return gridVoiceEngine; }
     [[nodiscard]] grid::MidiDeviceTarget& getGridMidiDeviceTarget() noexcept { return midiDeviceTarget; }
+    /** Block D1 (Settings-Tab Expression Mode): direkter Zugriff, da
+        IVoiceSink bewusst keine MPE-Spezifika kennt (setExpressionMode
+        ist MpeMidiSink-spezifisch, kein Interface-Mitglied). */
+    [[nodiscard]] grid::MpeMidiSink& getMpeMidiSink() noexcept { return mpeMidiSink; }
 
     /** Chrome-Zustand des rechten Editor-Dock-Panels der Grid-Page (S2,
         App-Zustand) — der Processor lauscht nicht darauf, GridPage lädt/

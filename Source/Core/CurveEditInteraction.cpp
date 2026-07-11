@@ -7,6 +7,30 @@ namespace conduit::grid
 
 CurveEditInteraction::Target CurveEditInteraction::hitTest (juce::Point<float> normPos,
                                                             float outMin, float outMax,
+                                                            float hitRadius,
+                                                            const ResponseCurve& curve) noexcept
+{
+    // Endpunkte haben Vorrang (bestehende Regel: Endpunkt schlaegt alles).
+    const auto endpointTarget = hitTest (normPos, outMin, outMax, hitRadius);
+    if (endpointTarget != Target::Curvature)
+        return endpointTarget;
+
+    // Mittelpunkt (Block C): nur bei der 3-Punkt-Kurve vorhanden. Handle-
+    // Position in Feld-Koordinaten = (mid.x, outMin + mid.y*(outMax-outMin)).
+    if (curve.numPoints() == 3)
+    {
+        const auto& mid = curve.points()[1];
+        const juce::Point<float> handle { mid.x, outMin + mid.y * (outMax - outMin) };
+
+        if (normPos.getDistanceFrom (handle) <= hitRadius)
+            return Target::MidPoint;
+    }
+
+    return Target::Curvature;
+}
+
+CurveEditInteraction::Target CurveEditInteraction::hitTest (juce::Point<float> normPos,
+                                                            float outMin, float outMax,
                                                             float hitRadius) noexcept
 {
     const juce::Point<float> minPoint { 0.0f, outMin };
@@ -45,6 +69,74 @@ float CurveEditInteraction::curvatureDelta (float startNormY, float currentNormY
                                             float sensitivity) noexcept
 {
     return (startNormY - currentNormY) * sensitivity;
+}
+
+//==============================================================================
+// Mehrpunkt-Kurve (Block C)
+
+int CurveEditInteraction::curvatureSegmentAt (const ResponseCurve& curve, float normX) noexcept
+{
+    if (curve.numPoints() != 3)
+        return 0;
+
+    return normX <= curve.points()[1].x ? 0 : 1;
+}
+
+float CurveEditInteraction::rotationDegrees (juce::Point<float> aStart, juce::Point<float> bStart,
+                                             juce::Point<float> aNow, juce::Point<float> bNow) noexcept
+{
+    const auto startVec = bStart - aStart;
+    const auto nowVec   = bNow - aNow;
+
+    const auto startAngle = std::atan2 (startVec.y, startVec.x);
+    const auto nowAngle   = std::atan2 (nowVec.y, nowVec.x);
+
+    auto delta = nowAngle - startAngle;
+
+    // Auf [-pi, pi] entfalten -- die kuerzere Drehrichtung zaehlt.
+    while (delta > juce::MathConstants<float>::pi)
+        delta -= juce::MathConstants<float>::twoPi;
+    while (delta < -juce::MathConstants<float>::pi)
+        delta += juce::MathConstants<float>::twoPi;
+
+    return juce::radiansToDegrees (delta);
+}
+
+void CurveEditInteraction::applyRotationShape (ResponseCurve& curve, bool clockwise) noexcept
+{
+    curve.setPoints ({ { 0.0f, 0.0f }, { 0.5f, 0.5f }, { 1.0f, 1.0f } });
+
+    // Grundform per Drehrichtung: im Uhrzeigersinn = S-Kurve (erst konvex,
+    // dann konkav), gegen den Uhrzeigersinn = gespiegelte "?"-Kurve.
+    const auto c = clockwise ? kShapeCurvature : -kShapeCurvature;
+    curve.setSegmentCurvature (0, c);
+    curve.setSegmentCurvature (1, -c);
+}
+
+void CurveEditInteraction::applyMidPointDrag (ResponseCurve& curve, juce::Point<float> normPos,
+                                              float outMin, float outMax) noexcept
+{
+    if (curve.numPoints() != 3)
+        return;
+
+    const auto range = outMax - outMin;
+    const auto y = std::abs (range) > 1.0e-6f
+                       ? juce::jlimit (0.0f, 1.0f, (normPos.y - outMin) / range)
+                       : 0.5f;
+    const auto x = juce::jlimit (kMidPointMinX, kMidPointMaxX, normPos.x);
+
+    const auto first = curve.points().front();
+    const auto last  = curve.points().back();
+
+    // setPoints erhaelt die vorhandenen Segment-Kruemmungen (resize).
+    curve.setPoints ({ first, { x, y }, last });
+}
+
+void CurveEditInteraction::resetToDefault (ResponseCurve& curve) noexcept
+{
+    curve.setPoints ({ { 0.0f, 0.0f }, { 1.0f, 1.0f } });
+    curve.setSegmentCurvature (0, 0.0f);   // setPoints erhaelt alte c0 -- explizit nullen
+    curve.setOutputRange (0.0f, 1.0f);
 }
 
 } // namespace conduit::grid

@@ -50,7 +50,8 @@ namespace conduit
     NoteCircleFadeTracker, prüft den Dev-Modus-Cache und repaint()t. Kein
     readActiveVoices/Allokation im paint(). Message Thread.
 */
-class MpeShapingView final : public juce::Component
+class MpeShapingView final : public juce::Component,
+                             private juce::Timer
 {
 public:
     MpeShapingView (grid::GridVoiceEngine& engineToUse, GridPanelSettings& panelSettingsToUse);
@@ -171,10 +172,11 @@ private:
         NoteCircleFadeTracker fadeTracker { 180 };   // Default, setFadeMs() aus der Persistenz im Ctor
         std::vector<grid::GridVoiceEngine::VoiceReadout> scratch {};   // reserve(kMaxVoices) einmalig
 
-        // Schatten der ResponseCurve-Krümmung (Segment 0) -- ResponseCurve
-        // hat keinen Getter dafür; diese View ist die einzige Stelle, die
-        // setSegmentCurvature aufruft, daher bleibt der Schatten konsistent.
-        float segmentCurvature = 0.0f;
+        // Schatten der ResponseCurve-Krümmungen (Segment 0 + 1, Block C) --
+        // ResponseCurve hat keinen Getter dafür; diese View ist die einzige
+        // Stelle, die setSegmentCurvature aufruft, daher bleibt der
+        // Schatten konsistent. Bei der 2-Punkt-Kurve zählt nur Index 0.
+        std::array<float, 2> segmentCurvature {};
 
         juce::Rectangle<int> tileBounds {};      // ganze Kachel (Kurvenfeld+Detailspalte), Rounded-Rect
         juce::Rectangle<int> curveBounds {};     // gesetzt in resized(), gelesen in paint()
@@ -187,13 +189,35 @@ private:
     {
         int   sectionIndex    = -1;
         grid::CurveEditInteraction::Target target = grid::CurveEditInteraction::Target::None;
+        int   segmentIndex    = 0;      // Krümmungs-Segment (Block C: links/rechts vom Mittelpunkt)
         float startNormY      = 0.0f;   // normY bei mouseDown (Curvature-Basis)
-        float curvatureAtDown = 0.0f;   // section.segmentCurvature bei mouseDown
+        float curvatureAtDown = 0.0f;   // section.segmentCurvature[segmentIndex] bei mouseDown
+        juce::Point<float> lastFieldPos {};   // letzte Feld-Position (Zwei-Finger-Eskalation)
+    };
+
+    /** Zwei-Finger-Geste auf EINER Sektion (Block C): Drehung = Toggle
+        2→3 Punkte + Grundform (einmalig pro Geste), Drag = Mittelpunkt
+        verschieben. Key der Map = sectionIndex (höchstens eine pro Sektion). */
+    struct TwoFingerGesture
+    {
+        int fingerA = -1, fingerB = -1;   // Touch-Source-Indizes
+        juce::Point<float> startA, startB, currentA, currentB;
+        bool rotationApplied = false;     // Dreh-Toggle ist one-shot
+        bool dragging        = false;     // Mittelpunkt-Drag klassifiziert
     };
 
     void tick();
+    void timerCallback() override;   // 3-Finger-2s-Reset (Block C)
     void paintAxis (juce::Graphics& g, const AxisSection& section,
                     grid::CurveEditInteraction::Target activeTarget) const;
+
+    /** Anzahl aktiver Editier-Gesten (Touches) auf einer Sektion. */
+    [[nodiscard]] int gestureCountInSection (int sectionIndex) const noexcept;
+
+    /** Zwei-Finger-Verarbeitung (Block C): Drehung → Toggle 2→3 Punkte +
+        Grundform (nur bei weit aufgeklapptem Panel), Zentroid-Drag →
+        Mittelpunkt verschieben. */
+    void processTwoFingerGesture (int sectionIndex, TwoFingerGesture& twoFinger);
 
     /** Verdrahtet ein "Offset"-Schloss-Toggle + graues Label für eine Achse
         (Pressure/Slide -- PitchBend bekommt noch keins, siehe resized()):
@@ -257,12 +281,22 @@ private:
     static constexpr float kEndpointRadius       = 4.0f;   // Endpunkt-Griff, Ruhezustand
     static constexpr float kEndpointRadiusActive = 6.0f;   // ... während des Ziehens
 
+    // Mehrpunkt-Gesten (Block C)
+    static constexpr float kRotateToggleDegrees = 30.0f;   // Zwei-Finger-Drehung → Toggle
+    static constexpr float kMidDragStartNorm    = 0.04f;   // Zentroid-Weg bis Drag klassifiziert
+    static constexpr int   kResetHoldMs         = 2000;    // 3 Finger halten → Reset
+
     grid::GridVoiceEngine& engine;
     GridPanelSettings& panelSettings;
 
     std::array<AxisSection, 3> sections;
 
     std::map<int, EditGesture> gestures;   // Key = Touch-Source-Index (Multi-Touch)
+
+    // Zwei-Finger-Gesten (Block C), Key = sectionIndex; plus die Sektion,
+    // deren 3-Finger-Reset gerade laeuft (-1 = keiner, juce::Timer).
+    std::map<int, TwoFingerGesture> twoFingerBySection;
+    int resetPendingSection = -1;
 
     // Schloss-Toggle je Achse (unteres Ende der Detailspalte) + graues
     // Label -- eigene Member statt Teil von AxisSection (Button ist nicht

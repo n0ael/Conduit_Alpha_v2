@@ -412,6 +412,11 @@ void MpeShapingView::paint (juce::Graphics& g)
             activeTargets[(size_t) gesture.sectionIndex] = gesture.target;
     }
 
+    // Zwei-Finger-Mittelpunkt-Drag (Block C) hebt den Griff ebenfalls hervor.
+    for (const auto& entry : twoFingerBySection)
+        if (entry.second.dragging && entry.first >= 0 && entry.first < (int) activeTargets.size())
+            activeTargets[(size_t) entry.first] = grid::CurveEditInteraction::Target::MidPoint;
+
     for (size_t i = 0; i < sections.size(); ++i)
         paintAxis (g, sections[i], activeTargets[i]);
 }
@@ -523,6 +528,24 @@ void MpeShapingView::paintAxis (juce::Graphics& g, const AxisSection& section,
     const auto maxRadius = maxActive ? kEndpointRadiusActive : kEndpointRadius;
     g.setColour (maxActive ? push::colours::ledWhite : section.colour);
     g.fillEllipse (juce::Rectangle<float> (maxRadius * 2.0f, maxRadius * 2.0f).withCentre (maxPos));
+
+    // Mittelpunkt-Griff (Block C, 3-Punkt-Kurve): Position = Kontrollpunkt
+    // in Feld-Koordinaten (Kurve laeuft exakt durch ihn hindurch). Hohler
+    // Ring statt gefuellter Punkt -- unterscheidet ihn von den Endpunkten.
+    if (curve.numPoints() == 3)
+    {
+        const auto& mid = curve.points()[1];
+        const auto midValue = outMin + mid.y * (outMax - outMin);
+        const auto midPos = juce::Point<float> (bounds.getX() + mid.x * bounds.getWidth(),
+                                                valueToTileY (midValue, lo, hi, bounds));
+
+        const auto midActive = activeTarget == grid::CurveEditInteraction::Target::MidPoint;
+        const auto midRadius = midActive ? kEndpointRadiusActive : kEndpointRadius;
+
+        g.setColour (midActive ? push::colours::ledWhite : section.colour);
+        g.drawEllipse (juce::Rectangle<float> (midRadius * 2.0f, midRadius * 2.0f)
+                           .withCentre (midPos), 2.0f);
+    }
 
     // Live-Noten-Kreise: x = jlimit(0,1,rawValue) -- für Achsen mit
     // Rohwertbereich außerhalb [0,1] (PitchBend in Halbtönen) klemmt die
@@ -683,6 +706,15 @@ float MpeShapingView::valueToTileY (float value, float lo, float hi,
     return bounds.getBottom() - juce::jlimit (lo, hi, value) * bounds.getHeight();
 }
 
+int MpeShapingView::gestureCountInSection (int sectionIndex) const noexcept
+{
+    int count = 0;
+    for (const auto& entry : gestures)
+        if (entry.second.sectionIndex == sectionIndex)
+            ++count;
+    return count;
+}
+
 void MpeShapingView::mouseDown (const juce::MouseEvent& event)
 {
     const auto sectionIndex = sectionIndexAt (event.position);
@@ -696,22 +728,104 @@ void MpeShapingView::mouseDown (const juce::MouseEvent& event)
 
     const auto normPos = normalisedPositionIn (fieldBounds, event.position);
     const auto& curve = engine.responseCurve (section.axis);
-
-    // Trefferradius: 44 px (Touch-Target-Regel) normiert auf die Feldhöhe.
-    const auto hitRadiusNorm = kTouchTargetPx / juce::jmax (1.0f, fieldBounds.getHeight());
-
-    const auto target = grid::CurveEditInteraction::hitTest (normPos, curve.getOutputMin(),
-                                                             curve.getOutputMax(), hitRadiusNorm);
+    const auto sourceIndex = event.source.getIndex();
+    const auto existing = gestureCountInSection (sectionIndex);
 
     EditGesture gesture;
-    gesture.sectionIndex    = sectionIndex;
-    gesture.target          = target;
-    gesture.startNormY      = normPos.y;
-    gesture.curvatureAtDown = section.segmentCurvature;
+    gesture.sectionIndex = sectionIndex;
+    gesture.startNormY   = normPos.y;
+    gesture.lastFieldPos = normPos;
 
-    gestures[event.source.getIndex()] = gesture;
+    if (existing == 0)
+    {
+        // Ein-Finger-Geste wie gehabt -- Trefferradius: 44 px (Touch-
+        // Target-Regel) normiert auf die Feldhöhe; hitTest kennt seit
+        // Block C auch den Mittelpunkt der 3-Punkt-Kurve.
+        const auto hitRadiusNorm = kTouchTargetPx / juce::jmax (1.0f, fieldBounds.getHeight());
+
+        gesture.target = grid::CurveEditInteraction::hitTest (normPos, curve.getOutputMin(),
+                                                              curve.getOutputMax(), hitRadiusNorm, curve);
+        gesture.segmentIndex = grid::CurveEditInteraction::curvatureSegmentAt (curve, normPos.x);
+        gesture.curvatureAtDown = section.segmentCurvature[(size_t) gesture.segmentIndex];
+    }
+    else if (existing == 1 && twoFingerBySection.find (sectionIndex) == twoFingerBySection.end())
+    {
+        // Zweiter Finger auf derselben Sektion (Block C): Ein-Finger-
+        // Bearbeitung beider Finger neutralisieren, Zwei-Finger-Geste
+        // starten (Drehung = Toggle, Zentroid-Drag = Mittelpunkt).
+        for (auto& entry : gestures)
+        {
+            if (entry.second.sectionIndex == sectionIndex)
+            {
+                TwoFingerGesture twoFinger;
+                twoFinger.fingerA  = entry.first;
+                twoFinger.startA   = entry.second.lastFieldPos;
+                twoFinger.currentA = entry.second.lastFieldPos;
+                twoFinger.fingerB  = sourceIndex;
+                twoFinger.startB   = normPos;
+                twoFinger.currentB = normPos;
+                twoFingerBySection[sectionIndex] = twoFinger;
+
+                entry.second.target = grid::CurveEditInteraction::Target::None;
+                break;
+            }
+        }
+    }
+    else if (existing == 2)
+    {
+        // Dritter Finger (Block C): 2 s halten = Reset auf 2-Punkt-Default.
+        resetPendingSection = sectionIndex;
+        startTimer (kResetHoldMs);
+    }
+
+    gestures[sourceIndex] = gesture;
 
     repaint();
+}
+
+void MpeShapingView::processTwoFingerGesture (int sectionIndex, TwoFingerGesture& twoFinger)
+{
+    auto& section = sections[(size_t) sectionIndex];
+    auto& curve = engine.responseCurve (section.axis);
+
+    if (! twoFinger.rotationApplied && ! twoFinger.dragging)
+    {
+        // Klassifikation: was zuerst die Schwelle reisst, gewinnt.
+        const auto degrees = grid::CurveEditInteraction::rotationDegrees (
+            twoFinger.startA, twoFinger.startB, twoFinger.currentA, twoFinger.currentB);
+
+        // Dreh-Toggle nur bei weit aufgeklapptem Panel (Masterplan Block C).
+        const auto wideOpen = getWidth() >= panelSettings.getEditorThresholdWidth();
+
+        if (std::abs (degrees) >= kRotateToggleDegrees && wideOpen)
+        {
+            // Feld-y zeigt nach OBEN -- negative Winkelaenderung = im
+            // Uhrzeigersinn (S-Kurve), positive = "?"-Kurve.
+            const auto clockwise = degrees < 0.0f;
+            grid::CurveEditInteraction::applyRotationShape (curve, clockwise);
+
+            const auto c = clockwise ? grid::CurveEditInteraction::kShapeCurvature
+                                     : -grid::CurveEditInteraction::kShapeCurvature;
+            section.segmentCurvature = { c, -c };
+            twoFinger.rotationApplied = true;   // one-shot pro Geste
+        }
+        else
+        {
+            const auto startCentroid   = (twoFinger.startA + twoFinger.startB) / 2.0f;
+            const auto currentCentroid = (twoFinger.currentA + twoFinger.currentB) / 2.0f;
+
+            if (currentCentroid.getDistanceFrom (startCentroid) >= kMidDragStartNorm
+                && curve.numPoints() == 3)
+                twoFinger.dragging = true;
+        }
+    }
+
+    if (twoFinger.dragging)
+    {
+        const auto centroid = (twoFinger.currentA + twoFinger.currentB) / 2.0f;
+        grid::CurveEditInteraction::applyMidPointDrag (curve, centroid,
+                                                       curve.getOutputMin(), curve.getOutputMax());
+    }
 }
 
 void MpeShapingView::mouseDrag (const juce::MouseEvent& event)
@@ -720,8 +834,8 @@ void MpeShapingView::mouseDrag (const juce::MouseEvent& event)
     if (it == gestures.end())
         return;
 
-    const auto& gesture = it->second;
-    if (gesture.target == grid::CurveEditInteraction::Target::None || gesture.sectionIndex < 0)
+    auto& gesture = it->second;
+    if (gesture.sectionIndex < 0)
         return;
 
     auto& section = sections[(size_t) gesture.sectionIndex];
@@ -730,6 +844,27 @@ void MpeShapingView::mouseDrag (const juce::MouseEvent& event)
         return;
 
     const auto normPos = normalisedPositionIn (fieldBounds, event.position);
+    gesture.lastFieldPos = normPos;
+
+    // Zwei-Finger-Geste dieser Sektion? Dann dort verarbeiten (Block C).
+    const auto twoFingerIt = twoFingerBySection.find (gesture.sectionIndex);
+    if (twoFingerIt != twoFingerBySection.end())
+    {
+        auto& twoFinger = twoFingerIt->second;
+        const auto sourceIndex = event.source.getIndex();
+
+        if (sourceIndex == twoFinger.fingerA || sourceIndex == twoFinger.fingerB)
+        {
+            (sourceIndex == twoFinger.fingerA ? twoFinger.currentA : twoFinger.currentB) = normPos;
+            processTwoFingerGesture (gesture.sectionIndex, twoFinger);
+            repaint();
+            return;
+        }
+    }
+
+    if (gesture.target == grid::CurveEditInteraction::Target::None)
+        return;
+
     auto& curve = engine.responseCurve (section.axis);
 
     switch (gesture.target)
@@ -744,13 +879,21 @@ void MpeShapingView::mouseDrag (const juce::MouseEvent& event)
                                   grid::CurveEditInteraction::endpointValueFromY (normPos.y));
             break;
 
+        case grid::CurveEditInteraction::Target::MidPoint:
+            // Ein-Finger-Drag auf dem Mittelpunkt-Griff (Block C) --
+            // zusaetzlich zum Zwei-Finger-Drag, gleiches Ziel.
+            grid::CurveEditInteraction::applyMidPointDrag (curve, normPos,
+                                                           curve.getOutputMin(), curve.getOutputMax());
+            break;
+
         case grid::CurveEditInteraction::Target::Curvature:
         {
+            const auto segment = gesture.segmentIndex;
             const auto newCurvature = juce::jlimit (-1.0f, 1.0f,
                 gesture.curvatureAtDown + grid::CurveEditInteraction::curvatureDelta (
                     gesture.startNormY, normPos.y, kCurvatureSensitivity));
-            curve.setSegmentCurvature (0, newCurvature);
-            section.segmentCurvature = newCurvature;
+            curve.setSegmentCurvature (segment, newCurvature);
+            section.segmentCurvature[(size_t) segment] = newCurvature;
             break;
         }
 
@@ -764,7 +907,55 @@ void MpeShapingView::mouseDrag (const juce::MouseEvent& event)
 
 void MpeShapingView::mouseUp (const juce::MouseEvent& event)
 {
-    gestures.erase (event.source.getIndex());
+    const auto sourceIndex = event.source.getIndex();
+    const auto it = gestures.find (sourceIndex);
+    const auto sectionIndex = it != gestures.end() ? it->second.sectionIndex : -1;
+
+    gestures.erase (sourceIndex);
+
+    if (sectionIndex >= 0)
+    {
+        // Zwei-Finger-Geste aufloesen, sobald einer der beiden abhebt.
+        const auto twoFingerIt = twoFingerBySection.find (sectionIndex);
+        if (twoFingerIt != twoFingerBySection.end()
+            && (twoFingerIt->second.fingerA == sourceIndex || twoFingerIt->second.fingerB == sourceIndex))
+            twoFingerBySection.erase (twoFingerIt);
+
+        // 3-Finger-Reset abbrechen, wenn die Sektion unter 3 Finger faellt.
+        if (resetPendingSection == sectionIndex && gestureCountInSection (sectionIndex) < 3)
+        {
+            resetPendingSection = -1;
+            stopTimer();
+        }
+    }
+
+    repaint();
+}
+
+void MpeShapingView::timerCallback()
+{
+    stopTimer();
+
+    const auto sectionIndex = resetPendingSection;
+    resetPendingSection = -1;
+
+    if (sectionIndex < 0 || sectionIndex >= (int) sections.size())
+        return;
+
+    if (gestureCountInSection (sectionIndex) < 3)
+        return;   // Finger sind schon wieder weg -- kein Reset
+
+    // 3 Finger, 2 s gehalten (Block C): Kurve auf 2-Punkt-Default zurueck.
+    auto& section = sections[(size_t) sectionIndex];
+    grid::CurveEditInteraction::resetToDefault (engine.responseCurve (section.axis));
+    section.segmentCurvature = {};
+
+    // Weiterziehen der liegenden Finger darf nichts mehr editieren.
+    for (auto& entry : gestures)
+        if (entry.second.sectionIndex == sectionIndex)
+            entry.second.target = grid::CurveEditInteraction::Target::None;
+    twoFingerBySection.erase (sectionIndex);
+
     repaint();
 }
 

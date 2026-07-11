@@ -45,8 +45,25 @@ const MidiInBindings::Binding* MidiInBindings::bindingFor (const MacroControlKey
     return nullptr;
 }
 
+void MidiInBindings::armLearn (const MacroControlKey& key) noexcept
+{
+    learnArmed = true;
+    learnKey = key;
+}
+
 void MidiInBindings::handleIncomingCc (int channel, int cc, int value7bit)
 {
+    // MIDI-Learn: der erste eingehende CC bindet und wird dann normal
+    // weiterverarbeitet (die neue Bindung nimmt den Wert direkt auf).
+    if (learnArmed)
+    {
+        learnArmed = false;
+        bind (learnKey, channel, cc);
+
+        if (onLearnCompleted != nullptr)
+            onLearnCompleted (learnKey, channel, cc);
+    }
+
     const auto value01 = (float) juce::jlimit (0, 127, value7bit) / 127.0f;
 
     for (auto& binding : bindings)

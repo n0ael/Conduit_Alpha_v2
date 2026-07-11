@@ -98,6 +98,18 @@ public:
         (der externe Fader muss neu aufnehmen). */
     void notifyLocalTouch (const MacroControlKey& key) noexcept;
 
+    //==========================================================================
+    // MIDI-Learn (Block G, User-Wunsch): armLearn scharfschalten, der
+    // NAECHSTE eingehende CC bindet (channel, cc) an den Key und meldet
+    // onLearnCompleted (UI aktualisiert Felder). Der Lern-CC selbst wird
+    // danach normal verarbeitet (Takeover nimmt natuerlich auf).
+
+    void armLearn (const MacroControlKey& key) noexcept;
+    void cancelLearn() noexcept { learnArmed = false; }
+    [[nodiscard]] bool isLearnArmed() const noexcept { return learnArmed; }
+
+    std::function<void (const MacroControlKey&, int channel, int cc)> onLearnCompleted;
+
     /** LED-/Motorfader-Echo (channel, cc, value01) -- nur Schnittstelle. */
     std::function<void (int, int, float)> onFeedbackEcho;
 
@@ -107,6 +119,9 @@ public:
 
 private:
     std::vector<Binding> bindings;
+
+    bool learnArmed = false;
+    MacroControlKey learnKey;
 };
 
 } // namespace conduit::grid

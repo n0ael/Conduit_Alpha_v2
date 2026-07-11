@@ -384,6 +384,7 @@ MacroPanel::MacroPanel (grid::MacroBindings& bindingsToUse, grid::MidiDeviceTarg
     addChildComponent (axisXTile);
     addChildComponent (axisYTile);
     addChildComponent (midiInTile);
+    addChildComponent (learnTile);
     addChildComponent (midiInChannelField);
     addChildComponent (midiInCcField);
     addAndMakeVisible (viewport);
@@ -409,6 +410,33 @@ MacroPanel::MacroPanel (grid::MacroBindings& bindingsToUse, grid::MidiDeviceTarg
     };
     midiInChannelField.onValueCommitted = [this] (double) { if (midiInTile.isActive()) commitMidiInBinding(); };
     midiInCcField.onValueCommitted      = [this] (double) { if (midiInTile.isActive()) commitMidiInBinding(); };
+
+    // MIDI-Learn (User-Wunsch 11.07.): scharfschalten, der naechste
+    // eingehende CC bindet -- onLearnCompleted aktualisiert die Felder.
+    learnTile.onClick = [this]
+    {
+        if (currentControlId < 0)
+            return;
+
+        if (midiInBindings.isLearnArmed())
+        {
+            midiInBindings.cancelLearn();
+            learnTile.setActive (false);
+        }
+        else
+        {
+            midiInBindings.armLearn (currentKey());
+            learnTile.setActive (true);
+        }
+    };
+    midiInBindings.onLearnCompleted = [this] (const grid::MacroControlKey&, int channel, int cc)
+    {
+        learnTile.setActive (false);
+        midiInChannelField.setValue (channel, juce::dontSendNotification);
+        midiInCcField.setValue (cc, juce::dontSendNotification);
+        midiInTile.setActive (true);
+        refreshMidiInRow();
+    };
 
     titleLabel.setJustificationType (juce::Justification::centredLeft);
     titleLabel.setColour (juce::Label::textColourId, push::colours::text);
@@ -473,6 +501,7 @@ void MacroPanel::refreshMidiInRow()
 {
     const auto showRow = currentControlId >= 0;
     midiInTile.setVisible (showRow);
+    learnTile.setVisible (showRow);
     midiInChannelField.setVisible (showRow);
     midiInCcField.setVisible (showRow);
 
@@ -605,11 +634,13 @@ void MacroPanel::resized()
     titleLabel.setBounds (header);
     area.removeFromTop (4);
 
-    // MIDI-In-Zeile (Block G): Toggle + Ch/CC-Felder unter dem Titel.
+    // MIDI-In-Zeile (Block G): Toggle + Learn + Ch/CC-Felder unter dem Titel.
     if (currentControlId >= 0)
     {
         auto midiInRow = area.removeFromTop (28);
-        midiInTile.setBounds (midiInRow.removeFromLeft (72));
+        midiInTile.setBounds (midiInRow.removeFromLeft (64));
+        midiInRow.removeFromLeft (4);
+        learnTile.setBounds (midiInRow.removeFromLeft (52));
         midiInRow.removeFromLeft (6);
         const auto fieldWidth = (midiInRow.getWidth() - 4) / 2;
         midiInChannelField.setBounds (midiInRow.removeFromLeft (fieldWidth));

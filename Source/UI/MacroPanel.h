@@ -140,8 +140,9 @@ private:
     push::TextTile addTile   { "+ Ziel" };
 
     // MIDI-In-Zeile (Block G): externer CC bewegt dieses Control (Soft-
-    // Takeover). Toggle an/aus + Kanal/CC-Felder.
+    // Takeover). Toggle an/aus + Learn (naechster CC bindet) + Kanal/CC.
     push::TextTile midiInTile { "MIDI In" };
+    push::TextTile learnTile  { "Learn", push::colours::ledOrange };
     NumberFieldBracket midiInChannelField { NumberFieldBracket::Config { 1.0, 16.0, 1.0, 1.0, 0, 0.1, "Ch" } };
     NumberFieldBracket midiInCcField      { NumberFieldBracket::Config { 0.0, 127.0, 20.0, 1.0, 0, 0.5, "CC" } };
 

@@ -166,3 +166,45 @@ TEST_CASE ("MidiInBindings: Feedback-Echo-Schnittstelle feuert beim Anwenden", "
     REQUIRE (std::get<0> (echoes.back()) == 1);
     REQUIRE (std::get<1> (echoes.back()) == 20);
 }
+
+TEST_CASE ("MidiInBindings: MIDI-Learn bindet den naechsten CC und meldet ihn", "[grid][midiin]")
+{
+    Rig rig;
+    rig.values[5] = 0.5f;
+
+    std::vector<std::tuple<int, int>> learned;
+    rig.bindings.onLearnCompleted = [&] (const grid::MacroControlKey& key, int channel, int cc)
+    {
+        REQUIRE (key.controlId == 5);
+        learned.emplace_back (channel, cc);
+    };
+
+    rig.bindings.armLearn (keyFor (5));
+    REQUIRE (rig.bindings.isLearnArmed());
+
+    rig.bindings.handleIncomingCc (2, 74, 64);
+
+    REQUIRE_FALSE (rig.bindings.isLearnArmed());
+    REQUIRE (learned.size() == 1);
+    REQUIRE (std::get<0> (learned[0]) == 2);
+    REQUIRE (std::get<1> (learned[0]) == 74);
+
+    const auto* binding = rig.bindings.bindingFor (keyFor (5));
+    REQUIRE (binding != nullptr);
+    REQUIRE (binding->channel == 2);
+    REQUIRE (binding->cc == 74);
+
+    // Der Lern-CC selbst wird normal verarbeitet -- nahe 0.5 -> Pickup sofort.
+    rig.tick();
+    REQUIRE (rig.values[5] == Approx (64.0f / 127.0f).margin (0.01));
+}
+
+TEST_CASE ("MidiInBindings: cancelLearn entschaerft ohne zu binden", "[grid][midiin]")
+{
+    Rig rig;
+    rig.bindings.armLearn (keyFor (7));
+    rig.bindings.cancelLearn();
+
+    rig.bindings.handleIncomingCc (1, 40, 100);
+    REQUIRE (rig.bindings.bindingFor (keyFor (7)) == nullptr);
+}

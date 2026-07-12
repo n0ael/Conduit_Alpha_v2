@@ -102,7 +102,7 @@ RingTouchModel::UpResult RingTouchModel::onUp (uint32_t fingerId) noexcept
             // die Umlaufbahn erneut aufgreift.
             const auto owner = primary.id;
             primary.ringFinger = 0;
-            return { false, true, 0, owner };
+            return { false, true, 0, owner, false, {}, {}, false };
         }
     }
 

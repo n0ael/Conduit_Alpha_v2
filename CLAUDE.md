@@ -157,54 +157,17 @@ Pflichtlektüre vor jeder FX-Arbeit.**
 
 ## 5. Patch-Engine (Glitch-freier Graph-Swap)
 
-Detail-Abläufe + Code-Muster: **docs/PatchEngine.md — Pflichtlektüre vor
-Arbeiten an GraphManager, Graph-Swap, Delete-Pfad oder Preset-System.**
-
-### 5.1 Architektur
+Invarianten: Rule `patch-engine`; Detail-Abläufe + Code-Muster (4-Schritt-
+Swap, zweiphasiges Delete, Preset-System, Batch-Coalescing — Nummern
+5.1–5.6): **docs/PatchEngine.md — Pflichtlektüre vor Arbeiten an
+GraphManager, Graph-Swap, Delete-Pfad oder Preset-System.**
+Querschnitts-Invarianten (gelten app-weit, für jede Modul-UI):
 
 - `juce::AudioProcessorGraph` ist die DSP-Engine; jedes Modul ist ein
-  eigenständiger `AudioProcessor` im Graph
-- `ValueTree` + `UndoManager` für Zustand, Serialisierung, Undo/Redo, UI-Binding
-- Graph-Mutationen **NUR auf Message Thread**; alle patchbaren Aktionen
-  (add, remove, connect, disconnect) gehen durch `UndoManager`
-
-### 5.2 Modul hinzufügen / Kabel umstecken (4-Schritt Ablauf)
-
-Async Prepare (manuelles `prepareToPlay()` VOR dem Swap; Fehler → `nodeError`,
-Modul nicht aufnehmen) → DSP Fade-Out [Audio Thread] → Topologie-Swap
-[Message Thread via `AsyncUpdater`, **kein Busy-Poll, kein Timer** —
-self-re-dispatch bis `fadeComplete`] → DSP Fade-In. JUCE rebuildet den
-Rendering-Plan auf Stille — kein Knacksen.
-
-### 5.3 Modul löschen (Zweiphasiges Delete — Zombie-UI-Schutz)
-
-**Regel: UI-Component hält niemals einen Pointer auf den Processor — nur auf
-den ValueTree-Subtree.** Phase 1 [Message Thread]: `nodeState → Deleting`,
-UI entkoppelt sich via Listener, `OscController` cached `moduleId` JETZT und
-deregistriert sofort. Phase 2 [Message Thread, nächster Frame via
-`VBlankAttachment`, erst wenn kein UI-Listener mehr auf dem Subtree]:
-`removeNode()`, Subtree-Entfernung (UndoManager), Destruktion.
-`nodeState` enum: Active | FadingOut | FadingIn | Deleting.
-
-### 5.4 Preset-System (Speichern / Laden)
-
-Snapshot = `rootTree.createCopy()` → XML-Datei; Speichern nur wenn kein
-`isDirty`-Flag gesetzt (6.1). Laden rebuildet den Graph aus dem Tree,
-CalibrationProfiles werden mitgeladen und sofort angewendet.
-
-### 5.5 Batch-Coalescing (Undo / Bulk-Delete)
-
-`GraphManager` (erbt `AsyncUpdater`) sammelt alle ValueTree-Änderungen eines
-Frames und führt EINEN gemeinsamen Fade-Zyklus/Graph-Swap für den gesamten
-Delta aus — nie einen pro Änderung. Gilt für Undo, Redo, Preset-Load,
-Bulk-Delete, Copy-Paste.
-
-### 5.6 Regeln
-
-- `SmoothedValue`-Rampzeit: 5ms default, konfigurierbar pro Node;
-  `fadeComplete` ist `std::atomic<bool>` — kein Mutex
-- Kein `new`/`malloc` während des gesamten Ablaufs
-- `prepareToPlay()`-Fehler → `nodeError`-Property, nie ignorieren
+  eigenständiger `AudioProcessor` im Graph. Graph-Mutationen **NUR auf
+  Message Thread**; alle patchbaren Aktionen durch den `UndoManager`.
+- **UI-Component hält niemals einen Pointer auf den Processor — nur auf
+  den ValueTree-Subtree** (Zombie-UI-Schutz, Delete-Pfad 5.3).
 
 ---
 
@@ -302,28 +265,12 @@ Gain-Abweichungen. `0.0f` digital ≠ `0.000V` analog → Out-of-Tune bei 1V/Oct
   Interface (neues Profil-Feld, Default 10.0).
 - UI zeigt Volt an, speichert normalisiert.
 
-### 8.1 CalibrationProfile (per Interface)
+### 8.1 CalibrationProfile, CVTuner & Latenz-Trim
 
-`interfaceId` (exakter Device-Name, primärer Key) + `interfaceIdPrefix`
-(Fallback ohne Suffix wie " (2)") + `dcOffset` + `gainTrim`; im
-HardwareIOModule allocation-free angewendet:
-`(raw + dcOffset) * gainTrim`. Matching bei USB-Reconnect: exakt → Prefix →
-kein Match = Neutral-Profil + UI-Warnung. Profile sind kanalspezifisch,
-persistent im ValueTree, user-adjustierbar. Details: docs/Calibration.md.
-
-### 8.2 CVTunerModule (AnalysisModule)
-
-Natives Kalibrierungswerkzeug (Referenz-CV ausgeben → Rückweg via ES-6
-messen → dcOffset/gainTrim berechnen → Profil in ValueTree schreiben,
-sofort aktiv, wiederholbar pro Kanal). Schreibt NUR CalibrationProfiles,
-nie in den Audio-Pfad; Messung auf separatem Analyse-Thread.
-Ablauf: docs/Calibration.md.
-
-### 8.3 Latenz-Trim für CV-Ausgänge
-
-Pro CV-Ausgangskanal `shiftMs` (±50 ms) plus globales `globalShiftMs`,
-beide als Beat-Offset im Audio-Thread eingerechnet — gehört ins
-CalibrationProfile bzw. den Kanal-State, user-adjustierbar (docs/Calibration.md).
+Invarianten (CalibrationProfile-Felder/-Matching, CVTuner schreibt NUR
+Profile, `shiftMs`/`globalShiftMs`): Rule `calibration`; Spezifikation
+(Nummern 8.1–8.3): **docs/Calibration.md — Pflichtlektüre vor jeder
+Kalibrierungs-Arbeit.**
 
 ---
 
@@ -366,13 +313,14 @@ Querschnitts-Kern:
   Schriftgröße reduzieren oder Text kürzen — niemals quetschen
   (minimumHorizontalScale = 1.0, Details Rule `ui-design`).
 - UI-Components binden NUR an den ValueTree-Subtree, nie an den
-  Processor (5.3); Animationen via `VBlankAttachment`, kein Blocking
+  Processor (§5); Animationen via `VBlankAttachment`, kein Blocking
   in `paint()`.
 
 Subsystem-Regeln + Spezifikationen (je eigene Rule + Dossier):
 **TransportBar/Metronom** → Rule `transport`, docs/Transport.md ·
 **Looper** (Engine-Level, kein Graph) → Rule `looper`, docs/Looper.md ·
-**Grid-Touch-Controller Ω** → Rule `grid`, docs/Grid.md.
+**Grid-Touch-Controller Ω** → Rule `grid`, docs/Grid.md ·
+**MIDI-Rig** → Rule `midirig`, docs/MidiRig.md.
 
 ### 10.1 Touch-Gesten
 
@@ -404,6 +352,7 @@ Vollausbau, OSC-Send, M4L-Announce (+ Max-Testdevice ConduitLFO), Grid M1.
 | Clip-Page (Fugue-Machine-Sequencer) | v2.x | ▷▭-Icon, immer aktiv, CV- UND MIDI-Ziele; Slot 2 vorerst an TouchLive abgegeben (09.07.2026) |
 | TouchLive-Page (Ableton-Live-Remote) | v2.x | M1–M4 + M5/EQ-Eight erledigt (GRID/MIXER/DEVICE/BROWSER auf Slot 2, Meter, Fast-Path, bespoke EQ-Kurve), Meilensteinleiter: docs/TouchLive.md |
 | Capture-Netzwerk-Share (Exports für entferntes Ableton) | v2.x | HTTP-Bereitstellung der Capture-Dateien |
+| MIDI-Rig (Hardware-Mapping, NRPN/PC/SysEx) | v2.x | Meilensteinleiter: docs/MidiRig.md |
 
 ---
 
@@ -470,7 +419,8 @@ Index:
 - 003 — Grid-Voice-Ausgabe: Quelle → Voice-Modell → austauschbare Sinks
 - 004 — Subsystem-Dossiers unter docs/ (+ Descope 10-Finger-Panic)
 - 005 — Subsystem-Invarianten als path-scoped Rules (.claude/rules/)
+- 006 — MIDI-Rig-Subsystem: Klangerzeuger-/Controller-Profile, Transport, Threading
 
 ---
 
-*Conduit Alpha v3 — Claude Code Instructions v5.0  |  Juli 2026*
+*Conduit Alpha v3 — Claude Code Instructions v5.2  |  Juli 2026*

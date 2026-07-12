@@ -38,6 +38,9 @@ namespace
     constexpr const char* inTuneWidthPercentKey   = "inTuneWidthPercent";
     constexpr const char* expressionModeIndexKey  = "expressionModeIndex";
     constexpr const char* octaveShiftKey          = "octaveShift";
+    constexpr const char* gridMidiOutDeviceKey    = "gridMidiOutDeviceName";
+    constexpr const char* controlMidiInDeviceKey  = "controlMidiInDeviceName";
+    constexpr const char* echoMidiInDeviceKey     = "echoMidiInDeviceName";
 
     // Achsen-Farben (Grid-Page v2) — Index = GridPanelSettings::axisIndex
     // (Pressure 0, Slide 1, PitchBend 2).
@@ -142,6 +145,10 @@ void GridPanelSettings::loadFromFile()
             file->getIntValue (expressionModeIndexKey, 0));
         octaveShift = juce::jlimit (-maxOctaveShift, maxOctaveShift,
             file->getIntValue (octaveShiftKey, 0));
+
+        gridMidiOutDeviceName   = file->getValue (gridMidiOutDeviceKey, {});
+        controlMidiInDeviceName = file->getValue (controlMidiInDeviceKey, {});
+        echoMidiInDeviceName    = file->getValue (echoMidiInDeviceKey, {});
 
         for (size_t i = 0; i < axisColours.size(); ++i)
         {
@@ -513,6 +520,48 @@ void GridPanelSettings::setControlSnapToDefault (bool shouldSnap)
     if (auto* file = applicationProperties.getUserSettings())
     {
         file->setValue (controlSnapToDefaultKey, controlSnapToDefault);
+        file->saveIfNeeded();
+    }
+}
+
+void GridPanelSettings::setGridMidiOutDeviceName (const juce::String& newName)
+{
+    if (newName == gridMidiOutDeviceName)
+        return;
+
+    gridMidiOutDeviceName = newName;
+
+    if (auto* file = applicationProperties.getUserSettings())
+    {
+        file->setValue (gridMidiOutDeviceKey, gridMidiOutDeviceName);
+        file->saveIfNeeded();
+    }
+}
+
+void GridPanelSettings::setControlMidiInDeviceName (const juce::String& newName)
+{
+    if (newName == controlMidiInDeviceName)
+        return;
+
+    controlMidiInDeviceName = newName;
+
+    if (auto* file = applicationProperties.getUserSettings())
+    {
+        file->setValue (controlMidiInDeviceKey, controlMidiInDeviceName);
+        file->saveIfNeeded();
+    }
+}
+
+void GridPanelSettings::setEchoMidiInDeviceName (const juce::String& newName)
+{
+    if (newName == echoMidiInDeviceName)
+        return;
+
+    echoMidiInDeviceName = newName;
+
+    if (auto* file = applicationProperties.getUserSettings())
+    {
+        file->setValue (echoMidiInDeviceKey, echoMidiInDeviceName);
         file->saveIfNeeded();
     }
 }

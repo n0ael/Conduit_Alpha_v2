@@ -364,3 +364,30 @@ TEST_CASE ("GridPanelSettings: Block-K-Skalare Default + Clamp + Roundtrip", "[g
     REQUIRE (reloaded.sessionFile().getParentDirectory().getFullPathName()
                  .contains ("ConduitGridPanelSettingsTests"));
 }
+
+TEST_CASE ("GridPanelSettings: MIDI-Geraete-Auswahlen Roundtrip (Block K2)", "[gridpanelsettings]")
+{
+    juce::ScopedJuceInitialiser_GUI juceRuntime;
+    TempGridPanelSettings temp;
+
+    {
+        conduit::GridPanelSettings settings (temp.options());
+        REQUIRE (settings.getGridMidiOutDeviceName().isEmpty());
+        REQUIRE (settings.getControlMidiInDeviceName().isEmpty());
+        REQUIRE (settings.getEchoMidiInDeviceName().isEmpty());
+
+        settings.setGridMidiOutDeviceName ("Conduit Grid MPE");
+        settings.setControlMidiInDeviceName ("K1 (Port 1)");
+        settings.setEchoMidiInDeviceName ("Conduit DAW");
+    }
+
+    conduit::GridPanelSettings reloaded (temp.options());
+    REQUIRE (reloaded.getGridMidiOutDeviceName() == "Conduit Grid MPE");
+    REQUIRE (reloaded.getControlMidiInDeviceName() == "K1 (Port 1)");
+    REQUIRE (reloaded.getEchoMidiInDeviceName() == "Conduit DAW");
+
+    // Abwaehlen persistiert den Leereintrag.
+    reloaded.setEchoMidiInDeviceName ({});
+    conduit::GridPanelSettings again (temp.options());
+    REQUIRE (again.getEchoMidiInDeviceName().isEmpty());
+}

@@ -67,6 +67,13 @@ void MacroPanel::TargetRow::rebuildFromBinding()
             channelField.setValue (midi->channel(), juce::dontSendNotification);
             ccField.setValue (midi->ccNumber(), juce::dontSendNotification);
         }
+        else if (auto* live = dynamic_cast<grid::AbletonParamTarget*> (b->target.get()))
+        {
+            // Block K2 (User-Feldtest 12.07.2026): die geladene Zuweisung in
+            // den Combos ANZEIGEN — leere Dropdowns sahen aus wie "verloren".
+            targetType = TargetType::live;
+            applySpecToCombos (live->spec());
+        }
         else
         {
             targetType = TargetType::live;
@@ -194,6 +201,48 @@ void MacroPanel::TargetRow::populateParameterCombo()
             const auto& entry = metaArray->getReference (i);
             const auto name = entry.getProperty ("name", {}).toString();
             parameterCombo.addItem (name.isNotEmpty() ? name : ("Param " + juce::String (i)), i + 1);
+        }
+    }
+}
+
+void MacroPanel::TargetRow::applySpecToCombos (const grid::LiveParamSpec& spec)
+{
+    populateTrackCombo();
+
+    for (int i = 0; i < trackCombo.getNumItems(); ++i)
+    {
+        if (trackCombo.getItemText (i) == spec.trackName)
+        {
+            trackCombo.setSelectedId (i + 1, juce::dontSendNotification);
+            break;
+        }
+    }
+
+    populateDeviceCombo();
+
+    auto sameNameSeen = 0;
+    for (int i = 0; i < deviceCombo.getNumItems(); ++i)
+    {
+        if (deviceCombo.getItemText (i) != spec.deviceName)
+            continue;
+
+        if (sameNameSeen == spec.deviceOrdinal)
+        {
+            deviceCombo.setSelectedId (i + 1, juce::dontSendNotification);
+            break;
+        }
+
+        ++sameNameSeen;
+    }
+
+    populateParameterCombo();
+
+    for (int i = 0; i < parameterCombo.getNumItems(); ++i)
+    {
+        if (parameterCombo.getItemText (i) == spec.paramName)
+        {
+            parameterCombo.setSelectedId (parameterCombo.getItemId (i), juce::dontSendNotification);
+            break;
         }
     }
 }

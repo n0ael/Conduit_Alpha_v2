@@ -307,6 +307,20 @@ void GridSettingsView::rebuildDeviceList()
         outputCombo.addItem (devices.getReference (i).name, i + 2);
 
     outputCombo.setSelectedId (1, juce::dontSendNotification);
+
+    // Block K2: persistierte Auswahl wiederherstellen UND das Gerät sofort
+    // öffnen (User-Feldtest 12.07.2026: nach jedem Neustart war der
+    // MPE-Out zu — "die MIDI-Einstellungen MPE-Grid gehen verloren").
+    const auto saved = panelSettings.getGridMidiOutDeviceName();
+    for (int i = 0; saved.isNotEmpty() && i < devices.size(); ++i)
+    {
+        if (devices.getReference (i).name == saved)
+        {
+            outputCombo.setSelectedId (i + 2, juce::dontSendNotification);
+            midiTarget.openDevice (devices.getReference (i).identifier);
+            break;
+        }
+    }
 }
 
 void GridSettingsView::handleDeviceSelected()
@@ -316,12 +330,16 @@ void GridSettingsView::handleDeviceSelected()
     if (selectedId <= 1)
     {
         midiTarget.closeDevice();
+        panelSettings.setGridMidiOutDeviceName ({});   // Block K2
         return;
     }
 
     const auto index = selectedId - 2;
     if (index >= 0 && index < devices.size())
+    {
         midiTarget.openDevice (devices.getReference (index).identifier);
+        panelSettings.setGridMidiOutDeviceName (devices.getReference (index).name);   // Block K2
+    }
 }
 
 void GridSettingsView::rebuildInputDeviceList()
@@ -335,6 +353,19 @@ void GridSettingsView::rebuildInputDeviceList()
         inputCombo.addItem (inputDevices.getReference (i).name, i + 2);
 
     inputCombo.setSelectedId (1, juce::dontSendNotification);
+
+    // Block K2: persistierte Auswahl wiederherstellen + öffnen (sonst ist
+    // der angelernte Controller nach jedem Neustart scheinbar "verloren").
+    const auto saved = panelSettings.getControlMidiInDeviceName();
+    for (int i = 0; saved.isNotEmpty() && i < inputDevices.size(); ++i)
+    {
+        if (inputDevices.getReference (i).name == saved)
+        {
+            inputCombo.setSelectedId (i + 2, juce::dontSendNotification);
+            midiControlInput.openDevice (inputDevices.getReference (i).identifier);
+            break;
+        }
+    }
 }
 
 void GridSettingsView::handleInputDeviceSelected()
@@ -344,12 +375,16 @@ void GridSettingsView::handleInputDeviceSelected()
     if (selectedId <= 1)
     {
         midiControlInput.closeDevice();
+        panelSettings.setControlMidiInDeviceName ({});   // Block K2
         return;
     }
 
     const auto index = selectedId - 2;
     if (index >= 0 && index < inputDevices.size())
+    {
         midiControlInput.openDevice (inputDevices.getReference (index).identifier);
+        panelSettings.setControlMidiInDeviceName (inputDevices.getReference (index).name);   // Block K2
+    }
 }
 
 void GridSettingsView::setMasterInputOptions (const juce::StringArray& options)
@@ -396,6 +431,18 @@ void GridSettingsView::rebuildEchoDeviceList()
         echoCombo.addItem (echoDevices.getReference (i).name, i + 2);
 
     echoCombo.setSelectedId (1, juce::dontSendNotification);
+
+    // Block K2: persistierte Auswahl wiederherstellen + öffnen.
+    const auto saved = panelSettings.getEchoMidiInDeviceName();
+    for (int i = 0; saved.isNotEmpty() && i < echoDevices.size(); ++i)
+    {
+        if (echoDevices.getReference (i).name == saved)
+        {
+            echoCombo.setSelectedId (i + 2, juce::dontSendNotification);
+            noteEchoInput.openDevice (echoDevices.getReference (i).identifier);
+            break;
+        }
+    }
 }
 
 void GridSettingsView::handleEchoDeviceSelected()
@@ -405,12 +452,16 @@ void GridSettingsView::handleEchoDeviceSelected()
     if (selectedId <= 1)
     {
         noteEchoInput.closeDevice();
+        panelSettings.setEchoMidiInDeviceName ({});   // Block K2
         return;
     }
 
     const auto index = selectedId - 2;
     if (index >= 0 && index < echoDevices.size())
+    {
         noteEchoInput.openDevice (echoDevices.getReference (index).identifier);
+        panelSettings.setEchoMidiInDeviceName (echoDevices.getReference (index).name);   // Block K2
+    }
 }
 
 void GridSettingsView::handleMasterInputSelected()

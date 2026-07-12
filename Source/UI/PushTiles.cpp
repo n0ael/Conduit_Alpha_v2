@@ -202,6 +202,20 @@ void TextTile::paintButton (juce::Graphics& g, bool isHighlighted, bool isDown)
     const auto bounds = getLocalBounds().toFloat().reduced (0.5f);
     paintTileBackground (g, bounds, isHighlighted, isDown);
 
+    // Aktiv-Zustand deutlich machen (User-Feedback 12.07.2026: der
+    // Settings-Tab muss "eindeutig Auskunft über den On/Off-Status" geben):
+    // grau unterlegt wie der Fokus-Tab der TrackTabs plus Accent-LED-Leiste
+    // am unteren Rand — die reine Textfarben-Änderung war beim
+    // ledWhite-Default-Accent praktisch unsichtbar.
+    if (active)
+    {
+        g.setColour (colours::tileActive);
+        g.fillRoundedRectangle (bounds, 4.0f);
+        g.setColour (accent.withAlpha (0.9f));
+        g.fillRect (juce::Rectangle<float> (bounds.getX() + 4.0f, bounds.getBottom() - 3.0f,
+                                            bounds.getWidth() - 8.0f, 2.0f));
+    }
+
     auto colour = active ? accent : colours::text;
 
     if (! isEnabled())

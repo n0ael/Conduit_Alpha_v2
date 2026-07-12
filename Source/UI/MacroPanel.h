@@ -88,6 +88,12 @@ private:
         void populateParameterCombo();
         void createAbletonTarget();
 
+        /** Block K2: die persistierte Live-Zuweisung (LiveParamSpec) in den
+            drei Combos spiegeln — ohne createAbletonTarget auszulösen
+            (dontSendNotification). Ohne Live-Verbindung bleiben die Combos
+            leer, die Zuweisung selbst bleibt erhalten (Re-Resolve). */
+        void applySpecToCombos (const grid::LiveParamSpec& spec);
+
         MacroPanel& owner;
         const int index;
         bool expanded = false;

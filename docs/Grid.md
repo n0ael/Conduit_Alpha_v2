@@ -429,6 +429,27 @@
     (buildXyFaderLayout vergibt deterministische Ids).
     Tests: Tests/Core/GridSessionStoreTests.cpp (Roundtrips inkl.
     Id-Lücke, Resolver-Matrix, Spec-Roundtrip).
+    **K2-Feedback-Runde (Feldtest 12.07.2026):** Store/Load selbst war
+    korrekt (Datei-Diagnose) — die Symptome kamen von drumherum:
+    (a) die drei MIDI-Geräte-Auswahlen (MPE-Out/Controller-In/Echo-In)
+    waren nie persistent → jetzt GridPanelSettings
+    (gridMidiOutDeviceName/controlMidiInDeviceName/echoMidiInDeviceName,
+    Geräte-NAME; GridSettingsView selektiert + ÖFFNET beim Start);
+    (b) MacroPanel zeigte geladene Live-Zuweisungen nicht an (leere
+    Dropdowns = wirkte "verloren") → applySpecToCombos spiegelt die
+    LiveParamSpec (dontSendNotification, kein Re-Create);
+    (c) TextTile-Aktiv-Zustand war beim ledWhite-Accent unsichtbar →
+    aktiv jetzt app-weit tileActive-unterlegt + Accent-LED-Leiste unten
+    (User: Settings-Tab muss On/Off eindeutig zeigen).
+    Live-Neustart-Re-Resolve bei offenem Conduit vom User BESTÄTIGT.
+    **Offene User-Wünsche (nächste Runden):** Physics-Parameter PRO
+    Control (nicht nur global); Anzeige des letzten Hardware-CC-Werts am
+    Control (Soft-Takeover-Pickup erleichtern — MidiInBindings::target01
+    existiert schon); Settings-Tab-Neustruktur "wie Ableton global":
+    Sektion MPE-MIDI (IO zu Ableton) getrennt von Sektion
+    MIDI-Controller mit MEHREREN parallel aktivierbaren Geräten
+    (MidiControlInput ist heute Single-Device) + Sichtbarkeits-Auswahl,
+    welche Ports Conduit überhaupt anbietet.
   - **Sinks/Stränge später:** OSC (Remote + Transcoder) und CV (Software-CVC)
     docken am selben Voice-Modell an; Gesten-State-Machine (Drone/Latch/
     Pinch/Drift), Chord-Squares, Hardware-MPE-Input, MPE-Shaping (Kurven +

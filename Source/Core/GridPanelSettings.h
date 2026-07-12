@@ -278,6 +278,23 @@ public:
         den injizierten Test-Options (Temp-Verzeichnis). */
     [[nodiscard]] juce::File sessionFile();
 
+    //==========================================================================
+    // Block K2 (User-Feldtest 12.07.2026): die drei MIDI-Geräte-Auswahlen
+    // der Grid-Page waren nie persistent — nach jedem Neustart waren
+    // MPE-Out, Controller-In und Noten-Echo-In zu ("angelernter Knob
+    // verloren", "MPE-Grid-MIDI weg"). Gespeichert wird der Geräte-NAME
+    // (leer = keins); die GridSettingsView öffnet das Gerät beim Start,
+    // wenn es angeschlossen ist.
+
+    [[nodiscard]] juce::String getGridMidiOutDeviceName() const noexcept { return gridMidiOutDeviceName; }
+    void setGridMidiOutDeviceName (const juce::String& newName);
+
+    [[nodiscard]] juce::String getControlMidiInDeviceName() const noexcept { return controlMidiInDeviceName; }
+    void setControlMidiInDeviceName (const juce::String& newName);
+
+    [[nodiscard]] juce::String getEchoMidiInDeviceName() const noexcept { return echoMidiInDeviceName; }
+    void setEchoMidiInDeviceName (const juce::String& newName);
+
 private:
     void loadFromFile();
 
@@ -304,6 +321,10 @@ private:
     int  trackTabsFontPx = defaultTrackTabsFontPx;
     int  trackTabMinWidthPx = defaultTrackTabMinWidthPx;
     bool rootPadTrackColour = true;
+
+    juce::String gridMidiOutDeviceName;
+    juce::String controlMidiInDeviceName;
+    juce::String echoMidiInDeviceName;
 
     double pressureSensitivity  = defaultSensitivity;
     double slideSensitivity     = defaultSensitivity;

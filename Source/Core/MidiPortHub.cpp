@@ -193,6 +193,13 @@ MidiPortHub::MidiPortHub (MidiRigSettings& settingsToUse,
       inputOpener (std::move (inputOpenerToUse)),
       outputOpener (std::move (outputOpenerToUse))
 {
+    // TSan-Fund (CI 12.07.2026): der 60-Hz-TimerThread liest den
+    // MessageManager-Singleton — der Hub wird im EngineProcessor VOR den
+    // Graph-Membern konstruiert, deren rebuild() den Singleton sonst erst
+    // lazy erzeugt (Data Race auf den statischen Pointer). Erzeugung hier
+    // auf dem Konstruktions-Thread erzwingen, BEVOR Threads starten.
+    juce::MessageManager::getInstance();
+
     settings.addChangeListener (this);
 
     // USB-Reconnect: das System meldet Geräte-Änderungen auf dem Message

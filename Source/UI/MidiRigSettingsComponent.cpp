@@ -131,7 +131,8 @@ void MidiRigSettingsComponent::DeviceRow::paint (juce::Graphics& g)
     auto statusArea = getLocalBounds().removeFromRight (kStatusWidth).reduced (8);
     const auto dotSize = 10;
 
-    const auto drawDot = [&g, dotSize] (juce::Rectangle<int> area, bool connected)
+    // dotSize ist const-integral -- Clang verbietet die unnoetige Capture
+    const auto drawDot = [&g] (juce::Rectangle<int> area, bool connected)
     {
         g.setColour (connected ? juce::Colour (0xff4caf50) : juce::Colour (0xff5a5a5a));
         g.fillEllipse (area.withSizeKeepingCentre (dotSize, dotSize).toFloat());

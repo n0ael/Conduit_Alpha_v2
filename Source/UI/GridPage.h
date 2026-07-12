@@ -13,10 +13,8 @@
 #include "Core/HardwareCcDatabase.h"
 #include "Core/GridVoiceEngine.h"
 #include "Core/MacroBindings.h"
-#include "Core/MidiControlInput.h"
-#include "Core/MidiDeviceTarget.h"
 #include "Core/MidiInBindings.h"
-#include "Core/MidiNoteInput.h"
+#include "Core/MidiPortHub.h"
 #include "Core/MpeMidiSink.h"
 #include "EditorDockPanel.h"
 #include "ExpressionRibbon.h"
@@ -104,15 +102,15 @@ class MacroPanel;
 */
 class GridPage final : public juce::Component,
                        private juce::ValueTree::Listener,
-                       private juce::Timer
+                       private juce::Timer,
+                       private juce::ChangeListener
 {
 public:
     GridPage (juce::ValueTree rootStateToUse,
-              grid::GridVoiceEngine& engineToUse, grid::MidiDeviceTarget& midiTargetToUse,
+              grid::GridVoiceEngine& engineToUse,
               GridPanelSettings& panelSettingsToUse, grid::MpeMidiSink& mpeMidiSinkToUse,
               LiveSetModel& liveSetModelToUse, TouchLiveClient& touchLiveClientToUse,
-              grid::MidiControlInput& midiControlInputToUse,
-              grid::MidiNoteInput& noteEchoInputToUse);
+              MidiPortHub& midiPortHubToUse, MidiRigSettings& midiRigSettingsToUse);
     ~GridPage() override;
 
     void resized() override;
@@ -194,6 +192,10 @@ private:
     void valueTreeChildRemoved (juce::ValueTree& parent, juce::ValueTree& child,
                                 int index) override;
 
+    /** MidiRigSettings-Broadcast (Rollen-/Geräte-Änderung) → Abos neu
+        binden (der Hub re-synct seine Ports selbst). */
+    void changeListenerCallback (juce::ChangeBroadcaster* source) override;
+
     /** Block H v2: Tabs (Fokus-Track), Arm-LED, Grid-Rahmen und Master-
         Input-Optionen aus dem LiveSetModel aktualisieren (tracks-/mixer-
         Domain). */
@@ -231,7 +233,14 @@ private:
 
     juce::ValueTree rootState;  // ref-counted Handle (Session-Skala), nie der Processor (5.3)
     grid::GridVoiceEngine& engine;
-    grid::MidiDeviceTarget& midiTarget;
+
+    // MIDI-Rig (ADR 006 M1b): der Hub besitzt alle Ports; midiTarget ist
+    // die Rollen-Fassade "Grid-Ausgang" (löst das Gerät bei jedem send()
+    // live aus der Registry auf — übersteht Rollen-Wechsel).
+    MidiPortHub& midiPortHub;
+    MidiRigSettings& midiRigSettings;
+    grid::IMidiOutputTarget& midiTarget;
+
     GridPanelSettings& panelSettings;
     grid::MpeMidiSink& mpeMidiSink;   // Block D1: Expression-Mode-Umschaltung (Settings-Tab)
     LiveSetModel& liveSetModel;       // Block E: Ableton-Parameter-Browser (Macro-Ziele)
@@ -257,14 +266,16 @@ private:
     juce::ValueTree liveSetState;
 
     // MIDI-Eingang (Block G): externe CCs bewegen Controls -- Soft-Takeover
-    // + Glaettung leben in midiInBindings, die Pumpe im EngineProcessor
-    // (midiControlInput, Referenz).
-    grid::MidiControlInput& midiControlInput;
+    // + Glaettung leben in midiInBindings; die Events kommen als Hub-Abos
+    // (Controller-Rolle bzw. Grid-Ausgangs-Rolle fuers Noten-Echo, Block
+    // H4). refreshRigSubscriptions() bindet bei Rollen-/Registry-Wechseln
+    // neu (MidiRigSettings-ChangeBroadcast, async).
     grid::MidiInBindings midiInBindings;
+    int controllerSubToken = 0;
+    int noteSubToken = 0;
+    int tickSubToken = 0;
 
-    // Noten-Echo (Block H4): Lives Wiedergabe-Rueckweg -> Pad-Glow in der
-    // Fokus-Track-Farbe (EngineProcessor besitzt den Eingang).
-    grid::MidiNoteInput& noteEchoInput;
+    void refreshRigSubscriptions();
 
     /** Wertfluss Control → Macro-Ziele (beide Layer, Block E). */
     void feedMacros (int layer, const grid::CcControl& control);

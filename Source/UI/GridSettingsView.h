@@ -6,9 +6,7 @@
 
 #include "Core/GridPanelSettings.h"
 #include "Core/GridVoiceEngine.h"
-#include "Core/MidiControlInput.h"
-#include "Core/MidiDeviceTarget.h"
-#include "Core/MidiNoteInput.h"
+#include "Core/MidiPortHub.h"
 #include "Core/MpeEncoder.h"
 #include "Core/PadGridLayout.h"
 #include "LockToggle.h"
@@ -53,9 +51,8 @@ class GridSettingsView final : public juce::Component,
                                private juce::ValueTree::Listener
 {
 public:
-    GridSettingsView (juce::ValueTree rootStateToUse, grid::MidiDeviceTarget& midiTargetToUse,
-                      grid::MidiControlInput& midiControlInputToUse,
-                      grid::MidiNoteInput& noteEchoInputToUse,
+    GridSettingsView (juce::ValueTree rootStateToUse, MidiPortHub& midiPortHubToUse,
+                      MidiRigSettings& midiRigSettingsToUse,
                       GridPanelSettings& panelSettingsToUse,
                       grid::InTuneLocation initialInTuneLocation,
                       float initialInTuneWidthPercent,
@@ -122,9 +119,17 @@ private:
                          physicsHeadingBounds;
 
     juce::ValueTree rootState;
-    grid::MidiDeviceTarget& midiTarget;
-    grid::MidiControlInput& midiControlInput;
-    grid::MidiNoteInput& noteEchoInput;
+
+    // MIDI-Rig (ADR 006 M1b): die drei Combos bearbeiten die zwei Grid-
+    // Rollen-Geraete der Registry (Controller-In, Grid-Ausgang-Out +
+    // Echo-In); der Hub oeffnet/schliesst die Ports selbst (Registry-
+    // Broadcast). ensure*Device() legt fehlende Rollen-Geraete an.
+    MidiPortHub& midiPortHub;
+    MidiRigSettings& midiRigSettings;
+    [[nodiscard]] juce::Uuid ensureGridOutputDevice();
+    [[nodiscard]] juce::Uuid ensureControllerDevice();
+    [[nodiscard]] juce::String roleDevicePortName (const juce::Uuid& roleId, bool inputSide) const;
+
     GridPanelSettings& panelSettings;
     juce::Array<juce::MidiDeviceInfo> devices;
     juce::Array<juce::MidiDeviceInfo> inputDevices;

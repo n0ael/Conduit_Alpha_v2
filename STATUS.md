@@ -1,9 +1,33 @@
 # Conduit Alpha — Projektstatus
 
-> Letzte Aktualisierung: 2026-07-10 | wird nach jedem Meilenstein gepflegt
+> Letzte Aktualisierung: 2026-07-12 | wird nach jedem Meilenstein gepflegt
 > Architektur-Referenz: [CLAUDE.md](CLAUDE.md) | Repo: n0ael/Conduit
 
-## Aktueller Meilenstein (10.07.2026) — Grid-Page v2 (Skala, Ribbons, Achsen-Farben, CC-Baukasten, Akkord-Speicher)
+## Aktueller Meilenstein (12.07.2026) — MIDI-Rig M1 (ADR 006): Registry + MidiPortHub
+
+Neues Subsystem (docs/MidiRig.md, Rule `midirig`), M1a + M1b komplett:
+
+- **M1a Registry + Matching:** `MidiRigSettings` (RigDevice-Liste,
+  ValueTree↔XML in Conduit/MidiRig.settings, Muster LooperSettings) +
+  `midirig::resolvePortName` (exakt→Prefix, Muster CalibrationProfile).
+- **M1b Hub-Kern:** `MidiPortHub` besitzt alle MIDI-Ports der Registry —
+  pro In-Port eigene SpscQueues (ControllerEvent + NoteEvent, Rule
+  midirig/E4), zentraler 60-Hz-Drain mit Geräte-Abos, Überlauf als
+  „Latest-Pending" (atomarer Ein-Slot, finaler Wert garantiert —
+  User-Entscheidung 12.07.); `IMidiOutputTarget`-Fassaden pro Gerät +
+  Rollen-Fassade Grid-Ausgang (MpeMidiSink/GridPage/MacroPanel);
+  USB-Reconnect-Re-Sync (MidiDeviceListConnection, Prefix-Match).
+- **Ablösung:** MidiControlInput/MidiNoteInput (Grid Block G/H4)
+  entfernt; GridPage/GridSettingsView abonnieren den Hub, die drei
+  Grid-Combos schreiben die Registry-Rollen-Geräte; Einmal-Migration
+  der GridPanelSettings-Namen (Flag, Quell-Strings unangetastet).
+- **Settings-UI:** neuer Tab „MIDI" (MidiRigSettingsComponent):
+  Geräteliste Name/Rolle/In/Out/Verbunden, Add/Remove, 44-px-Zeilen.
+- Tests: 19 [midirig]-Cases (Fake-Port-Seams, Parallel-Eingänge,
+  Überlauf, Reconnect, Migration, Fassaden). Offen: Hardware-Feldtest
+  (zwei echte Controller parallel + USB-Replug).
+
+## Davor (10.07.2026) — Grid-Page v2 (Skala, Ribbons, Achsen-Farben, CC-Baukasten, Akkord-Speicher)
 
 **Nächtlicher autonomer Durchlauf des Design-Handoffs (PROMPT.md + HTML-Mock),
 Branch `feature/grid-page-v2` (lokal, Review offen), ein Commit pro Feature:**

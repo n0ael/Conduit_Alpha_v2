@@ -15,14 +15,13 @@
 #include "Looper/LooperWaveformTap.h"
 #include "Metronome.h"
 #include "GridVoiceEngine.h"
-#include "MidiDeviceTarget.h"
-#include "MidiNoteInput.h"
+#include "MidiPortHub.h"
+#include "MidiRigSettings.h"
 #include "TouchLive/LiveSetModel.h"
 #include "TouchLive/LiveSpectrumTap.h"
 #include "TouchLive/TouchLiveClient.h"
 #include "TouchLive/TouchLiveMeterBus.h"
 #include "TouchLive/TouchLiveSettings.h"
-#include "MidiControlInput.h"
 #include "MpeMidiSink.h"
 #include "GraphFader.h"
 #include "GraphManager.h"
@@ -183,6 +182,16 @@ public:
         (applyLooperSettings). */
     [[nodiscard]] LooperSettings& getLooperSettings() noexcept { return looperSettings; }
 
+    /** MIDI-Rig-Registry (ADR 006 M1): registrierte Klangerzeuger-/
+        Controller-Geräte, App-Zustand in eigener Datei
+        (Conduit/MidiRig.settings). Noch ohne UI (folgt M3). */
+    [[nodiscard]] MidiRigSettings& getMidiRigSettings() noexcept { return midiRigSettings; }
+
+    /** MIDI-Rig-Hub (ADR 006 M1): listet verfügbare MIDI-Ports und matcht
+        registrierte Geräte dagegen (exakt→Prefix). Öffnet noch keine
+        Ports (folgt M2). */
+    [[nodiscard]] MidiPortHub& getMidiPortHub() noexcept { return midiPortHub; }
+
     //==========================================================================
     /** Looper-Quelle (B3/M4) [Message Thread]: Quell-Schlüssel
         ("master" | "hw:{paar}" | "out:{paar}" | "tap:{name}") PRO LOOPER auflösen und
@@ -256,19 +265,14 @@ public:
 
     /** Grid-Voice-Kette (M1 Teil 3, CLAUDE.md 14 ADR Grid-Page): reine
         Message-Thread-Logik (ITouchMacro, 4.2) — NIE vom Audio-Thread
-        aufrufen. GridKeyboardComponent ruft die Engine direkt, die
-        Grid-Page füllt das Port-Dropdown aus dem MidiDeviceTarget. */
+        aufrufen. GridKeyboardComponent ruft die Engine direkt; MIDI-Ports
+        (MPE-Out, Controller-In, Noten-Echo) besitzt der MidiPortHub
+        (ADR 006 M1b), die Grid-Page abonniert dort. */
     [[nodiscard]] grid::GridVoiceEngine& getGridVoiceEngine() noexcept { return gridVoiceEngine; }
-    [[nodiscard]] grid::MidiDeviceTarget& getGridMidiDeviceTarget() noexcept { return midiDeviceTarget; }
     /** Block D1 (Settings-Tab Expression Mode): direkter Zugriff, da
         IVoiceSink bewusst keine MPE-Spezifika kennt (setExpressionMode
         ist MpeMidiSink-spezifisch, kein Interface-Mitglied). */
     [[nodiscard]] grid::MpeMidiSink& getMpeMidiSink() noexcept { return mpeMidiSink; }
-    /** Block G: MIDI-Eingang fuer die Control-Steuerung (Soft-Takeover). */
-    [[nodiscard]] grid::MidiControlInput& getGridMidiControlInput() noexcept { return gridMidiControlInput; }
-    /** Block H4: MIDI-Noten-Eingang fuers Pad-Echo (Lives Wiedergabe-
-        Rueckweg, z. B. "Conduit DAW"). */
-    [[nodiscard]] grid::MidiNoteInput& getGridNoteEchoInput() noexcept { return gridNoteEchoInput; }
 
     /** Chrome-Zustand des rechten Editor-Dock-Panels der Grid-Page (S2,
         App-Zustand) — der Processor lauscht nicht darauf, GridPage lädt/
@@ -440,6 +444,11 @@ private:
     // eigener Datei; Quell-Schlüssel aller Looper leben HIER
     LooperSettings looperSettings;
 
+    // MIDI-Rig-Registry (ADR 006 M1) — App-Zustand in eigener Datei;
+    // der Hub braucht eine Referenz, deshalb VOR midiPortHub deklariert
+    MidiRigSettings midiRigSettings;
+    MidiPortHub midiPortHub { midiRigSettings };
+
     // Link-synchroner Click — läuft nach dem GraphFader auf die Anker-Kanäle
     Metronome metronome;
 
@@ -483,14 +492,12 @@ private:
 
     // Grid-Voice-Kette (M1 Teil 3): reine Message-Thread-Logik, vom Audio-
     // Graph unabhängig (kein processBlock-Zugriff, CLAUDE.md 4.2 ITouchMacro).
-    // Deklarationsreihenfolge = Abhängigkeitsrichtung, jede Referenz zeigt
-    // nach OBEN: MidiDeviceTarget → MpeMidiSink (nimmt Target&) →
-    // GridVoiceEngine (nimmt Sink&); Zerstörung läuft sicher rückwärts.
-    grid::MidiDeviceTarget midiDeviceTarget;
-    grid::MpeMidiSink      mpeMidiSink      { midiDeviceTarget };
+    // Der MPE-Ausgang läuft über die Rollen-Fassade des MidiPortHub
+    // (ADR 006 M1b) — sie löst das Grid-Ausgangs-Gerät bei jedem send()
+    // live aus der Registry auf; der Hub ist weiter oben deklariert und
+    // stirbt daher NACH dem Sink.
+    grid::MpeMidiSink      mpeMidiSink      { midiPortHub.gridOutputTarget() };
     grid::GridVoiceEngine  gridVoiceEngine  { mpeMidiSink };
-    grid::MidiControlInput gridMidiControlInput;   // Block G: MIDI-EINGANG fuer Controls
-    grid::MidiNoteInput    gridNoteEchoInput;      // Block H4: Noten-Echo (Pad-Feedback)
 
     // TouchLive-Remote (docs/TouchLive.md): Message-Thread-only, vom
     // Audio-Graph unabhängig. Settings + Modell + MeterBus VOR dem Client

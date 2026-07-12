@@ -42,6 +42,7 @@ EngineProcessor::EngineProcessor (const juce::File& settingsFolder)
       moduleUiDefaults (redirectSettings (ModuleUiDefaults::defaultOptions(), settingsFolder)),
       transportSettings (redirectSettings (TransportSettings::defaultOptions(), settingsFolder)),
       looperSettings   (redirectSettings (LooperSettings::defaultOptions(),   settingsFolder)),
+      midiRigSettings  (redirectSettings (MidiRigSettings::defaultOptions(),  settingsFolder)),
       oscSendSettings  (redirectSettings (OscSendSettings::defaultOptions(),  settingsFolder))
 {
     // Schema 6.2 — die drei Top-Level-Container des Root-Trees
@@ -110,6 +111,15 @@ EngineProcessor::EngineProcessor (const juce::File& settingsFolder)
                                       transportSettings.isLooperSpectrumEnabled());
     looperSettings.addChangeListener (this);
     applyLooperSettings();
+
+    // MIDI-Rig (ADR 006 M1b): Einmal-Migration der GridPanel-Gerätenamen
+    // in die Registry (Quell-Strings bleiben unangetastet), dann Ports
+    // gemäß Registry öffnen — Registry-Änderungen und USB-Reconnects
+    // re-synct der Hub danach selbst.
+    midiRigSettings.migrateFromGridPanel (gridPanelSettings.getControlMidiInDeviceName(),
+                                          gridPanelSettings.getGridMidiOutDeviceName(),
+                                          gridPanelSettings.getEchoMidiInDeviceName());
+    midiPortHub.syncFromRegistry();
 
     // Eingebetteter Input-Link-Send (7.2): Zustand lebt in channelNames —
     // jeder Broadcast (Enable-Toggle, Pairing, Label-Rename, Device-Wechsel

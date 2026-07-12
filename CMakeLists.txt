@@ -115,9 +115,10 @@ set(CONDUIT_CPP_SOURCES
     Source/Core/LinkSendTaps.cpp
     Source/Core/MeterSettings.cpp
     Source/Core/Metronome.cpp
-    Source/Core/MidiControlInput.cpp
     Source/Core/MidiDeviceTarget.cpp
     Source/Core/MidiInBindings.cpp
+    Source/Core/MidiPortHub.cpp
+    Source/Core/MidiRigSettings.cpp
     Source/Core/ModuleUiDefaults.cpp
     Source/Core/MpeEncoder.cpp
     Source/Core/MpeMidiSink.cpp
@@ -287,7 +288,7 @@ set(CONDUIT_CPP_SOURCES
     Source/UI/PushLookAndFeel.cpp
     Source/UI/PushTiles.cpp
     Source/UI/ScopeDisplay.cpp
-    Source/Core/MidiNoteInput.cpp
+    Source/UI/MidiRigSettingsComponent.cpp
     Source/UI/MasterDeviceSwitch.cpp
     Source/UI/TapMenuPanel.cpp
     Source/UI/TrackFocusBadge.cpp
@@ -631,6 +632,8 @@ if(CONDUIT_BUILD_TESTS)
         Tests/Core/MacroBindingsTests.cpp
         Tests/Core/FigmaSnapTests.cpp
         Tests/Core/MidiInBindingsTests.cpp
+        Tests/Core/MidiPortHubTests.cpp
+        Tests/Core/MidiRigSettingsTests.cpp
         Tests/Core/OscControllerTests.cpp
         Tests/Core/OscSendServiceTests.cpp
         Tests/Core/PatchingTests.cpp
@@ -698,9 +701,10 @@ if(CONDUIT_BUILD_TESTS)
         Source/Core/LinkSendTaps.cpp
         Source/Core/MeterSettings.cpp
         Source/Core/Metronome.cpp
-        Source/Core/MidiControlInput.cpp
         Source/Core/MidiDeviceTarget.cpp
         Source/Core/MidiInBindings.cpp
+        Source/Core/MidiPortHub.cpp
+        Source/Core/MidiRigSettings.cpp
         Source/Core/ModuleUiDefaults.cpp
         Source/Core/MpeEncoder.cpp
         Source/Core/MpeMidiSink.cpp
@@ -870,7 +874,7 @@ if(CONDUIT_BUILD_TESTS)
         Source/UI/PushLookAndFeel.cpp
         Source/UI/PushTiles.cpp
         Source/UI/ScopeDisplay.cpp
-        Source/Core/MidiNoteInput.cpp
+        Source/UI/MidiRigSettingsComponent.cpp
         Source/UI/MasterDeviceSwitch.cpp
         Source/UI/TapMenuPanel.cpp
         Source/UI/TrackFocusBadge.cpp

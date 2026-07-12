@@ -88,7 +88,7 @@ public:
     /** Alle Bindungen (Block-K-Persistenz, nur lesen). */
     [[nodiscard]] const std::vector<Binding>& all() const noexcept { return bindings; }
 
-    /** Eingehender CC [Message Thread, vom MidiControlInput gepumpt]. */
+    /** Eingehender CC [Message Thread, vom MidiPortHub-Drain gepumpt]. */
     void handleIncomingCc (int channel, int cc, int value7bit);
 
     /** Glaettungs-Tick (~60 Hz): schreibt anstehende Werte weich fort und

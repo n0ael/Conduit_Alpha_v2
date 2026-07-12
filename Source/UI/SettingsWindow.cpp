@@ -2,6 +2,7 @@
 
 #include "UI/AudioSettingsComponent.h"
 #include "UI/CaptureSettingsComponent.h"
+#include "UI/MidiRigSettingsComponent.h"
 #include "UI/OscSettingsComponent.h"
 #include "UI/UiSettingsComponent.h"
 
@@ -71,7 +72,8 @@ namespace
 SettingsWindow::SettingsWindow (juce::AudioDeviceManager* deviceManager, MeterSettings& meterSettings,
                                 CaptureSettings& captureSettings, CaptureService& captureService,
                                 OscSendSettings& oscSendSettings, OscController& oscController,
-                                UiSettings& uiSettings)
+                                UiSettings& uiSettings,
+                                MidiRigSettings& midiRigSettings, MidiPortHub& midiPortHub)
 {
     setLookAndFeel (&darkLook);
 
@@ -87,6 +89,8 @@ SettingsWindow::SettingsWindow (juce::AudioDeviceManager* deviceManager, MeterSe
                  new UiSettingsComponent (uiSettings), true);
     tabs.addTab ("OSC", tabBackground,
                  new OscSettingsComponent (oscSendSettings, oscController), true);
+    tabs.addTab ("MIDI", tabBackground,
+                 new MidiRigSettingsComponent (midiRigSettings, midiPortHub), true);
 
     addAndMakeVisible (tabs);
     setSize (520, 520);

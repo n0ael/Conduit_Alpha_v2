@@ -161,8 +161,8 @@ private:
     LooperPage looperPage;
 
     // Grid-Page (Ω, M1 Teil 3 — erster spielbarer Ton): GridVoiceEngine +
-    // MidiDeviceTarget kommen als Referenzen vom EngineProcessor (Muster
-    // Looper/Metronom, 4.2 ITouchMacro) — nach engine, VOR dem PageHost
+    // MidiPortHub/MidiRigSettings kommen als Referenzen vom EngineProcessor
+    // (Muster Looper/Metronom, 4.2 ITouchMacro) — nach engine, VOR dem PageHost
     // deklariert (der hält eine Referenz darauf). Initialisierung im .cpp-
     // Ctor (EngineProcessor ist hier nur vorwärtsdeklariert, 4.6-Muster
     // wie canvas/capturePanel).

@@ -530,7 +530,7 @@ void MacroPanel::TargetRow::mouseUp (const juce::MouseEvent& event)
 }
 
 //==============================================================================
-MacroPanel::MacroPanel (grid::MacroBindings& bindingsToUse, grid::MidiDeviceTarget& midiTargetToUse,
+MacroPanel::MacroPanel (grid::MacroBindings& bindingsToUse, grid::IMidiOutputTarget& midiTargetToUse,
                         LiveSetModel& liveSetModelToUse, TouchLiveClient& touchLiveClientToUse,
                         grid::MidiInBindings& midiInBindingsToUse,
                         grid::HardwareCcDatabase& hardwareDbToUse)

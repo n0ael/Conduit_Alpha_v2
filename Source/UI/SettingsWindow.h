@@ -9,6 +9,8 @@ namespace conduit
 
 class CaptureSettings;
 class CaptureService;
+class MidiPortHub;
+class MidiRigSettings;
 class OscController;
 class OscSendSettings;
 class UiSettings;
@@ -27,6 +29,8 @@ class UiSettings;
       - „Oberfläche" (UiSettingsComponent — UI-Skalierung, Schriftgröße,
         Dev-Modus; bindet UiSettings).
       - „OSC" (OscSettingsComponent — Empfangs-Status + Send-Ziel, 7.3).
+      - „MIDI" (MidiRigSettingsComponent — Geräteliste der MIDI-Rig-
+        Registry, ADR 006 M1b: Name/Rolle/In/Out/Verbunden-Status).
 
     Wird non-modal in einem juce::DialogWindow gezeigt (EngineEditor,
     launchAsync). Dark-Look via LookAndFeel_V4 (Midnight).
@@ -37,7 +41,8 @@ public:
     SettingsWindow (juce::AudioDeviceManager* deviceManager, MeterSettings& meterSettings,
                     CaptureSettings& captureSettings, CaptureService& captureService,
                     OscSendSettings& oscSendSettings, OscController& oscController,
-                    UiSettings& uiSettings);
+                    UiSettings& uiSettings,
+                    MidiRigSettings& midiRigSettings, MidiPortHub& midiPortHub);
     ~SettingsWindow() override;
 
     void paint (juce::Graphics& g) override;

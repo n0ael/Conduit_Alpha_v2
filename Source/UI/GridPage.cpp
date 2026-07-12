@@ -14,17 +14,17 @@ namespace conduit
 {
 
 GridPage::GridPage (juce::ValueTree rootStateToUse,
-                     grid::GridVoiceEngine& engineToUse, grid::MidiDeviceTarget& midiTargetToUse,
+                     grid::GridVoiceEngine& engineToUse,
                      GridPanelSettings& panelSettingsToUse, grid::MpeMidiSink& mpeMidiSinkToUse,
                      LiveSetModel& liveSetModelToUse, TouchLiveClient& touchLiveClientToUse,
-                     grid::MidiControlInput& midiControlInputToUse,
-                     grid::MidiNoteInput& noteEchoInputToUse)
+                     MidiPortHub& midiPortHubToUse, MidiRigSettings& midiRigSettingsToUse)
     : rootState (std::move (rootStateToUse)),
-      engine (engineToUse), midiTarget (midiTargetToUse), panelSettings (panelSettingsToUse),
+      engine (engineToUse),
+      midiPortHub (midiPortHubToUse), midiRigSettings (midiRigSettingsToUse),
+      midiTarget (midiPortHubToUse.gridOutputTarget()),
+      panelSettings (panelSettingsToUse),
       mpeMidiSink (mpeMidiSinkToUse),
       liveSetModel (liveSetModelToUse), touchLiveClient (touchLiveClientToUse),
-      midiControlInput (midiControlInputToUse),
-      noteEchoInput (noteEchoInputToUse),
       systemControlRowsAtStartup (panelSettingsToUse.getSystemControlRows()),
       trackTabs (liveSetModelToUse, panelSettingsToUse),
       // 8×8-Raster der Grid-Page (padLayoutConfig, User 10.07.2026) — Keyboard
@@ -252,23 +252,18 @@ GridPage::GridPage (juce::ValueTree rootStateToUse,
         feedMacros (grid::MacroControlKey::diy, control);
     };
 
-    // MIDI-Eingang (Block G): Pumpe fuettert die Bindings, der Tick treibt
-    // Glaettung + Soft-Takeover und wendet Werte auf die Controls an.
-    midiControlInput.onCcReceived = [this] (int channel, int cc, int value7bit)
-    { midiInBindings.handleIncomingCc (channel, cc, value7bit); };
-    midiControlInput.onTick = [this]
+    // MIDI-Eingang (Block G) + Noten-Echo (Block H4) als Hub-Abos (ADR 006
+    // M1b): Controller-Events kommen vom Controller-Rollen-Geraet, Noten
+    // vom Grid-Ausgangs-Geraet (dessen In-Port = Echo-Rueckweg). Der Hub-
+    // Tick (~60 Hz, auch ohne Events) treibt Glaettung + Soft-Takeover.
+    refreshRigSubscriptions();
+    midiRigSettings.addChangeListener (this);   // Rollen-/Geraete-Wechsel → neu binden
+    tickSubToken = midiPortHub.subscribeTick ([this]
     {
         midiInBindings.tick ([this] (const grid::MacroControlKey& key) { return controlValueFor (key); },
                              [this] (const grid::MacroControlKey& key, float value01)
                              { applyExternalValue (key, value01); });
-    };
-
-    // Noten-Echo (Block H4): Lives Wiedergabe (Rueckweg "Conduit DAW") laesst
-    // die Pads in der Fokus-Track-Farbe leuchten -- ohne Sonne/Mond.
-    noteEchoInput.onNoteOn = [this] (int midiNote, float velocity01)
-    { keyboard.echoNoteOn (midiNote, velocity01); };
-    noteEchoInput.onNoteOff = [this] (int midiNote)
-    { keyboard.echoNoteOff (midiNote); };
+    });
 
     systemLayer.onLongPressControl = [this] (int controlId)
     { openMacroViewFor (grid::MacroControlKey::system, controlId, systemCcModel); };
@@ -279,7 +274,7 @@ GridPage::GridPage (juce::ValueTree rootStateToUse,
     // (Block B1/B2/B4), Layout-Feinabstimmung (Edit-Grid-Ersatz), Modwheel-
     // Toggle, Performance-Slide-Out (MIDI-Port + Skala, ehemals Top-Row).
     auto settingsView = std::make_unique<GridSettingsView> (
-        rootState, midiTarget, midiControlInput, noteEchoInput, panelSettings,
+        rootState, midiPortHub, midiRigSettings, panelSettings,
         keyboard.getInTuneLocation(), (float) panelSettings.getInTuneWidthPercent(),
         mpeMidiSink.expressionMode());
     settingsPanel = settingsView.get();   // Master-Input-Optionen (Block H v2)
@@ -326,8 +321,44 @@ GridPage::GridPage (juce::ValueTree rootStateToUse,
 GridPage::~GridPage()
 {
     saveSession();   // Block K: letzter Stand (zusätzlich zum 30-s-Auto-Save)
+    midiRigSettings.removeChangeListener (this);
+    midiPortHub.unsubscribe (controllerSubToken);
+    midiPortHub.unsubscribe (noteSubToken);
+    midiPortHub.unsubscribe (tickSubToken);
     liveSetState.removeListener (this);
     rootState.removeListener (this);
+}
+
+void GridPage::refreshRigSubscriptions()
+{
+    midiPortHub.unsubscribe (controllerSubToken);
+    midiPortHub.unsubscribe (noteSubToken);
+
+    // Controller-Rolle (Block G): CCs fuettern die Bindings (Soft-Takeover).
+    controllerSubToken = midiPortHub.subscribeController (
+        midiRigSettings.getGridControllerDeviceId(),
+        [this] (const midi::ControllerEvent& event)
+        {
+            if (event.kind == midi::ControllerEvent::Kind::cc)
+                midiInBindings.handleIncomingCc (event.channel, event.number, event.value);
+        });
+
+    // Grid-Ausgangs-Rolle, In-Port (Block H4): Noten-Echo aufs Pad-Raster.
+    noteSubToken = midiPortHub.subscribeNotes (
+        midiRigSettings.getGridOutputDeviceId(),
+        [this] (const midi::NoteEvent& event)
+        {
+            if (event.isOn)
+                keyboard.echoNoteOn (event.note, (float) event.velocity / 127.0f);
+            else
+                keyboard.echoNoteOff (event.note);
+        });
+}
+
+void GridPage::changeListenerCallback (juce::ChangeBroadcaster* source)
+{
+    if (source == &midiRigSettings)
+        refreshRigSubscriptions();
 }
 
 //==============================================================================
@@ -420,7 +451,7 @@ void GridPage::sendFocusCommand (const juce::String& trackKey)
     // Conduit-MIDI-Out-Portnamen abweichen); leer = Portname-Fallback.
     auto gridInput = panelSettings.getGridMidiInputName();
     if (gridInput.isEmpty())
-        gridInput = midiTarget.currentDeviceName();
+        gridInput = midiPortHub.openOutputNameFor (midiRigSettings.getGridOutputDeviceId());
 
     touchLiveClient.sendCommand (TrackSelectorPanel::makeMidiInputFocusCommand (
         trackKey, gridInput, panelSettings.getMasterMidiInputName(),

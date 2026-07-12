@@ -19,15 +19,14 @@ namespace
     constexpr int kTileGap       = 6;
 }
 
-GridSettingsView::GridSettingsView (juce::ValueTree rootStateToUse, grid::MidiDeviceTarget& midiTargetToUse,
-                                    grid::MidiControlInput& midiControlInputToUse,
-                                    grid::MidiNoteInput& noteEchoInputToUse,
+GridSettingsView::GridSettingsView (juce::ValueTree rootStateToUse, MidiPortHub& midiPortHubToUse,
+                                    MidiRigSettings& midiRigSettingsToUse,
                                     GridPanelSettings& panelSettingsToUse,
                                     grid::InTuneLocation initialInTuneLocation,
                                     float initialInTuneWidthPercent,
                                     grid::ExpressionMode initialExpressionMode)
-    : rootState (std::move (rootStateToUse)), midiTarget (midiTargetToUse),
-      midiControlInput (midiControlInputToUse), noteEchoInput (noteEchoInputToUse),
+    : rootState (std::move (rootStateToUse)),
+      midiPortHub (midiPortHubToUse), midiRigSettings (midiRigSettingsToUse),
       panelSettings (panelSettingsToUse),
       inTuneWidthField { NumberFieldBracket::Config { 0.0, 100.0, (double) initialInTuneWidthPercent,
                                                       1.0, 0, 0.5, "Width" } },
@@ -83,6 +82,9 @@ GridSettingsView::GridSettingsView (juce::ValueTree rootStateToUse, grid::MidiDe
     modwheelLabel.setJustificationType (juce::Justification::centredLeft);
     modwheelLabel.setColour (juce::Label::textColourId, push::colours::textDim);
 
+    // MIDI-Rig (M1b): Listen einmal frisch vom Hub, die Combos spiegeln
+    // die Rollen-Geraete der Registry (Ports oeffnet der Hub selbst).
+    midiPortHub.refreshAvailableDevices();
     rebuildDeviceList();
     outputCombo.onChange = [this] { handleDeviceSelected(); };
 
@@ -296,9 +298,41 @@ void GridSettingsView::refreshScaleLabels()
     scaleTile.setText (GridPage::scaleDisplayNameFor (type));
 }
 
+juce::Uuid GridSettingsView::ensureGridOutputDevice()
+{
+    auto roleId = midiRigSettings.getGridOutputDeviceId();
+    if (midiRigSettings.indexOfId (roleId) < 0)
+    {
+        roleId = midiRigSettings.addDevice ("Grid-Ausgang", RigDeviceKind::soundGenerator);
+        midiRigSettings.setGridOutputDeviceId (roleId);
+    }
+    return roleId;
+}
+
+juce::Uuid GridSettingsView::ensureControllerDevice()
+{
+    auto roleId = midiRigSettings.getGridControllerDeviceId();
+    if (midiRigSettings.indexOfId (roleId) < 0)
+    {
+        roleId = midiRigSettings.addDevice ("Controller", RigDeviceKind::controller);
+        midiRigSettings.setGridControllerDeviceId (roleId);
+    }
+    return roleId;
+}
+
+juce::String GridSettingsView::roleDevicePortName (const juce::Uuid& roleId, bool inputSide) const
+{
+    const auto index = midiRigSettings.indexOfId (roleId);
+    if (index < 0)
+        return {};
+
+    const auto device = midiRigSettings.getDevice (index);
+    return inputSide ? device.midiInName : device.midiOutName;
+}
+
 void GridSettingsView::rebuildDeviceList()
 {
-    devices = grid::MidiDeviceTarget::availableDevices();
+    devices = midiPortHub.availableOutputs();
 
     outputCombo.clear (juce::dontSendNotification);
     outputCombo.addItem ("Kein Ausgang", 1);
@@ -308,16 +342,15 @@ void GridSettingsView::rebuildDeviceList()
 
     outputCombo.setSelectedId (1, juce::dontSendNotification);
 
-    // Block K2: persistierte Auswahl wiederherstellen UND das Gerät sofort
-    // öffnen (User-Feldtest 12.07.2026: nach jedem Neustart war der
-    // MPE-Out zu — "die MIDI-Einstellungen MPE-Grid gehen verloren").
-    const auto saved = panelSettings.getGridMidiOutDeviceName();
+    // Persistierte Auswahl = Out-Port des Grid-Ausgangs-Rollen-Geraets
+    // (Registry); das Oeffnen uebernimmt der Hub (K2-Verhalten bleibt:
+    // beim Start ist der Port wieder offen).
+    const auto saved = roleDevicePortName (midiRigSettings.getGridOutputDeviceId(), false);
     for (int i = 0; saved.isNotEmpty() && i < devices.size(); ++i)
     {
         if (devices.getReference (i).name == saved)
         {
             outputCombo.setSelectedId (i + 2, juce::dontSendNotification);
-            midiTarget.openDevice (devices.getReference (i).identifier);
             break;
         }
     }
@@ -329,22 +362,19 @@ void GridSettingsView::handleDeviceSelected()
 
     if (selectedId <= 1)
     {
-        midiTarget.closeDevice();
-        panelSettings.setGridMidiOutDeviceName ({});   // Block K2
+        midiRigSettings.setMidiOutName (midiRigSettings.getGridOutputDeviceId(), {});
         return;
     }
 
     const auto index = selectedId - 2;
     if (index >= 0 && index < devices.size())
-    {
-        midiTarget.openDevice (devices.getReference (index).identifier);
-        panelSettings.setGridMidiOutDeviceName (devices.getReference (index).name);   // Block K2
-    }
+        midiRigSettings.setMidiOutName (ensureGridOutputDevice(),
+                                        devices.getReference (index).name);
 }
 
 void GridSettingsView::rebuildInputDeviceList()
 {
-    inputDevices = grid::MidiControlInput::availableDevices();
+    inputDevices = midiPortHub.availableInputs();
 
     inputCombo.clear (juce::dontSendNotification);
     inputCombo.addItem ("Kein MIDI-Eingang", 1);
@@ -354,15 +384,13 @@ void GridSettingsView::rebuildInputDeviceList()
 
     inputCombo.setSelectedId (1, juce::dontSendNotification);
 
-    // Block K2: persistierte Auswahl wiederherstellen + öffnen (sonst ist
-    // der angelernte Controller nach jedem Neustart scheinbar "verloren").
-    const auto saved = panelSettings.getControlMidiInDeviceName();
+    // Persistierte Auswahl = In-Port des Controller-Rollen-Geraets.
+    const auto saved = roleDevicePortName (midiRigSettings.getGridControllerDeviceId(), true);
     for (int i = 0; saved.isNotEmpty() && i < inputDevices.size(); ++i)
     {
         if (inputDevices.getReference (i).name == saved)
         {
             inputCombo.setSelectedId (i + 2, juce::dontSendNotification);
-            midiControlInput.openDevice (inputDevices.getReference (i).identifier);
             break;
         }
     }
@@ -374,17 +402,14 @@ void GridSettingsView::handleInputDeviceSelected()
 
     if (selectedId <= 1)
     {
-        midiControlInput.closeDevice();
-        panelSettings.setControlMidiInDeviceName ({});   // Block K2
+        midiRigSettings.setMidiInName (midiRigSettings.getGridControllerDeviceId(), {});
         return;
     }
 
     const auto index = selectedId - 2;
     if (index >= 0 && index < inputDevices.size())
-    {
-        midiControlInput.openDevice (inputDevices.getReference (index).identifier);
-        panelSettings.setControlMidiInDeviceName (inputDevices.getReference (index).name);   // Block K2
-    }
+        midiRigSettings.setMidiInName (ensureControllerDevice(),
+                                       inputDevices.getReference (index).name);
 }
 
 void GridSettingsView::setMasterInputOptions (const juce::StringArray& options)
@@ -422,7 +447,7 @@ juce::String GridSettingsView::routingNameForSelection (const juce::ComboBox& co
 
 void GridSettingsView::rebuildEchoDeviceList()
 {
-    echoDevices = grid::MidiNoteInput::availableDevices();
+    echoDevices = midiPortHub.availableInputs();
 
     echoCombo.clear (juce::dontSendNotification);
     echoCombo.addItem ("Kein Noten-Echo", 1);
@@ -432,14 +457,14 @@ void GridSettingsView::rebuildEchoDeviceList()
 
     echoCombo.setSelectedId (1, juce::dontSendNotification);
 
-    // Block K2: persistierte Auswahl wiederherstellen + öffnen.
-    const auto saved = panelSettings.getEchoMidiInDeviceName();
+    // Persistierte Auswahl = In-Port des Grid-Ausgangs-Rollen-Geraets
+    // (Noten-Echo, Block H4).
+    const auto saved = roleDevicePortName (midiRigSettings.getGridOutputDeviceId(), true);
     for (int i = 0; saved.isNotEmpty() && i < echoDevices.size(); ++i)
     {
         if (echoDevices.getReference (i).name == saved)
         {
             echoCombo.setSelectedId (i + 2, juce::dontSendNotification);
-            noteEchoInput.openDevice (echoDevices.getReference (i).identifier);
             break;
         }
     }
@@ -451,17 +476,14 @@ void GridSettingsView::handleEchoDeviceSelected()
 
     if (selectedId <= 1)
     {
-        noteEchoInput.closeDevice();
-        panelSettings.setEchoMidiInDeviceName ({});   // Block K2
+        midiRigSettings.setMidiInName (midiRigSettings.getGridOutputDeviceId(), {});
         return;
     }
 
     const auto index = selectedId - 2;
     if (index >= 0 && index < echoDevices.size())
-    {
-        noteEchoInput.openDevice (echoDevices.getReference (index).identifier);
-        panelSettings.setEchoMidiInDeviceName (echoDevices.getReference (index).name);   // Block K2
-    }
+        midiRigSettings.setMidiInName (ensureGridOutputDevice(),
+                                       echoDevices.getReference (index).name);
 }
 
 void GridSettingsView::handleMasterInputSelected()

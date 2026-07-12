@@ -32,11 +32,10 @@ EngineEditor::EngineEditor (EngineProcessor& engineProcessor,
               &engineProcessor.getChannelNames(),
               &engineProcessor.getInputLevels(), &engineProcessor.getOutputLevels(),
               &engineProcessor.getInputLinkSend(), &engineProcessor.getUiSettings()),
-      gridPage (rootState, engineProcessor.getGridVoiceEngine(), engineProcessor.getGridMidiDeviceTarget(),
+      gridPage (rootState, engineProcessor.getGridVoiceEngine(),
                engineProcessor.getGridPanelSettings(), engineProcessor.getMpeMidiSink(),
                engineProcessor.getLiveSetModel(), engineProcessor.getTouchLiveClient(),
-               engineProcessor.getGridMidiControlInput(),
-               engineProcessor.getGridNoteEchoInput()),
+               engineProcessor.getMidiPortHub(), engineProcessor.getMidiRigSettings()),
       touchLivePage (engineProcessor.getLiveSetModel(), engineProcessor.getTouchLiveClient(),
                      engineProcessor.getTouchLiveMeterBus(), engineProcessor.getTouchLiveSettings(),
                      &engineProcessor.getLiveSpectrumTap()),
@@ -101,7 +100,9 @@ EngineEditor::EngineEditor (EngineProcessor& engineProcessor,
                                                       engine.getCaptureService(),
                                                       engine.getOscSendSettings(),
                                                       engine.getOscController(),
-                                                      engine.getUiSettings()));
+                                                      engine.getUiSettings(),
+                                                      engine.getMidiRigSettings(),
+                                                      engine.getMidiPortHub()));
         options.dialogTitle                   = "Einstellungen";
         options.dialogBackgroundColour        = push::colours::panel;
         options.escapeKeyTriggersCloseButton  = true;

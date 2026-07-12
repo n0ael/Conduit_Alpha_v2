@@ -7,8 +7,8 @@
 
 #include "Core/HardwareCcDatabase.h"
 #include "Core/MacroBindings.h"
-#include "Core/MidiDeviceTarget.h"
 #include "Core/MidiInBindings.h"
+#include "Interfaces/IMidiOutputTarget.h"
 #include "CurveEditorTile.h"
 #include "NumberFieldBracket.h"
 #include "PushTiles.h"
@@ -43,7 +43,7 @@ namespace conduit
 class MacroPanel final : public juce::Component
 {
 public:
-    MacroPanel (grid::MacroBindings& bindingsToUse, grid::MidiDeviceTarget& midiTargetToUse,
+    MacroPanel (grid::MacroBindings& bindingsToUse, grid::IMidiOutputTarget& midiTargetToUse,
                 LiveSetModel& liveSetModelToUse, TouchLiveClient& touchLiveClientToUse,
                 grid::MidiInBindings& midiInBindingsToUse,
                 grid::HardwareCcDatabase& hardwareDbToUse);
@@ -143,7 +143,7 @@ private:
     void commitMidiInBinding();
 
     grid::MacroBindings& macroBindings;
-    grid::MidiDeviceTarget& midiTarget;
+    grid::IMidiOutputTarget& midiTarget;
     LiveSetModel& liveSetModel;
     TouchLiveClient& touchLiveClient;
     grid::MidiInBindings& midiInBindings;

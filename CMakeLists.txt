@@ -128,6 +128,7 @@ set(CONDUIT_CPP_SOURCES
     Source/Core/MidiPortHub.cpp
     Source/Core/MidiProfileLibrary.cpp
     Source/Core/MidiRigSettings.cpp
+    Source/Core/MidiTargetBrowserModel.cpp
     Source/Core/ModuleUiDefaults.cpp
     Source/Core/MpeEncoder.cpp
     Source/Core/MpeMidiSink.cpp
@@ -271,6 +272,7 @@ set(CONDUIT_CPP_SOURCES
     Source/UI/GridPage.cpp
     Source/UI/GridSettingsView.cpp
     Source/UI/CurveEditorTile.cpp
+    Source/UI/HardwareTargetPicker.cpp
     Source/UI/MacroPanel.cpp
     Source/UI/InputSendButton.cpp
     Source/UI/LevelMeterBar.cpp
@@ -645,6 +647,7 @@ if(CONDUIT_BUILD_TESTS)
         Tests/Core/MidiPortHubTests.cpp
         Tests/Core/MidiProfileLibraryTests.cpp
         Tests/Core/MidiRigSettingsTests.cpp
+        Tests/Core/MidiTargetBrowserModelTests.cpp
         Tests/Core/NrpnAssemblerTests.cpp
         Tests/Core/OscControllerTests.cpp
         Tests/Core/OscSendServiceTests.cpp
@@ -719,6 +722,7 @@ if(CONDUIT_BUILD_TESTS)
         Source/Core/MidiPortHub.cpp
         Source/Core/MidiProfileLibrary.cpp
         Source/Core/MidiRigSettings.cpp
+        Source/Core/MidiTargetBrowserModel.cpp
         Source/Core/ModuleUiDefaults.cpp
         Source/Core/MpeEncoder.cpp
         Source/Core/MpeMidiSink.cpp
@@ -862,6 +866,7 @@ if(CONDUIT_BUILD_TESTS)
         Source/UI/GridPage.cpp
         Source/UI/GridSettingsView.cpp
         Source/UI/CurveEditorTile.cpp
+        Source/UI/HardwareTargetPicker.cpp
         Source/UI/MacroPanel.cpp
         Source/UI/InputSendButton.cpp
         Source/UI/LevelMeterBar.cpp

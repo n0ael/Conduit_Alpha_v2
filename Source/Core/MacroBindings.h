@@ -105,6 +105,13 @@ public:
     [[nodiscard]] int channel() const noexcept { return midiChannel; }
     [[nodiscard]] int nrpnNumber() const noexcept { return nrpn; }
 
+    /** MIDI-Rig M3: fuers Kanal-only-Rebuild eines bestehenden (z. B. aus
+        einer Session geladenen) Ziels -- der Picker selbst braucht diese
+        Getter nicht, nur MacroPanel::TargetRow ohne frische Picker-Auswahl. */
+    [[nodiscard]] int rangeMin() const noexcept { return minValue; }
+    [[nodiscard]] int rangeMax() const noexcept { return maxValue; }
+    [[nodiscard]] const juce::String& name() const noexcept { return displayName; }
+
     static inline const juce::Identifier kStateType { "NrpnTarget" };
 
 private:
@@ -132,6 +139,10 @@ public:
     void sendValue (float value01) override;
     [[nodiscard]] juce::String describe() const override;
     [[nodiscard]] juce::ValueTree toState() const override;
+
+    /** MIDI-Rig M3: fuers Kanal-only-Rebuild eines geladenen Ziels
+        (MacroPanel::TargetRow::rebuildFromBinding). */
+    [[nodiscard]] int channel() const noexcept { return midiChannel; }
 
     static inline const juce::Identifier kStateType { "PcTarget" };
 

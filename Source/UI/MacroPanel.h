@@ -9,8 +9,10 @@
 #include "Core/MacroBindings.h"
 #include "Core/MidiInBindings.h"
 #include "Core/MidiProfileLibrary.h"
+#include "Core/MidiTargetBrowserModel.h"
 #include "Interfaces/IMidiOutputTarget.h"
 #include "CurveEditorTile.h"
+#include "HardwareTargetPicker.h"
 #include "NumberFieldBracket.h"
 #include "PushTiles.h"
 #include "TouchLive/LiveSetModel.h"
@@ -92,13 +94,17 @@ private:
         void populateParameterCombo();
         void createAbletonTarget();
 
-        /** Block L2 + MIDI-Rig M2: das Device-Dropdown listet die
-            Klartext-CC-Geraete UND die CSV-Profile (midi.guide). CC-Params
-            bauen weiter einen normalen MidiCcTarget; NRPN-Params (nur
-            Profile) einen MidiNrpnTarget mit min/max aus dem Profil. */
-        void populateHardwareDeviceCombo();
-        void populateHardwareParamCombo();
-        void createHardwareTarget();
+        /** MIDI-Rig M3: der semantische Picker (HardwareTargetPicker, ueber
+            CallOutBox) ersetzt die frueheren hwDeviceCombo/hwParamCombo-
+            Dropdowns. `selection` kommt aus dem Picker-Callback -- CC-
+            Zeilen bauen weiter einen normalen MidiCcTarget, NRPN-Zeilen
+            (nur CSV-Profile) einen MidiNrpnTarget mit min/max aus dem
+            Profil. `hwSelection` wird gemerkt, damit ein reiner Kanal-
+            wechsel dieselbe Auswahl mit neuem Kanal neu baut. */
+        void openHardwareTargetPicker();
+        void createHardwareTarget (const MidiTargetBrowserModel::Row& selection);
+        void rebuildHardwareTargetForChannelChange();
+        void updateHwSummaryText();
 
         /** Block K2: die persistierte Live-Zuweisung (LiveParamSpec) in den
             drei Combos spiegeln — ohne createAbletonTarget auszulösen
@@ -122,8 +128,16 @@ private:
         juce::ComboBox trackCombo, deviceCombo, parameterCombo;
         juce::StringArray trackKeys, deviceIds;   // parallel zu den Combo-Ids
 
-        // Block L2: Geraet -> Parameter, analog zu trackCombo/deviceCombo.
-        juce::ComboBox hwDeviceCombo, hwParamCombo;
+        // MIDI-Rig M3: Zusammenfassungs-Kachel statt zweier ComboBoxen --
+        // Tap oeffnet den HardwareTargetPicker (CallOutBox). hwSelection
+        // ist die zuletzt vom Picker gelieferte Auswahl (fuer Kanalwechsel
+        // ohne erneutes Durchklicken); hasHwSelection unterscheidet "noch
+        // nie ueber den Picker gewaehlt" (z. B. frisch aus einer Session
+        // geladen) von einer echten leeren Auswahl.
+        push::TextTile hwSummaryTile { juce::String::fromUTF8 ("Ger\xc3\xa4t w\xc3\xa4hlen\xe2\x80\xa6"),
+                                       push::colours::ledWhite, true };
+        MidiTargetBrowserModel::Row hwSelection;
+        bool hasHwSelection = false;
 
         std::unique_ptr<CurveEditorTile> curveTile;   // gebaut in rebuildFromBinding (Kurve lebt im Binding)
 

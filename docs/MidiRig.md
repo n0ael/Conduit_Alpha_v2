@@ -138,11 +138,65 @@ Analog Heat + die 5 bestehenden Klartext-Geräte.
   (Factory/User · Geräte · Parameter · übersprungen + Warnungen),
   „Neu laden", Legacy-Toggle, Attribution-Fußzeile.
 
+**Feldtest (13.07.2026, User-Hardware):** NRPN-Sendeweg gegen Elektron
+Analog Heat (MK1) verifiziert — Wire-Daten bit-genau bis 16383, exakt
+deckungsgleich mit einer unabhängigen Ableton-MIDI-Map-Steuerung
+(anderes Protokoll/Codebasis). Das beobachtete „Drive bleibt bei der
+Hälfte hängen"-Verhalten ist ein **Firmware-Bug im Heat selbst**
+(Wert-Wraparound nahe dem Maximum, nur im Standard-MIDI-CC/NRPN-Pfad,
+NICHT über Overbridge oder reine Handbedienung) — kein Conduit-Fund,
+kein Fix nötig. Zusätzlich mit einem Dave Smith Mopho gegengetestet
+(User-Profil aus dessen eigenem Max-Patch extrahiert, siehe Lektion
+unten) — nach Korrektur des Profil-Wertebereichs sauber durchlaufend.
+
 **Attribution (ADR E1):** Die Factory-Geräteprofile in
 `Assets/DeviceProfiles/` stammen von **midi.guide**
 (pencilresearch/midi, GitHub) und stehen unter **CC-BY-SA 4.0**.
 Ein App-About-Dialog existiert noch nicht — die Attribution lebt hier
 und als Fußzeile der Profile-Sektion im MIDI-Settings-Tab.
+
+## M3 — Semantischer Picker (07/2026)
+
+Ersetzt die zwei flachen `ComboBox`en des Hardware-Ziel-Pickers im
+Macro-Panel (Geräte-Liste + Parameter-Liste als Text, ~11 Geräte /
+~400 Parameter bereits heute) durch einen echten Drill-down — Analogie
+Ableton-Parameter-Browser Track→Device→Parameter.
+
+- **`Source/Core/MidiTargetBrowserModel.h/.cpp`** — headless, pure,
+  Catch2-testbar: `Kind{manufacturer, device, section, parameter}`,
+  `enter()`/`goBack()`/`breadcrumbText()`/`setFilter()`. Quelle Top-
+  Ebene: Klartext-DB-Geräte (`HardwareCcDatabase`, E1b) erscheinen
+  UNGRUPPIERT (kein Manufacturer-Feld), CSV-Profile gruppieren unter
+  ihrem `manufacturer`. Section-Ebene nur, wenn ein Gerät überhaupt
+  Sections hat (Analog Heat: nein → direkt Parameter; Blofeld/Digitakt:
+  ja); Parameter mit leerer Section innerhalb eines sonst sektionierten
+  Geräts landen in einem synthetischen "Allgemein"-Sammeltopf.
+  `setFilter()` durchsucht rekursiv ALLE Parameter unterhalb der
+  aktuellen Ebene (flache Trefferliste, Substring case-insensitiv);
+  Navigation (`enter`/`goBack`) setzt den Filter zurück.
+- **`Source/UI/HardwareTargetPicker.h/.cpp`** — CallOutBox-Inhalt
+  (Muster `TrackSelectorPanel`: schließt sich nach Auswahl selbst über
+  `findParentComponentOfClass<CallOutBox>()->dismiss()`). Breadcrumb-
+  Kopfzeile (Zurück-`IconTile`, Muster `Browser/BrowserPanel`) +
+  custom-painted, scrollbare Zeilenliste (kein `ListBox` nötig bei den
+  hier realistischen Zeilenzahlen) + Suchfeld unten mit `TouchKeyboard`
+  (Fokus-Falle beachtet: Tasten greifen nie den Fokus). Feste
+  Gesamthöhe (320×480) — die Tastatur verkleinert nur den Listen-
+  bereich, kein CallOutBox-Resize während der Navigation nötig.
+- **`Source/UI/MacroPanel.h/.cpp`**: `hwDeviceCombo`/`hwParamCombo`
+  ersetzt durch eine einzelne `hwSummaryTile` (zeigt `describe()` des
+  aktuellen Ziels), Tap öffnet den Picker. `createHardwareTarget()`
+  nimmt jetzt eine `MidiTargetBrowserModel::Row` entgegen statt zwei
+  Combo-Indizes zu lesen — Baulogik (CC- vs. NRPN-Ziel) unverändert.
+- **Nebenbei gefundener + gefixter Bug (M2-Erbe):**
+  `TargetRow::rebuildFromBinding()` erkannte beim Session-Neuladen NUR
+  `MidiCcTarget`/`AbletonParamTarget` per `dynamic_cast` — ein geladenes
+  `MidiNrpnTarget`/`MidiProgramChangeTarget` (z. B. aus dem Analog-Heat-
+  Feldtest) fiel in den `else`-Zweig und landete fälschlich im
+  Live-Zustand mit leeren Combos. Jetzt beide Typen erkannt; dafür neue
+  Getter `MidiNrpnTarget::rangeMin()/rangeMax()/name()` und
+  `MidiProgramChangeTarget::channel()` (fürs Kanal-only-Rebuild eines
+  geladenen Ziels ohne erneute Picker-Auswahl).
 
 ## Lektionen
 
@@ -159,12 +213,36 @@ und als Fußzeile der Profile-Sektion im MIDI-Settings-Tab.
   explizit `juce::Uuid::null()` initialisieren und über
   `indexOfId() < 0` prüfen, nie über Null-Vergleich mit einem
   Default-konstruierten Uuid.
+- **`nrpn_max_value` ist NICHT pauschal 16383:** der generische
+  14-bit-Default gilt nur, wenn das Gerät den Parameter wirklich über
+  den vollen Bereich anspricht (Analog Heat). Geräte mit einem engeren
+  realen Wertebereich (Mopho CutOff: 0–164, aus Handbuch UND eigenem
+  Max-Patch bestätigt) müssen `nrpn_max_value` auf diesen realen Wert
+  setzen — sonst sendet Conduit über den Fader-Weg fast durchgehend
+  Werte oberhalb des Geräte-Maximums, das Gerät kappt sie, und der
+  Regler wirkt nur im untersten Bruchteil des Fader-Wegs (beobachtetes
+  Symptom: Fader bewegt sich, Klang springt nur ganz unten von 0 auf
+  den Gerätemax-Wert). Quelle für den realen Bereich: Handbuch ODER
+  (verlässlicher, da keine PDF-Tabellen-Transkription) eine vorhandene
+  eigene Max-Patch-/Editor-Datei des Geräts, siehe `parameter_mmax` der
+  `live.dial`/`live.numbox`-Objekte.
+- **Herstellerhandbuch-PDFs mit zweispaltigen NRPN-Tabellen** extrahieren
+  über generische HTML-Textstrippung (ManualsLib o. ä.) unzuverlässig —
+  Spalten werden separat gelesen und beim Zusammenfügen verrutschen
+  Parameter↔Nummer-Zuordnungen. Eine echte Max-for-Live-Patch-Datei
+  (`.amxd`, ab Byte-Offset des ersten `{` meist gültiges JSON, Rest ist
+  ein binärer Ressourcen-Anhang) ist die verlässlichere Quelle, wenn der
+  User eine besitzt: Boxen (`maxclass: live.dial/live.numbox`,
+  `saved_attribute_attributes.valueof.parameter_longname`) über
+  `lines`/`patchline`-Quellen/Ziele bis zur `---nrpn <bank> <nummer>`-
+  Message-Box verfolgen (inkl. Sprung über Subpatcher-Grenzen via
+  `inlet`-Objekte).
 
 ## Meilensteinleiter
 
   M1  MidiPortHub + Registry — M1a Registry+Matching (erledigt 07/2026) + M1b Hub-Kern: Portbetrieb/Queues/Drain/Ablösung der Ein-Port-Klassen + Migration + Settings-UI (erledigt 07/2026)
   M2  Profile + NRPN + PC — midi.guide-CSV-Parser (Klangerzeuger-Profile), NRPN-Assembler pro Port, Program-Change Senden/Empfangen — erledigt 07/2026 (inkl. Hardware-Picker-Vorgriff: NRPN/CC-Ziele aus Profilen)
-  M3  Semantischer Picker — Geräte-/Parameter-Auswahl-UI (Analogie Ableton-Parameter-Browser Track→Device→Parameter) — offen
+  M3  Semantischer Picker — Geräte-/Parameter-Auswahl-UI (Analogie Ableton-Parameter-Browser Track→Device→Parameter) — erledigt 07/2026
   M4  Controller-Profile + LED — Conduit-Controller-Profile-v1-CSV-Schema, Send-Adresse + bis zu 3 Feedback-Adressen pro Control — offen
   M5  Map-Modus + Tab + Chord-Learn — Zuweisungs-UI, Mehrfachbelegung/Akkord-Learn — offen
   M6  Pickup-LED + Verhalten — Soft-Takeover-Feedback über Controller-Profile-LEDs — offen

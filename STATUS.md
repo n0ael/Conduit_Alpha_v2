@@ -1,9 +1,27 @@
 # Conduit Alpha — Projektstatus
 
-> Letzte Aktualisierung: 2026-07-12 | wird nach jedem Meilenstein gepflegt
+> Letzte Aktualisierung: 2026-07-13 | wird nach jedem Meilenstein gepflegt
 > Architektur-Referenz: [CLAUDE.md](CLAUDE.md) | Repo: n0ael/Conduit
 
-## Aktueller Meilenstein (12.07.2026) — MIDI-Rig M2 (ADR 006): Profile + NRPN + PC
+## Aktueller Meilenstein (13.07.2026) — MIDI-Rig M3 (ADR 006): Semantischer Picker
+
+- **Modell:** `MidiTargetBrowserModel` (headless) — Drill-down
+  Manufacturer→Device→(Section)→Parameter aus HardwareCcDatabase +
+  MidiProfileLibrary, rekursive Suche, Breadcrumb.
+- **UI:** `HardwareTargetPicker` (CallOutBox, Muster TrackSelectorPanel)
+  ersetzt die zwei flachen ComboBoxen im Macro-Panel-Hardware-Tab durch
+  eine Zusammenfassungs-Kachel + Drill-down-Popup mit Suchfeld/
+  TouchKeyboard.
+- **Nebenbei gefixt:** `TargetRow::rebuildFromBinding()` erkannte NRPN-/
+  PC-Ziele beim Session-Reload nicht (M2-Erbe, landete faelschlich im
+  Live-Zustand) — jetzt korrekt.
+- Feldtest 13.07.2026 (Analog Heat, Ableton, Dave Smith Mopho) bestätigt:
+  M2s NRPN-Sendeweg ist bit-genau korrekt; das beobachtete "Drive bleibt
+  bei der Hälfte hängen" ist ein Firmware-Bug im Analog Heat selbst
+  (Details docs/MidiRig.md).
+- Offen: M4 Controller-Profile + LED.
+
+## Davor (12.07.2026) — MIDI-Rig M2 (ADR 006): Profile + NRPN + PC
 
 - **CSV-Profile:** midi.guide-Parser (header-getrieben, tolerant, Quoting,
   ParseReport) + MidiProfileLibrary (Factory-CSVs aus BinaryData:

@@ -27,8 +27,7 @@ MacroPanel::TargetRow::TargetRow (MacroPanel& ownerToUse, int indexToUse)
     addChildComponent (trackCombo);
     addChildComponent (deviceCombo);
     addChildComponent (parameterCombo);
-    addChildComponent (hwDeviceCombo);
-    addChildComponent (hwParamCombo);
+    addChildComponent (hwSummaryTile);
 
     midiTile.onClick     = [this] { applyTargetType (TargetType::midi); };
     liveTile.onClick     = [this] { applyTargetType (TargetType::live); };
@@ -40,7 +39,7 @@ MacroPanel::TargetRow::TargetRow (MacroPanel& ownerToUse, int indexToUse)
     channelField.onValueCommitted = [this] (double)
     {
         if (targetType == TargetType::hardware)
-            createHardwareTarget();   // Kanalwechsel: Ziel mit neuem Kanal neu bauen
+            rebuildHardwareTargetForChannelChange();   // Kanalwechsel: Ziel mit neuem Kanal neu bauen
         else
             rebuildMidiTarget();
     };
@@ -51,10 +50,9 @@ MacroPanel::TargetRow::TargetRow (MacroPanel& ownerToUse, int indexToUse)
     deviceCombo.onChange    = [this] { populateParameterCombo(); };
     parameterCombo.onChange = [this] { createAbletonTarget(); };
 
-    // Block L2 (Hardware-CC-Datenbank): Device -> Parameter, analog zum
-    // Ableton-Picker oben, baut aber einen ganz normalen MidiCcTarget.
-    hwDeviceCombo.onChange = [this] { populateHardwareParamCombo(); };
-    hwParamCombo.onChange  = [this] { createHardwareTarget(); };
+    // MIDI-Rig M3: Zusammenfassungs-Kachel oeffnet den semantischen Picker
+    // (CallOutBox) statt zweier ComboBoxen.
+    hwSummaryTile.onClick = [this] { openHardwareTargetPicker(); };
 
     rebuildFromBinding();
 }
@@ -80,19 +78,37 @@ void MacroPanel::TargetRow::rebuildFromBinding()
     // Typ aus dem vorhandenen Ziel ableiten (Rebuild verliert sonst die Wahl).
     if (b != nullptr && b->target != nullptr)
     {
-        if (auto* midi = dynamic_cast<grid::MidiCcTarget*> (b->target.get()))
-        {
-            targetType = TargetType::midi;
-            channelField.setValue (midi->channel(), juce::dontSendNotification);
-            ccField.setValue (midi->ccNumber(), juce::dontSendNotification);
-            ccField.setTooltip (CcNames::displayName (midi->ccNumber()));   // Block L
-        }
-        else if (auto* live = dynamic_cast<grid::AbletonParamTarget*> (b->target.get()))
+        if (auto* live = dynamic_cast<grid::AbletonParamTarget*> (b->target.get()))
         {
             // Block K2 (User-Feldtest 12.07.2026): die geladene Zuweisung in
             // den Combos ANZEIGEN — leere Dropdowns sahen aus wie "verloren".
             targetType = TargetType::live;
             applySpecToCombos (live->spec());
+        }
+        else if (auto* nrpn = dynamic_cast<grid::MidiNrpnTarget*> (b->target.get()))
+        {
+            // MIDI-Rig M2/M3-Fund: NRPN-/PC-Ziele fehlten hier bisher komplett
+            // (nur MidiCcTarget/AbletonParamTarget wurden erkannt) -- beim
+            // Neuladen einer Session mit einem solchen Ziel landete die Zeile
+            // faelschlich im Live-Zustand mit leeren Combos. Auswahl selbst
+            // kommt erst beim naechsten Picker-Tap (hasHwSelection bleibt
+            // false, describe() reicht bis dahin fuer die Anzeige).
+            targetType = TargetType::hardware;
+            channelField.setValue (nrpn->channel(), juce::dontSendNotification);
+            hasHwSelection = false;
+        }
+        else if (auto* pc = dynamic_cast<grid::MidiProgramChangeTarget*> (b->target.get()))
+        {
+            targetType = TargetType::hardware;
+            channelField.setValue (pc->channel(), juce::dontSendNotification);
+            hasHwSelection = false;
+        }
+        else if (auto* midi = dynamic_cast<grid::MidiCcTarget*> (b->target.get()))
+        {
+            targetType = TargetType::midi;
+            channelField.setValue (midi->channel(), juce::dontSendNotification);
+            ccField.setValue (midi->ccNumber(), juce::dontSendNotification);
+            ccField.setTooltip (CcNames::displayName (midi->ccNumber()));   // Block L
         }
         else
         {
@@ -102,10 +118,12 @@ void MacroPanel::TargetRow::rebuildFromBinding()
 
     midiTile.setActive (targetType == TargetType::midi);
     liveTile.setActive (targetType == TargetType::live);
-    hardwareTile.setActive (false);   // Hardware ist nur eine Eingabehilfe fuer MIDI (s. rebuildMidiTarget)
+    hardwareTile.setActive (targetType == TargetType::hardware);
 
     if (targetType == TargetType::live && trackCombo.getNumItems() == 0)
         populateTrackCombo();
+
+    updateHwSummaryText();
 
     resized();
     repaint();
@@ -132,7 +150,10 @@ void MacroPanel::TargetRow::applyTargetType (TargetType newType)
     if (targetType == TargetType::live)
         populateTrackCombo();
     else if (targetType == TargetType::hardware)
-        populateHardwareDeviceCombo();
+    {
+        hasHwSelection = false;
+        updateHwSummaryText();
+    }
 
     resized();
     repaint();
@@ -314,105 +335,78 @@ void MacroPanel::TargetRow::createAbletonTarget()
 }
 
 //==============================================================================
-// Block L2 (Hardware-CC-Datenbank)
+// MIDI-Rig M3 (semantischer Picker, ADR 006)
 
-void MacroPanel::TargetRow::populateHardwareDeviceCombo()
+void MacroPanel::TargetRow::openHardwareTargetPicker()
 {
-    hwDeviceCombo.clear (juce::dontSendNotification);
-    hwParamCombo.clear (juce::dontSendNotification);
+    auto picker = std::make_unique<HardwareTargetPicker> (
+        MidiTargetBrowserModel (owner.hardwareDb, owner.profileLibrary));
 
-    // Kombinierte Liste: erst Klartext-DB (Block L2), dahinter die
-    // CSV-Profile (M2, Ids fortlaufend — Index-Mapping in den anderen
-    // beiden Methoden identisch).
-    const auto& devices = owner.hardwareDb.devices();
-    for (int i = 0; i < (int) devices.size(); ++i)
-        hwDeviceCombo.addItem (devices[(size_t) i].name, i + 1);
+    picker->onTargetChosen = [this] (const MidiTargetBrowserModel::Row& selection)
+    { createHardwareTarget (selection); };
 
-    const auto& profiles = owner.profileLibrary.profiles();
-    for (int i = 0; i < (int) profiles.size(); ++i)
-        hwDeviceCombo.addItem (profiles[(size_t) i].displayName(),
-                               (int) devices.size() + i + 1);
+    juce::CallOutBox::launchAsynchronously (std::move (picker),
+                                            hwSummaryTile.getScreenBounds(), nullptr);
 }
 
-void MacroPanel::TargetRow::populateHardwareParamCombo()
-{
-    hwParamCombo.clear (juce::dontSendNotification);
-
-    const auto deviceIndex = hwDeviceCombo.getSelectedId() - 1;
-    const auto& devices = owner.hardwareDb.devices();
-
-    if (deviceIndex >= 0 && deviceIndex < (int) devices.size())
-    {
-        const auto& params = devices[(size_t) deviceIndex].params;
-        for (int i = 0; i < (int) params.size(); ++i)
-            hwParamCombo.addItem (params[(size_t) i].name + " (CC "
-                                      + juce::String (params[(size_t) i].cc) + ")",
-                                  i + 1);
-        return;
-    }
-
-    const auto profileIndex = deviceIndex - (int) devices.size();
-    const auto& profiles = owner.profileLibrary.profiles();
-    if (profileIndex < 0 || profileIndex >= (int) profiles.size())
-        return;
-
-    const auto& params = profiles[(size_t) profileIndex].params;
-    for (int i = 0; i < (int) params.size(); ++i)
-    {
-        const auto& param = params[(size_t) i];
-        auto label = param.section.isNotEmpty() ? param.section + ": " + param.name
-                                                : param.name;
-        label += param.nrpn >= 0 ? " (NRPN " + juce::String (param.nrpn) + ")"
-                                 : " (CC " + juce::String (param.cc) + ")";
-        hwParamCombo.addItem (label, i + 1);
-    }
-}
-
-void MacroPanel::TargetRow::createHardwareTarget()
+void MacroPanel::TargetRow::createHardwareTarget (const MidiTargetBrowserModel::Row& selection)
 {
     auto* b = binding();
     if (b == nullptr || targetType != TargetType::hardware)
         return;
 
-    const auto deviceIndex = hwDeviceCombo.getSelectedId() - 1;
-    const auto paramIndex  = hwParamCombo.getSelectedId() - 1;
-    const auto& devices = owner.hardwareDb.devices();
+    hwSelection = selection;
+    hasHwSelection = true;
 
-    if (deviceIndex >= 0 && deviceIndex < (int) devices.size())
-    {
-        // Klartext-DB (Block L2): weiterhin ein ganz normaler MidiCcTarget.
-        const auto& params = devices[(size_t) deviceIndex].params;
-        if (paramIndex < 0 || paramIndex >= (int) params.size())
-            return;
-
+    // Klartext-DB-Geraet (E1b) UND CSV-CC-Parameter bauen weiter einen
+    // ganz normalen MidiCcTarget; nur CSV-NRPN-Parameter einen
+    // MidiNrpnTarget mit min/max aus dem Profil (M2-Verhalten unveraendert,
+    // nur die Auswahl kommt jetzt aus dem Picker statt aus zwei Combos).
+    if (selection.isCc)
         b->target = std::make_unique<grid::MidiCcTarget> (
-            owner.midiTarget, (int) channelField.getValue(), params[(size_t) paramIndex].cc);
-        repaint();
+            owner.midiTarget, (int) channelField.getValue(), selection.number);
+    else
+        b->target = std::make_unique<grid::MidiNrpnTarget> (
+            owner.midiTarget, (int) channelField.getValue(), selection.number,
+            selection.minValue, selection.maxValue, selection.displayName);
+
+    updateHwSummaryText();
+    repaint();
+}
+
+void MacroPanel::TargetRow::rebuildHardwareTargetForChannelChange()
+{
+    if (hasHwSelection)
+    {
+        createHardwareTarget (hwSelection);
         return;
     }
 
-    const auto profileIndex = deviceIndex - (int) devices.size();
-    const auto& profiles = owner.profileLibrary.profiles();
-    if (profileIndex < 0 || profileIndex >= (int) profiles.size())
+    // Session-Reload-Fall: in DIESER Session noch nicht ueber den Picker
+    // gewaehlt -- aus dem bestehenden (geladenen) Ziel rekonstruieren, nur
+    // der Kanal aendert sich.
+    auto* b = binding();
+    if (b == nullptr)
         return;
 
-    const auto& profile = profiles[(size_t) profileIndex];
-    if (paramIndex < 0 || paramIndex >= (int) profile.params.size())
-        return;
-
-    // CSV-Profil (M2): NRPN-Param → MidiNrpnTarget (min/max aus dem
-    // Profil, Anzeigename "Gerät: Param"); CC-Param → MidiCcTarget.
-    const auto& param = profile.params[(size_t) paramIndex];
-    if (param.nrpn >= 0)
+    if (auto* nrpn = dynamic_cast<grid::MidiNrpnTarget*> (b->target.get()))
         b->target = std::make_unique<grid::MidiNrpnTarget> (
-            owner.midiTarget, (int) channelField.getValue(), param.nrpn,
-            param.minValue, param.maxValue,
-            profile.device + ": " + param.name);
-    else
+            owner.midiTarget, (int) channelField.getValue(), nrpn->nrpnNumber(),
+            nrpn->rangeMin(), nrpn->rangeMax(), nrpn->name());
+    else if (auto* cc = dynamic_cast<grid::MidiCcTarget*> (b->target.get()))
         b->target = std::make_unique<grid::MidiCcTarget> (
-            owner.midiTarget, (int) channelField.getValue(), param.cc);
+            owner.midiTarget, (int) channelField.getValue(), cc->ccNumber());
 
+    updateHwSummaryText();
     repaint();
+}
+
+void MacroPanel::TargetRow::updateHwSummaryText()
+{
+    const auto* b = binding();
+    hwSummaryTile.setText (b != nullptr && b->target != nullptr
+                               ? b->target->describe()
+                               : juce::String::fromUTF8 ("Ger\xc3\xa4t w\xc3\xa4hlen\xe2\x80\xa6"));
 }
 
 void MacroPanel::TargetRow::setExpanded (bool shouldBeExpanded)
@@ -455,8 +449,7 @@ void MacroPanel::TargetRow::resized()
     trackCombo.setVisible (showDetail && targetType == TargetType::live);
     deviceCombo.setVisible (showDetail && targetType == TargetType::live);
     parameterCombo.setVisible (showDetail && targetType == TargetType::live);
-    hwDeviceCombo.setVisible (showDetail && targetType == TargetType::hardware);
-    hwParamCombo.setVisible (showDetail && targetType == TargetType::hardware);
+    hwSummaryTile.setVisible (showDetail && targetType == TargetType::hardware);
     if (curveTile != nullptr)
         curveTile->setVisible (showDetail);
 
@@ -500,17 +493,15 @@ void MacroPanel::TargetRow::resized()
     }
     else if (targetType == TargetType::hardware)
     {
-        // Block L2: Kanal + Geraet nebeneinander, Parameter darunter --
-        // analog zum Ableton-Picker, nur Device/Parameter statt drei Ebenen.
+        // MIDI-Rig M3: Kanal + Zusammenfassungs-Kachel nebeneinander -- Tap
+        // auf die Kachel oeffnet den semantischen Picker (CallOutBox).
         auto configRow = area.removeFromTop (30);
         const auto fieldWidth = (configRow.getWidth() - 4) / 2;
         channelField.setBounds (configRow.removeFromLeft (fieldWidth));
         configRow.removeFromLeft (4);
-        hwDeviceCombo.setBounds (configRow);
+        hwSummaryTile.setBounds (configRow);
         area.removeFromTop (4);
-        hwParamCombo.setBounds (area.removeFromTop (28));
-        area.removeFromTop (4);
-        area.removeFromTop (34);
+        area.removeFromTop (28 + 4 + 34);   // Platz, den frueher hwParamCombo + Puffer brauchten
     }
     else
     {

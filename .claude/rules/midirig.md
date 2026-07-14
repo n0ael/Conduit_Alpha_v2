@@ -26,3 +26,9 @@ paths:
   überschreiben, nur ergänzen/mergen (Muster HardwareCcDatabase-Merge).
 - SysEx bleibt Sende-only (E6) — kein Parsing, kein Feedback, keine
   Checksummen, kein Patch-Editing.
+- Shift-Ebenen (M5a): 1:1 bleibt — eine Adresse pro Ebene, Ebenen
+  unterscheiden sich NUR über das kanonische Modifier-Set (gehaltene
+  Noten). Matching: exakteste Ebene gewinnt (größtes gehaltenes Set);
+  Note-Off geht an die per On gelatchte Ebene, nie an die aktuell
+  passendste. Fan-out auf mehrere Ziele ist Sache der Macros, nie der
+  MidiInBindings.

@@ -634,16 +634,13 @@ MacroPanel::MacroPanel (grid::MacroBindings& bindingsToUse, grid::IMidiOutputTar
         }
     };
     midiInBindings.onLearnCompleted = [this] (const grid::MacroControlKey&, int channel, int cc,
-                                              bool isNote)
+                                              bool /*isNote*/, const grid::ModifierSet&)
     {
         learnTile.setActive (false);
         midiInChannelField.setValue (channel, juce::dontSendNotification);
         midiInCcField.setValue (cc, juce::dontSendNotification);
-        // M4: gelernte Noten zeigen den Notennamen statt des CC-Funktionsnamens.
-        midiInCcField.setTooltip (isNote ? juce::MidiMessage::getMidiNoteName (cc, true, true, 4)
-                                         : CcNames::displayName (cc));
         midiInTile.setActive (true);
-        refreshMidiInRow();
+        refreshMidiInRow();   // Tooltip inkl. M5-Shift-Ebene ("+ C1, D#1")
     };
 
     titleLabel.setJustificationType (juce::Justification::centredLeft);
@@ -721,9 +718,19 @@ void MacroPanel::refreshMidiInRow()
         midiInTile.setActive (true);
         midiInChannelField.setValue (binding->channel, juce::dontSendNotification);
         midiInCcField.setValue (binding->cc, juce::dontSendNotification);
-        midiInCcField.setTooltip (binding->isNote
-                                      ? juce::MidiMessage::getMidiNoteName (binding->cc, true, true, 4)
-                                      : CcNames::displayName (binding->cc));   // Block L / M4
+
+        // Block L / M4: Funktions- bzw. Notenname; M5: Shift-Ebene anhaengen.
+        auto tooltip = binding->isNote
+                           ? juce::MidiMessage::getMidiNoteName (binding->cc, true, true, 4)
+                           : CcNames::displayName (binding->cc);
+        if (! binding->modifiers.empty())
+        {
+            juce::StringArray names;
+            for (const auto& m : binding->modifiers)
+                names.add (juce::MidiMessage::getMidiNoteName (m.note, true, true, 4));
+            tooltip << " + " << names.joinIntoString (", ");
+        }
+        midiInCcField.setTooltip (tooltip);
     }
     else
     {
@@ -737,12 +744,15 @@ void MacroPanel::commitMidiInBinding()
         return;
 
     // M4: eine bestehende Note-Bindung (per Learn erzeugt) behaelt ihren
-    // Adressraum, wenn nur Kanal/Nummer per Feld editiert werden.
+    // Adressraum, wenn nur Kanal/Nummer per Feld editiert werden;
+    // M5: Shift-Ebene und Suppress-Flag bleiben ebenfalls erhalten.
     const auto* existing = midiInBindings.bindingFor (currentKey());
-    const auto isNote = existing != nullptr && existing->isNote;
+    const auto isNote    = existing != nullptr && existing->isNote;
+    auto modifiers       = existing != nullptr ? existing->modifiers : grid::ModifierSet {};
+    const auto suppress  = existing != nullptr && existing->suppressWhileShift;
 
     midiInBindings.bind (currentKey(), (int) midiInChannelField.getValue(),
-                         (int) midiInCcField.getValue(), isNote);
+                         (int) midiInCcField.getValue(), isNote, std::move (modifiers), suppress);
     midiInTile.setActive (true);
 }
 

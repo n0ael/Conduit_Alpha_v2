@@ -174,9 +174,11 @@ TEST_CASE ("MidiInBindings: MIDI-Learn bindet den naechsten CC und meldet ihn", 
     rig.values[5] = 0.5f;
 
     std::vector<std::tuple<int, int>> learned;
-    rig.bindings.onLearnCompleted = [&] (const grid::MacroControlKey& key, int channel, int cc, bool)
+    rig.bindings.onLearnCompleted = [&] (const grid::MacroControlKey& key, int channel, int cc,
+                                         bool, const grid::ModifierSet& modifiers)
     {
         REQUIRE (key.controlId == 5);
+        REQUIRE (modifiers.empty());   // keine Note gehalten -> Basis-Ebene
         learned.emplace_back (channel, cc);
     };
 
@@ -261,16 +263,18 @@ TEST_CASE ("MidiInBindings: Note und CC mit gleicher Nummer sind getrennte Adres
     REQUIRE (rig.values[1] == Approx (0.0f).margin (0.001));   // CC-Bindung unberuehrt
 }
 
-TEST_CASE ("MidiInBindings: Learn bindet eine Note (nur On, nicht Off)", "[grid][midiin][midirig]")
+TEST_CASE ("MidiInBindings: Learn bindet eine Note beim Loslassen (M5, nie per Off allein)", "[grid][midiin][midirig]")
 {
     Rig rig;
     rig.values[9] = 0.0f;
 
     bool learnedAsNote = false;
-    rig.bindings.onLearnCompleted = [&] (const grid::MacroControlKey& key, int, int number, bool isNote)
+    rig.bindings.onLearnCompleted = [&] (const grid::MacroControlKey& key, int, int number,
+                                         bool isNote, const grid::ModifierSet& modifiers)
     {
         REQUIRE (key.controlId == 9);
         REQUIRE (number == 48);
+        REQUIRE (modifiers.empty());
         learnedAsNote = isNote;
     };
 
@@ -280,7 +284,13 @@ TEST_CASE ("MidiInBindings: Learn bindet eine Note (nur On, nicht Off)", "[grid]
     rig.bindings.handleIncomingNote (1, 47, 0, false);
     REQUIRE (rig.bindings.isLearnArmed());
 
+    // M5 Chord-Learn: das On macht die Note zum Kandidaten (noch scharf --
+    // es koennten weitere Pads oder ein CC folgen), erst das Loslassen
+    // aller Noten bindet.
     rig.bindings.handleIncomingNote (1, 48, 100, true);
+    REQUIRE (rig.bindings.isLearnArmed());
+
+    rig.bindings.handleIncomingNote (1, 48, 0, false);
     REQUIRE_FALSE (rig.bindings.isLearnArmed());
     REQUIRE (learnedAsNote);
 
@@ -288,4 +298,212 @@ TEST_CASE ("MidiInBindings: Learn bindet eine Note (nur On, nicht Off)", "[grid]
     REQUIRE (binding != nullptr);
     REQUIRE (binding->isNote);
     REQUIRE (binding->cc == 48);
+}
+
+//==============================================================================
+// M5: Shift-Ebenen (Modifier-Sets) + Chord-Learn
+
+TEST_CASE ("MidiInBindings: Shift-Ebenen derselben Adresse koexistieren, gleiche Ebene verdraengt", "[grid][midiin][midirig]")
+{
+    grid::MidiInBindings bindings;
+
+    bindings.bind (keyFor (1), 1, 20);                          // Basis-Ebene
+    bindings.bind (keyFor (2), 1, 20, false, { { 1, 36 } });    // pad36+fader
+    bindings.bind (keyFor (3), 1, 20, false, { { 1, 36 }, { 1, 37 } });   // Akkord-Ebene
+    REQUIRE (bindings.count() == 3);
+    REQUIRE (bindings.bindingFor (keyFor (1)) != nullptr);
+    REQUIRE (bindings.bindingFor (keyFor (2)) != nullptr);
+
+    // Identische Adresse + identisches Modifier-Set -> alte Ebene verliert
+    // (Reihenfolge im Set egal, kanonisch sortiert).
+    bindings.bind (keyFor (4), 1, 20, false, { { 1, 37 }, { 1, 36 } });
+    REQUIRE (bindings.count() == 3);
+    REQUIRE (bindings.bindingFor (keyFor (3)) == nullptr);
+    REQUIRE (bindings.bindingFor (keyFor (4)) != nullptr);
+}
+
+TEST_CASE ("MidiInBindings: exakteste Ebene gewinnt (Matching nach gehaltenen Pads)", "[grid][midiin][midirig]")
+{
+    Rig rig;
+    rig.bindings.bind (keyFor (1), 1, 20);                          // fader
+    rig.bindings.bind (keyFor (2), 1, 20, false, { { 1, 36 } });    // pad36+fader
+    rig.values[1] = 0.5f;
+    rig.values[2] = 0.5f;
+
+    // Ohne gehaltenes Pad -> Basis-Ebene.
+    rig.bindings.handleIncomingCc (1, 20, 64);
+    rig.ticks (30);
+    REQUIRE (rig.values[1] == Approx (64.0f / 127.0f).margin (0.01));
+    REQUIRE (rig.values[2] == Approx (0.5f));
+
+    // Pad 36 halten -> NUR die Shift-Ebene faehrt (erst nahe am Ist-Wert
+    // aufnehmen, dann fahren -- Soft-Takeover gilt pro Ebene).
+    rig.applied.clear();
+    rig.bindings.handleIncomingNote (1, 36, 100, true);
+    rig.bindings.handleIncomingCc (1, 20, 64);   // ~0.504, nahe 0.5 -> Pickup
+    rig.tick();
+    rig.bindings.handleIncomingCc (1, 20, 80);
+    rig.ticks (30);
+    REQUIRE (rig.values[2] == Approx (80.0f / 127.0f).margin (0.01));
+    REQUIRE (rig.values[1] == Approx (64.0f / 127.0f).margin (0.01));   // Basis unberuehrt
+
+    // Pad loslassen -> wieder Basis-Ebene.
+    rig.bindings.handleIncomingNote (1, 36, 0, false);
+    rig.bindings.handleIncomingCc (1, 20, 100);
+    rig.ticks (30);
+    REQUIRE (rig.values[1] == Approx (100.0f / 127.0f).margin (0.01));
+    REQUIRE (rig.values[2] == Approx (80.0f / 127.0f).margin (0.01));
+}
+
+TEST_CASE ("MidiInBindings: Note-Off geht an die per On gewaehlte Ebene", "[grid][midiin][midirig]")
+{
+    Rig rig;
+    rig.bindings.bind (keyFor (1), 1, 40, true);                    // Pad-Basis
+    rig.bindings.bind (keyFor (2), 1, 40, true, { { 1, 36 } });     // shift+Pad
+    rig.values[1] = 0.0f;
+    rig.values[2] = 0.0f;
+
+    // Shift halten, dann die Shift-Ebene per Off seeden (Glaettung startet
+    // am Ist-Wert 0, Pickup nimmt auf -- M4-Muster der Erst-Beruehrung).
+    rig.bindings.handleIncomingNote (1, 36, 100, true);
+    rig.bindings.handleIncomingNote (1, 40, 0, false);
+    rig.tick();
+
+    // Pad druecken -> Shift-Ebene auf 1.
+    rig.bindings.handleIncomingNote (1, 40, 127, true);
+    rig.ticks (30);
+    REQUIRE (rig.values[2] == Approx (1.0f).margin (0.01));
+    REQUIRE (rig.values[1] == Approx (0.0f).margin (0.001));
+
+    // Shift ZUERST loslassen, dann das Pad: die 0 gehoert der Shift-Ebene,
+    // die Basis-Ebene bleibt unberuehrt.
+    rig.bindings.handleIncomingNote (1, 36, 0, false);
+    rig.bindings.handleIncomingNote (1, 40, 0, false);
+    rig.ticks (30);
+    REQUIRE (rig.values[2] == Approx (0.0f).margin (0.01));
+    REQUIRE (rig.values[1] == Approx (0.0f).margin (0.001));
+}
+
+TEST_CASE ("MidiInBindings: Modifier-Pad behaelt seine Eigenfunktion (Default)", "[grid][midiin][midirig]")
+{
+    Rig rig;
+    rig.bindings.bind (keyFor (1), 1, 36, true);                    // Pad selbst
+    rig.bindings.bind (keyFor (2), 1, 20, false, { { 1, 36 } });    // pad36+fader
+    rig.values[1] = 0.0f;
+    rig.values[2] = 0.62f;   // nahe am ersten CC-Wert (Pickup sofort)
+
+    rig.bindings.handleIncomingNote (1, 36, 0, false);   // Pickup seeden
+    rig.tick();
+
+    // Pad druecken: Eigenfunktion feuert SOFORT (Default), ...
+    rig.bindings.handleIncomingNote (1, 36, 127, true);
+    rig.ticks (30);
+    REQUIRE (rig.values[1] == Approx (1.0f).margin (0.01));
+
+    // ... und der Fader bedient waehrenddessen die Shift-Ebene.
+    rig.bindings.handleIncomingCc (1, 20, 80);
+    rig.ticks (30);
+    REQUIRE (rig.values[2] == Approx (80.0f / 127.0f).margin (0.01));
+
+    rig.bindings.handleIncomingNote (1, 36, 0, false);
+    rig.ticks (30);
+    REQUIRE (rig.values[1] == Approx (0.0f).margin (0.01));
+}
+
+TEST_CASE ("MidiInBindings: suppressWhileShift -- Eigenfunktion nur ohne Shift-Dienst (Puls beim Loslassen)", "[grid][midiin][midirig]")
+{
+    Rig rig;
+    rig.bindings.bind (keyFor (1), 1, 36, true, {}, true);          // Pad, suppress
+    rig.bindings.bind (keyFor (2), 1, 20, false, { { 1, 36 } });    // pad36+fader
+    rig.values[1] = 0.0f;
+    rig.values[2] = 0.62f;   // nahe am ersten CC-Wert (Pickup sofort)
+
+    // Fall A: Pad dient als Shift -> Eigenfunktion bleibt still.
+    rig.bindings.handleIncomingNote (1, 36, 127, true);
+    rig.ticks (5);
+    REQUIRE (rig.values[1] == Approx (0.0f));   // aufgeschoben, nichts angewendet
+
+    rig.bindings.handleIncomingCc (1, 20, 80);   // Shift-Ebene benutzt das Pad
+    rig.ticks (30);
+    rig.bindings.handleIncomingNote (1, 36, 0, false);
+    rig.ticks (30);
+    REQUIRE (rig.values[1] == Approx (0.0f));   // Eigenfunktion unterdrueckt
+    REQUIRE (rig.values[2] == Approx (80.0f / 127.0f).margin (0.01));
+
+    // Fall B: Pad allein gedrueckt + losgelassen -> Puls (Press, dann 0).
+    rig.bindings.handleIncomingNote (1, 36, 127, true);
+    rig.ticks (5);
+    REQUIRE (rig.values[1] == Approx (0.0f));   // noch aufgeschoben
+
+    rig.bindings.handleIncomingNote (1, 36, 0, false);
+    rig.ticks (40);
+
+    // Der Puls hat die 1 erreicht (steigende Flanke fuer Toggles) und ist
+    // wieder auf 0 zurueckgefallen.
+    bool sawHigh = false;
+    for (const auto& [id, v] : rig.applied)
+        if (id == 1 && v > 0.9f)
+            sawHigh = true;
+    REQUIRE (sawHigh);
+    REQUIRE (rig.values[1] == Approx (0.0f).margin (0.01));
+}
+
+TEST_CASE ("MidiInBindings: Chord-Learn -- CC mit gehaltenen Pads lernt die Shift-Ebene", "[grid][midiin][midirig]")
+{
+    Rig rig;
+
+    grid::ModifierSet learnedModifiers;
+    rig.bindings.onLearnCompleted = [&] (const grid::MacroControlKey&, int, int,
+                                         bool isNote, const grid::ModifierSet& modifiers)
+    {
+        REQUIRE_FALSE (isNote);
+        learnedModifiers = modifiers;
+    };
+
+    rig.bindings.armLearn (keyFor (5));
+    rig.bindings.handleIncomingNote (1, 36, 100, true);
+    rig.bindings.handleIncomingNote (1, 37, 100, true);
+    REQUIRE (rig.bindings.isLearnArmed());   // Noten machen nur Kandidaten
+
+    rig.bindings.handleIncomingCc (1, 20, 64);
+    REQUIRE_FALSE (rig.bindings.isLearnArmed());
+    REQUIRE (learnedModifiers == grid::ModifierSet { { 1, 36 }, { 1, 37 } });
+
+    const auto* binding = rig.bindings.bindingFor (keyFor (5));
+    REQUIRE (binding != nullptr);
+    REQUIRE (binding->cc == 20);
+    REQUIRE (binding->modifiers.size() == 2);
+}
+
+TEST_CASE ("MidiInBindings: Chord-Learn -- Pad-Akkord bindet die letzte Note mit den uebrigen als Modifier", "[grid][midiin][midirig]")
+{
+    Rig rig;
+
+    grid::ModifierSet learnedModifiers;
+    int learnedNote = -1;
+    rig.bindings.onLearnCompleted = [&] (const grid::MacroControlKey&, int, int number,
+                                         bool isNote, const grid::ModifierSet& modifiers)
+    {
+        REQUIRE (isNote);
+        learnedNote = number;
+        learnedModifiers = modifiers;
+    };
+
+    rig.bindings.armLearn (keyFor (6));
+    rig.bindings.handleIncomingNote (1, 36, 100, true);   // zuerst gehalten
+    rig.bindings.handleIncomingNote (1, 40, 100, true);   // zuletzt gedrueckt
+    REQUIRE (rig.bindings.isLearnArmed());
+
+    rig.bindings.handleIncomingNote (1, 36, 0, false);    // Reihenfolge egal
+    rig.bindings.handleIncomingNote (1, 40, 0, false);    // alle los -> bindet
+    REQUIRE_FALSE (rig.bindings.isLearnArmed());
+
+    REQUIRE (learnedNote == 40);
+    REQUIRE (learnedModifiers == grid::ModifierSet { { 1, 36 } });
+
+    const auto* binding = rig.bindings.bindingFor (keyFor (6));
+    REQUIRE (binding != nullptr);
+    REQUIRE (binding->isNote);
+    REQUIRE (binding->cc == 40);
+    REQUIRE (binding->modifiers == grid::ModifierSet { { 1, 36 } });
 }

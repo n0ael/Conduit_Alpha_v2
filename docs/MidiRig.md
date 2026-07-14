@@ -309,6 +309,47 @@ Geräteverwaltung zentral, Grid-Tab minimal.
   `refreshRigSubscriptions`, `sendFocusCommand`-Fallback) laufen über
   die Rollen-Ids — keine Änderung nötig.
 
+## M5a — Shift-Ebenen + Chord-Learn (07/2026)
+
+Erster Teil von M5 (User-Entscheidungen 14.07.2026): Die 1:1-Regel
+bleibt (ein Hardware-Control → genau eine Zieladresse; Fan-out ist
+Sache der Macros), aber eine Adresse darf in MEHREREN Shift-Ebenen
+existieren: Pad(s) gedrückt halten + Fader bewegen = eigene Bindung
+(`macro1 = fader1`, `macro2 = pad1+fader1`, auch Pad-Akkorde).
+
+- **Adressmodell (`MidiInBindings`):** `Binding` trägt ein kanonisches
+  (sortiert, duplikatfrei) `ModifierSet` aus `{channel, note}`-Paaren
+  plus `suppressWhileShift`. `bind()` verdrängt nur bei identischer
+  Adresse MIT identischem Modifier-Set; eine Note kann nicht ihr
+  eigener Modifier sein.
+- **Matching:** `MidiInBindings` führt die gehaltenen Noten intern
+  (`heldNotes`, gepflegt in `handleIncomingNote`). Pro Eingangs-Event
+  feuert genau EINE Bindung: die mit dem größten Modifier-Set, das
+  vollständig gehalten ist — exakteste Ebene gewinnt, bei Gleichstand
+  die zuletzt gebundene. **Note-Off geht an die per On gewählte Ebene**
+  (Latch `noteHeld`), nicht an die aktuell passendste — der User darf
+  Modifier vor dem Pad loslassen, ohne dass die Basis-Ebene fälschlich
+  die 0 bekommt. Off ohne Latch (Erst-Berührung) fällt auf Best-Match
+  zurück (seedet Glättung/Pickup, M4-Muster).
+- **Eigenfunktion der Modifier-Pads:** bleibt erhalten (Default).
+  Opt-in `suppressWhileShift`: der Press wird aufgeschoben
+  (Release-Heuristik) — hat das Pad in diesem Halten als Shift gedient,
+  bleibt die Eigenfunktion still; sonst feuert sie beim Loslassen als
+  Puls (Press-Wert → 0, mit erzwungenem Pickup, sonst blockierte der
+  Soft-Takeover den Sprung 0 → 1).
+- **Chord-Learn:** ein CC bindet sofort mit den gerade gehaltenen
+  Noten als Shift-Ebene. Nur-Noten-Läufe binden beim Loslassen ALLER
+  Noten: die zuletzt gedrückte Note wird Adresse, die beim Drücken
+  bereits gehaltenen ihre Modifier (Pad-Akkord-Bindung). Ein Note-On
+  bindet also NICHT mehr sofort (M4-Änderung); streunende Offs lösen
+  weiterhin nie aus. `onLearnCompleted` trägt das Modifier-Set mit.
+- **Persistenz (`GridSessionStore`):** pro Binding zusätzlich
+  `modifiers` (String `"ch:note;ch:note"`) + `suppressShift`; fehlend =
+  Basis-Ebene/false (rückwärtskompatibel, kein Versionssprung).
+- **UI:** MacroPanel zeigt die Shift-Ebene im Tooltip des CC-Felds
+  („… + C1, D#1"); Feld-Commits erhalten Modifier-Set + Suppress-Flag.
+  Die Zuweisungs-/Übersichts-UI (Map-Tab) folgt in M5b.
+
 ## Lektionen
 
 - **MSVC + verschachtelte Brace-Init:**
@@ -376,7 +417,7 @@ Geräteverwaltung zentral, Grid-Tab minimal.
   M2  Profile + NRPN + PC — midi.guide-CSV-Parser (Klangerzeuger-Profile), NRPN-Assembler pro Port, Program-Change Senden/Empfangen — erledigt 07/2026 (inkl. Hardware-Picker-Vorgriff: NRPN/CC-Ziele aus Profilen)
   M3  Semantischer Picker — Geräte-/Parameter-Auswahl-UI (Analogie Ableton-Parameter-Browser Track→Device→Parameter) — erledigt 07/2026
   M4  Controller-Profile + LED — Conduit-Controller-Profile-v1-CSV-Schema, Send-Adresse + bis zu 3 Feedback-Adressen pro Control — erledigt 07/2026
-  M5  Map-Modus + Tab + Chord-Learn — Zuweisungs-UI, Mehrfachbelegung/Akkord-Learn — offen
+  M5  Map-Modus + Tab + Chord-Learn — M5a Shift-Ebenen/Chord-Learn (erledigt 07/2026) · M5b app-weites Dock + Map-Tab + Overlay (offen) · M5c Conduit-Macro-Ziele mit Modulation (offen)
   M6  Pickup-LED + Verhalten — Soft-Takeover-Feedback über Controller-Profile-LEDs — offen
   M7  Bidirektional Ribbons — Motorfader-/Ribbon-Feedback in beide Richtungen — offen
   M8  SysEx-Snippets — Sende-only Hex-Snippets mit optionalem `{v}`-Platzhalterbyte — offen

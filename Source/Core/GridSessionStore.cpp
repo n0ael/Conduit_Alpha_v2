@@ -185,6 +185,18 @@ juce::ValueTree GridSessionStore::capture (const Refs& refs)
         bindingState.setProperty ("cc", binding.cc, nullptr);
         if (binding.isNote)
             bindingState.setProperty ("isNote", true, nullptr);   // M4 (fehlend = CC, rueckwaertskompatibel)
+
+        // M5: Shift-Ebene als "ch:note;ch:note" (fehlend = Basis-Ebene).
+        if (! binding.modifiers.empty())
+        {
+            juce::StringArray parts;
+            for (const auto& m : binding.modifiers)
+                parts.add (juce::String (m.channel) + ":" + juce::String (m.note));
+            bindingState.setProperty ("modifiers", parts.joinIntoString (";"), nullptr);
+        }
+        if (binding.suppressWhileShift)
+            bindingState.setProperty ("suppressShift", true, nullptr);
+
         midiIn.appendChild (bindingState, nullptr);
     }
     session.appendChild (midiIn, nullptr);
@@ -262,11 +274,28 @@ void GridSessionStore::apply (const juce::ValueTree& session, const Refs& refs,
     }
 
     for (const auto& bindingState : session.getChildWithName (kMidiIn))
-        if (bindingState.hasType (kMidiInBind))
-            refs.midiIn.bind (keyFromState (bindingState),
-                              (int) bindingState.getProperty ("channel", 1),
-                              (int) bindingState.getProperty ("cc", 1),
-                              (bool) bindingState.getProperty ("isNote", false));
+    {
+        if (! bindingState.hasType (kMidiInBind))
+            continue;
+
+        // M5: Shift-Ebene "ch:note;ch:note" (fehlend = Basis-Ebene).
+        ModifierSet modifiers;
+        for (const auto& part : juce::StringArray::fromTokens (
+                 bindingState.getProperty ("modifiers", juce::String()).toString(), ";", {}))
+        {
+            const auto channel = part.upToFirstOccurrenceOf (":", false, false).getIntValue();
+            const auto note    = part.fromFirstOccurrenceOf (":", false, false).getIntValue();
+            if (part.containsChar (':'))
+                modifiers.push_back ({ channel, note });
+        }
+
+        refs.midiIn.bind (keyFromState (bindingState),
+                          (int) bindingState.getProperty ("channel", 1),
+                          (int) bindingState.getProperty ("cc", 1),
+                          (bool) bindingState.getProperty ("isNote", false),
+                          std::move (modifiers),
+                          (bool) bindingState.getProperty ("suppressShift", false));
+    }
 
     for (const auto& controlState : session.getChildWithName (kMacros))
     {

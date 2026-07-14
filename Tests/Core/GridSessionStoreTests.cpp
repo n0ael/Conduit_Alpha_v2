@@ -125,16 +125,28 @@ TEST_CASE ("GridSessionStore: MIDI-In-Bindungen Roundtrip", "[gridsession]")
     source.midiIn.bind ({ grid::MacroControlKey::system, 3, 0 }, 5, 21);
     source.midiIn.bind ({ grid::MacroControlKey::diy, 1, 1 }, 1, 74);
 
+    // M5: Shift-Ebene (Modifier-Set) + Suppress-Flag reisen mit.
+    source.midiIn.bind ({ grid::MacroControlKey::diy, 2, 0 }, 1, 74, false,
+                        { { 1, 36 }, { 2, 40 } }, true);
+
     const auto session = grid::GridSessionStore::capture (source.refs());
 
     SessionObjects loaded;
     grid::GridSessionStore::apply (session, loaded.refs(), nullptr);
 
-    REQUIRE (loaded.midiIn.count() == 2);
+    REQUIRE (loaded.midiIn.count() == 3);
     const auto* binding = loaded.midiIn.bindingFor ({ grid::MacroControlKey::system, 3, 0 });
     REQUIRE (binding != nullptr);
     REQUIRE (binding->channel == 5);
     REQUIRE (binding->cc == 21);
+    REQUIRE (binding->modifiers.empty());
+    REQUIRE_FALSE (binding->suppressWhileShift);
+
+    const auto* shifted = loaded.midiIn.bindingFor ({ grid::MacroControlKey::diy, 2, 0 });
+    REQUIRE (shifted != nullptr);
+    REQUIRE (shifted->cc == 74);
+    REQUIRE (shifted->modifiers == grid::ModifierSet { { 1, 36 }, { 2, 40 } });
+    REQUIRE (shifted->suppressWhileShift);
 }
 
 TEST_CASE ("GridSessionStore: Macro-Slots Roundtrip (Kurve + opakes Ziel)", "[gridsession]")

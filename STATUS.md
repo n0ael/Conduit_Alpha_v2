@@ -3,7 +3,26 @@
 > Letzte Aktualisierung: 2026-07-14 | wird nach jedem Meilenstein gepflegt
 > Architektur-Referenz: [CLAUDE.md](CLAUDE.md) | Repo: n0ael/Conduit
 
-## Aktueller Meilenstein (14.07.2026) — MIDI-Rig M4 (ADR 006): Controller-Profile + LED-Feedback
+## Aktueller Meilenstein (14.07.2026) — MIDI-Rig M5a (ADR 006): Shift-Ebenen + Chord-Learn
+
+- **Semantik (User-Entscheidungen 14.07.):** 1:1 bleibt (ein Hardware-
+  Control → eine Zieladresse; Fan-out über Macros), aber eine Adresse
+  existiert in mehreren SHIFT-EBENEN: Pad(s) halten + Fader bewegen =
+  eigene Bindung (`macro1=fader1`, `macro2=pad1+fader1`, auch Akkorde).
+- **`MidiInBindings`:** kanonisches `ModifierSet` pro Binding,
+  Held-Note-Tracking, exakteste Ebene gewinnt, Note-Off an die per On
+  gelatchte Ebene; Modifier-Pads behalten ihre Eigenfunktion (Default),
+  Opt-in `suppressWhileShift` (Release-Heuristik mit Puls-Press).
+- **Chord-Learn:** CC bindet sofort mit gehaltenen Noten als Ebene;
+  Nur-Noten-Läufe binden beim Loslassen aller Noten (letzte Note =
+  Adresse, übrige = Modifier). Note-Learn bindet damit beim LOSLASSEN.
+- **Persistenz:** GridSession-Binding + `modifiers`/`suppressShift`
+  (rückwärtskompatibel); MacroPanel-Tooltip zeigt die Ebene.
+- Tests: 7 neue [midirig]-Cases + Roundtrip; Suite 841 grün, ASan grün.
+- Offen: M5b app-weites Dock + Map-Tab + Overlay, M5c Conduit-Macro-
+  Ziele mit Modulation (Plan 14.07.).
+
+## Davor (14.07.2026) — MIDI-Rig M4 (ADR 006): Controller-Profile + LED-Feedback
 
 - **Modell:** `ControllerProfile`/`ControllerProfileLibrary` (headless,
   Muster M2) — CSV-Schema "Conduit Controller Profile v1" (id, typ,

@@ -36,7 +36,8 @@ EngineEditor::EngineEditor (EngineProcessor& engineProcessor,
                engineProcessor.getGridPanelSettings(), engineProcessor.getMpeMidiSink(),
                engineProcessor.getLiveSetModel(), engineProcessor.getTouchLiveClient(),
                engineProcessor.getMidiPortHub(), engineProcessor.getMidiRigSettings(),
-               engineProcessor.getMidiProfileLibrary(), engineProcessor.getControllerProfileLibrary()),
+               engineProcessor.getMidiProfileLibrary(), engineProcessor.getControllerProfileLibrary(),
+               editorDock),
       touchLivePage (engineProcessor.getLiveSetModel(), engineProcessor.getTouchLiveClient(),
                      engineProcessor.getTouchLiveMeterBus(), engineProcessor.getTouchLiveSettings(),
                      &engineProcessor.getLiveSpectrumTap()),
@@ -184,9 +185,22 @@ EngineEditor::EngineEditor (EngineProcessor& engineProcessor,
     transportBar.onToggleBrowserPanel = [this] { toggleBrowserPanel(); };
     browserPanel.onDockWidthChanged = [this] { resized(); };
 
-    // Grid-Editor-Dock-Panel (S2): eigener Toggle, unabhängig vom Browser;
-    // LED-Zustand sofort mit der geladenen Persistenz synchronisieren
-    // (das Panel kann bereits offen starten, GridPanelSettings::isEditorPanelOpen)
+    // Editor-Dock-Panel (S2; app-weit seit MIDI-Rig M5b): eigener Toggle,
+    // unabhängig vom Browser; LED-Zustand sofort mit der geladenen
+    // Persistenz synchronisieren (das Panel kann bereits offen starten,
+    // GridPanelSettings::isEditorPanelOpen). GridPage hat seine Tabs im
+    // Ctor registriert (Page-Maske "nur Grid-Page"); der EngineEditor
+    // besitzt Layout- und Persistenz-Callbacks und koppelt die
+    // Tab-Sichtbarkeit an die aktive Page (selectPage).
+    addChildComponent (editorDock);
+    editorDock.setVisible (editorDock.isPanelOpen());
+    editorDock.onWidthChanged   = [this] { resized(); };
+    editorDock.onWidthCommitted = [this] (int width)
+    { engine.getGridPanelSettings().setEditorPanelWidth (width); };
+    editorDock.onActiveTabChanged = [this] (const juce::String&)
+    { gridPage.refreshDockModes(); };
+    editorDock.setActivePage (pageHost.getPage());
+
     transportBar.onToggleEditorPanel = [this] { toggleEditorPanel(); };
     transportBar.setEditorPanelOpen (gridPage.isDockPanelOpen());
 
@@ -1244,6 +1258,12 @@ void EngineEditor::selectPage (int pageIndex)
     pageHost.setPage (pageIndex);
     browserContext.setActivePage (pageIndex);
 
+    // M5b: Dock-Tabs folgen der Page (Page-Masken); ein Page-Wechsel kann
+    // den aktiven Tab umschalten (onActiveTabChanged -> refreshDockModes)
+    // und die bevorzugte Breite ändern (keine sichtbaren Tabs = 0).
+    editorDock.setActivePage (pageIndex);
+    resized();
+
     // M7: Save/Delete-Kacheln nur im Looper-Kontext; beim Verlassen der
     // Page verfallen laufende Gesten (auch der Delete-Latch)
     const auto looperOpen = pageIndex == TransportBar::pageLooper;
@@ -1425,6 +1445,15 @@ void EngineEditor::resized()
                                           getWidth() / 3);
     if (browserWidth > 0)
         browserPanel.setBounds (bounds.removeFromRight (browserWidth));
+
+    // Editor-Dock rechts daneben (M5b: app-weit, ehemals GridPage-intern) --
+    // 0 wenn geschlossen oder auf dieser Page kein Tab sichtbar (dann
+    // Bounds leeren, sonst bliebe das offene Panel mit alten Bounds über
+    // dem PageHost liegen).
+    if (editorDock.getPreferredWidth() > 0)
+        editorDock.setBounds (bounds.removeFromRight (editorDock.getPreferredWidth()));
+    else
+        editorDock.setBounds (juce::Rectangle<int>());
 
     pageHost.setBounds (bounds);
 

@@ -57,6 +57,13 @@ public:
         bei XY-Controls (X/Y-Umschalter erscheint). */
     void showControl (int layer, int controlId, const juce::String& title, bool hasYAxis);
 
+    /** M5b: Learn abgeschlossen — GridPage besitzt jetzt
+        MidiInBindings::onLearnCompleted und leitet hierher weiter.
+        Entschärft die Learn-Kachel; Felder nur aktualisieren, wenn das
+        gelernte Control gerade angezeigt wird (Map-Learn kann ein
+        ANDERES Control binden). */
+    void handleLearnCompleted (const grid::MacroControlKey& key, int channel, int cc);
+
     void paint (juce::Graphics& g) override;
     void resized() override;
 

@@ -47,6 +47,25 @@ public:
     void setCcMode (bool shouldEdit);
     [[nodiscard]] bool isCcMode() const noexcept { return ccMode; }
 
+    //==========================================================================
+    // Map-Modus (MIDI-Rig M5b, Ableton-Analogie): Dock-Tab „Map" aktiv →
+    // alle Controls werden hervorgehoben (Adress-Badge über
+    // mapBadgeTextFor), Antippen meldet onMapTapControl (der Besitzer armt
+    // MIDI-Learn und markiert das Control via setMapArmedControl). Der
+    // Layer schluckt ALLE Events (keine Noten, kein Spielen — wie CC-Modus).
+
+    void setMapMode (bool shouldMap);
+    [[nodiscard]] bool isMapMode() const noexcept { return mapMode; }
+
+    /** Learn-scharfes Control (Akzent-Rahmen) — -1 = keins. */
+    void setMapArmedControl (int controlId);
+
+    /** Tap auf ein Control im Map-Modus. */
+    std::function<void (int controlId)> onMapTapControl;
+
+    /** Badge-Text eines Controls (gebundene Adresse, leer = ungebunden). */
+    std::function<juce::String (int controlId)> mapBadgeTextFor;
+
     void setActiveTool (grid::CcTool tool);
     [[nodiscard]] grid::CcTool getActiveTool() const noexcept { return activeTool; }
 
@@ -116,6 +135,8 @@ private:
     const int rows;
 
     bool ccMode = false;
+    bool mapMode = false;              // M5b: Zuweisungs-Overlay
+    int  mapArmedControlId = -1;       // Learn scharf für dieses Control
     grid::CcTool activeTool = grid::CcTool::none;
 
     // Bearbeiten (CC-Modus): EIN Edit-Vorgang zur Zeit — weitere Finger

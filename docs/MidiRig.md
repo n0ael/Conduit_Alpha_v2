@@ -350,6 +350,47 @@ existieren: Pad(s) gedrückt halten + Fader bewegen = eigene Bindung
   („… + C1, D#1"); Feld-Commits erhalten Modifier-Set + Suppress-Flag.
   Die Zuweisungs-/Übersichts-UI (Map-Tab) folgt in M5b.
 
+## M5b — App-weites Dock + Map-Tab + Overlay (07/2026)
+
+Zweiter Teil von M5 (User-Entscheidung 14.07.2026: „das Tab-Menü auf
+allen Seiten einblendbar machen, aber je nach Seite nur die relevanten
+Tabs").
+
+- **Dock-Hebung:** `EditorDockPanel` gehört jetzt dem EngineEditor
+  (app-weit rechts angedockt, Muster BrowserPanel — `removeFromRight`
+  VOR `pageHost.setBounds`). Neue API: `addTab(..., pageMask)`
+  (Bitmaske über `TransportBar::PageIndex`, Default `kAllPages`),
+  `setActivePage()` (blendet Tab-Buttons um; unsichtbar gewordener
+  aktiver Tab springt auf den ersten sichtbaren und feuert
+  `onActiveTabChanged`), `removeTab()` (STILL, feuert nie — Aufrufer
+  sind Destruktoren). `getPreferredWidth()` liefert 0 auch bei „kein
+  Tab auf dieser Page sichtbar". GridPage registriert mpe/cc/macro/
+  settings mit Maske „nur Grid-Page" und räumt seine Tabs im Dtor per
+  `removeTab` ab (die Contents referenzieren GridPage-Members —
+  Lebensdauer-Kopplung statt Member-Reihenfolge-Glück). Die Dock-
+  Callbacks (Breite/Persistenz/Tab-Wechsel) verdrahtet der
+  EngineEditor; Tab-Wechsel leitet er an
+  `GridPage::refreshDockModes()` weiter.
+- **Map-Tab (`Source/UI/MappingsListComponent`):** sichtbar auf ALLEN
+  Pages (kAllPages) — eine 44-px-Zeile pro MIDI-In-Bindung:
+  Control-Name (GridPage synthetisiert über `controlDisplayName`),
+  Adresse inkl. Shift-Ebene (`describeBinding`, „CC 20 · Ch 1 + C1"),
+  Learn-Kachel (Re-Learn), „Shift"-Kachel (= `suppressWhileShift`,
+  nur bei Note-Bindungen) und ×-Löschen. Neu dafür:
+  `MidiInBindings::onBindingsChanged` (feuert bei bind/unbind/
+  Suppress-Toggle) + `setSuppressWhileShift()`.
+- **Map-Overlay (`CcControlLayer::setMapMode`,** Muster `ccMode`):
+  Dock offen + Tab „map" → beide Layer (DIY + System) zeigen cyane
+  Rahmen mit Adress-Badge um jedes Control und schlucken alle Events
+  (kein Spielen); Tap armt MIDI-Learn für das Control (Achse 0),
+  das gearmte Control wird orange markiert (`setMapArmedControl`).
+  Verlassen des Map-Tabs entschärft ein map-gearmtes Learn.
+- **Learn-Besitz verschoben:** `midiInBindings.onLearnCompleted`
+  gehört jetzt der GridPage (Overlay + Liste hören mit) und leitet an
+  `MacroPanel::handleLearnCompleted()` weiter — das Panel fasst seine
+  Felder nur an, wenn das gelernte Control gerade angezeigt wird
+  (Map-Learn kann ein anderes Control binden).
+
 ## Lektionen
 
 - **MSVC + verschachtelte Brace-Init:**
@@ -417,7 +458,7 @@ existieren: Pad(s) gedrückt halten + Fader bewegen = eigene Bindung
   M2  Profile + NRPN + PC — midi.guide-CSV-Parser (Klangerzeuger-Profile), NRPN-Assembler pro Port, Program-Change Senden/Empfangen — erledigt 07/2026 (inkl. Hardware-Picker-Vorgriff: NRPN/CC-Ziele aus Profilen)
   M3  Semantischer Picker — Geräte-/Parameter-Auswahl-UI (Analogie Ableton-Parameter-Browser Track→Device→Parameter) — erledigt 07/2026
   M4  Controller-Profile + LED — Conduit-Controller-Profile-v1-CSV-Schema, Send-Adresse + bis zu 3 Feedback-Adressen pro Control — erledigt 07/2026
-  M5  Map-Modus + Tab + Chord-Learn — M5a Shift-Ebenen/Chord-Learn (erledigt 07/2026) · M5b app-weites Dock + Map-Tab + Overlay (offen) · M5c Conduit-Macro-Ziele mit Modulation (offen)
+  M5  Map-Modus + Tab + Chord-Learn — M5a Shift-Ebenen/Chord-Learn (erledigt 07/2026) · M5b app-weites Dock + Map-Tab + Overlay (erledigt 07/2026) · M5c Conduit-Macro-Ziele mit Modulation (offen)
   M6  Pickup-LED + Verhalten — Soft-Takeover-Feedback über Controller-Profile-LEDs — offen
   M7  Bidirektional Ribbons — Motorfader-/Ribbon-Feedback in beide Richtungen — offen
   M8  SysEx-Snippets — Sende-only Hex-Snippets mit optionalem `{v}`-Platzhalterbyte — offen

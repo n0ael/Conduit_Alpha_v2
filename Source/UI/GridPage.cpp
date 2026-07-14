@@ -5,8 +5,10 @@
 #include "CcPanel.h"
 #include "GridSettingsView.h"
 #include "MacroPanel.h"
+#include "MappingsListComponent.h"
 #include "Modules/ConduitModule.h"
 #include "MpeShapingView.h"
+#include "TransportBar.h"
 #include "TouchLive/AbletonParamTarget.h"
 #include "TouchLive/LiveTargetResolver.h"
 
@@ -19,7 +21,8 @@ GridPage::GridPage (juce::ValueTree rootStateToUse,
                      LiveSetModel& liveSetModelToUse, TouchLiveClient& touchLiveClientToUse,
                      MidiPortHub& midiPortHubToUse, MidiRigSettings& midiRigSettingsToUse,
                      MidiProfileLibrary& midiProfileLibraryToUse,
-                     ControllerProfileLibrary& controllerProfileLibraryToUse)
+                     ControllerProfileLibrary& controllerProfileLibraryToUse,
+                     EditorDockPanel& dockPanelToUse)
     : rootState (std::move (rootStateToUse)),
       engine (engineToUse),
       midiPortHub (midiPortHubToUse), midiRigSettings (midiRigSettingsToUse),
@@ -37,7 +40,8 @@ GridPage::GridPage (juce::ValueTree rootStateToUse,
       ccLayer (ccModel, padLayoutConfig().cols, padLayoutConfig().rows),
       // System-Controls des XY+Fader-Modus: eigenes 8×N-Zellraster exakt über
       // den oberen N Pad-Reihen (resized), N = systemControlRowsAtStartup.
-      systemLayer (systemCcModel, padLayoutConfig().cols, systemControlRowsAtStartup)
+      systemLayer (systemCcModel, padLayoutConfig().cols, systemControlRowsAtStartup),
+      dockPanel (dockPanelToUse)
 {
     addAndMakeVisible (trackTabs);
     addAndMakeVisible (masterSwitch);
@@ -56,7 +60,8 @@ GridPage::GridPage (juce::ValueTree rootStateToUse,
                                      // Modus (dort SPIELBAR — TODO(design));
                                      // sichtbar nur im XY+Fader-Modus.
     addAndMakeVisible (chordStrip);  // eigene Spalte NEBEN Keyboard/ccLayer
-    addChildComponent (dockPanel);   // sichtbar nur wenn offen (setPanelOpen)
+    // M5b: dockPanel ist Kind des EngineEditor (app-weit) — GridPage
+    // registriert unten nur seine Tabs (Page-Maske "nur Grid-Page").
 
     // Block J (Physics): Keyboard (Grid-Gravity/Pitch-Schatten) und beide
     // Control-Layer (Fader/XY-Physics) pollen die Settings live pro Frame
@@ -222,7 +227,10 @@ GridPage::GridPage (juce::ValueTree rootStateToUse,
         panelSettings.setBendRangeIndex (
             juce::jlimit (0, 5, juce::roundToInt (std::log2 (multiplier)) + 2));
     };
-    dockPanel.addTab ("mpe", "MPE", std::move (mpeView));
+    // M5b: alle GridPage-Tabs sind nur auf der Grid-Page sichtbar
+    // (Page-Maske); der Map-Tab (Mappings-Liste) kommt in M5b-Teil 2.
+    const auto gridOnly = 1 << TransportBar::pageGrid;
+    dockPanel.addTab ("mpe", "MPE", std::move (mpeView), gridOnly);
 
     // Tab 2 „DIY" (Block F, frueher „CC"): frei baubarer Zusatz-Controller.
     // Die Tab-ID bleibt "cc" (updateCcMode + Persistenz haengen daran),
@@ -230,7 +238,7 @@ GridPage::GridPage (juce::ValueTree rootStateToUse,
     // der Edit-Modus gilt bei offenem Panel + aktivem DIY-Tab (updateCcMode).
     auto ccPanel = std::make_unique<CcPanel>();
     ccPanel->onToolChanged = [this] (grid::CcTool tool) { ccLayer.setActiveTool (tool); };
-    dockPanel.addTab ("cc", "DIY", std::move (ccPanel));
+    dockPanel.addTab ("cc", "DIY", std::move (ccPanel), gridOnly);
 
     // Tab 4 „Macro" (Block E): Ziel-Listen der Controls. Der rohe Zeiger
     // bleibt gueltig, solange das dockPanel (GridPage-Member) lebt.
@@ -238,7 +246,51 @@ GridPage::GridPage (juce::ValueTree rootStateToUse,
                                                    liveSetModel, touchLiveClient, midiInBindings,
                                                    hardwareCcDatabase, midiProfileLibrary);
     macroPanel = macroView.get();
-    dockPanel.addTab ("macro", "Macro", std::move (macroView));
+    dockPanel.addTab ("macro", "Macro", std::move (macroView), gridOnly);
+
+    // Tab „Map" (MIDI-Rig M5b): Mappings-Liste + Overlay-Zuweisung — auf
+    // ALLEN Pages sichtbar (kAllPages, User-Entscheidung 14.07.2026), das
+    // Overlay selbst existiert nur auf der Grid-Page.
+    auto mappingsView = std::make_unique<MappingsListComponent> (midiInBindings);
+    mappingsView->controlNameFor = [this] (const grid::MacroControlKey& key)
+    { return controlDisplayName (key); };
+    mappingsView->onLearnRequested = [this] (const grid::MacroControlKey& key)
+    { armMapLearn (key); };
+    mappingsPanel = mappingsView.get();
+    dockPanel.addTab ("map", "Map", std::move (mappingsView));
+    mappingsPanel->refresh();   // Namen jetzt auflösbar (controlNameFor gesetzt)
+
+    // Struktur-Änderungen der Bindings: Liste neu aufbauen, Badges der
+    // Map-Overlays aktualisieren.
+    midiInBindings.onBindingsChanged = [this]
+    {
+        if (mappingsPanel != nullptr)
+            mappingsPanel->refresh();
+        ccLayer.repaint();
+        systemLayer.repaint();
+    };
+
+    // M5b: GridPage besitzt onLearnCompleted (Map-Overlay + Liste hören
+    // mit) und leitet an das MacroPanel weiter.
+    midiInBindings.onLearnCompleted = [this] (const grid::MacroControlKey& key, int channel,
+                                              int number, bool /*isNote*/,
+                                              const grid::ModifierSet&)
+    {
+        if (macroPanel != nullptr)
+            macroPanel->handleLearnCompleted (key, channel, number);
+        clearMapArmed();
+    };
+
+    // Map-Overlay (Ableton-Analogie): Tap armt Learn für das Control
+    // (Achse 0); Badges zeigen die gebundene Adresse.
+    ccLayer.onMapTapControl = [this] (int controlId)
+    { armMapLearn ({ grid::MacroControlKey::diy, controlId, 0 }); };
+    systemLayer.onMapTapControl = [this] (int controlId)
+    { armMapLearn ({ grid::MacroControlKey::system, controlId, 0 }); };
+    ccLayer.mapBadgeTextFor = [this] (int controlId)
+    { return mapBadgeFor (grid::MacroControlKey::diy, controlId); };
+    systemLayer.mapBadgeTextFor = [this] (int controlId)
+    { return mapBadgeFor (grid::MacroControlKey::system, controlId); };
 
     // Macro-Wertfluss + Long-Press (Block E), beide Layer: System-Controls
     // des XY+Fader-Modus (layer 0) und DIY-CC-Baukasten (layer 1). Die
@@ -348,14 +400,15 @@ GridPage::GridPage (juce::ValueTree rootStateToUse,
     settingsView->onMasterFavouritesChanged = [this] { refreshMasterSwitch(); };
     settingsView->onTrackTabsChanged = [this] { resized(); };
     settingsView->onRootColourToggled = [this] { refreshTrackFocus(); };
-    dockPanel.addTab ("settings", "Settings", std::move (settingsView));
+    dockPanel.addTab ("settings", "Settings", std::move (settingsView), gridOnly);
 
+    // M5b: Breite/Offen-Init aus der Persistenz bleibt hier (GridPage hält
+    // die GridPanelSettings); die Layout-/Persistenz-Callbacks des Docks
+    // (onWidthChanged/onWidthCommitted/onActiveTabChanged) verdrahtet der
+    // EngineEditor als Besitzer -- er leitet Tab-Wechsel an
+    // refreshDockModes() weiter.
     dockPanel.setPanelWidth (panelSettings.getEditorPanelWidth());
     dockPanel.setPanelOpen (panelSettings.isEditorPanelOpen());
-
-    dockPanel.onWidthChanged   = [this] { resized(); };
-    dockPanel.onWidthCommitted = [this] (int width) { panelSettings.setEditorPanelWidth (width); };
-    dockPanel.onActiveTabChanged = [this] (const juce::String&) { updateCcMode(); };
 
     // Block H v2: Badge/Arm/Master-Optionen folgen dem LiveSetModel --
     // Listener am MEMBER-Handle (Instanz-Falle: ein Temporary wäre No-op).
@@ -371,6 +424,16 @@ GridPage::GridPage (juce::ValueTree rootStateToUse,
 GridPage::~GridPage()
 {
     saveSession();   // Block K: letzter Stand (zusätzlich zum 30-s-Auto-Save)
+
+    // M5b: eigene Dock-Tabs abräumen -- deren Contents referenzieren
+    // GridPage-Members und dürfen GridPage nicht überleben (das Dock
+    // gehört dem EngineEditor; removeTab feuert keine Callbacks).
+    dockPanel.removeTab ("mpe");
+    dockPanel.removeTab ("cc");
+    dockPanel.removeTab ("macro");
+    dockPanel.removeTab ("map");
+    dockPanel.removeTab ("settings");
+
     midiRigSettings.removeChangeListener (this);
     midiPortHub.unsubscribe (controllerSubToken);
     midiPortHub.unsubscribe (controllerNoteSubToken);
@@ -563,15 +626,53 @@ void GridPage::refreshTrackFocus()
 //==============================================================================
 void GridPage::setDockPanelOpen (bool shouldBeOpen) noexcept
 {
-    dockPanel.setPanelOpen (shouldBeOpen);
+    dockPanel.setPanelOpen (shouldBeOpen);   // Relayout via onWidthChanged (EngineEditor)
     panelSettings.setEditorPanelOpen (shouldBeOpen);
     updateCcMode();
-    resized();
 }
 
 void GridPage::updateCcMode()
 {
-    ccLayer.setCcMode (dockPanel.isPanelOpen() && dockPanel.getActiveTabId() == "cc");
+    const auto open = dockPanel.isPanelOpen();
+    const auto tab  = dockPanel.getActiveTabId();
+
+    ccLayer.setCcMode (open && tab == "cc");
+
+    // Map-Modus (M5b): beide Layer (DIY + System-Controls) zeigen das
+    // Zuweisungs-Overlay; beim Verlassen wird ein map-gearmtes Learn
+    // entschärft (das MacroPanel-Learn bleibt unberührt).
+    const auto mapActive = open && tab == "map";
+    ccLayer.setMapMode (mapActive);
+    systemLayer.setMapMode (mapActive);
+
+    if (! mapActive && mapLearnArmed)
+    {
+        midiInBindings.cancelLearn();
+        clearMapArmed();
+    }
+}
+
+void GridPage::armMapLearn (const grid::MacroControlKey& key)
+{
+    midiInBindings.armLearn (key);
+    mapLearnArmed = true;
+    mapLearnKey = key;
+
+    ccLayer.setMapArmedControl (key.layer == grid::MacroControlKey::diy ? key.controlId : -1);
+    systemLayer.setMapArmedControl (key.layer == grid::MacroControlKey::system ? key.controlId : -1);
+
+    if (mappingsPanel != nullptr)
+        mappingsPanel->setArmedKey (true, key);
+}
+
+void GridPage::clearMapArmed()
+{
+    mapLearnArmed = false;
+    ccLayer.setMapArmedControl (-1);
+    systemLayer.setMapArmedControl (-1);
+
+    if (mappingsPanel != nullptr)
+        mappingsPanel->setArmedKey (false, {});
 }
 
 GridPanelSettings::GridLayoutMode
@@ -719,45 +820,78 @@ void GridPage::applyExternalValue (const grid::MacroControlKey& key, float value
     feedMacros (key.layer, *control);
 }
 
+// Anzeigename eines Control-Typs (Macro-Titel, Mappings-Liste, M5b).
+static juce::String typeNameForTool (grid::CcTool type)
+{
+    switch (type)
+    {
+        case grid::CcTool::fader:  return "Fader";
+        case grid::CcTool::push:   return "Push";
+        case grid::CcTool::toggle: return "Toggle";
+        case grid::CcTool::xy:     return "XY-Pad";
+        case grid::CcTool::none:   return "Control";
+    }
+
+    return "Control";
+}
+
+juce::String GridPage::controlDisplayName (const grid::MacroControlKey& key)
+{
+    const auto* control = modelForLayer (key.layer).find (key.controlId);
+    auto name = (control != nullptr ? typeNameForTool (control->type) : juce::String ("Control"))
+                + " " + juce::String (key.controlId);
+
+    if (key.axis == 1)
+        name << juce::String::fromUTF8 (" \xc2\xb7 Y");
+    if (key.layer == grid::MacroControlKey::system)
+        name << juce::String::fromUTF8 (" \xc2\xb7 Sys");
+
+    return name;
+}
+
+juce::String GridPage::mapBadgeFor (int layer, int controlId)
+{
+    const auto shortAddress = [] (const grid::MidiInBindings::Binding& binding)
+    {
+        auto text = binding.isNote
+                        ? juce::MidiMessage::getMidiNoteName (binding.cc, true, true, 4)
+                        : "CC" + juce::String (binding.cc);
+        if (! binding.modifiers.empty())
+            text << "+" << juce::String ((int) binding.modifiers.size());   // Shift-Ebene
+        return text;
+    };
+
+    juce::StringArray parts;
+    for (int axis = 0; axis <= 1; ++axis)
+        if (const auto* binding = midiInBindings.bindingFor ({ layer, controlId, axis }))
+            parts.add ((axis == 1 ? juce::String ("Y:") : juce::String()) + shortAddress (*binding));
+
+    return parts.joinIntoString (" ");
+}
+
 void GridPage::openMacroViewFor (int layer, int controlId, grid::CcControlModel& model)
 {
     const auto* control = model.find (controlId);
     if (control == nullptr || macroPanel == nullptr)
         return;
 
-    const auto typeName = [&]() -> juce::String
-    {
-        switch (control->type)
-        {
-            case grid::CcTool::fader:  return "Fader";
-            case grid::CcTool::push:   return "Push";
-            case grid::CcTool::toggle: return "Toggle";
-            case grid::CcTool::xy:     return "XY-Pad";
-            case grid::CcTool::none:
-            default:                   return "Control";
-        }
-    }();
-
     macroPanel->showControl (layer, controlId,
-                             typeName + " " + juce::String (controlId),
+                             typeNameForTool (control->type) + " " + juce::String (controlId),
                              control->type == grid::CcTool::xy);
 
-    dockPanel.setPanelOpen (true);
+    dockPanel.setPanelOpen (true);   // Relayout via onWidthChanged (EngineEditor)
     panelSettings.setEditorPanelOpen (true);
     dockPanel.setActiveTab ("macro");
     updateCcMode();
-    resized();
 }
 
 void GridPage::resized()
 {
     auto bounds = getLocalBounds();
 
-    // Editor-Dock-Panel rechts, VOR dem restlichen Layout reserviert --
-    // koexistiert mit dem eine Ebene höher (EngineEditor) angedockten
-    // Browser-Panel, da dessen removeFromRight bereits in den an GridPage
-    // übergebenen bounds steckt.
-    dockPanel.setBounds (bounds.removeFromRight (dockPanel.getPreferredWidth()));
+    // M5b: Das Editor-Dock dockt eine Ebene höher im EngineEditor (wie das
+    // Browser-Panel) -- sein removeFromRight steckt bereits in den an
+    // GridPage übergebenen bounds, hier ist nichts zu reservieren.
 
     // Block H3: Track-Tabs über die volle Breite (alle MIDI-Tracks,
     // Push-Optik, Halten = Fokus-Wechsel, Ziehen = Scrollen) — Position

@@ -12,11 +12,12 @@ EditorDockPanel::EditorDockPanel()
 }
 
 void EditorDockPanel::addTab (const juce::String& id, const juce::String& title,
-                              std::unique_ptr<juce::Component> content)
+                              std::unique_ptr<juce::Component> content, int pageMask)
 {
     TabEntry entry;
-    entry.id     = id;
-    entry.button = std::make_unique<push::TextTile> (title);
+    entry.id       = id;
+    entry.pageMask = pageMask;
+    entry.button   = std::make_unique<push::TextTile> (title);
     entry.button->onClick = [this, id] { setActiveTab (id); };
     addAndMakeVisible (*entry.button);
 
@@ -28,8 +29,87 @@ void EditorDockPanel::addTab (const juce::String& id, const juce::String& title,
 
     if (becomesFirstTab)
         setActiveTab (id);
+    else
+        applyTabVisibility();
 
     resized();
+}
+
+void EditorDockPanel::removeTab (const juce::String& id)
+{
+    const auto it = std::find_if (tabs.begin(), tabs.end(),
+                                  [&id] (const TabEntry& tab) { return tab.id == id; });
+    if (it == tabs.end())
+        return;
+
+    const auto wasActive = activeTabId == id;
+    tabs.erase (it);
+
+    // Still (kein onActiveTabChanged, s. Header): war der Tab aktiv, wird
+    // der erste sichtbare Nachfolger aktiv.
+    if (wasActive)
+    {
+        activeTabId.clear();
+        for (const auto& tab : tabs)
+        {
+            if (isTabVisibleOnPage (tab))
+            {
+                activeTabId = tab.id;
+                break;
+            }
+        }
+    }
+
+    applyTabVisibility();
+    resized();
+}
+
+void EditorDockPanel::setActivePage (int pageIndex)
+{
+    currentPageIndex = juce::jlimit (0, 30, pageIndex);   // Bitmasken-sicher
+
+    // Aktiver Tab auf dieser Page nicht sichtbar -> erster sichtbarer Tab
+    // uebernimmt (feuert onActiveTabChanged wie ein User-Wechsel).
+    const auto activeIt = std::find_if (tabs.begin(), tabs.end(),
+                                        [this] (const TabEntry& tab) { return tab.id == activeTabId; });
+    if (activeIt == tabs.end() || ! isTabVisibleOnPage (*activeIt))
+    {
+        for (const auto& tab : tabs)
+        {
+            if (isTabVisibleOnPage (tab))
+            {
+                setActiveTab (tab.id);
+                return;   // setActiveTab ruft applyTabVisibility + resized
+            }
+        }
+    }
+
+    applyTabVisibility();
+    resized();
+}
+
+int EditorDockPanel::visibleTabCount() const noexcept
+{
+    return (int) std::count_if (tabs.begin(), tabs.end(),
+                                [this] (const TabEntry& tab) { return isTabVisibleOnPage (tab); });
+}
+
+void EditorDockPanel::applyTabVisibility()
+{
+    for (auto& tab : tabs)
+    {
+        const auto tabVisible = isTabVisibleOnPage (tab);
+        const auto isActive   = tab.id == activeTabId;
+
+        if (tab.button != nullptr)
+        {
+            tab.button->setVisible (tabVisible);
+            tab.button->setActive (isActive);
+        }
+
+        if (tab.content != nullptr)
+            tab.content->setVisible (isActive && tabVisible);
+    }
 }
 
 void EditorDockPanel::setActiveTab (const juce::String& id)
@@ -44,17 +124,7 @@ void EditorDockPanel::setActiveTab (const juce::String& id)
     const auto changed = activeTabId != id;
     activeTabId = id;
 
-    for (auto& tab : tabs)
-    {
-        const auto isActive = tab.id == id;
-
-        if (tab.content != nullptr)
-            tab.content->setVisible (isActive);
-
-        if (tab.button != nullptr)
-            tab.button->setActive (isActive);
-    }
-
+    applyTabVisibility();
     resized();
 
     if (changed && onActiveTabChanged != nullptr)
@@ -104,11 +174,14 @@ void EditorDockPanel::resized()
     auto bounds = getLocalBounds();
     bounds.removeFromLeft (kSplitterWidth);
 
+    // M5b: nur die auf der aktuellen Page sichtbaren Tabs teilen sich die
+    // Leiste (versteckte Buttons behalten ihre alten Bounds -- unsichtbar).
     auto tabBar = bounds.removeFromTop (kTabBarHeight);
-    const auto tabWidth = tabs.empty() ? 0 : tabBar.getWidth() / (int) tabs.size();
+    const auto visibleTabs = visibleTabCount();
+    const auto tabWidth = visibleTabs == 0 ? 0 : tabBar.getWidth() / visibleTabs;
 
     for (auto& tab : tabs)
-        if (tab.button != nullptr)
+        if (tab.button != nullptr && isTabVisibleOnPage (tab))
             tab.button->setBounds (tabBar.removeFromLeft (tabWidth));
 
     contentHost.setBounds (bounds);

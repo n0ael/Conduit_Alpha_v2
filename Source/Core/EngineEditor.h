@@ -13,6 +13,7 @@
 #include "UI/DevPanel.h"
 #include <array>
 
+#include "UI/EditorDockPanel.h"
 #include "UI/GridPage.h"
 #include "UI/LooperPage.h"
 #include "UI/NodeCanvas.h"
@@ -159,6 +160,12 @@ private:
     // Retro-Looper-Page (B3/M6) — hinter der Tape-Kachel, VOR dem PageHost
     // deklariert (der hält eine Referenz darauf)
     LooperPage looperPage;
+
+    // Editor-Dock (MIDI-Rig M5b): app-weit rechts angedockt (Muster
+    // browserPanel), Tabs mit Page-Maske — VOR gridPage deklariert
+    // (GridPage registriert seine Tabs im Ctor und entfernt sie im Dtor;
+    // Zerstörung läuft rückwärts: gridPage räumt zuerst ab).
+    EditorDockPanel editorDock;
 
     // Grid-Page (Ω, M1 Teil 3 — erster spielbarer Ton): GridVoiceEngine +
     // MidiPortHub/MidiRigSettings kommen als Referenzen vom EngineProcessor

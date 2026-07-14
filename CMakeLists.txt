@@ -278,6 +278,7 @@ set(CONDUIT_CPP_SOURCES
     Source/UI/CurveEditorTile.cpp
     Source/UI/HardwareTargetPicker.cpp
     Source/UI/MacroPanel.cpp
+    Source/UI/MappingsListComponent.cpp
     Source/UI/InputSendButton.cpp
     Source/UI/LevelMeterBar.cpp
     Source/UI/LinkAudioReceivePanel.cpp
@@ -876,6 +877,7 @@ if(CONDUIT_BUILD_TESTS)
         Source/UI/CurveEditorTile.cpp
         Source/UI/HardwareTargetPicker.cpp
         Source/UI/MacroPanel.cpp
+        Source/UI/MappingsListComponent.cpp
         Source/UI/InputSendButton.cpp
         Source/UI/LevelMeterBar.cpp
         Source/UI/LinkAudioReceivePanel.cpp

@@ -633,15 +633,8 @@ MacroPanel::MacroPanel (grid::MacroBindings& bindingsToUse, grid::IMidiOutputTar
             learnTile.setActive (true);
         }
     };
-    midiInBindings.onLearnCompleted = [this] (const grid::MacroControlKey&, int channel, int cc,
-                                              bool /*isNote*/, const grid::ModifierSet&)
-    {
-        learnTile.setActive (false);
-        midiInChannelField.setValue (channel, juce::dontSendNotification);
-        midiInCcField.setValue (cc, juce::dontSendNotification);
-        midiInTile.setActive (true);
-        refreshMidiInRow();   // Tooltip inkl. M5-Shift-Ebene ("+ C1, D#1")
-    };
+    // M5b: onLearnCompleted besitzt die GridPage (Map-Overlay + Mappings-
+    // Liste hören mit) und leitet an handleLearnCompleted() weiter.
 
     titleLabel.setJustificationType (juce::Justification::centredLeft);
     titleLabel.setColour (juce::Label::textColourId, push::colours::text);
@@ -700,6 +693,19 @@ void MacroPanel::showControl (int layer, int controlId, const juce::String& titl
     refreshMidiInRow();
     rebuildRows();
     resized();
+}
+
+void MacroPanel::handleLearnCompleted (const grid::MacroControlKey& key, int channel, int cc)
+{
+    learnTile.setActive (false);
+
+    if (! (key == currentKey()))
+        return;   // Map-Learn eines anderen Controls -- Felder nicht anfassen
+
+    midiInChannelField.setValue (channel, juce::dontSendNotification);
+    midiInCcField.setValue (cc, juce::dontSendNotification);
+    midiInTile.setActive (true);
+    refreshMidiInRow();   // Tooltip inkl. M5-Shift-Ebene ("+ C1, D#1")
 }
 
 void MacroPanel::refreshMidiInRow()

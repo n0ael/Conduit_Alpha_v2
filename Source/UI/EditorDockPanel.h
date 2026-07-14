@@ -20,12 +20,20 @@ namespace conduit
     fingertauglicher Splitter-Griff (kSplitterWidth) zum Ziehen der
     Panel-Breite zwischen kMinWidth/kMaxWidth.
 
-    Kennt weder GridVoiceEngine noch sonstige Engine-Typen — der Besitzer
-    (GridPage) hängt Inhalte über addTab ein und verdrahtet
-    onWidthChanged/onWidthCommitted mit der Persistenz (Muster
-    BrowserPanel::onDockWidthChanged).
+    Kennt weder GridVoiceEngine noch sonstige Engine-Typen — Besitzer ist
+    seit MIDI-Rig M5b der EngineEditor (app-weit, Muster BrowserPanel);
+    Content-Lieferanten (GridPage) hängen Inhalte über addTab ein und
+    räumen sie im eigenen Destruktor per removeTab wieder ab (die Inhalte
+    referenzieren Members ihres Lieferanten — Lebensdauer-Kopplung).
 
-    getPreferredWidth() liefert 0 wenn geschlossen — das Parent-Layout
+    Page-Masken (M5b, User-Entscheidung 14.07.2026): jeder Tab trägt eine
+    Bitmaske über TransportBar::PageIndex — setActivePage() blendet die
+    Tab-Buttons page-abhängig ein/aus (mpe/cc/macro/settings nur auf der
+    Grid-Page, „Map" überall). Wird der aktive Tab unsichtbar, springt
+    die Auswahl auf den ersten sichtbaren Tab (feuert onActiveTabChanged).
+
+    getPreferredWidth() liefert 0 wenn geschlossen ODER wenn auf der
+    aktuellen Page kein Tab sichtbar ist — das Parent-Layout
     (bounds.removeFromRight) reserviert dann keinen Platz. Message Thread.
 */
 class EditorDockPanel final : public juce::Component
@@ -36,12 +44,28 @@ public:
     static constexpr int kTabBarHeight  = 44;   // Touch-Target-Regel (CLAUDE.md 10)
     static constexpr int kSplitterWidth = 14;   // schmal, aber fingertauglich
 
+    /** Page-Maske „auf allen Pages sichtbar" (alle Bits gesetzt). */
+    static constexpr int kAllPages = -1;
+
     EditorDockPanel();
 
     /** Fügt einen Tab hinzu; der erste hinzugefügte Tab wird automatisch
-        aktiv. content wird Kind des Content-Hosts. */
+        aktiv. content wird Kind des Content-Hosts. pageMask = Bitmaske
+        über TransportBar::PageIndex (1 << page), Default: alle Pages. */
     void addTab (const juce::String& id, const juce::String& title,
-                std::unique_ptr<juce::Component> content);
+                std::unique_ptr<juce::Component> content, int pageMask = kAllPages);
+
+    /** Entfernt Tab + Content (kein Effekt bei unbekannter id). Feuert
+        onActiveTabChanged NICHT — der Aufrufer ist typischerweise ein
+        Destruktor (Content-Lieferant räumt ab), Callbacks in halb
+        zerstörte Besitzer wären UB. War der Tab aktiv, wird still der
+        erste sichtbare Tab aktiv. */
+    void removeTab (const juce::String& id);
+
+    /** Aktive Page (TransportBar::PageIndex) — blendet Tab-Buttons gemäß
+        Page-Maske um; unsichtbar gewordener aktiver Tab wechselt auf den
+        ersten sichtbaren (feuert onActiveTabChanged). */
+    void setActivePage (int pageIndex);
 
     /** Schaltet auf den Tab mit dieser id (kein Effekt bei unbekannter id) —
         dessen Content wird sichtbar, alle anderen unsichtbar. */
@@ -66,8 +90,12 @@ public:
     void setPanelWidth (int newWidth) noexcept;
     [[nodiscard]] int getPanelWidth() const noexcept { return panelWidth; }
 
-    /** Aktuelle Breite fürs Parent-Layout — 0 wenn geschlossen. */
-    [[nodiscard]] int getPreferredWidth() const noexcept { return open ? panelWidth : 0; }
+    /** Aktuelle Breite fürs Parent-Layout — 0 wenn geschlossen oder auf
+        dieser Page kein Tab sichtbar (M5b). */
+    [[nodiscard]] int getPreferredWidth() const noexcept
+    {
+        return open && visibleTabCount() > 0 ? panelWidth : 0;
+    }
 
     /** Feuert bei jeder Breitenänderung (auch während des Drags) — der
         Besitzer legt sein Layout neu (Muster BrowserPanel::onDockWidthChanged). */
@@ -90,11 +118,24 @@ private:
         juce::String id;
         std::unique_ptr<push::TextTile> button;
         std::unique_ptr<juce::Component> content;
+        int pageMask = kAllPages;
     };
+
+    [[nodiscard]] bool isTabVisibleOnPage (const TabEntry& tab) const noexcept
+    {
+        return (tab.pageMask & (1 << currentPageIndex)) != 0;
+    }
+
+    [[nodiscard]] int visibleTabCount() const noexcept;
+
+    /** Button-/Content-Sichtbarkeit nach Page-Maske + aktivem Tab. */
+    void applyTabVisibility();
 
     juce::Component contentHost;
     std::vector<TabEntry> tabs;
     juce::String activeTabId;
+
+    int currentPageIndex = 0;
 
     bool open = false;
     int  panelWidth = kMinWidth;

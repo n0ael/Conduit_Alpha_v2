@@ -66,6 +66,43 @@ void CcControlLayer::setCcMode (bool shouldEdit)
     repaint();
 }
 
+void CcControlLayer::setMapMode (bool shouldMap)
+{
+    if (mapMode == shouldMap)
+        return;
+
+    // Wie setCcMode: laufende Spiel-Gesten sauber beenden (gehaltene
+    // Push-Controls lösen), Federn einfrieren.
+    for (const auto& [finger, id] : grabbedControls)
+    {
+        juce::ignoreUnused (finger);
+        if (auto* control = model.find (id);
+            control != nullptr && control->type == grid::CcTool::push && control->on)
+        {
+            control->on = false;
+            notifyValueChanged (*control);
+        }
+    }
+
+    grabbedControls.clear();
+    physicsStates.clear();
+
+    mapMode = shouldMap;
+    if (! mapMode)
+        mapArmedControlId = -1;
+
+    repaint();
+}
+
+void CcControlLayer::setMapArmedControl (int controlId)
+{
+    if (mapArmedControlId == controlId)
+        return;
+
+    mapArmedControlId = controlId;
+    repaint();
+}
+
 void CcControlLayer::setActiveTool (grid::CcTool tool)
 {
     if (activeTool == tool)
@@ -130,8 +167,8 @@ juce::Rectangle<float> CcControlLayer::removeZoneFor (juce::Rectangle<float> con
 
 bool CcControlLayer::hitTest (int x, int y)
 {
-    if (ccMode)
-        return true;   // Bearbeiten: ALLE Events über dem Raster abfangen
+    if (ccMode || mapMode)
+        return true;   // Bearbeiten/Map: ALLE Events über dem Raster abfangen
 
     // Spielen: nur Control-Flächen sind Ziel — freie Flächen fallen zum
     // Keyboard durch, Pads UNTER Controls bleiben stumm. Rect-basiert,
@@ -142,6 +179,15 @@ bool CcControlLayer::hitTest (int x, int y)
 //==============================================================================
 void CcControlLayer::mouseDown (const juce::MouseEvent& event)
 {
+    // Map-Modus (M5b): Tap auf ein Control meldet den Zuweisungs-Wunsch,
+    // alles andere wird geschluckt (kein Spielen, kein Bearbeiten).
+    if (mapMode)
+    {
+        if (const auto id = controlIdAt (event.position); id >= 0 && onMapTapControl != nullptr)
+            onMapTapControl (id);
+        return;
+    }
+
     if (ccMode)
         handleEditDown (event);
     else
@@ -150,6 +196,9 @@ void CcControlLayer::mouseDown (const juce::MouseEvent& event)
 
 void CcControlLayer::mouseDrag (const juce::MouseEvent& event)
 {
+    if (mapMode)
+        return;
+
     if (ccMode)
         handleEditDrag (event);
     else
@@ -158,6 +207,9 @@ void CcControlLayer::mouseDrag (const juce::MouseEvent& event)
 
 void CcControlLayer::mouseUp (const juce::MouseEvent& event)
 {
+    if (mapMode)
+        return;
+
     if (ccMode)
         handleEditUp (event);
     else
@@ -633,6 +685,37 @@ void CcControlLayer::paint (juce::Graphics& g)
                                                                  dashes, 2);
         g.setColour (push::colours::ledWhite);
         g.fillPath (dashed);
+    }
+
+    // Map-Modus (M5b): alle Controls hervorheben — cyaner Rahmen (Learn-
+    // scharfes Control orange), Badge mit der gebundenen Adresse unten im
+    // Control (leer = ungebunden, nur Rahmen).
+    if (mapMode)
+    {
+        for (const auto& control : model.controls())
+        {
+            const auto rect  = rectFor (control);
+            const auto armed = control.id == mapArmedControlId;
+
+            g.setColour ((armed ? push::colours::ledOrange : push::colours::ledCyan)
+                             .withAlpha (armed ? 1.0f : 0.75f));
+            g.drawRoundedRectangle (rect, kCornerRadius, armed ? 2.5f : 1.5f);
+
+            const auto badge = mapBadgeTextFor != nullptr ? mapBadgeTextFor (control.id)
+                                                          : juce::String();
+            if (badge.isNotEmpty())
+            {
+                auto badgeArea = rect.reduced (4.0f).removeFromBottom (14.0f);
+                g.setColour (push::colours::lcdScreen.withAlpha (0.8f));
+                g.fillRoundedRectangle (badgeArea, 3.0f);
+                g.setColour (armed ? push::colours::ledOrange : push::colours::text);
+                g.setFont (push::scaledFont (11.0f));
+                // Nie stauchen (User-Regel 07/2026): drawText clippt statt
+                // zu quetschen.
+                g.drawText (badge, badgeArea.reduced (3.0f, 0.0f),
+                            juce::Justification::centredLeft, false);
+            }
+        }
     }
 
     // Snap-Guides (Block F, Figma-Stil): waehrend eines freien Verschiebens

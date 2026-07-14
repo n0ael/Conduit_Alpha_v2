@@ -74,6 +74,9 @@ void MidiInBindings::bind (const MacroControlKey& key, int channel, int cc, bool
     binding.suppressWhileShift = suppressWhileShift;
     binding.key       = key;
     bindings.push_back (std::move (binding));
+
+    if (onBindingsChanged != nullptr)
+        onBindingsChanged();
 }
 
 void MidiInBindings::unbind (const MacroControlKey& key)
@@ -81,6 +84,24 @@ void MidiInBindings::unbind (const MacroControlKey& key)
     bindings.erase (std::remove_if (bindings.begin(), bindings.end(),
                         [&] (const Binding& b) { return b.key == key; }),
                     bindings.end());
+
+    if (onBindingsChanged != nullptr)
+        onBindingsChanged();
+}
+
+void MidiInBindings::setSuppressWhileShift (const MacroControlKey& key, bool shouldSuppress)
+{
+    for (auto& binding : bindings)
+    {
+        if (binding.key == key && binding.suppressWhileShift != shouldSuppress)
+        {
+            binding.suppressWhileShift = shouldSuppress;
+            binding.deferredPress01 = -1.0f;   // halber Zustand verfaellt
+
+            if (onBindingsChanged != nullptr)
+                onBindingsChanged();
+        }
+    }
 }
 
 const MidiInBindings::Binding* MidiInBindings::bindingFor (const MacroControlKey& key) const noexcept

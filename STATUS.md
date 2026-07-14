@@ -3,7 +3,25 @@
 > Letzte Aktualisierung: 2026-07-14 | wird nach jedem Meilenstein gepflegt
 > Architektur-Referenz: [CLAUDE.md](CLAUDE.md) | Repo: n0ael/Conduit
 
-## Aktueller Meilenstein (14.07.2026) — MIDI-Rig M5a (ADR 006): Shift-Ebenen + Chord-Learn
+## Aktueller Meilenstein (14.07.2026) — MIDI-Rig M5b (ADR 006): App-weites Dock + Map-Tab + Overlay
+
+- **Dock-Hebung:** `EditorDockPanel` wandert von GridPage in den
+  EngineEditor (app-weit rechts, Muster BrowserPanel) — Tabs tragen
+  Page-Masken (`addTab(..., pageMask)`, `setActivePage`, stilles
+  `removeTab` für Destruktoren); GridPage-Tabs (mpe/cc/macro/settings)
+  nur auf der Grid-Page, GridPage räumt sie im Dtor ab.
+- **Map-Tab (überall sichtbar):** `MappingsListComponent` — pro Bindung
+  Name/Adresse+Shift-Ebene/Learn/„Shift"-Toggle (suppressWhileShift)/
+  Löschen; getrieben über neues `MidiInBindings::onBindingsChanged`.
+- **Map-Overlay:** `CcControlLayer::setMapMode` (Muster ccMode) — cyane
+  Rahmen + Adress-Badges, Tap armt Learn (orange), Events geschluckt;
+  gilt für DIY- UND System-Layer. `onLearnCompleted` besitzt jetzt die
+  GridPage (leitet an `MacroPanel::handleLearnCompleted` weiter).
+- Tests: 3 neue Dock-Cases (Page-Maske/removeTab/Breite 0); Suite 844
+  grün.
+- Offen: M5c Conduit-Macro-Ziele mit Modulation (Plan 14.07.).
+
+## Davor (14.07.2026) — MIDI-Rig M5a (ADR 006): Shift-Ebenen + Chord-Learn
 
 - **Semantik (User-Entscheidungen 14.07.):** 1:1 bleibt (ein Hardware-
   Control → eine Zieladresse; Fan-out über Macros), aber eine Adresse

@@ -36,6 +36,7 @@ TEST_CASE ("EditorDockPanel: geschlossen liefert getPreferredWidth 0", "[ui]")
     juce::ScopedJuceInitialiser_GUI juceRuntime;
 
     conduit::EditorDockPanel panel;
+    panel.addTab ("a", "A", std::make_unique<ProbeComponent>());   // M5b: ohne sichtbaren Tab ist die Breite immer 0
     panel.setPanelWidth (300);
     panel.setPanelOpen (false);
 
@@ -81,6 +82,7 @@ TEST_CASE ("EditorDockPanel: setPanelWidth klemmt auf [kMinWidth, kMaxWidth]", "
     juce::ScopedJuceInitialiser_GUI juceRuntime;
 
     conduit::EditorDockPanel panel;
+    panel.addTab ("a", "A", std::make_unique<ProbeComponent>());   // M5b: Breite zählt nur mit sichtbarem Tab
     panel.setPanelOpen (true);
 
     panel.setPanelWidth (10000);
@@ -88,4 +90,92 @@ TEST_CASE ("EditorDockPanel: setPanelWidth klemmt auf [kMinWidth, kMaxWidth]", "
 
     panel.setPanelWidth (-500);
     REQUIRE (panel.getPreferredWidth() == conduit::EditorDockPanel::kMinWidth);
+}
+
+//==============================================================================
+// MIDI-Rig M5b: Page-Masken + removeTab
+
+TEST_CASE ("EditorDockPanel: Page-Maske blendet Tabs um, aktiver Tab springt auf sichtbar", "[ui][midirig]")
+{
+    juce::ScopedJuceInitialiser_GUI juceRuntime;
+
+    conduit::EditorDockPanel panel;
+    panel.setPanelOpen (true);
+
+    auto gridContent = std::make_unique<ProbeComponent>();
+    auto mapContent  = std::make_unique<ProbeComponent>();
+    auto* gridPtr = gridContent.get();
+    auto* mapPtr  = mapContent.get();
+
+    panel.addTab ("mpe", "MPE", std::move (gridContent), 1 << 0);   // nur Page 0 (Grid)
+    panel.addTab ("map", "Map", std::move (mapContent));            // alle Pages
+
+    juce::StringArray fired;
+    panel.onActiveTabChanged = [&fired] (const juce::String& id) { fired.add (id); };
+
+    // Auf Page 0: erster Tab aktiv, beide Buttons denkbar.
+    panel.setActivePage (0);
+    REQUIRE (panel.getActiveTabId() == "mpe");
+    REQUIRE (gridPtr->isVisible());
+    REQUIRE_FALSE (mapPtr->isVisible());
+
+    // Wechsel auf Page 3 (Device): mpe unsichtbar -> map uebernimmt (feuert).
+    panel.setActivePage (3);
+    REQUIRE (panel.getActiveTabId() == "map");
+    REQUIRE (fired.size() == 1);
+    REQUIRE (fired[0] == "map");
+    REQUIRE (mapPtr->isVisible());
+    REQUIRE_FALSE (gridPtr->isVisible());
+    REQUIRE (panel.getPreferredWidth() > 0);
+
+    // Zurueck auf Page 0: map bleibt aktiv (weiterhin sichtbar, kein Zwang).
+    panel.setActivePage (0);
+    REQUIRE (panel.getActiveTabId() == "map");
+    REQUIRE (fired.size() == 1);
+}
+
+TEST_CASE ("EditorDockPanel: ohne sichtbaren Tab auf der Page ist die Breite 0", "[ui][midirig]")
+{
+    juce::ScopedJuceInitialiser_GUI juceRuntime;
+
+    conduit::EditorDockPanel panel;
+    panel.setPanelOpen (true);
+    panel.addTab ("mpe", "MPE", std::make_unique<ProbeComponent>(), 1 << 0);
+
+    panel.setActivePage (0);
+    REQUIRE (panel.getPreferredWidth() > 0);
+
+    panel.setActivePage (3);
+    REQUIRE (panel.getPreferredWidth() == 0);
+    REQUIRE (panel.getActiveTabId() == "mpe");   // Auswahl bleibt, nur unsichtbar
+}
+
+TEST_CASE ("EditorDockPanel: removeTab entfernt still und aktiviert den ersten sichtbaren", "[ui][midirig]")
+{
+    juce::ScopedJuceInitialiser_GUI juceRuntime;
+
+    conduit::EditorDockPanel panel;
+
+    auto second = std::make_unique<ProbeComponent>();
+    auto* secondPtr = second.get();
+
+    panel.addTab ("a", "A", std::make_unique<ProbeComponent>());
+    panel.addTab ("b", "B", std::move (second));
+
+    juce::StringArray fired;
+    panel.onActiveTabChanged = [&fired] (const juce::String& id) { fired.add (id); };
+
+    // Aktiven Tab entfernen: b wird still aktiv (kein Callback -- der
+    // Aufrufer ist typischerweise ein Destruktor).
+    panel.removeTab ("a");
+    REQUIRE (panel.getActiveTabId() == "b");
+    REQUIRE (fired.isEmpty());
+    REQUIRE (secondPtr->isVisible());
+
+    panel.removeTab ("unbekannt");   // kein Effekt
+    REQUIRE (panel.getActiveTabId() == "b");
+
+    panel.removeTab ("b");
+    REQUIRE (panel.getActiveTabId().isEmpty());
+    REQUIRE (panel.getPreferredWidth() == 0);
 }

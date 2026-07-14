@@ -115,6 +115,14 @@ public:
                ModifierSet modifiers = {}, bool suppressWhileShift = false);
     void unbind (const MacroControlKey& key);
 
+    /** M5b (Mappings-Liste): Suppress-Flag einer bestehenden Bindung
+        umschalten -- kein Effekt bei unbekanntem Key. */
+    void setSuppressWhileShift (const MacroControlKey& key, bool shouldSuppress);
+
+    /** M5b: feuert nach jeder Struktur-Änderung (bind/unbind/Suppress) --
+        die Mappings-Liste im Map-Tab baut sich damit neu auf. */
+    std::function<void()> onBindingsChanged;
+
     [[nodiscard]] const Binding* bindingFor (const MacroControlKey& key) const noexcept;
     [[nodiscard]] int count() const noexcept { return (int) bindings.size(); }
 

@@ -36,6 +36,7 @@ namespace conduit
 
 class GridSettingsView;
 class MacroPanel;
+class MappingsListComponent;
 
 //==============================================================================
 /**
@@ -56,10 +57,10 @@ class MacroPanel;
     links. Das frühere Volume-Ribbon ist entfallen; GridVoiceEngine::
     setGlobalVolume bleibt für Tests/Zukunft bestehen.
 
-    Rechtes Editor-Dock-Panel (S2-Vorstufe MPE-Shaping): EditorDockPanel
-    dockt via bounds.removeFromRight (dockPanel.getPreferredWidth()) --
-    koexistiert mit dem Browser-Panel (das dockt eine Ebene höher im
-    EngineEditor). Tab „MPE" mit MpeShapingView (S2c) -- drei touch-
+    Rechtes Editor-Dock-Panel (S2-Vorstufe MPE-Shaping; seit MIDI-Rig M5b
+    app-weit im EngineEditor angedockt, Muster BrowserPanel — GridPage
+    registriert seine Tabs mit Page-Maske „nur Grid-Page" und räumt sie
+    im Dtor ab). Tab „MPE" mit MpeShapingView (S2c) -- drei touch-
     editierbare Kurven (Pressure/Slide/PitchBend) + Live-Noten-Kreise, je
     Achse eine Detailspalte mit Sensitivity-Regler bzw. PitchBend-Range-
     Multiplikator (Block A2/A3), Offset-Schloss und Achsfarbe. Toggle über
@@ -116,8 +117,14 @@ public:
               LiveSetModel& liveSetModelToUse, TouchLiveClient& touchLiveClientToUse,
               MidiPortHub& midiPortHubToUse, MidiRigSettings& midiRigSettingsToUse,
               MidiProfileLibrary& midiProfileLibraryToUse,
-              ControllerProfileLibrary& controllerProfileLibraryToUse);
+              ControllerProfileLibrary& controllerProfileLibraryToUse,
+              EditorDockPanel& dockPanelToUse);
     ~GridPage() override;
+
+    /** M5b: Dock-Tab hat gewechselt (EngineEditor leitet
+        onActiveTabChanged weiter) — CC-/Map-Modus der Overlays neu
+        bestimmen. */
+    void refreshDockModes() { updateCcMode(); }
 
     void resized() override;
 
@@ -176,8 +183,26 @@ private:
         (GridSettingsView, eigener Listener dort). */
     void refreshScaleFromState();
 
-    /** CC-Modus des Overlays = (Dock-Panel offen) UND (aktiver Tab "cc"). */
+    /** CC-Modus des Overlays = (Dock-Panel offen) UND (aktiver Tab "cc");
+        Map-Modus (M5b) analog mit Tab "map" — beim Verlassen wird ein
+        map-gearmtes Learn entschärft. */
     void updateCcMode();
+
+    //==========================================================================
+    // Map-Modus (MIDI-Rig M5b): Tap im Overlay bzw. Learn-Kachel der
+    // Mappings-Liste armt MIDI-Learn für ein Control; onLearnCompleted
+    // (GridPage-eigen) räumt auf und informiert MacroPanel + Liste.
+
+    void armMapLearn (const grid::MacroControlKey& key);
+    void clearMapArmed();
+
+    /** Anzeigename eines Control-Werts ("Fader 3 · Y · Sys") für
+        Mappings-Liste und Badges. */
+    [[nodiscard]] juce::String controlDisplayName (const grid::MacroControlKey& key);
+
+    /** Badge-Text eines Controls im Map-Overlay (Adresse der Achse 0,
+        XY: beide Achsen) — leer = ungebunden. */
+    [[nodiscard]] juce::String mapBadgeFor (int layer, int controlId);
 
     /** Ribbon-Breite (Block D1 "Fader-Breiten", GridPanelSettings-Wert) hat
         sich geändert -- ruft nur resized() auf (voll live, im Gegensatz zur
@@ -256,8 +281,8 @@ private:
 
     // Macro-System (Block E): Bindings-Store der Controls (System + DIY),
     // Laufzeit-only (Persistenz Block K). macroPanel zeigt in den vom
-    // dockPanel besessenen Tab-Content (GridPage besitzt das dockPanel --
-    // Lebensdauer identisch, roher Zeiger ist hier sicher).
+    // dockPanel besessenen Tab-Content — der GridPage-Dtor entfernt die
+    // eigenen Tabs (removeTab), der rohe Zeiger überlebt GridPage nie.
     grid::MacroBindings macroBindings;
     MacroPanel* macroPanel = nullptr;
 
@@ -272,6 +297,12 @@ private:
     // (Listener hängen an der Instanz — Temporary wäre ein No-op).
     GridSettingsView* settingsPanel = nullptr;
     juce::ValueTree liveSetState;
+
+    // M5b: Mappings-Liste des Map-Tabs (roher Zeiger wie macroPanel) +
+    // Zustand des map-gearmten Learns (Overlay-Markierung).
+    MappingsListComponent* mappingsPanel = nullptr;
+    bool mapLearnArmed = false;
+    grid::MacroControlKey mapLearnKey;
 
     // MIDI-Eingang (Block G): externe CCs bewegen Controls -- Soft-Takeover
     // + Glaettung leben in midiInBindings; die Events kommen als Hub-Abos
@@ -334,7 +365,11 @@ private:
     juce::File sessionFile;
     bool liveResolvePending = false;
     ChordMemoryStrip chordStrip { chordMemory };   // liegt räumlich NEBEN dem Keyboard/ccLayer
-    EditorDockPanel dockPanel;
+
+    // M5b: Das Dock gehört dem EngineEditor (app-weit, Muster BrowserPanel)
+    // — GridPage registriert nur seine Tabs (Ctor) und räumt sie im Dtor
+    // per removeTab ab (die Contents referenzieren GridPage-Members).
+    EditorDockPanel& dockPanel;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (GridPage)
 };

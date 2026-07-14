@@ -109,8 +109,8 @@ namespace
             slider.setRange (min, max, step);
             slider.setTextValueSuffix (suffix);
             slider.setValue (value, juce::dontSendNotification);
-            slider.onValueChange = [&slider, apply = std::move (apply)]
-            { apply (slider.getValue()); };
+            slider.onValueChange = [&slider, applyFn = std::move (apply)]
+            { applyFn (slider.getValue()); };
             addAndMakeVisible (slider);
         }
 

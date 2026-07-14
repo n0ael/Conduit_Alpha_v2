@@ -171,6 +171,7 @@ set(CONDUIT_CPP_SOURCES
     Source/Core/Capture/LevelMeter.cpp
     Source/Core/FigmaSnap.cpp
     Source/Core/MacroBindings.cpp
+    Source/Core/ConduitMacroTargets.cpp
     Source/TouchLive/AbletonParamTarget.cpp
     Source/TouchLive/LiveSetModel.cpp
     Source/TouchLive/LiveTargetResolver.cpp
@@ -275,6 +276,7 @@ set(CONDUIT_CPP_SOURCES
     Source/UI/GridKeyboardComponent.cpp
     Source/UI/GridPage.cpp
     Source/UI/GridSettingsView.cpp
+    Source/UI/ConduitTargetPicker.cpp
     Source/UI/CurveEditorTile.cpp
     Source/UI/HardwareTargetPicker.cpp
     Source/UI/MacroPanel.cpp
@@ -651,6 +653,7 @@ if(CONDUIT_BUILD_TESTS)
         Tests/Core/FigmaSnapTests.cpp
         Tests/Core/MidiDeviceProfileTests.cpp
         Tests/Core/MidiInBindingsTests.cpp
+        Tests/Core/ParamModulationTests.cpp
         Tests/Core/MidiPortHubTests.cpp
         Tests/Core/MidiProfileLibraryTests.cpp
         Tests/Core/MidiRigSettingsTests.cpp
@@ -769,7 +772,8 @@ if(CONDUIT_BUILD_TESTS)
         Source/Core/Capture/InputMeter.cpp
         Source/Core/Capture/LevelMeter.cpp
         Source/Core/FigmaSnap.cpp
-    Source/Core/MacroBindings.cpp
+        Source/Core/MacroBindings.cpp
+        Source/Core/ConduitMacroTargets.cpp
         Source/TouchLive/AbletonParamTarget.cpp
         Source/TouchLive/LiveSetModel.cpp
         Source/TouchLive/LiveTargetResolver.cpp
@@ -874,6 +878,7 @@ if(CONDUIT_BUILD_TESTS)
         Source/UI/GridKeyboardComponent.cpp
         Source/UI/GridPage.cpp
         Source/UI/GridSettingsView.cpp
+        Source/UI/ConduitTargetPicker.cpp
         Source/UI/CurveEditorTile.cpp
         Source/UI/HardwareTargetPicker.cpp
         Source/UI/MacroPanel.cpp

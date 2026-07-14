@@ -46,6 +46,16 @@ Dadurch gehen keine OSC-Werte beim Speichern verloren.
 | ValueTree async | UI + Serialisierung | 10–50ms akzeptabel |
 | isDirty flag | Serialisierungs-Guard | `std::atomic<bool>` |
 
+**Macro-Modulation (MIDI-Rig M5c, dokumentierte 6.1-Erweiterung):**
+Der Tree trägt den BASISWERT eines Parameters, das
+`getParameterTarget()`-Atomic den macro-EFFEKTIVEN Wert
+(`GraphManager`-ParamModulationBus, `eff = clamp(base +
+offset·userRange)`, Message Thread) — Präzedenz ist der OSC-Fastpath,
+der das Atomic ebenfalls am Tree vorbei schreibt. Presets, OSC-Send
+und Undo sehen nur die Basis; `syncParameterValue` komponiert den
+aktiven Offset bei jedem Tree→Atomic-Spiegeln (auch beim
+Rebuild-Re-Apply über `addNewNodes`). Details: docs/MidiRig.md M5c.
+
 ## 6.2 ValueTree Schema
 
 ```

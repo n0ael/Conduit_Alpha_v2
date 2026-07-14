@@ -687,6 +687,43 @@ void CcControlLayer::paint (juce::Graphics& g)
         g.fillPath (dashed);
     }
 
+    // Macro-Modulation (M5c): cyaner Zweit-Marker am Effektivwert — nur
+    // fuer Controls mit aktiver Modulation (Provider liefert sonst nullopt).
+    if (modulationValueFor != nullptr)
+    {
+        for (const auto& control : model.controls())
+        {
+            const auto rect = rectFor (control);
+
+            if (control.type == grid::CcTool::fader)
+            {
+                if (const auto value = modulationValueFor (control.id, 0))
+                {
+                    const auto y = rect.getBottom() - *value * rect.getHeight();
+                    g.setColour (push::colours::ledCyan);
+                    g.drawLine (rect.getX() + 2.0f, y, rect.getRight() - 2.0f, y, 2.0f);
+                }
+            }
+            else if (control.type == grid::CcTool::xy)
+            {
+                const auto valueX = modulationValueFor (control.id, 0);
+                const auto valueY = modulationValueFor (control.id, 1);
+
+                if (valueX.has_value() || valueY.has_value())
+                {
+                    // Fehlende Achse faellt auf den Ist-Wert zurueck
+                    // (axis 1 ist in der Macro-Semantik invertiert).
+                    const auto px = rect.getX()
+                                    + (valueX.has_value() ? *valueX : control.x) * rect.getWidth();
+                    const auto py = rect.getY()
+                                    + (valueY.has_value() ? 1.0f - *valueY : control.y) * rect.getHeight();
+                    g.setColour (push::colours::ledCyan);
+                    g.drawEllipse (juce::Rectangle<float> (10.0f, 10.0f).withCentre ({ px, py }), 2.0f);
+                }
+            }
+        }
+    }
+
     // Map-Modus (M5b): alle Controls hervorheben — cyaner Rahmen (Learn-
     // scharfes Control orange), Badge mit der gebundenen Adresse unten im
     // Control (leer = ungebunden, nur Rahmen).

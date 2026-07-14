@@ -22,7 +22,8 @@ GridPage::GridPage (juce::ValueTree rootStateToUse,
                      MidiPortHub& midiPortHubToUse, MidiRigSettings& midiRigSettingsToUse,
                      MidiProfileLibrary& midiProfileLibraryToUse,
                      ControllerProfileLibrary& controllerProfileLibraryToUse,
-                     EditorDockPanel& dockPanelToUse)
+                     EditorDockPanel& dockPanelToUse,
+                     IParamModulationSink& paramModSinkToUse)
     : rootState (std::move (rootStateToUse)),
       engine (engineToUse),
       midiPortHub (midiPortHubToUse), midiRigSettings (midiRigSettingsToUse),
@@ -30,6 +31,7 @@ GridPage::GridPage (juce::ValueTree rootStateToUse,
       controllerProfileLibrary (controllerProfileLibraryToUse),
       midiTarget (midiPortHubToUse.gridOutputTarget()),
       panelSettings (panelSettingsToUse),
+      paramModSink (paramModSinkToUse),
       mpeMidiSink (mpeMidiSinkToUse),
       liveSetModel (liveSetModelToUse), touchLiveClient (touchLiveClientToUse),
       systemControlRowsAtStartup (panelSettingsToUse.getSystemControlRows()),
@@ -244,8 +246,34 @@ GridPage::GridPage (juce::ValueTree rootStateToUse,
     // bleibt gueltig, solange das dockPanel (GridPage-Member) lebt.
     auto macroView = std::make_unique<MacroPanel> (macroBindings, midiTarget,
                                                    liveSetModel, touchLiveClient, midiInBindings,
-                                                   hardwareCcDatabase, midiProfileLibrary);
+                                                   hardwareCcDatabase, midiProfileLibrary,
+                                                   rootState, paramModSink, *this);
     macroPanel = macroView.get();
+
+    // M5c: Grid-Control-Eintraege fuer den Conduit-Picker (live enumeriert
+    // beim Oeffnen -- beide Layer, XY mit beiden Achsen).
+    macroView->gridControlEntries = [this]
+    {
+        std::vector<std::pair<grid::MacroControlKey, juce::String>> entries;
+
+        for (const auto layer : { (int) grid::MacroControlKey::system,
+                                  (int) grid::MacroControlKey::diy })
+        {
+            for (const auto& control : modelForLayer (layer).controls())
+            {
+                const grid::MacroControlKey key { layer, control.id, 0 };
+                entries.emplace_back (key, controlDisplayName (key));
+
+                if (control.type == grid::CcTool::xy)
+                {
+                    const grid::MacroControlKey yKey { layer, control.id, 1 };
+                    entries.emplace_back (yKey, controlDisplayName (yKey));
+                }
+            }
+        }
+
+        return entries;
+    };
     dockPanel.addTab ("macro", "Macro", std::move (macroView), gridOnly);
 
     // Tab „Map" (MIDI-Rig M5b): Mappings-Liste + Overlay-Zuweisung — auf
@@ -291,6 +319,21 @@ GridPage::GridPage (juce::ValueTree rootStateToUse,
     { return mapBadgeFor (grid::MacroControlKey::diy, controlId); };
     systemLayer.mapBadgeTextFor = [this] (int controlId)
     { return mapBadgeFor (grid::MacroControlKey::system, controlId); };
+
+    // M5c: Zweit-Marker am Effektivwert (Modulation eines Grid-Controls).
+    const auto modulationProviderFor = [this] (int layer)
+    {
+        return [this, layer] (int controlId, int axis) -> std::optional<float>
+        {
+            const grid::MacroControlKey key { layer, controlId, axis };
+            if (controlModOffsets.find (key) == controlModOffsets.end())
+                return std::nullopt;
+
+            return modulatedControlValue (key, controlValueFor (key));
+        };
+    };
+    ccLayer.modulationValueFor     = modulationProviderFor (grid::MacroControlKey::diy);
+    systemLayer.modulationValueFor = modulationProviderFor (grid::MacroControlKey::system);
 
     // Macro-Wertfluss + Long-Press (Block E), beide Layer: System-Controls
     // des XY+Fader-Modus (layer 0) und DIY-CC-Baukasten (layer 1). Die
@@ -727,28 +770,72 @@ void GridPage::applyRibbonWidth()
 
 void GridPage::feedMacros (int layer, const grid::CcControl& control)
 {
+    // M5c: der Macro-Fluss sieht den EFFEKTIVWERT (Basis + Modulations-
+    // Offset) -- der Control-Basiswert selbst bleibt unangetastet.
+    const auto feed = [this] (const grid::MacroControlKey& key, float raw)
+    { macroBindings.applyValue (key, modulatedControlValue (key, raw)); };
+
     switch (control.type)
     {
         case grid::CcTool::fader:
-            macroBindings.applyValue ({ layer, control.id, 0 }, control.value);
+            feed ({ layer, control.id, 0 }, control.value);
             break;
 
         case grid::CcTool::push:
         case grid::CcTool::toggle:
-            macroBindings.applyValue ({ layer, control.id, 0 }, control.on ? 1.0f : 0.0f);
+            feed ({ layer, control.id, 0 }, control.on ? 1.0f : 0.0f);
             break;
 
         case grid::CcTool::xy:
             // control.y ist 0 = oben -- fuer Macro-Semantik invertieren
             // (oben = 1, wie beim Fader).
-            macroBindings.applyValue ({ layer, control.id, 0 }, control.x);
-            macroBindings.applyValue ({ layer, control.id, 1 }, 1.0f - control.y);
+            feed ({ layer, control.id, 0 }, control.x);
+            feed ({ layer, control.id, 1 }, 1.0f - control.y);
             break;
 
         case grid::CcTool::none:
         default:
             break;
     }
+}
+
+float GridPage::modulatedControlValue (const grid::MacroControlKey& key,
+                                       float rawValue01) const noexcept
+{
+    const auto it = controlModOffsets.find (key);
+    if (it == controlModOffsets.end())
+        return rawValue01;
+
+    return juce::jlimit (0.0f, 1.0f, rawValue01 + it->second);
+}
+
+void GridPage::setControlModulation (const grid::MacroControlKey& key, float offsetNorm)
+{
+    controlModOffsets[key] = juce::jlimit (-1.0f, 1.0f, offsetNorm);
+    refeedControl (key);
+}
+
+void GridPage::clearControlModulation (const grid::MacroControlKey& key)
+{
+    if (controlModOffsets.erase (key) == 0)
+        return;
+
+    refeedControl (key);   // Ziele fallen auf den Basiswert zurueck
+}
+
+void GridPage::refeedControl (const grid::MacroControlKey& key)
+{
+    // Re-Entranz-Guard: moduliert Control A Control B und B (indirekt)
+    // wieder A, bricht der zweite Besuch desselben Keys die Kette --
+    // der Offset ist gespeichert, nur das erneute Feeden entfaellt.
+    if (! controlModFeedGuard.insert (key).second)
+        return;
+
+    if (const auto* control = modelForLayer (key.layer).find (key.controlId))
+        feedMacros (key.layer, *control);
+
+    (key.layer == grid::MacroControlKey::system ? systemLayer : ccLayer).repaint();
+    controlModFeedGuard.erase (key);
 }
 
 grid::CcControlModel& GridPage::modelForLayer (int layer) noexcept
@@ -1008,6 +1095,27 @@ std::unique_ptr<grid::MacroTarget> GridPage::makeTargetFromState (const juce::Va
     if (state.hasType (grid::AbletonParamTarget::kStateType))
         return std::make_unique<grid::AbletonParamTarget> (
             touchLiveClient, grid::AbletonParamTarget::specFromState (state));
+
+    // M5c: Conduit-Ziele -- nodeUuid/Control-Ids sind selbst persistent,
+    // kein Resolver-Lauf noetig (Aufloesung transient bei jedem sendValue).
+    if (state.hasType (grid::ConduitParamTarget::kStateType))
+        return std::make_unique<grid::ConduitParamTarget> (
+            paramModSink, rootState,
+            state.getProperty ("nodeUuid").toString(),
+            state.getProperty ("paramId").toString(),
+            (bool) state.getProperty ("bipolar", false),
+            (float) (double) state.getProperty ("amount", 1.0),
+            state.getProperty ("name").toString());
+
+    if (state.hasType (grid::GridControlModTarget::kStateType))
+        return std::make_unique<grid::GridControlModTarget> (
+            *this,
+            grid::MacroControlKey { (int) state.getProperty ("layer", 0),
+                                    (int) state.getProperty ("controlId", 0),
+                                    (int) state.getProperty ("axis", 0) },
+            (bool) state.getProperty ("bipolar", false),
+            (float) (double) state.getProperty ("amount", 1.0),
+            state.getProperty ("name").toString());
 
     return nullptr;   // unbekannter Typ: Slot bleibt ohne Ziel
 }

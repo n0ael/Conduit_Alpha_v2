@@ -2,6 +2,7 @@
 
 #include <functional>
 #include <map>
+#include <optional>
 
 #include <juce_gui_basics/juce_gui_basics.h>
 
@@ -65,6 +66,12 @@ public:
 
     /** Badge-Text eines Controls (gebundene Adresse, leer = ungebunden). */
     std::function<juce::String (int controlId)> mapBadgeTextFor;
+
+    /** Macro-Modulations-Anzeige (MIDI-Rig M5c): Effektivwert einer
+        Control-Achse (Achsen-Semantik wie feedMacros, axis 1 = Y
+        invertiert) — nullopt = keine aktive Modulation. Gezeichnet als
+        cyaner Zweit-Marker (Fader: Linie, XY: Ring). */
+    std::function<std::optional<float> (int controlId, int axis)> modulationValueFor;
 
     void setActiveTool (grid::CcTool tool);
     [[nodiscard]] grid::CcTool getActiveTool() const noexcept { return activeTool; }

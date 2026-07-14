@@ -3,7 +3,29 @@
 > Letzte Aktualisierung: 2026-07-14 | wird nach jedem Meilenstein gepflegt
 > Architektur-Referenz: [CLAUDE.md](CLAUDE.md) | Repo: n0ael/Conduit
 
-## Aktueller Meilenstein (14.07.2026) — MIDI-Rig M5b (ADR 006): App-weites Dock + Map-Tab + Overlay
+## Aktueller Meilenstein (14.07.2026) — MIDI-Rig M5c (ADR 006): Conduit-Macro-Ziele mit Modulation
+
+- **ParamModulationBus (GraphManager + `Core/ParamModulation.h`):** Tree
+  = Basiswert, `getParameterTarget()`-Atomic = macro-effektiver Wert
+  (`clamp(base + offset·userRange)`, dokumentierte 6.1-Erweiterung) —
+  kein Chassis-Umbau, kein Audio-Thread-Code, uniform FX/Nicht-FX;
+  Hook in `syncParameterValue` (Fader-Drag komponiert, Rebuild
+  re-appliziert); Einträge Uuid-keyed, überleben Node-Delete/Undo.
+- **Targets (`Core/ConduitMacroTargets`):** `ConduitParamTarget`
+  (Modul-Parameter, transientes describe, Dtor cleart) +
+  `GridControlModTarget` (Grid-Controls; GridPage-Sink mit
+  Re-Entranz-Guard, Effektivwert nur in feedMacros/Anzeige).
+- **UI:** vierte Typ-Kachel „CND" im Macro-Panel, `ConduitTargetPicker`
+  (Drilldown Module→dsp-Parameter + Grid-Controls), Polarität +/± und
+  Amount 0–100 % live; cyaner Zweit-Marker am Effektivwert in
+  CurvedSlider/FxModulePanel (30-Hz-Tick) und CcControlLayer.
+- Tests: 6 neue Cases (Offset-Mathe, Targets/Fake-Sinks, GraphManager-
+  Bus inkl. Delete/Re-Add); Suite 852 grün; ASan grün.
+- Out of scope: Audio-rate-Modulation, ParameterPanel-Marker (Phase 2).
+- Damit ist **M5 komplett** (a Shift-Ebenen/Chord-Learn · b Dock/Map ·
+  c Conduit-Modulation); als Nächstes laut Leiter M6 Pickup-LED.
+
+## Davor (14.07.2026) — MIDI-Rig M5b (ADR 006): App-weites Dock + Map-Tab + Overlay
 
 - **Dock-Hebung:** `EditorDockPanel` wandert von GridPage in den
   EngineEditor (app-weit rechts, Muster BrowserPanel) — Tabs tragen

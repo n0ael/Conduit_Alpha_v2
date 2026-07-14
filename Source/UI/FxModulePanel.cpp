@@ -533,6 +533,19 @@ const PortComponent* FxModulePanel::getCvPort (int columnIndex) const noexcept
 void FxModulePanel::timerCallback()
 {
     refreshSendStatusNow();
+
+    // M5c: Macro-Modulations-Marker (30 Hz, wie das Meter) — Datenquelle
+    // ist der GraphManager-Bus + Tree-Basis, KEIN Modul-Zugriff noetig
+    // (zombiesicher per Konstruktion).
+    const auto nodeUuid = nodeTree.getProperty (id::nodeId).toString();
+
+    for (auto& column : columns)
+    {
+        const auto effective = graphManager.getParamModulationEffective (nodeUuid, column->paramId);
+        column->slider.setModulationValue (effective.has_value()
+                                               ? std::optional<double> ((double) *effective)
+                                               : std::nullopt);
+    }
 }
 
 void FxModulePanel::refreshSendStatusNow()

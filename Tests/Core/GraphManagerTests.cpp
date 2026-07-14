@@ -1,3 +1,4 @@
+#include <catch2/catch_approx.hpp>
 #include <catch2/catch_test_macros.hpp>
 
 #include <juce_audio_processors/juce_audio_processors.h>
@@ -411,4 +412,88 @@ TEST_CASE ("requestNodeDelete: unbekannte nodeId wird abgelehnt", "[GraphManager
     TestRig rig;
 
     CHECK_FALSE (rig.manager.requestNodeDelete ("nicht-vorhanden"));
+}
+
+//==============================================================================
+// MIDI-Rig M5c: Macro-Modulation (ParamModulationBus)
+
+TEST_CASE ("Macro-Modulation: Atomic traegt den Effektivwert, Tree behaelt die Basis",
+           "[GraphManager][midirig][macromod]")
+{
+    TestRig rig;
+    // Ueber die Patch-Aktion (createState erzeugt den Parameters-Subtree).
+    auto node = rig.manager.addModuleNode (attenuatorId, {});
+    rig.manager.flushPendingTopologyUpdate();
+
+    const auto uuid = TestRig::uuidOf (node);
+    auto param = node.getChildWithName (conduit::id::parameters)
+                     .getChildWithProperty (conduit::id::paramId, "gain");
+    REQUIRE (param.isValid());
+
+    auto* module = rig.manager.getModuleFor (uuid);
+    REQUIRE (module != nullptr);
+    auto* atomicTarget = module->getParameterTarget ("gain");
+    REQUIRE (atomicTarget != nullptr);
+
+    // Basis setzen (Listener spiegelt ins Atomic).
+    param.setProperty (conduit::id::paramValue, 0.25, nullptr);
+    CHECK (atomicTarget->load (std::memory_order_relaxed) == Catch::Approx (0.25f));
+
+    // Modulation +0.5 ueber die Range 0..1 -> effektiv 0.75; Tree unangetastet.
+    rig.manager.setParamModulation ({ uuid, "gain" }, 0.5f);
+    CHECK (atomicTarget->load (std::memory_order_relaxed) == Catch::Approx (0.75f));
+    CHECK ((double) param.getProperty (conduit::id::paramValue) == Catch::Approx (0.25));
+
+    // Basis-Drag komponiert weiter (syncParameterValue-Hook).
+    param.setProperty (conduit::id::paramValue, 0.4, nullptr);
+    CHECK (atomicTarget->load (std::memory_order_relaxed) == Catch::Approx (0.9f));
+
+    // Effektivwert-Anzeige rechnet OHNE Modul-Zugriff.
+    const auto effective = rig.manager.getParamModulationEffective (uuid, "gain");
+    REQUIRE (effective.has_value());
+    CHECK (*effective == Catch::Approx (0.9f));
+
+    // Clamp am oberen Rand.
+    rig.manager.setParamModulation ({ uuid, "gain" }, 1.0f);
+    CHECK (atomicTarget->load (std::memory_order_relaxed) == Catch::Approx (1.0f));
+
+    // Clear -> Basis kehrt zurueck, Anzeige leer.
+    rig.manager.clearParamModulation ({ uuid, "gain" });
+    CHECK (atomicTarget->load (std::memory_order_relaxed) == Catch::Approx (0.4f));
+    CHECK_FALSE (rig.manager.getParamModulationEffective (uuid, "gain").has_value());
+}
+
+TEST_CASE ("Macro-Modulation: ueberlebt Node-Delete + Re-Add (Uuid-keyed, Re-Apply beim Rebuild)",
+           "[GraphManager][midirig][macromod]")
+{
+    TestRig rig;
+    auto node = rig.manager.addModuleNode (attenuatorId, {});
+    rig.manager.flushPendingTopologyUpdate();
+
+    const auto uuid = TestRig::uuidOf (node);
+    auto param = node.getChildWithName (conduit::id::parameters)
+                     .getChildWithProperty (conduit::id::paramId, "gain");
+    REQUIRE (param.isValid());
+    param.setProperty (conduit::id::paramValue, 0.2, nullptr);
+
+    rig.manager.setParamModulation ({ uuid, "gain" }, 0.5f);
+
+    // Node entfernen: kein Crash, Offset bleibt gemerkt, Anzeige leer.
+    rig.nodes().removeChild (node, nullptr);
+    rig.manager.flushPendingTopologyUpdate();
+    REQUIRE (rig.manager.getModuleFor (uuid) == nullptr);
+
+    rig.manager.setParamModulation ({ uuid, "gain" }, 0.5f);   // No-op-Store, kein Crash
+    CHECK_FALSE (rig.manager.getParamModulationEffective (uuid, "gain").has_value());
+
+    // Re-Add desselben Subtrees (Undo-Analogie): addNewNodes spiegelt via
+    // syncParameterValue -> die gemerkte Modulation greift automatisch wieder.
+    rig.nodes().appendChild (node, nullptr);
+    rig.manager.flushPendingTopologyUpdate();
+
+    auto* module = rig.manager.getModuleFor (uuid);
+    REQUIRE (module != nullptr);
+    auto* atomicTarget = module->getParameterTarget ("gain");
+    REQUIRE (atomicTarget != nullptr);
+    CHECK (atomicTarget->load (std::memory_order_relaxed) == Catch::Approx (0.7f));
 }

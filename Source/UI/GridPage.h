@@ -1,6 +1,7 @@
 #pragma once
 
 #include <map>
+#include <set>
 
 #include <juce_audio_devices/juce_audio_devices.h>
 #include <juce_data_structures/juce_data_structures.h>
@@ -10,6 +11,7 @@
 #include "ChordMemoryStrip.h"
 #include "Core/CcControlModel.h"
 #include "Core/ChordMemory.h"
+#include "Core/ConduitMacroTargets.h"
 #include "Core/GridPanelSettings.h"
 #include "Core/GridSessionStore.h"
 #include "Core/HardwareCcDatabase.h"
@@ -106,6 +108,7 @@ class MappingsListComponent;
     ist akzeptiert (TODO(design)).
 */
 class GridPage final : public juce::Component,
+                       public grid::IGridControlModSink,
                        private juce::ValueTree::Listener,
                        private juce::Timer,
                        private juce::ChangeListener
@@ -118,8 +121,18 @@ public:
               MidiPortHub& midiPortHubToUse, MidiRigSettings& midiRigSettingsToUse,
               MidiProfileLibrary& midiProfileLibraryToUse,
               ControllerProfileLibrary& controllerProfileLibraryToUse,
-              EditorDockPanel& dockPanelToUse);
+              EditorDockPanel& dockPanelToUse,
+              IParamModulationSink& paramModSinkToUse);
     ~GridPage() override;
+
+    //==========================================================================
+    // M5c (IGridControlModSink): Modulation eines Grid-Control-Werts —
+    // Basiswert bleibt unangetastet, nur Ausgabe (feedMacros) und Anzeige
+    // (zweiter Marker im Layer) verwenden den Effektivwert. Re-Entranz-
+    // Guard bricht Zyklen (Control A moduliert B moduliert A).
+
+    void setControlModulation (const grid::MacroControlKey& key, float offsetNorm) override;
+    void clearControlModulation (const grid::MacroControlKey& key) override;
 
     /** M5b: Dock-Tab hat gewechselt (EngineEditor leitet
         onActiveTabChanged weiter) — CC-/Map-Modus der Overlays neu
@@ -275,6 +288,7 @@ private:
     grid::IMidiOutputTarget& midiTarget;
 
     GridPanelSettings& panelSettings;
+    IParamModulationSink& paramModSink;   // M5c: GraphManager (Conduit-Param-Ziele)
     grid::MpeMidiSink& mpeMidiSink;   // Block D1: Expression-Mode-Umschaltung (Settings-Tab)
     LiveSetModel& liveSetModel;       // Block E: Ableton-Parameter-Browser (Macro-Ziele)
     TouchLiveClient& touchLiveClient;
@@ -318,6 +332,20 @@ private:
     // M4b: letzter externer High/Low-Zustand pro Control-Key -- Toggles
     // schalten nur auf steigender Flanke um (applyExternalValue).
     std::map<grid::MacroControlKey, bool> externalHigh;
+
+    // M5c: aktive Grid-Control-Modulationen (Offset [-1..+1] pro Key) +
+    // Re-Entranz-Guard (Zyklen A→B→A terminieren beim zweiten Besuch).
+    std::map<grid::MacroControlKey, float> controlModOffsets;
+    std::set<grid::MacroControlKey> controlModFeedGuard;
+
+    /** Effektivwert eines Control-Werts (roh + Modulations-Offset,
+        geklemmt) — Identität ohne aktiven Offset. */
+    [[nodiscard]] float modulatedControlValue (const grid::MacroControlKey& key,
+                                               float rawValue01) const noexcept;
+
+    /** Macro-Fluss des Controls hinter key neu anstoßen (Modulations-
+        Änderung) + Layer repainten — guard-geschützt. */
+    void refeedControl (const grid::MacroControlKey& key);
 
     void refreshRigSubscriptions();
 

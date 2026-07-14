@@ -391,6 +391,65 @@ Tabs").
   Felder nur an, wenn das gelernte Control gerade angezeigt wird
   (Map-Learn kann ein anderes Control binden).
 
+## M5c — Conduit-Macro-Ziele mit Modulation (07/2026)
+
+Dritter Teil von M5 (User-Entscheidungen 14.07.2026): der Macro-Tab
+bekommt die Zielkategorie „Conduit" — (a) Modul-Parameter des Patches,
+(b) Grid-Controls. Semantik: **Modulation statt Übernahme** — der
+User-Basiswert bleibt Souverän, wählbar unipolar (+, ab Basis
+aufwärts) oder bipolar (±, um die Basis herum), `amount`-skaliert,
+grafisch angezeigt.
+
+- **ParamModulationBus (`Source/Core/ParamModulation.h` +
+  GraphManager):** Kernentscheidung — der Tree behält den BASISWERT,
+  der GraphManager verrechnet `eff = clamp(base + offset·userRange)`
+  (Doppel-Clamp User- + Hard-Range) und schreibt den Effektivwert in
+  das BESTEHENDE `getParameterTarget()`-Atomic (dokumentierte
+  Erweiterung des Dual-State-Musters 6.1, Präzedenz OSC-Fastpath).
+  Kein Chassis-Umbau, kein Audio-Thread-Code, uniform für FX- und
+  Nicht-FX-Module; das FX-CV-Modell rechnet unverändert obendrauf
+  (Macro → CV → Link). Hook in `syncParameterValue` — Fader-Drag
+  komponiert live, `addNewNodes` re-appliziert nach Rebuild/Preset
+  automatisch. Einträge sind Uuid-keyed und überleben Node-Delete
+  BEWUSST (Store dann No-op — Undo eines Deletes reaktiviert die
+  Modulation); gelöscht wird über den Target-Dtor
+  (`clearParamModulation`). `getParamModulationEffective` rechnet den
+  Anzeige-Wert aus Tree-Basis + Offset — ganz ohne Modul-Zugriff.
+- **Targets (`Source/Core/ConduitMacroTargets.h/.cpp`):**
+  `ConduitParamTarget` (Sink + rootState + persistente nodeUuid/paramId
+  — nie ein Modul-Pointer, 5.3; `describe()` löst transient auf, Node
+  weg → „fehlt: {Name}"; Dtor cleart, Basis kehrt zurück; Dedupe auf
+  dem Offset; toState = nodeUuid/paramId/bipolar/amount/Name-Cache) und
+  `GridControlModTarget` (Offset auf einen `MacroControlKey` über
+  `IGridControlModSink` = GridPage). Kein Resolver-Lauf nach
+  Session-Load nötig (anders als Live-dvid) — die Ids sind selbst
+  persistent.
+- **Grid-Control-Modulation (GridPage als Sink):** `controlModOffsets`
+  pro Key; der Basiswert des Controls bleibt unangetastet — nur
+  `feedMacros` (Ausgabe) und die Anzeige verwenden
+  `modulatedControlValue`. Re-Entranz-Guard (`controlModFeedGuard`)
+  bricht Zyklen A→B→A beim zweiten Besuch desselben Keys.
+- **Picker (`Source/UI/ConduitTargetPicker`):** vierte Typ-Kachel
+  „CND" im MacroPanel; CallOutBox-Drilldown (Muster
+  HardwareTargetPicker) Wurzel = Module (rootState Nodes[], Name =
+  moduleId) + Sektion Grid-Controls (GridPage liefert die Einträge
+  live); Modul → dsp-Parameter (role "dsp", uiHidden gefiltert).
+  Zeile: Zusammenfassungs-Kachel (Tap = Picker) + Polaritäts-Kachel
+  (aktiv = ±) + Amount-Feld (0–100 %); Setter wirken live auf
+  bestehende Ziele. `rebuildFromBinding` erkennt beide Typen
+  (M3-Lektion: fehlende dynamic_cast-Zweige = falscher Live-Zustand).
+- **Anzeige:** `CurvedSlider::setModulationValue` (cyaner Zweit-Marker
+  am Effektivwert + Verbindungslinie zum Griff, `paintOverChildren`,
+  Response-Kurve gratis über `getPositionOfValue`); gefüttert vom
+  bestehenden 30-Hz-Meter-Tick des FxModulePanel aus
+  `getParamModulationEffective`. `CcControlLayer::modulationValueFor`
+  zeichnet den Zweit-Marker an Grid-Controls (Fader: Linie, XY: Ring).
+  Generisches `ParameterPanel` (Nicht-FX-Module) zeigt noch keinen
+  Marker — die Engine wirkt dort trotzdem (Phase 2).
+- **Out of scope:** Audio-rate-Modulation (Macro-Kette ist ~60 Hz
+  Message Thread), Marker im generischen ParameterPanel, SysEx (M8),
+  Pickup-LED (M6).
+
 ## Lektionen
 
 - **MSVC + verschachtelte Brace-Init:**
@@ -458,7 +517,7 @@ Tabs").
   M2  Profile + NRPN + PC — midi.guide-CSV-Parser (Klangerzeuger-Profile), NRPN-Assembler pro Port, Program-Change Senden/Empfangen — erledigt 07/2026 (inkl. Hardware-Picker-Vorgriff: NRPN/CC-Ziele aus Profilen)
   M3  Semantischer Picker — Geräte-/Parameter-Auswahl-UI (Analogie Ableton-Parameter-Browser Track→Device→Parameter) — erledigt 07/2026
   M4  Controller-Profile + LED — Conduit-Controller-Profile-v1-CSV-Schema, Send-Adresse + bis zu 3 Feedback-Adressen pro Control — erledigt 07/2026
-  M5  Map-Modus + Tab + Chord-Learn — M5a Shift-Ebenen/Chord-Learn (erledigt 07/2026) · M5b app-weites Dock + Map-Tab + Overlay (erledigt 07/2026) · M5c Conduit-Macro-Ziele mit Modulation (offen)
+  M5  Map-Modus + Tab + Chord-Learn — M5a Shift-Ebenen/Chord-Learn · M5b app-weites Dock + Map-Tab + Overlay · M5c Conduit-Macro-Ziele mit Modulation — komplett erledigt 07/2026
   M6  Pickup-LED + Verhalten — Soft-Takeover-Feedback über Controller-Profile-LEDs — offen
   M7  Bidirektional Ribbons — Motorfader-/Ribbon-Feedback in beide Richtungen — offen
   M8  SysEx-Snippets — Sende-only Hex-Snippets mit optionalem `{v}`-Platzhalterbyte — offen

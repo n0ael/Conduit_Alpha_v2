@@ -3,12 +3,14 @@
 #include <functional>
 #include <map>
 #include <memory>
+#include <optional>
 
 #include <juce_audio_processors/juce_audio_processors.h>
 
 #include "GraphFader.h"
 #include "Interfaces/IClockSource.h"
 #include "Modules/ConduitModule.h"
+#include "ParamModulation.h"
 
 namespace conduit
 {
@@ -64,7 +66,8 @@ class ProcessorModule;
     bewusst kein std::atomic. Kein UI-Code, kein DSP-Code (der Fade selbst
     lebt im GraphFader auf dem Audio Thread).
 */
-class GraphManager final : private juce::ValueTree::Listener,
+class GraphManager final : public IParamModulationSink,
+                           private juce::ValueTree::Listener,
                            private juce::AsyncUpdater
 {
 public:
@@ -166,6 +169,24 @@ public:
         des Limits. Message Thread. */
     bool setParameterButtonCount (const juce::String& nodeUuid, const juce::String& paramId,
                                   int count);
+
+    //==========================================================================
+    // Macro-Modulation (MIDI-Rig M5c, ParamModulation.h): der Tree behält
+    // den BASISWERT, der Bus schreibt den Effektivwert (Basis + Offset ·
+    // User-Range, doppelt geclamped) über syncParameterValue() in das
+    // bestehende getParameterTarget()-Atomic. Einträge überleben Node-
+    // Delete/Undo bewusst (Uuid-keyed, Store dann No-op — Re-Apply beim
+    // Rebuild); gelöscht wird über clearParamModulation (Target-Dtor).
+
+    void setParamModulation (const ParamModKey& key, float offsetNorm) override;
+    void clearParamModulation (const ParamModKey& key) override;
+
+    /** Effektivwert für die Modulations-Anzeige (Tree-Basis + Offset,
+        OHNE Modul-Zugriff — zombiesicher per Konstruktion); kein Eintrag
+        oder Parameter nicht (mehr) im Tree → kein Wert. [MT] */
+    [[nodiscard]] std::optional<float>
+        getParamModulationEffective (const juce::String& nodeUuid,
+                                     const juce::String& paramId) const;
 
     /** Patch-Aktion (Dev-Modus 4.6, Kern-Workflow): speichert den AKTUELLEN
         paramValue (geclamped auf die Hard-Range) in Button buttonIndex.
@@ -325,8 +346,14 @@ private:
 
     /** Tree → Atomic (Dual-State-Gegenstück zu 6.1): spiegelt paramValue auf
         das Echtzeit-Target des live-Moduls — bedient UI-Slider, Preset-Load
-        und Undo. Kein Rebuild, nur ein atomic store. */
+        und Undo. Kein Rebuild, nur ein atomic store. M5c: komponiert einen
+        aktiven Macro-Modulations-Offset mit ein (Tree behält die Basis). */
     void syncParameterValue (juce::ValueTree parameterTree);
+
+    /** Parameter-Subtree zu (nodeUuid, paramId) — ungültig wenn Node oder
+        Parameter fehlt (M5c-Modulation, Effektivwert-Anzeige). */
+    [[nodiscard]] juce::ValueTree parameterTreeFor (const juce::String& nodeUuid,
+                                                    const juce::String& paramId) const;
 
     /** Tree → Atomic (Dev-Modus 4.6): spiegelt den effektiven User-
         Regelbereich (userMin/userMax, Fallback Hard-Range) ins Chassis —
@@ -400,6 +427,10 @@ private:
 
     // Deleting-Nodes (Phase 1 abgeschlossen): nodeId → gecachte moduleId
     std::map<juce::String, juce::String> pendingDeletes;
+
+    // M5c: aktive Macro-Modulationen (Offset [-1..+1] pro Parameter),
+    // Uuid-keyed — kein Modul-Pointer (5.3). Nur Message Thread.
+    std::map<ParamModKey, float> paramModulations;
 
     // Reservierte moduleIds → extern verwaltete Graph-Nodes (I/O)
     std::map<juce::String, juce::AudioProcessorGraph::NodeID> externalEndpoints;

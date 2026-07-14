@@ -5,6 +5,7 @@
 
 #include <juce_gui_basics/juce_gui_basics.h>
 
+#include "Core/ConduitMacroTargets.h"
 #include "Core/HardwareCcDatabase.h"
 #include "Core/MacroBindings.h"
 #include "Core/MidiInBindings.h"
@@ -50,8 +51,16 @@ public:
                 LiveSetModel& liveSetModelToUse, TouchLiveClient& touchLiveClientToUse,
                 grid::MidiInBindings& midiInBindingsToUse,
                 grid::HardwareCcDatabase& hardwareDbToUse,
-                MidiProfileLibrary& profileLibraryToUse);
+                MidiProfileLibrary& profileLibraryToUse,
+                juce::ValueTree rootStateToUse,
+                IParamModulationSink& paramModSinkToUse,
+                grid::IGridControlModSink& gridModSinkToUse);
     ~MacroPanel() override;
+
+    /** M5c: Grid-Control-Einträge fuer den Conduit-Picker (Key +
+        Anzeigename) — GridPage setzt den Hook nach der Konstruktion
+        (enumeriert beide CcControlModels live beim Öffnen). */
+    std::function<std::vector<std::pair<grid::MacroControlKey, juce::String>>()> gridControlEntries;
 
     /** Long-Press-Ziel setzen: layer/controlId (Achse 0); hasYAxis = true
         bei XY-Controls (X/Y-Umschalter erscheint). */
@@ -91,11 +100,26 @@ private:
         static constexpr int kExpandedHeight  = 236;
 
     private:
-        enum class TargetType { none, midi, live, hardware };
+        enum class TargetType { none, midi, live, hardware, conduit };
 
         [[nodiscard]] grid::MacroBinding* binding() const noexcept;
         void applyTargetType (TargetType newType);
         void rebuildMidiTarget();
+
+        /** M5c: Conduit-Ziel (Modulation) — Picker öffnen, Ziele bauen,
+            Polarität/Amount live in bestehende Ziele spiegeln. */
+        void openConduitTargetPicker();
+        void createConduitParamTarget (const juce::String& nodeUuid, const juce::String& paramId,
+                                       const juce::String& displayName);
+        void createGridControlTarget (const grid::MacroControlKey& key,
+                                      const juce::String& displayName);
+        void applyPolarityAmount();
+        void updateCndSummaryText();
+        [[nodiscard]] bool cndBipolar() const noexcept { return polarityTile.isActive(); }
+        [[nodiscard]] float cndAmount01() const noexcept
+        {
+            return (float) (amountField.getValue() / 100.0);
+        }
         void populateTrackCombo();
         void populateDeviceCombo();
         void populateParameterCombo();
@@ -127,7 +151,15 @@ private:
         push::TextTile midiTile     { "MIDI" };
         push::TextTile liveTile     { "Live" };
         push::TextTile hardwareTile { "HW" };
+        push::TextTile cndTile      { "CND" };   // M5c: Conduit-Modulation
         push::TextTile removeTile { juce::String::fromUTF8 ("\xc3\x97") };   // ×
+
+        // M5c: Zusammenfassung (Tap = ConduitTargetPicker), Polarität
+        // (aktiv = bipolar ±) und Amount in Prozent.
+        push::TextTile cndSummaryTile { juce::String::fromUTF8 ("Ziel w\xc3\xa4hlen\xe2\x80\xa6"),
+                                        push::colours::ledWhite, true };
+        push::TextTile polarityTile { juce::String::fromUTF8 ("\xc2\xb1") };
+        NumberFieldBracket amountField { NumberFieldBracket::Config { 0.0, 100.0, 100.0, 1.0, 0, 0.5, "Amt" } };
 
         NumberFieldBracket channelField { NumberFieldBracket::Config { 1.0, 16.0, 1.0, 1.0, 0, 0.1, "Ch" } };
         NumberFieldBracket ccField      { NumberFieldBracket::Config { 0.0, 127.0, 74.0, 1.0, 0, 0.5, "CC" } };
@@ -171,6 +203,12 @@ private:
     grid::MidiInBindings& midiInBindings;
     grid::HardwareCcDatabase& hardwareDb;   // Block L2 (Klartext-Schnellpfad)
     MidiProfileLibrary& profileLibrary;     // M2: midi.guide-CSV-Profile
+
+    // M5c: Conduit-Ziele (Modulation) — Tree fuer den Picker/describe,
+    // Senken fuer Parameter- bzw. Grid-Control-Modulation.
+    juce::ValueTree rootState;
+    IParamModulationSink& paramModSink;
+    grid::IGridControlModSink& gridModSink;
 
     int  currentLayer = 0;
     int  currentControlId = -1;   // -1 = kein Control gewaehlt (Leerzustand)

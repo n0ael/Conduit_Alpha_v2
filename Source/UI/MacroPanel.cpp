@@ -1,5 +1,6 @@
 #include "MacroPanel.h"
 
+#include "ConduitTargetPicker.h"
 #include "TouchLive/AbletonParamTarget.h"
 #include "Util/CcNames.h"
 
@@ -21,6 +22,7 @@ MacroPanel::TargetRow::TargetRow (MacroPanel& ownerToUse, int indexToUse)
     addChildComponent (midiTile);
     addChildComponent (liveTile);
     addChildComponent (hardwareTile);
+    addChildComponent (cndTile);
     addChildComponent (removeTile);
     addChildComponent (channelField);
     addChildComponent (ccField);
@@ -28,11 +30,25 @@ MacroPanel::TargetRow::TargetRow (MacroPanel& ownerToUse, int indexToUse)
     addChildComponent (deviceCombo);
     addChildComponent (parameterCombo);
     addChildComponent (hwSummaryTile);
+    addChildComponent (cndSummaryTile);
+    addChildComponent (polarityTile);
+    addChildComponent (amountField);
 
     midiTile.onClick     = [this] { applyTargetType (TargetType::midi); };
     liveTile.onClick     = [this] { applyTargetType (TargetType::live); };
     hardwareTile.onClick = [this] { applyTargetType (TargetType::hardware); };
+    cndTile.onClick      = [this] { applyTargetType (TargetType::conduit); };
     removeTile.onClick = [this] { owner.removeTargetSlot (index); };
+
+    // M5c: Conduit-Modulation — Kachel oeffnet den Picker; Polaritaet
+    // (aktiv = bipolar ±) und Amount wirken live auf ein bestehendes Ziel.
+    cndSummaryTile.onClick = [this] { openConduitTargetPicker(); };
+    polarityTile.onClick = [this]
+    {
+        polarityTile.setActive (! polarityTile.isActive());
+        applyPolarityAmount();
+    };
+    amountField.onValueCommitted = [this] (double) { applyPolarityAmount(); };
 
     // Block L: Tooltip zeigt den Funktionsnamen der Nummer live beim Swipe
     // ("Mod Wheel" statt nur "1") -- kein Layout-Eingriff am NumberFieldBracket.
@@ -110,6 +126,20 @@ void MacroPanel::TargetRow::rebuildFromBinding()
             ccField.setValue (midi->ccNumber(), juce::dontSendNotification);
             ccField.setTooltip (CcNames::displayName (midi->ccNumber()));   // Block L
         }
+        else if (auto* conduitParam = dynamic_cast<grid::ConduitParamTarget*> (b->target.get()))
+        {
+            // M5c: geladene Conduit-Ziele erkennen (M3-Lektion: fehlende
+            // Zweige liessen Zeilen faelschlich im Live-Zustand landen).
+            targetType = TargetType::conduit;
+            polarityTile.setActive (conduitParam->isBipolar());
+            amountField.setValue (conduitParam->amount() * 100.0, juce::dontSendNotification);
+        }
+        else if (auto* controlMod = dynamic_cast<grid::GridControlModTarget*> (b->target.get()))
+        {
+            targetType = TargetType::conduit;
+            polarityTile.setActive (controlMod->isBipolar());
+            amountField.setValue (controlMod->amount() * 100.0, juce::dontSendNotification);
+        }
         else
         {
             targetType = TargetType::live;
@@ -119,11 +149,13 @@ void MacroPanel::TargetRow::rebuildFromBinding()
     midiTile.setActive (targetType == TargetType::midi);
     liveTile.setActive (targetType == TargetType::live);
     hardwareTile.setActive (targetType == TargetType::hardware);
+    cndTile.setActive (targetType == TargetType::conduit);
 
     if (targetType == TargetType::live && trackCombo.getNumItems() == 0)
         populateTrackCombo();
 
     updateHwSummaryText();
+    updateCndSummaryText();
 
     resized();
     repaint();
@@ -138,13 +170,14 @@ void MacroPanel::TargetRow::applyTargetType (TargetType newType)
     midiTile.setActive (targetType == TargetType::midi);
     liveTile.setActive (targetType == TargetType::live);
     hardwareTile.setActive (targetType == TargetType::hardware);
+    cndTile.setActive (targetType == TargetType::conduit);
 
     if (auto* b = binding())
     {
         if (targetType == TargetType::midi)
             rebuildMidiTarget();
         else
-            b->target.reset();   // Live/Hardware: erst nach Auswahl konfiguriert
+            b->target.reset();   // Live/Hardware/Conduit: erst nach Auswahl konfiguriert
     }
 
     if (targetType == TargetType::live)
@@ -154,9 +187,97 @@ void MacroPanel::TargetRow::applyTargetType (TargetType newType)
         hasHwSelection = false;
         updateHwSummaryText();
     }
+    else if (targetType == TargetType::conduit)
+    {
+        updateCndSummaryText();
+    }
 
     resized();
     repaint();
+}
+
+//==============================================================================
+// MIDI-Rig M5c: Conduit-Ziele (Modulation)
+
+void MacroPanel::TargetRow::openConduitTargetPicker()
+{
+    auto picker = std::make_unique<ConduitTargetPicker> (
+        owner.rootState,
+        owner.gridControlEntries != nullptr ? owner.gridControlEntries()
+                                            : std::vector<ConduitTargetPicker::GridControlEntry> {});
+
+    picker->onParamChosen = [this] (const juce::String& nodeUuid, const juce::String& paramId,
+                                    const juce::String& displayName)
+    { createConduitParamTarget (nodeUuid, paramId, displayName); };
+    picker->onControlChosen = [this] (const grid::MacroControlKey& key,
+                                      const juce::String& displayName)
+    { createGridControlTarget (key, displayName); };
+
+    juce::CallOutBox::launchAsynchronously (std::move (picker),
+                                            cndSummaryTile.getScreenBounds(), nullptr);
+}
+
+void MacroPanel::TargetRow::createConduitParamTarget (const juce::String& nodeUuid,
+                                                      const juce::String& paramId,
+                                                      const juce::String& displayName)
+{
+    auto* b = binding();
+    if (b == nullptr || targetType != TargetType::conduit)
+        return;
+
+    b->target = std::make_unique<grid::ConduitParamTarget> (
+        owner.paramModSink, owner.rootState, nodeUuid, paramId,
+        cndBipolar(), cndAmount01(), displayName);
+
+    updateCndSummaryText();
+    repaint();
+}
+
+void MacroPanel::TargetRow::createGridControlTarget (const grid::MacroControlKey& key,
+                                                     const juce::String& displayName)
+{
+    auto* b = binding();
+    if (b == nullptr || targetType != TargetType::conduit)
+        return;
+
+    b->target = std::make_unique<grid::GridControlModTarget> (
+        owner.gridModSink, key, cndBipolar(), cndAmount01(), displayName);
+
+    updateCndSummaryText();
+    repaint();
+}
+
+void MacroPanel::TargetRow::applyPolarityAmount()
+{
+    auto* b = binding();
+    if (b == nullptr)
+        return;
+
+    if (auto* conduitParam = dynamic_cast<grid::ConduitParamTarget*> (b->target.get()))
+    {
+        conduitParam->setBipolar (cndBipolar());
+        conduitParam->setAmount (cndAmount01());
+    }
+    else if (auto* controlMod = dynamic_cast<grid::GridControlModTarget*> (b->target.get()))
+    {
+        controlMod->setBipolar (cndBipolar());
+        controlMod->setAmount (cndAmount01());
+    }
+
+    updateCndSummaryText();
+    repaint();
+}
+
+void MacroPanel::TargetRow::updateCndSummaryText()
+{
+    const auto* b = binding();
+    const auto hasConduitTarget = b != nullptr
+        && (dynamic_cast<grid::ConduitParamTarget*> (b->target.get()) != nullptr
+            || dynamic_cast<grid::GridControlModTarget*> (b->target.get()) != nullptr);
+
+    cndSummaryTile.setText (hasConduitTarget
+                                ? b->target->describe()
+                                : juce::String::fromUTF8 ("Ziel w\xc3\xa4hlen\xe2\x80\xa6"));
 }
 
 void MacroPanel::TargetRow::rebuildMidiTarget()
@@ -442,6 +563,7 @@ void MacroPanel::TargetRow::resized()
     midiTile.setVisible (showDetail);
     liveTile.setVisible (showDetail);
     hardwareTile.setVisible (showDetail);
+    cndTile.setVisible (showDetail);
     removeTile.setVisible (showDetail);
     channelField.setVisible (showDetail
         && (targetType == TargetType::midi || targetType == TargetType::hardware));
@@ -450,6 +572,9 @@ void MacroPanel::TargetRow::resized()
     deviceCombo.setVisible (showDetail && targetType == TargetType::live);
     parameterCombo.setVisible (showDetail && targetType == TargetType::live);
     hwSummaryTile.setVisible (showDetail && targetType == TargetType::hardware);
+    cndSummaryTile.setVisible (showDetail && targetType == TargetType::conduit);
+    polarityTile.setVisible (showDetail && targetType == TargetType::conduit);
+    amountField.setVisible (showDetail && targetType == TargetType::conduit);
     if (curveTile != nullptr)
         curveTile->setVisible (showDetail);
 
@@ -462,12 +587,14 @@ void MacroPanel::TargetRow::resized()
     auto typeRow = area.removeFromTop (26);
     removeTile.setBounds (typeRow.removeFromRight (26));
     typeRow.removeFromRight (4);
-    const auto typeTileWidth = (typeRow.getWidth() - 8) / 3;
+    const auto typeTileWidth = (typeRow.getWidth() - 12) / 4;
     midiTile.setBounds (typeRow.removeFromLeft (typeTileWidth));
     typeRow.removeFromLeft (4);
     liveTile.setBounds (typeRow.removeFromLeft (typeTileWidth));
     typeRow.removeFromLeft (4);
-    hardwareTile.setBounds (typeRow);
+    hardwareTile.setBounds (typeRow.removeFromLeft (typeTileWidth));
+    typeRow.removeFromLeft (4);
+    cndTile.setBounds (typeRow);
 
     area.removeFromTop (4);
 
@@ -502,6 +629,18 @@ void MacroPanel::TargetRow::resized()
         hwSummaryTile.setBounds (configRow);
         area.removeFromTop (4);
         area.removeFromTop (28 + 4 + 34);   // Platz, den frueher hwParamCombo + Puffer brauchten
+    }
+    else if (targetType == TargetType::conduit)
+    {
+        // M5c: Zusammenfassung (Tap = Picker) ueber Polaritaet + Amount.
+        cndSummaryTile.setBounds (area.removeFromTop (30));
+        area.removeFromTop (4);
+        auto configRow = area.removeFromTop (30);
+        polarityTile.setBounds (configRow.removeFromLeft (40));
+        configRow.removeFromLeft (4);
+        amountField.setBounds (configRow);
+        area.removeFromTop (4);
+        area.removeFromTop (30);   // stabile Kurvenhoehe (wie die anderen Zweige)
     }
     else
     {
@@ -576,11 +715,16 @@ MacroPanel::MacroPanel (grid::MacroBindings& bindingsToUse, grid::IMidiOutputTar
                         LiveSetModel& liveSetModelToUse, TouchLiveClient& touchLiveClientToUse,
                         grid::MidiInBindings& midiInBindingsToUse,
                         grid::HardwareCcDatabase& hardwareDbToUse,
-                        MidiProfileLibrary& profileLibraryToUse)
+                        MidiProfileLibrary& profileLibraryToUse,
+                        juce::ValueTree rootStateToUse,
+                        IParamModulationSink& paramModSinkToUse,
+                        grid::IGridControlModSink& gridModSinkToUse)
     : macroBindings (bindingsToUse), midiTarget (midiTargetToUse),
       liveSetModel (liveSetModelToUse), touchLiveClient (touchLiveClientToUse),
       midiInBindings (midiInBindingsToUse), hardwareDb (hardwareDbToUse),
-      profileLibrary (profileLibraryToUse)
+      profileLibrary (profileLibraryToUse),
+      rootState (std::move (rootStateToUse)),
+      paramModSink (paramModSinkToUse), gridModSink (gridModSinkToUse)
 {
     addAndMakeVisible (titleLabel);
     addChildComponent (axisXTile);

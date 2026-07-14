@@ -1005,14 +1005,94 @@ void GraphManager::syncParameterValue (juce::ValueTree parameterTree)
     if (module == nullptr)
         return;  // noch nicht materialisiert — addNewNodes() spiegelt initial
 
-    if (auto* target = module->getParameterTarget (parameterTree.getProperty (id::paramId).toString()))
+    const auto paramId = parameterTree.getProperty (id::paramId).toString();
+
+    if (auto* target = module->getParameterTarget (paramId))
     {
         const auto minValue = static_cast<float> ((double) parameterTree.getProperty (id::paramMin, 0.0));
         const auto maxValue = static_cast<float> ((double) parameterTree.getProperty (id::paramMax, 1.0));
         const auto value    = static_cast<float> ((double) parameterTree.getProperty (id::paramValue, 0.0));
 
-        target->store (juce::jlimit (minValue, maxValue, value), std::memory_order_relaxed);
+        auto effective = juce::jlimit (minValue, maxValue, value);
+
+        // M5c: aktiven Macro-Modulations-Offset einkomponieren — der Tree
+        // behält die BASIS (Fader/Preset/OSC-Send unberührt), nur das
+        // Atomic trägt den Effektivwert (dokumentierte 6.1-Erweiterung).
+        const auto modIt = paramModulations.find (
+            { nodeTree.getProperty (id::nodeId).toString(), paramId });
+        if (modIt != paramModulations.end())
+        {
+            const auto userMin = static_cast<float> ((double) parameterTree.getProperty (
+                id::paramUserMin, parameterTree.getProperty (id::paramMin, 0.0)));
+            const auto userMax = static_cast<float> ((double) parameterTree.getProperty (
+                id::paramUserMax, parameterTree.getProperty (id::paramMax, 1.0)));
+
+            effective = computeModulatedValue (effective, modIt->second,
+                                               userMin, userMax, minValue, maxValue);
+        }
+
+        target->store (effective, std::memory_order_relaxed);
     }
+}
+
+juce::ValueTree GraphManager::parameterTreeFor (const juce::String& nodeUuid,
+                                                const juce::String& paramId) const
+{
+    const auto nodeTree = rootState.getChildWithName (id::nodes)
+                              .getChildWithProperty (id::nodeId, nodeUuid);
+    if (! nodeTree.isValid())
+        return {};
+
+    return nodeTree.getChildWithName (id::parameters)
+        .getChildWithProperty (id::paramId, paramId);
+}
+
+//==============================================================================
+void GraphManager::setParamModulation (const ParamModKey& key, float offsetNorm)
+{
+    JUCE_ASSERT_MESSAGE_THREAD
+
+    paramModulations[key] = juce::jlimit (-1.0f, 1.0f, offsetNorm);
+
+    // Modul fehlt/nicht materialisiert → syncParameterValue ist No-op, der
+    // gemerkte Offset greift beim nächsten Rebuild (addNewNodes spiegelt).
+    if (auto parameterTree = parameterTreeFor (key.nodeUuid, key.paramId); parameterTree.isValid())
+        syncParameterValue (parameterTree);
+}
+
+void GraphManager::clearParamModulation (const ParamModKey& key)
+{
+    JUCE_ASSERT_MESSAGE_THREAD
+
+    if (paramModulations.erase (key) == 0)
+        return;
+
+    // Basiswert kehrt ins Atomic zurück.
+    if (auto parameterTree = parameterTreeFor (key.nodeUuid, key.paramId); parameterTree.isValid())
+        syncParameterValue (parameterTree);
+}
+
+std::optional<float> GraphManager::getParamModulationEffective (const juce::String& nodeUuid,
+                                                                const juce::String& paramId) const
+{
+    const auto modIt = paramModulations.find ({ nodeUuid, paramId });
+    if (modIt == paramModulations.end())
+        return std::nullopt;
+
+    const auto parameterTree = parameterTreeFor (nodeUuid, paramId);
+    if (! parameterTree.isValid())
+        return std::nullopt;
+
+    const auto minValue = static_cast<float> ((double) parameterTree.getProperty (id::paramMin, 0.0));
+    const auto maxValue = static_cast<float> ((double) parameterTree.getProperty (id::paramMax, 1.0));
+    const auto base     = juce::jlimit (minValue, maxValue,
+                                        static_cast<float> ((double) parameterTree.getProperty (id::paramValue, 0.0)));
+    const auto userMin  = static_cast<float> ((double) parameterTree.getProperty (
+        id::paramUserMin, parameterTree.getProperty (id::paramMin, 0.0)));
+    const auto userMax  = static_cast<float> ((double) parameterTree.getProperty (
+        id::paramUserMax, parameterTree.getProperty (id::paramMax, 1.0)));
+
+    return computeModulatedValue (base, modIt->second, userMin, userMax, minValue, maxValue);
 }
 
 void GraphManager::valueTreeChildAdded (juce::ValueTree& parent, juce::ValueTree& child)

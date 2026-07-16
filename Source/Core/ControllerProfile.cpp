@@ -156,6 +156,7 @@ ControllerProfile parseControllerProfileCsv (const juce::String& text, Controlle
     const auto colRole        = columnIndex ("role");
     const auto colMode        = columnIndex ("mode");
     const auto colSteps       = columnIndex ("steps");
+    const auto colRelEncoding = columnIndex ("rel_encoding");
     const auto colTouchNumber = columnIndex ("touch_number");
     const auto colDevice      = columnIndex ("device");
     const auto colSendKind    = columnIndex ("send_kind");
@@ -207,6 +208,7 @@ ControllerProfile parseControllerProfileCsv (const juce::String& text, Controlle
         control.role        = fieldAsString (fields, colRole);
         control.mode        = fieldAsString (fields, colMode);
         control.steps       = juce::jmax (0, fieldAsInt (fields, colSteps, 0));
+        control.relEncoding = parseRelativeEncoding (fieldAsString (fields, colRelEncoding));
         control.touchNumber = fieldAsInt (fields, colTouchNumber, -1);
         control.sendKind    = fieldAsAddressKind (fields, colSendKind);
         control.sendChannel = juce::jlimit (1, 16, fieldAsInt (fields, colSendChannel, 1));

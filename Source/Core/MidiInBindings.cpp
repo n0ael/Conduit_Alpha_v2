@@ -227,12 +227,13 @@ void MidiInBindings::handleIncomingPitchBend (int channel, int value14)
 }
 
 //==============================================================================
-void MidiInBindings::setAddressMode (int number, bool isNote, AddressMode mode, int relativeSteps)
+void MidiInBindings::setAddressMode (int number, bool isNote, AddressMode mode, int relativeSteps,
+                                     midirig::RelativeEncoding relEncoding)
 {
-    if (mode == AddressMode::absolute && relativeSteps <= 0)
+    if (mode == AddressMode::absolute)
         addressModes.erase ({ number, isNote });
     else
-        addressModes[{ number, isNote }] = { mode, juce::jmax (0, relativeSteps) };
+        addressModes[{ number, isNote }] = { mode, juce::jmax (0, relativeSteps), relEncoding };
 }
 
 void MidiInBindings::clearAddressModes()
@@ -294,7 +295,14 @@ void MidiInBindings::applyScrub (int channel, int number, float value01)
 
 void MidiInBindings::applyRelativeTicks (int channel, int number, int value7bit)
 {
-    const auto delta = midirig::ChannelStripLayers::decodeSignedDelta (value7bit);
+    // Kodierung ist GERAETEABHAENGIG und kommt aus dem Profil (M8-Feldtest:
+    // das AlphaTrack kodiert sign-magnitude -- als Zweierkomplement gelesen
+    // wurde aus "1 Tick zurueck" ein Sprung von -63, der Wert fiel auf 0).
+    const auto it = addressModes.find ({ number, false });
+    const auto encoding = it != addressModes.end() ? it->second.relEncoding
+                                                   : midirig::RelativeEncoding::twosComplement;
+
+    const auto delta = midirig::decodeRelativeDelta (value7bit, encoding);
     if (delta == 0)
         return;
 
@@ -304,7 +312,6 @@ void MidiInBindings::applyRelativeTicks (int channel, int number, int value7bit)
 
     markModifiersUsed (binding->modifiers);
 
-    const auto it = addressModes.find ({ number, false });
     const auto steps = it != addressModes.end() && it->second.steps > 0
                            ? it->second.steps : kDefaultRelativeSteps;
     binding->pendingDelta01 += (float) delta / (float) steps;

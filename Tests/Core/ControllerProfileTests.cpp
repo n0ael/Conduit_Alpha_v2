@@ -168,3 +168,30 @@ TEST_CASE ("ControllerProfile::findBySendAddress: kanal-agnostisch, Kind/Nummer 
 
     CHECK (profile.findBySendAddress (AddressKind::cc, 99) == nullptr);
 }
+
+TEST_CASE ("M8: rel_encoding wird geparst (fehlende Spalte = Zweierkomplement)", "[midirig][m8]")
+{
+    const auto csv = juce::String (
+        "device,id,type,mode,steps,rel_encoding,send_kind,send_channel,send_number\n"
+        "T,enc_sign,encoder,relative,127,signbit,cc,1,16\n"
+        "T,enc_bin,encoder,relative,64,binoffset,cc,1,17\n"
+        "T,enc_default,encoder,relative,,,cc,1,18\n");
+
+    ControllerParseReport report;
+    const auto profile = parseControllerProfileCsv (csv, &report);
+    REQUIRE (report.accepted == 3);
+
+    CHECK (profile.findBySendAddress (AddressKind::cc, 16)->relEncoding == RelativeEncoding::signBit);
+    CHECK (profile.findBySendAddress (AddressKind::cc, 17)->relEncoding == RelativeEncoding::binaryOffset);
+    CHECK (profile.findBySendAddress (AddressKind::cc, 18)->relEncoding == RelativeEncoding::twosComplement);
+}
+
+TEST_CASE ("M8: CSV ohne rel_encoding-Spalte bleibt Zweierkomplement (M7-Kompatibilitaet)", "[midirig][m8]")
+{
+    const auto csv = juce::String (
+        "device,id,type,mode,send_kind,send_channel,send_number\n"
+        "T,enc,encoder,relative,cc,1,0\n");
+
+    const auto profile = parseControllerProfileCsv (csv);
+    CHECK (profile.findBySendAddress (AddressKind::cc, 0)->relEncoding == RelativeEncoding::twosComplement);
+}

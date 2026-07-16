@@ -9,6 +9,7 @@
 #include <juce_core/juce_core.h>
 
 #include "MacroBindings.h"
+#include "RelativeEncoding.h"
 
 namespace conduit::grid
 {
@@ -41,8 +42,9 @@ inline constexpr int kPitchBendBindingBase = 128;
                 User-Entscheidung 16.07.2026): Delta zur letzten Position,
                 nach einer Pause > kScrubGapTicks ankert das naechste Event
                 neu (kein Sprung beim Neuaufsetzen).
-    - relativeTicks: signed Ticks (Endlos-Encoder, Kodierung wie
-                ChannelStripLayers::decodeSignedDelta). */
+    - relativeTicks: Ticks eines Endlos-Encoders; WIE sie kodiert sind, sagt
+                die `RelativeEncoding` der Adresse (geraeteabhaengig, aus dem
+                Profil -- siehe RelativeEncoding.h). */
 enum class AddressMode { absolute, direct, scrub, relativeTicks };
 
 //==============================================================================
@@ -223,8 +225,10 @@ public:
     // gekeyt auf (nummer, isNote) -- PB-Adressen tragen ihren Kanal in der
     // Nummer (s. pitchBendBindingNumber). relativeSteps: Ticks fuer den
     // vollen Regelweg (nur relativeTicks; 0 = kDefaultRelativeSteps).
+    // relEncoding: nur relativeTicks -- Kodierung des Encoders (RelativeEncoding.h).
 
-    void setAddressMode (int number, bool isNote, AddressMode mode, int relativeSteps = 0);
+    void setAddressMode (int number, bool isNote, AddressMode mode, int relativeSteps = 0,
+                         midirig::RelativeEncoding relEncoding = midirig::RelativeEncoding::twosComplement);
     void clearAddressModes();
     [[nodiscard]] AddressMode addressModeFor (int number, bool isNote) const noexcept;
 
@@ -364,7 +368,12 @@ private:
 
     // M8: Adress-Modi (Key {nummer, isNote}, kanal-agnostisch) + Scrub-Anker
     // pro Adresse (letzte rohe Position + Tick des letzten Events).
-    struct AddressModeEntry { AddressMode mode = AddressMode::absolute; int steps = 0; };
+    struct AddressModeEntry
+    {
+        AddressMode mode = AddressMode::absolute;
+        int steps = 0;
+        midirig::RelativeEncoding relEncoding = midirig::RelativeEncoding::twosComplement;
+    };
     struct ScrubAnchor      { float raw = 0.0f; std::uint64_t tick = 0; };
     std::map<std::pair<int, bool>, AddressModeEntry> addressModes;
     std::map<InputAddress, ScrubAnchor> scrubAnchors;

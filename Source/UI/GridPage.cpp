@@ -757,7 +757,7 @@ void GridPage::rebuildLayerSelectMap (const midirig::ControllerProfile* profile)
             || control.group.isEmpty() || control.sendKind != midirig::AddressKind::cc)
             continue;
 
-        layerSelectCcToColumn[control.sendNumber] = control.group;
+        layerSelectCcToColumn[control.sendNumber] = { control.group, control.relEncoding };
 
         // Aktive Ebene der Spalte in Bindungen UND Router-Basis-Anzeige
         // spiegeln (Persistenz-Load hat channelStripLayers ggf. schon gesetzt;
@@ -797,7 +797,7 @@ void GridPage::rebuildAddressModes (const midirig::ControllerProfile* profile)
         if (control.mode.equalsIgnoreCase (midirig::kModeRelative))
         {
             midiInBindings.setAddressMode (number, isNote, grid::AddressMode::relativeTicks,
-                                           control.steps);
+                                           control.steps, control.relEncoding);
             continue;
         }
 
@@ -824,9 +824,10 @@ bool GridPage::routeLayerSelectCc (int, int number, int value7bit)
     // Schritt akkumulieren; jeder Schritt frischt den Ebenen-Blink auf, ein
     // Ebenen-Wechsel schaltet die aktive Bank um (naechste Bewegung eines
     // Spalten-Controls loest dann via Soft-Takeover den Pickup aus).
-    const auto result = channelStripLayers.feed (it->second, value7bit);
-    midiInBindings.setActiveLayer (it->second, result.layer);
-    pickupLedRouter.setColumnLayer (it->second, result.layer);   // dauerhafte Basis + 16tel bei Wechsel
+    const auto& column = it->second.column;
+    const auto result = channelStripLayers.feed (column, value7bit, it->second.encoding);
+    midiInBindings.setActiveLayer (column, result.layer);
+    pickupLedRouter.setColumnLayer (column, result.layer);   // dauerhafte Basis + 16tel bei Wechsel
     return true;
 }
 

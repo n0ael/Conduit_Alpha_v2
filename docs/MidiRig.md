@@ -647,9 +647,9 @@ voller Regelweg, Neuaufsetzen ankert ohne Sprung).
   sofort, Adresse wartet NIE — Pickup-Exemption auch in
   `updatePickupStates`) · `scrub` (absoluter Positions-Strom relativ:
   Delta aufeinanderfolgender Positionen, Anker nach Pause >
-  `kScrubGapTicks` ≈ 250 ms) · `relativeTicks` (signed Ticks via
-  `ChannelStripLayers::decodeSignedDelta`, Skala CSV-Spalte `steps`,
-  Default 127). Deltas akkumulieren in `Binding::pendingDelta01` und
+  `kScrubGapTicks` ≈ 250 ms) · `relativeTicks` (Encoder-Ticks, Kodierung
+  aus dem Profil — s. M8.1 —, Skala CSV-Spalte `steps`, Default 127).
+  Deltas akkumulieren in `Binding::pendingDelta01` und
   werden im tick() DIREKT (ohne Glaettung/Takeover) auf
   `clamp(current + delta)` angewendet — sie folgen `bestMatch`, treffen
   also die aktive Shift-/Channelstrip-Ebene.
@@ -681,13 +681,54 @@ voller Regelweg, Neuaufsetzen ankert ohne Sprung).
   Konsument). Library referenziert das BinaryData-Symbol direkt
   (M4-Lektion `originalFilenames`).
 
-**Grenzen/offen:** Feldtest AlphaTrack (Motor-Verhalten, Encoder-`steps`-
-Gefuehl, Scrub-Gap); LCD + Native-Mode-Force-SysEx = M9; Strip sendet nur
+## M8.1 — Relativ-Kodierung wird profil-getrieben (Feldtest 16./17.07.2026)
+
+**Feldtest AlphaTrack bestanden** („alles funktioniert perfekt") mit EINEM
+Fund: die Encoder erhoehten Werte korrekt, sprangen beim Zurueckdrehen aber
+sofort auf 0. Ursache: M7s `decodeSignedDelta` liest ZWEIERKOMPLEMENT
+(1..63 = +, 65..127 = Wert−128), das AlphaTrack kodiert aber
+SIGN-MAGNITUDE (Bit 6 = Vorzeichen, Bits 0..5 = Betrag). „1 Tick zurueck"
+(0x41) wurde damit zu **−63** — der Wert fiel durch. Positive Ticks sind in
+beiden Verfahren identisch, deshalb fiel es beim Hochdrehen nicht auf.
+Die Native-Mode-Doku belegt Sign-Magnitude durch ihr eigenes Beispiel:
+`0x43` = „3 Ticks gegen den Uhrzeigersinn" (Zweierkomplement waere −61).
+
+- **`Source/Core/RelativeEncoding.h` (neu, header-only, pur):**
+  `RelativeEncoding{twosComplement, signBit, binaryOffset}` +
+  `decodeRelativeDelta()` + `parseRelativeEncoding()`. Dieselbe Dreiteilung
+  wie Abletons Remote-Scripts („2's Comp." / „Signed Bit" / „Bin Offset") —
+  mehr Verfahren gibt es in der Praxis nicht.
+- **CSV-Spalte `rel_encoding`** (`signbit`/`sign`, `binoffset`/`bin`, leer =
+  `twosComplement`): neue Encoder-Geraete bekommen ihre Kodierung damit rein
+  ueber Daten, nie ueber Gerätecode (Rule midirig). Profile ohne die Spalte
+  verhalten sich unveraendert (K1 unberuehrt).
+- **Reichweite:** `ControllerControl::relEncoding` → sowohl
+  `MidiInBindings::setAddressMode(..., relEncoding)` (Bindungen) ALS AUCH
+  `ChannelStripLayers::feed(..., encoding)` (M7-Ebenen-Selektoren, ueber
+  `GridPage::LayerSelectEntry`) — sonst haette ein Sign-Magnitude-Geraet
+  beim Ebenen-Waehlen denselben Sprung. `decodeSignedDelta` bleibt als
+  duenner Zweierkomplement-Wrapper (M7-Aufrufer + Tests).
+
+**Grenzen/offen:** LCD + Native-Mode-Force-SysEx = M9; Strip sendet nur
 32 Stufen (Scrub glaettet das inhaerent); ein `position`-Feedback als
 CC ist vorgesehen, aber ungetestet an echter Hardware (kein Motor-CC-
-Geraet im Rig).
+Geraet im Rig); Encoder-`steps=127` ist der Startwert (Feinjustage nach
+Gefuehl offen).
+
+**Hardware-Voraussetzung (Dev-PC):** der AlphaTrack-Treiber (2009) laeuft
+unter Windows 11 nur mit lokal signiertem Katalog + Testsigning — Skripte
+und Doku unter `C:\Users\leonn\AlphaTrack-signed` (nicht Teil des Repos).
 
 ## Lektionen
+
+- **Relativ-Encoder: positive Richtung beweist NICHTS** (M8.1, Feldtest).
+  Zweierkomplement und Sign-Magnitude sind fuer Vorwaerts-Ticks
+  BITGLEICH — ein Encoder-Test, der nur hochdreht, laeuft in beiden
+  Kodierungen sauber und bestaetigt die falsche Annahme. Erst das
+  Zurueckdrehen trennt sie (und dann drastisch: „1 Tick zurueck" wird zu
+  −63). Encoder IMMER in beide Richtungen testen; Kodierung nie raten,
+  sondern am Doku-BEISPIEL verifizieren (die Bereichsangabe „backward
+  41–7f" allein ist mehrdeutig — erst „0x43 = 3 Ticks CCW" entscheidet).
 
 - **MSVC + verschachtelte Brace-Init:**
   `juce::Array<juce::MidiDeviceInfo> { { "name", "id" } }` deutet MSVC
@@ -765,7 +806,7 @@ Geraet im Rig).
   M5  Map-Modus + Tab + Chord-Learn — M5a Shift-Ebenen/Chord-Learn · M5b app-weites Dock + Map-Tab + Overlay · M5c Conduit-Macro-Ziele mit Modulation — komplett erledigt 07/2026
   M6  Pickup-LED + Verhalten — Soft-Takeover-Feedback über Controller-Profile-LEDs (PickupLedRouter: Spalten-Status/Detail-Modus/Shift-Pad-Anzeige, TakeoverMode pro Gerät, Ebenen-Wechsel-Sprung-Fix) — erledigt 07/2026 (Feldtest offen); M6.1 (15.07.2026): Shift-Pad zeigt die RICHTUNG solid (rot/orange/grün, kein Blinken) statt zu blinken — Näherungswert bleibt die Spalten-Status-LED
   M7  Channelstrip-Ebenen — Top-Encoder (role=layer_select) wählen pro Spalte eine von 3 Binding-Bänken (ChannelStripLayers, 8-Step-Zonen, Ebenen-Blink, „aktive Ebene = Lernziel", pro Session persistiert) — erledigt 07/2026 (Feldtest offen)
-  M8  Bidirektional Ribbons — Motorfader-/Ribbon-Feedback in beide Richtungen (PitchBend-Adressen 128+Kanal, AddressModes direct/scrub/relativeTicks, PositionFeedbackRouter, AlphaTrack-Factory-CSV) — erledigt 07/2026 (Feldtest offen)
+  M8  Bidirektional Ribbons — Motorfader-/Ribbon-Feedback in beide Richtungen (PitchBend-Adressen 128+Kanal, AddressModes direct/scrub/relativeTicks, PositionFeedbackRouter, AlphaTrack-Factory-CSV) — erledigt 07/2026, **Feldtest AlphaTrack bestanden** (17.07.2026); M8.1: Relativ-Kodierung profil-getrieben (`rel_encoding`, RelativeEncoding.h — AlphaTrack ist sign-magnitude, nicht Zweierkomplement)
   M9  SysEx-Snippets — Sende-only Hex-Snippets mit optionalem `{v}`-Platzhalterbyte + AlphaTrack-LCD/Native-Mode-Force — offen
 
 ## Referenzen

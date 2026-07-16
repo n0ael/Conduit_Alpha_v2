@@ -351,9 +351,16 @@ private:
     // Spalte eine von 3 Binding-Baenken. Persistiert pro Session (GridSessionStore).
     midirig::ChannelStripLayers channelStripLayers;
 
-    // CC-Nummer -> Spalte fuer role=layer_select-Encoder (aus dem aktiven
-    // Profil, gepflegt in refreshRigSubscriptions -- kein Profil-Scan je Event).
-    std::map<int, juce::String> layerSelectCcToColumn;
+    // CC-Nummer -> Spalte + Encoder-Kodierung fuer role=layer_select-Encoder
+    // (aus dem aktiven Profil, gepflegt in refreshRigSubscriptions -- kein
+    // Profil-Scan je Event). M8: die Kodierung ist geraeteabhaengig und muss
+    // auch hier aus dem Profil kommen (nicht nur bei den Bindungen).
+    struct LayerSelectEntry
+    {
+        juce::String column;
+        midirig::RelativeEncoding encoding = midirig::RelativeEncoding::twosComplement;
+    };
+    std::map<int, LayerSelectEntry> layerSelectCcToColumn;
 
     /** M7: leitet ein Controller-CC zum Ebenen-Selektor, wenn seine Nummer im
         aktiven Profil role=layer_select traegt (true = verbraucht, nicht an die

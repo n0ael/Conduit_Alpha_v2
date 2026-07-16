@@ -4,6 +4,8 @@
 
 #include <juce_core/juce_core.h>
 
+#include "RelativeEncoding.h"
+
 namespace conduit::midirig
 {
 
@@ -66,6 +68,11 @@ struct ControllerControl
         siehe MidiInBindings::kDefaultRelativeSteps). */
     int steps = 0;
 
+    /** M8: nur mode=relative -- WIE der Encoder sein Delta kodiert (CSV-Spalte
+        `rel_encoding`). Geraeteabhaengig, siehe RelativeEncoding.h; Default =
+        Zweierkomplement (Profile ohne die Spalte verhalten sich wie M7). */
+    RelativeEncoding relEncoding = RelativeEncoding::twosComplement;
+
     /** M8: Touch-Note dieses Controls (AlphaTrack: Fader 0x68, Strip 0x74,
         Encoder 0x78..0x7a), -1 = keine. Touch-Noten sind KEINE Bindungs-
         Quellen (Learn-Falle: der Griff zum Fader wuerde sonst die Note
@@ -125,13 +132,13 @@ struct ControllerParseReport
     getrieben, Spalten ueber ihre Namen (case-insensitiv), unbekannte
     Spalten ignoriert, RFC-4180-Quoting unterstuetzt.
 
-    Spalten: id, type, section, group, role, mode, steps, touch_number,
-    send_kind, send_channel, send_number,
+    Spalten: id, type, section, group, role, mode, steps, rel_encoding,
+    touch_number, send_kind, send_channel, send_number,
     feedback1_kind, feedback1_channel, feedback1_number, feedback1_meaning,
     feedback2_kind, feedback2_channel, feedback2_number, feedback2_meaning,
     feedback3_kind, feedback3_channel, feedback3_number, feedback3_meaning.
-    `group` (M6) und `mode`/`steps`/`touch_number` (M8) sind optional --
-    CSVs ohne die Spalten parsen unveraendert.
+    `group` (M6) und `mode`/`steps`/`rel_encoding`/`touch_number` (M8) sind
+    optional -- CSVs ohne die Spalten parsen unveraendert.
     `*_kind`-Spalten: "note" fuer Noten-Adressen, "pitchbend" (auch "pb")
     fuer Pitch Bend (M8), alles andere (auch leer) = CC (Default). Zeilen
     ohne `id` ODER ohne `send_number` werden uebersprungen + gezaehlt

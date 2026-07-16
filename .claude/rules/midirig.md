@@ -48,6 +48,13 @@ paths:
   bleibt die Spalten-Status-LED. `PickupState` trägt `physicalAbove`/
   `aligned`; aligned-Einträge sieht nur Mechanismus 4, `waitingFor()`
   filtert sie für 1–3 aus.
+- Relativ-Encoder (M8.1): die Kodierung ist GERAETEABHAENGIG und kommt aus
+  dem Profil (CSV `rel_encoding`: signbit/binoffset/leer=twosComplement) —
+  nie im Code pro Geraet verzweigen. EINE Quelle: `RelativeEncoding.h`
+  (`decodeRelativeDelta`); `ChannelStripLayers::decodeSignedDelta` ist nur
+  noch ein Zweierkomplement-Wrapper. Die Kodierung MUSS beide Konsumenten
+  erreichen: Bindungen (`setAddressMode`) UND Ebenen-Selektoren
+  (`ChannelStripLayers::feed`). AlphaTrack = signBit, K1 = twosComplement.
 - Motorfader/Ribbons (M8): Pitch-Bend-Bindungen leben als Nummer
   `128 + Kanal` (`grid::pitchBendBindingNumber`) im CC-Namensraum — die
   PB-ADRESSE ist der Kanal (findBySendAddress matcht PB ueber

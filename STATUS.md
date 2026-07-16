@@ -1,9 +1,12 @@
 # Conduit Alpha — Projektstatus
 
-> Letzte Aktualisierung: 2026-07-16 | wird nach jedem Meilenstein gepflegt
+> Letzte Aktualisierung: 2026-07-17 | wird nach jedem Meilenstein gepflegt
 > Architektur-Referenz: [CLAUDE.md](CLAUDE.md) | Repo: n0ael/Conduit
 
-## Aktueller Meilenstein (16.07.2026) — MIDI-Rig M8 (ADR 006): Bidirektionale Ribbons/Motorfader
+## Aktueller Meilenstein (16./17.07.2026) — MIDI-Rig M8 (ADR 006): Bidirektionale Ribbons/Motorfader
+
+**Feldtest am Frontier AlphaTrack bestanden (17.07.2026)** — Motorfader,
+Ribbon und Encoder laufen. Ein Fund (M8.1, gefixt): siehe unten.
 
 Anlass: Frontier **AlphaTrack** (Motorfader + Touch-Strip + 3 Touch-Encoder);
 Protokoll aus der offiziellen „Native Mode v1.0"-Doku. Details: docs/MidiRig.md M8.
@@ -22,8 +25,14 @@ Protokoll aus der offiziellen „Native Mode v1.0"-Doku. Details: docs/MidiRig.m
   (Learn-Falle gefiltert).
 - **CSV-Schema:** `*_kind=pitchbend`, Spalten `mode`/`steps`/`touch_number`,
   `type=touch`; Factory-Profil `Frontier_AlphaTrack.csv` (32 Controls).
-- Tests: 895 Cases / 30171 Assertions grün. **Feldtest offen** (Motor,
-  Encoder-`steps`, Scrub-Gap); LCD + Native-Mode-Force-SysEx folgen mit M9.
+- **M8.1 (Feldtest-Fix):** Encoder erhöhten Werte korrekt, sprangen beim
+  Zurückdrehen auf 0 — das AlphaTrack kodiert **sign-magnitude**, M7 las
+  Zweierkomplement („1 Tick zurück" = −63). Neu: `RelativeEncoding.h`
+  (twosComplement/signBit/binaryOffset, pur + testbar) + CSV-Spalte
+  `rel_encoding` — profil-getrieben, kein Gerätecode; wirkt auf Bindungen
+  UND M7-Ebenen-Selektoren. Profile ohne die Spalte bleiben unverändert.
+- Tests: 903 Cases / 30211 Assertions grün. Offen: LCD + Native-Mode-Force-SysEx
+  (M9), Encoder-`steps`-Feinjustage nach Gefühl.
 
 ## Davor (15.07.2026) — MIDI-Rig M6.1 + M7 (ADR 006): Shift-Pad-Richtung + Channelstrip-Ebenen
 

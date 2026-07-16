@@ -968,3 +968,28 @@ TEST_CASE ("M8: clearAddressModes stellt Absolut-Verhalten wieder her", "[grid][
     rig.bindings.clearAddressModes();
     REQUIRE (rig.bindings.addressModeFor (16, false) == grid::AddressMode::absolute);
 }
+
+TEST_CASE ("M8: relativeTicks folgt der Profil-Kodierung (AlphaTrack sign-magnitude)", "[grid][midiin][m8]")
+{
+    Rig rig;
+    rig.bindings.bind (keyFor (1), 1, 16);
+    rig.bindings.setAddressMode (16, false, grid::AddressMode::relativeTicks, 100,
+                                 conduit::midirig::RelativeEncoding::signBit);
+    rig.values[1] = 0.5f;
+
+    // 4 Ticks vor (0x04) -> +0.04
+    rig.bindings.handleIncomingCc (1, 16, 0x04);
+    rig.tick();
+    REQUIRE (rig.values[1] == Approx (0.54f).margin (0.001));
+
+    // 3 Ticks zurueck (0x43) -> -0.03  (der Feldtest-Bug: als Zweierkomplement
+    // waeren das -61 Ticks gewesen -> Wert waere auf 0 gefallen)
+    rig.bindings.handleIncomingCc (1, 16, 0x43);
+    rig.tick();
+    REQUIRE (rig.values[1] == Approx (0.51f).margin (0.001));
+
+    // 1 Tick zurueck (0x41) darf NICHT auf 0 springen
+    rig.bindings.handleIncomingCc (1, 16, 0x41);
+    rig.tick();
+    REQUIRE (rig.values[1] == Approx (0.50f).margin (0.001));
+}

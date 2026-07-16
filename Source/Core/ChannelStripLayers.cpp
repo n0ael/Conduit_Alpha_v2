@@ -5,20 +5,16 @@ namespace conduit::midirig
 
 int ChannelStripLayers::decodeSignedDelta (int ccValue7bit) noexcept
 {
-    const auto v = juce::jlimit (0, 127, ccValue7bit);
-
-    if (v == 0 || v == 64)
-        return 0;
-
-    return v <= 63 ? v : v - 128;   // 65..127 -> -63..-1
+    return decodeRelativeDelta (ccValue7bit, RelativeEncoding::twosComplement);
 }
 
-ChannelStripLayers::Result ChannelStripLayers::feed (const juce::String& column, int ccValue7bit)
+ChannelStripLayers::Result ChannelStripLayers::feed (const juce::String& column, int ccValue7bit,
+                                                     RelativeEncoding encoding)
 {
     auto& strip = strips[column];
 
     const auto oldLayer = strip.layer;
-    strip.pos   = juce::jlimit (0, kMaxPos, strip.pos + decodeSignedDelta (ccValue7bit));
+    strip.pos   = juce::jlimit (0, kMaxPos, strip.pos + decodeRelativeDelta (ccValue7bit, encoding));
     strip.layer = layerForPos (strip.pos);
 
     return { strip.layer, strip.layer != oldLayer };

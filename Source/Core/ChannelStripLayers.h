@@ -4,6 +4,8 @@
 
 #include <juce_core/juce_core.h>
 
+#include "RelativeEncoding.h"
+
 namespace conduit::midirig
 {
 
@@ -31,9 +33,11 @@ public:
         bool layerChanged = false;
     };
 
-    /** Relatives Encoder-Event (K1-Endlos-Encoder, signed-Kodierung, s. u.)
-        akkumulieren und die -- ggf. neue -- Ebene der Spalte melden. */
-    Result feed (const juce::String& column, int ccValue7bit);
+    /** Relatives Encoder-Event akkumulieren und die -- ggf. neue -- Ebene der
+        Spalte melden. `encoding` kommt aus dem Profil (CSV `rel_encoding`,
+        M8) -- Default = Zweierkomplement (M7-Verhalten, K1). */
+    Result feed (const juce::String& column, int ccValue7bit,
+                 RelativeEncoding encoding = RelativeEncoding::twosComplement);
 
     [[nodiscard]] int layerFor (const juce::String& column) const;
 
@@ -46,9 +50,11 @@ public:
     /** Spalte -> aktive Ebene (Persistenz-Save). Nur belegte Spalten. */
     [[nodiscard]] std::map<juce::String, int> snapshot() const;
 
-    /** K1-Endlos-Encoder senden relativ (signed): 1..63 = +n (CW),
-        65..127 = -(128-n) (CCW), 0/64 = 0. Isoliert + testbar, weil die
-        Kodierung geraeteabhaengig ist (Feldtest kann sie hier justieren). */
+    /** Zweierkomplement-Dekodierung (1..63 = +n, 65..127 = -(128-n), 0/64 = 0).
+        Duenner Wrapper um `decodeRelativeDelta` -- die Kodierung ist
+        GERAETEABHAENGIG und lebt seit M8 profil-getrieben in
+        RelativeEncoding.h (Feldtest-Lektion: das AlphaTrack kodiert
+        sign-magnitude, nicht Zweierkomplement). */
     [[nodiscard]] static int decodeSignedDelta (int ccValue7bit) noexcept;
 
 private:

@@ -19,7 +19,7 @@ namespace conduit::midirig
     die universelle Schicht zwischen Takeover-Kern und Hardware: neue
     Controller bekommen Pickup-Feedback rein ueber CSV-Eintraege, ohne Code.
 
-    Vier LED-Mechanismen (User-Entscheidungen 14./15.07.2026):
+    Fuenf LED-Mechanismen (User-Entscheidungen 14./15.07.2026):
 
     1. GRUPPEN-STATUS: Controls mit gleichem `group` teilen sich eine
        Status-LED (das Control der Gruppe mit status_red/status_amber/
@@ -35,9 +35,14 @@ namespace conduit::midirig
        wartet, aus = ungebunden).
     3. EINFACHE PROFILE: ein `led_pickup` OHNE Gruppe blinkt immer, solange
        sein Control wartet.
-    4. SHIFT-PAD-ANZEIGE (profil-unabhaengig): wartet eine Shift-Ebene und
-       wird ihr Control bewegt (activeRecently), blinken die LEDs der
-       gehaltenen Modifier-Pads distanz-kodiert mit.
+    4. SHIFT-PAD-ANZEIGE (profil-unabhaengig): solange ein Modifier-Pad
+       gehalten wird und die physische Position seiner Shift-Ebene bekannt
+       ist, zeigt das Pad die RICHTUNG solid an (rot = Wert verringern,
+       orange = Wert erhoehen, gruen = gefunden; kein Blinken). Den
+       Naeherungswert (Blink) traegt die Spalten-Status-LED aus Mechanismus 1.
+    5. EBENEN-BLINK (M7, flashLayer): nach jedem Schritt des Channelstrip-
+       Ebenen-Encoders blinken alle Pads (type=="pad") der Spalte kurz schnell
+       in der Ebenen-Farbe (0 rot / 1 gruen / 2 orange).
 
     Beim Verlassen jedes Blink-/Modus-Zustands wird der letzte Echo-Stand
     restauriert (lastEchoValueFor) -- blosses 0-Senden wuerde aktive
@@ -91,6 +96,30 @@ public:
         mapp-/lernbar. */
     void handleControllerNote (int noteNumber, bool isOn);
 
+    /** M7b: aktive Ebene einer Spalte setzen (Encoder-Auswahl / Profil-Load).
+        Alle Pads (type=="pad") der Spalte leuchten DAUERHAFT in der Ebenen-
+        Farbe (0 rot / 1 gruen / 2 orange) als Basis-Anzeige; aktive Toggle-/
+        Button-Pads blinken im 8tel-Takt (tempo-synchron). Wechselt die Ebene,
+        flackert die ganze Spalte kurz (`kLayerChangeTicks`) im 16tel-Takt.
+        Pickup-/Detail-/Shift-Anzeigen (Mechanismen 1-4) bleiben momentane
+        Overrides ueber der Basis. */
+    void setColumnLayer (const juce::String& column, int layer);
+
+    /** M7b: aktuelle Beat-Position (LinkClock, Message Thread) fuer die
+        tempo-synchronen 8tel-/16tel-Blinks. GridPage fuettert sie je Tick. */
+    void setBeatPosition (double beat) noexcept { beatPosition = beat; }
+
+    /** true, wenn der Router die LED (isNote, number) gerade aktiv bespielt
+        (Shift-Richtung, Ebenen-Anzeige, Status ...). Der Echo-Pfad fragt das
+        pro Feedback-Adresse ab und ueberspringt sie dann -- sonst
+        ueberschreibt ein Wert-Echo die Router-Farbe und der Dedup verhindert
+        die Korrektur (M6.1-Fund: rot/orange wurden vom Pad-Eigenfunktions-Echo
+        auf dunkel gezogen). */
+    [[nodiscard]] bool isManaging (bool isNote, int number) const noexcept
+    {
+        return lastSent.count (LedAddress { isNote, number }) > 0;
+    }
+
     /** ~60 Hz (Hub-Tick, NACH midiInBindings.tick()): Blink-Phasen
         fortschreiben, Soll-Zustand diffen, Sends ausloesen. */
     void tick();
@@ -104,11 +133,20 @@ public:
 
     static constexpr int kLedOn = 127;
 
-    // Feedback-meanings (Konvention "Conduit Controller Profile v1", M6)
+    // M7b: Dauer des 16tel-Flackerns nach einem Ebenen-Wechsel (~0,6 s bei
+    // 60 Hz) und die Beat-Unterteilungen der tempo-synchronen Blinks.
+    static constexpr int    kLayerChangeTicks   = 36;
+    static constexpr double kEighthBeats        = 0.5;    // aktives Pad blinkt im 8tel
+    static constexpr double kSixteenthBeats     = 0.25;   // Ebenen-Wechsel im 16tel
+
+    // Feedback-meanings (Konvention "Conduit Controller Profile v1", M6/M7)
     static constexpr const char* kMeaningStatusRed   = "status_red";
     static constexpr const char* kMeaningStatusAmber = "status_amber";
     static constexpr const char* kMeaningStatusGreen = "status_green";
     static constexpr const char* kMeaningLedPickup   = "led_pickup";
+    static constexpr const char* kMeaningLed         = "led";           // Pad-Basis (rot)
+    static constexpr const char* kMeaningLedLayerB   = "led_layer_b";   // orange
+    static constexpr const char* kMeaningLedLayerC   = "led_layer_c";   // gruen
 
 private:
     /** Kanal-lose LED-Adresse (Feedback laeuft immer auf dem Geraete-Kanal). */
@@ -125,7 +163,7 @@ private:
     {
         bool  blink      = false;
         int   solidValue = 0;      // nur solid: Zielwert (0 = bewusst aus)
-        float distance01 = 0.0f;   // nur blink: steuert die Rate
+        float distance01 = 0.0f;   // nur blink: steuert die Rate (distanz-kodiert)
     };
 
     struct BlinkPhase
@@ -151,6 +189,15 @@ private:
 
     // Aktuell gehaltene Controller-Noten (Kandidaten fuer Status-Pushes).
     std::set<int> heldNotes;
+
+    // M7b: aktive Ebene je Spalte (dauerhafte Basis-Anzeige) + laufendes
+    // 16tel-Wechsel-Fenster (Rest-Ticks) + Beat-Position fuer die Blinks.
+    std::map<juce::String, int> columnLayer;
+    std::map<juce::String, int> layerChangeWindow;
+    double beatPosition = 0.0;
+
+    /** tempo-synchroner Blink: an in der ersten Haelfte jeder Unterteilung. */
+    [[nodiscard]] bool beatBlinkOn (double subdivisionBeats) const noexcept;
 
     // Verwaltete LEDs: zuletzt gesendeter Wert + Blink-Phasen.
     std::map<LedAddress, int> lastSent;

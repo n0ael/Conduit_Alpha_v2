@@ -724,6 +724,38 @@ TEST_CASE ("MidiInBindings: Sprung-Modus wendet sofort an und wartet nie", "[gri
     REQUIRE (rig.applied.empty());
 }
 
+TEST_CASE ("MidiInBindings: Channelstrip-Ebene routet aufs aktive Bank-Binding", "[grid][midiin][midirig]")
+{
+    Rig rig;
+    rig.bindings.setPickupEnabled (false);   // Sprung: Werte greifen sofort
+    rig.bindings.columnResolver = [] (int, int number, bool isNote) -> juce::String
+    { return (! isNote && number == 16) ? juce::String ("col1") : juce::String(); };
+
+    // "Aktive Ebene = Lernziel": Ebene 0 -> Control 1, Ebene 1 -> Control 2.
+    rig.bindings.setActiveLayer ("col1", 0);
+    rig.bindings.bind (keyFor (1), 1, 16);   // Auto-Resolve col1/layer0
+
+    rig.bindings.setActiveLayer ("col1", 1);
+    rig.bindings.bind (keyFor (2), 1, 16);   // koexistiert (andere Ebene)
+    REQUIRE (rig.bindings.count() == 2);
+
+    // Aktive Ebene 1: eingehendes cc16 landet bei Control 2.
+    rig.bindings.handleIncomingCc (1, 16, 100);
+    rig.ticks (2);
+    CHECK (rig.values[2] == Approx (100.0f / 127.0f).margin (0.02));
+    REQUIRE_FALSE (rig.applied.empty());
+    CHECK (rig.applied.back().first == 2);
+
+    // Zurueck auf Ebene 0: cc16 landet jetzt bei Control 1.
+    rig.bindings.setActiveLayer ("col1", 0);
+    rig.applied.clear();
+    rig.bindings.handleIncomingCc (1, 16, 40);
+    rig.ticks (2);
+    CHECK (rig.values[1] == Approx (40.0f / 127.0f).margin (0.02));
+    REQUIRE_FALSE (rig.applied.empty());
+    CHECK (rig.applied.back().first == 1);
+}
+
 TEST_CASE ("MidiInBindings: Chord-Learn -- Pad-Akkord bindet die letzte Note mit den uebrigen als Modifier", "[grid][midiin][midirig]")
 {
     Rig rig;

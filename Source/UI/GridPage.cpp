@@ -23,12 +23,14 @@ GridPage::GridPage (juce::ValueTree rootStateToUse,
                      MidiProfileLibrary& midiProfileLibraryToUse,
                      ControllerProfileLibrary& controllerProfileLibraryToUse,
                      EditorDockPanel& dockPanelToUse,
-                     IParamModulationSink& paramModSinkToUse)
+                     IParamModulationSink& paramModSinkToUse,
+                     LinkClock& linkClockToUse)
     : rootState (std::move (rootStateToUse)),
       engine (engineToUse),
       midiPortHub (midiPortHubToUse), midiRigSettings (midiRigSettingsToUse),
       midiProfileLibrary (midiProfileLibraryToUse),
       controllerProfileLibrary (controllerProfileLibraryToUse),
+      linkClock (linkClockToUse),
       midiTarget (midiPortHubToUse.gridOutputTarget()),
       panelSettings (panelSettingsToUse),
       paramModSink (paramModSinkToUse),
@@ -394,14 +396,22 @@ GridPage::GridPage (juce::ValueTree rootStateToUse,
                 || feedback.meaning.startsWithIgnoreCase ("status_"))
                 continue;
 
-            target.send (feedback.kind == midirig::AddressKind::note
+            const auto isNoteFb = feedback.kind == midirig::AddressKind::note;
+
+            // Echo-Cache immer aktuell halten (Restore-Basis des Routers) ...
+            lastFeedbackSent[{ isNoteFb, feedback.number }] = (int) value7bit;
+
+            // ... aber NICHT senden, wenn der Router die LED gerade selbst
+            // bespielt (Shift-Richtung/Ebene, M6.1) -- sonst zieht das Echo die
+            // Farbe weg und der Router-Dedup korrigiert nie (Symptom: rot/orange
+            // flackern kurz und werden dann dunkel).
+            if (pickupLedRouter.isManaging (isNoteFb, feedback.number))
+                continue;
+
+            target.send (isNoteFb
                              ? juce::MidiMessage::noteOn (deviceChannel, feedback.number, value7bit)
                              : juce::MidiMessage::controllerEvent (deviceChannel, feedback.number,
                                                                    (int) value7bit));
-
-            // Echo-Cache: Grundlage fuer den LED-Restore des Routers.
-            lastFeedbackSent[{ feedback.kind == midirig::AddressKind::note, feedback.number }]
-                = (int) value7bit;
         }
     };
 
@@ -441,11 +451,38 @@ GridPage::GridPage (juce::ValueTree rootStateToUse,
                                                   const grid::MidiInBindings::PickupState& state)
     { pickupLedRouter.updatePickupState (address, state); };
 
+    // M7: Spalten-Resolver -- ordnet eine Eingangs-Adresse ihrer Channelstrip-
+    // Spalte zu (Profil-group), damit Live-/Learn-Bindungen die aktive Ebene
+    // taggen. Geebent sind nur "normale" Controls einer Spalte: nicht der
+    // Ebenen-Selektor (role) und nicht das Status-Push-Control (status_-Feedback).
+    midiInBindings.columnResolver = [this] (int, int number, bool isNote) -> juce::String
+    {
+        const auto context = controllerFeedbackContext();
+        if (! context.has_value())
+            return {};
+
+        const auto kind = isNote ? midirig::AddressKind::note : midirig::AddressKind::cc;
+        const auto* control = context->profile->findBySendAddress (kind, number);
+        if (control == nullptr || control->group.isEmpty()
+            || control->role.equalsIgnoreCase (midirig::kRoleLayerSelect))
+            return {};
+
+        for (const auto& fb : control->feedback)
+            if (fb.meaning.startsWithIgnoreCase ("status_"))
+                return {};   // Status-Push bleibt ungeebent
+
+        return control->group;
+    };
+
     tickSubToken = midiPortHub.subscribeTick ([this]
     {
         midiInBindings.tick ([this] (const grid::MacroControlKey& key) { return controlValueFor (key); },
                              [this] (const grid::MacroControlKey& key, float value01)
                              { applyExternalValue (key, value01); });
+
+        // M7b: Beat-Position fuer die tempo-synchronen Ebenen-Blinks (8tel
+        // aktiv / 16tel Wechsel) VOR dem Router-Tick setzen.
+        pickupLedRouter.setBeatPosition (linkClock.getBeatPosition());
 
         // M6: NACH midiInBindings.tick() -- der Router sieht die Warte-
         // Transitionen desselben Ticks (kein Flackern beim Uebergang).
@@ -539,8 +576,14 @@ void GridPage::refreshRigSubscriptions()
         midiRigSettings.getGridControllerDeviceId(),
         [this] (const midi::ControllerEvent& event)
         {
-            if (event.kind == midi::ControllerEvent::Kind::cc)
-                midiInBindings.handleIncomingCc (event.channel, event.number, event.value);
+            if (event.kind != midi::ControllerEvent::Kind::cc)
+                return;
+
+            // M7: Ebenen-Selektor-Encoder fangen das CC ab (keine Bindung).
+            if (routeLayerSelectCc (event.channel, event.number, event.value))
+                return;
+
+            midiInBindings.handleIncomingCc (event.channel, event.number, event.value);
         });
 
     // Controller-Rolle, Noten (M4): Pads senden Noten -- gleicher
@@ -592,11 +635,14 @@ void GridPage::refreshRigSubscriptions()
             pickupLedRouter.setProfile (*profile);
         else
             pickupLedRouter.clearProfile();
+
+        rebuildLayerSelectMap (profile);
     }
     else
     {
         midiInBindings.setPickupEnabled (true);
         pickupLedRouter.clearProfile();
+        rebuildLayerSelectMap (nullptr);
     }
 }
 
@@ -615,6 +661,45 @@ std::optional<GridPage::ControllerFeedbackContext> GridPage::controllerFeedbackC
         return std::nullopt;
 
     return ControllerFeedbackContext { profile, std::move (device) };
+}
+
+void GridPage::rebuildLayerSelectMap (const midirig::ControllerProfile* profile)
+{
+    layerSelectCcToColumn.clear();
+    if (profile == nullptr)
+        return;
+
+    for (const auto& control : profile->controls)
+    {
+        if (! control.role.equalsIgnoreCase (midirig::kRoleLayerSelect)
+            || control.group.isEmpty() || control.sendKind != midirig::AddressKind::cc)
+            continue;
+
+        layerSelectCcToColumn[control.sendNumber] = control.group;
+
+        // Aktive Ebene der Spalte in Bindungen UND Router-Basis-Anzeige
+        // spiegeln (Persistenz-Load hat channelStripLayers ggf. schon gesetzt;
+        // beide Setter idempotent -- setColumnLayer startet KEIN Flackern bei
+        // der Erst-Initialisierung).
+        const auto layer = channelStripLayers.layerFor (control.group);
+        midiInBindings.setActiveLayer (control.group, layer);
+        pickupLedRouter.setColumnLayer (control.group, layer);
+    }
+}
+
+bool GridPage::routeLayerSelectCc (int, int number, int value7bit)
+{
+    const auto it = layerSelectCcToColumn.find (number);
+    if (it == layerSelectCcToColumn.end())
+        return false;
+
+    // Schritt akkumulieren; jeder Schritt frischt den Ebenen-Blink auf, ein
+    // Ebenen-Wechsel schaltet die aktive Bank um (naechste Bewegung eines
+    // Spalten-Controls loest dann via Soft-Takeover den Pickup aus).
+    const auto result = channelStripLayers.feed (it->second, value7bit);
+    midiInBindings.setActiveLayer (it->second, result.layer);
+    pickupLedRouter.setColumnLayer (it->second, result.layer);   // dauerhafte Basis + 16tel bei Wechsel
+    return true;
 }
 
 void GridPage::changeListenerCallback (juce::ChangeBroadcaster* source)
@@ -1141,7 +1226,7 @@ void GridPage::resized()
 void GridPage::loadSession()
 {
     const grid::GridSessionStore::Refs refs { ccModel, chordMemory, midiInBindings,
-                                              macroBindings, engine };
+                                              macroBindings, engine, channelStripLayers };
     grid::GridSessionStore::apply (grid::GridSessionStore::loadFromFile (sessionFile), refs,
                                    [this] (const juce::ValueTree& state)
                                    { return makeTargetFromState (state); });
@@ -1156,7 +1241,7 @@ void GridPage::saveSession()
         return;
 
     const grid::GridSessionStore::Refs refs { ccModel, chordMemory, midiInBindings,
-                                              macroBindings, engine };
+                                              macroBindings, engine, channelStripLayers };
     grid::GridSessionStore::saveToFile (sessionFile, grid::GridSessionStore::capture (refs));
 }
 

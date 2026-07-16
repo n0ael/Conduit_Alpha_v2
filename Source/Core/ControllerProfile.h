@@ -41,12 +41,22 @@ struct ControllerControl
         deren Push die Detail-Anzeige der Gruppe aktiviert. Leer = keine. */
     juce::String group;
 
+    /** M7: optionale Laufzeit-ROLLE. `layer_select` (siehe kRoleLayerSelect)
+        macht dieses Control zum Channelstrip-Ebenen-Selektor seiner `group`:
+        Drehen waehlt eine von 3 Binding-Baenken fuer alle uebrigen Controls
+        der Spalte, statt selbst eine Bindung zu tragen. Leer = normale
+        (ggf. geebente) Bindung. */
+    juce::String role;
+
     AddressKind sendKind = AddressKind::cc;
     int sendChannel = 1;
     int sendNumber  = -1;   // -1 = nicht belegt
 
     std::vector<FeedbackAddress> feedback;   // 0..3 Eintraege
 };
+
+/** M7: `role`-Wert des Channelstrip-Ebenen-Selektors. */
+inline constexpr const char* kRoleLayerSelect = "layer_select";
 
 //==============================================================================
 /** Controller-Profil (ADR 006 E2) -- EIN Geraet, im Gegensatz zu den
@@ -84,7 +94,7 @@ struct ControllerParseReport
     getrieben, Spalten ueber ihre Namen (case-insensitiv), unbekannte
     Spalten ignoriert, RFC-4180-Quoting unterstuetzt.
 
-    Spalten: id, type, section, group, send_kind, send_channel, send_number,
+    Spalten: id, type, section, group, role, send_kind, send_channel, send_number,
     feedback1_kind, feedback1_channel, feedback1_number, feedback1_meaning,
     feedback2_kind, feedback2_channel, feedback2_number, feedback2_meaning,
     feedback3_kind, feedback3_channel, feedback3_number, feedback3_meaning.

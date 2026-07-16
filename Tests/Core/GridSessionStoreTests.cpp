@@ -46,10 +46,11 @@ struct SessionObjects
     grid::MacroBindings macros;
     grid::FakeVoiceSink sink;
     grid::GridVoiceEngine engine { sink };
+    conduit::midirig::ChannelStripLayers stripLayers;
 
     [[nodiscard]] grid::GridSessionStore::Refs refs()
     {
-        return { diyControls, chords, midiIn, macros, engine };
+        return { diyControls, chords, midiIn, macros, engine, stripLayers };
     }
 };
 
@@ -147,6 +148,43 @@ TEST_CASE ("GridSessionStore: MIDI-In-Bindungen Roundtrip", "[gridsession]")
     REQUIRE (shifted->cc == 74);
     REQUIRE (shifted->modifiers == grid::ModifierSet { { 1, 36 }, { 2, 40 } });
     REQUIRE (shifted->suppressWhileShift);
+}
+
+TEST_CASE ("GridSessionStore: Channelstrip-Ebenen Roundtrip (M7)", "[gridsession]")
+{
+    juce::ScopedJuceInitialiser_GUI juceRuntime;
+    SessionObjects source;
+
+    // Zwei Baenke derselben Adresse (col1, Ebene 0/1) + eine ungeebnete Bindung.
+    source.midiIn.bind ({ grid::MacroControlKey::diy, 1, 0 }, 1, 16, false, {}, false, "col1", 0);
+    source.midiIn.bind ({ grid::MacroControlKey::diy, 2, 0 }, 1, 16, false, {}, false, "col1", 1);
+    source.midiIn.bind ({ grid::MacroControlKey::diy, 3, 0 }, 1, 20);   // ungeebnet
+    source.stripLayers.setLayer ("col1", 1);
+
+    const auto session = grid::GridSessionStore::capture (source.refs());
+
+    SessionObjects loaded;
+    grid::GridSessionStore::apply (session, loaded.refs(), nullptr);
+
+    REQUIRE (loaded.midiIn.count() == 3);
+
+    const auto* bank0 = loaded.midiIn.bindingFor ({ grid::MacroControlKey::diy, 1, 0 });
+    REQUIRE (bank0 != nullptr);
+    REQUIRE (bank0->column == "col1");
+    REQUIRE (bank0->layer == 0);
+
+    const auto* bank1 = loaded.midiIn.bindingFor ({ grid::MacroControlKey::diy, 2, 0 });
+    REQUIRE (bank1 != nullptr);
+    REQUIRE (bank1->layer == 1);
+
+    const auto* plain = loaded.midiIn.bindingFor ({ grid::MacroControlKey::diy, 3, 0 });
+    REQUIRE (plain != nullptr);
+    REQUIRE (plain->column.isEmpty());
+    REQUIRE (plain->layer == -1);
+
+    // Aktive Ebene wiederhergestellt -- in beiden Modellen.
+    REQUIRE (loaded.stripLayers.layerFor ("col1") == 1);
+    REQUIRE (loaded.midiIn.activeLayer ("col1") == 1);
 }
 
 TEST_CASE ("GridSessionStore: Macro-Slots Roundtrip (Kurve + opakes Ziel)", "[gridsession]")

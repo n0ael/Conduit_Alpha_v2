@@ -115,6 +115,14 @@ public:
         bool isNote = false;   // M4: Pads senden Noten statt CCs
         ModifierSet modifiers;          // M5: Shift-Ebene (leer = Basis-Ebene)
         bool suppressWhileShift = false;   // M5: Eigenfunktion stumm, wenn als Shift gedient
+
+        // M7 Channelstrip-Ebene: `column` = Profil-group der Spalte (leer =
+        // nicht geebent -> immer aktiv), `layer` = Bank-Index dieser Spalte
+        // (nur relevant bei nicht-leerer column). bestMatch filtert eine
+        // geebente Bindung aus, wenn ihre Ebene nicht die aktive der Spalte ist.
+        juce::String column;
+        int layer = -1;
+
         MacroControlKey key;
 
         SoftTakeover takeover;
@@ -126,13 +134,38 @@ public:
         bool  pulseRelease    = false;   // M5: nach dem Puls-Press auf 0 zurueck
     };
 
+    /** Sentinel: "Spalte/Ebene aus columnResolver + aktueller aktiver Ebene
+        aufloesen" (Live-/Learn-Pfad). Explizite Werte (inkl. leer/-1 =
+        nicht geebent) nimmt der Persistenz-Load. */
+    static const juce::String kAutoColumn;
+
     /** Bindet key an (channel, cc/note) mit optionalem Modifier-Set --
         ersetzt eine bestehende Bindung desselben Keys UND eine bestehende
         Bindung derselben Adresse (channel, nummer, isNote) MIT identischem
-        Modifier-Set (M5: unterschiedliche Ebenen koexistieren). */
+        Modifier-Set UND identischer Channelstrip-Ebene (M5/M7:
+        unterschiedliche Ebenen derselben Adresse koexistieren).
+        `column == kAutoColumn` (Default) loest Spalte/Ebene ueber den
+        columnResolver + die aktive Ebene auf (Live/Learn: "aktive Ebene =
+        Lernziel"); explizite Werte kommen aus der Persistenz. */
     void bind (const MacroControlKey& key, int channel, int cc, bool isNote = false,
-               ModifierSet modifiers = {}, bool suppressWhileShift = false);
+               ModifierSet modifiers = {}, bool suppressWhileShift = false,
+               const juce::String& column = kAutoColumn, int layer = -1);
     void unbind (const MacroControlKey& key);
+
+    //==========================================================================
+    // M7 Channelstrip-Ebenen: die aktive Ebene je Spalte + der Resolver, der
+    // eine Eingangs-Adresse ihrer Profil-Spalte zuordnet (Besitzer: GridPage,
+    // profil-getrieben). MidiInBindings bleibt profil-agnostisch -- `column`
+    // ist ein opaker String-Schluessel.
+
+    /** Aktive Ebene einer Spalte setzen (Encoder-Auswahl / Persistenz-Load).
+        Wirkt sofort auf das naechste bestMatch. */
+    void setActiveLayer (const juce::String& column, int layer);
+    [[nodiscard]] int activeLayer (const juce::String& column) const noexcept;
+
+    /** Ordnet eine Eingangs-Adresse ihrer Spalte zu (leer = nicht geebent).
+        Wird beim Live-/Learn-Bind gerufen, um Spalte/Ebene zu taggen. */
+    std::function<juce::String (int channel, int number, bool isNote)> columnResolver;
 
     /** M5b (Mappings-Liste): Suppress-Flag einer bestehenden Bindung
         umschalten -- kein Effekt bei unbekanntem Key. */
@@ -201,11 +234,21 @@ public:
         float distance01 = 0.0f;      // |physisch - Software| der aktiven Ebene
         ModifierSet modifiers;        // Modifier-Set der aktiven Ebene (leer = Basis)
         bool  activeRecently = false; // Eingangs-Event innerhalb kActivityHoldTicks
+
+        // M6.1 (Shift-Pad Richtungsanzeige, User 15.07.2026): das Vorzeichen der
+        // Distanz signalisiert die Drehrichtung, `aligned` das Abholen. Beide
+        // NUR fuer Shift-Ebenen gefuellt (Modifier nicht leer) -- der Router
+        // faerbt damit die gehaltenen Modifier-Pads solide (rot=verringern,
+        // orange=erhoehen, gruen=gefunden), waehrend die Spalten-Status-LED
+        // weiterhin distanz-kodiert blinkt.
+        bool  physicalAbove = false;  // physisch > Software -> Wert verringern (rot)
+        bool  aligned       = false;  // abgeholt/engaged innerhalb Epsilon (gruen)
     };
 
-    /** Feuert am Tick-Ende bei jedem Zustandswechsel (waiting-Flanke) sowie
-        waehrend des Wartens bei Distanz-/Aktivitaets-Aenderung (Dedupe).
-        waiting=false ⇒ der Konsument restauriert seine LEDs. */
+    /** Feuert am Tick-Ende bei jedem Zustandswechsel (waiting-/aligned-Flanke)
+        sowie waehrend des Wartens bei Distanz-/Richtungs-/Aktivitaets-Aenderung
+        (Dedupe). waiting=false UND aligned=false ⇒ der Konsument restauriert
+        seine LEDs. */
     std::function<void (const InputAddress&, const PickupState&)> onPickupStateChanged;
 
     /** M6 Takeover-Modus des Controller-Geraets: false = "Sprung" (Werte
@@ -255,6 +298,8 @@ private:
 
     ModifierSet heldNotes;     // aktuell gehaltene Noten (Shift-Kandidaten)
     ModifierSet usedAsShift;   // Noten, die in diesem Halten als Shift dienten
+
+    std::map<juce::String, int> activeLayerByColumn;   // M7: aktive Bank je Spalte
 
     bool learnArmed = false;
     MacroControlKey learnKey;

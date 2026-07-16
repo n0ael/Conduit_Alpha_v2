@@ -6,6 +6,7 @@
 #include <juce_data_structures/juce_data_structures.h>
 
 #include "CcControlModel.h"
+#include "ChannelStripLayers.h"
 #include "ChordMemory.h"
 #include "GridVoiceEngine.h"
 #include "MacroBindings.h"
@@ -52,6 +53,7 @@ public:
         MidiInBindings&  midiIn;
         MacroBindings&   macros;
         GridVoiceEngine& engine;
+        conduit::midirig::ChannelStripLayers& stripLayers;   // M7: aktive Ebene je Spalte
     };
 
     static constexpr int kStateVersion = 1;

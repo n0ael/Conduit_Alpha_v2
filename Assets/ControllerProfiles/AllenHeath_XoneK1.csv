@@ -1,57 +1,57 @@
-device,id,type,section,group,send_kind,send_channel,send_number,feedback1_kind,feedback1_channel,feedback1_number,feedback1_meaning,feedback2_kind,feedback2_channel,feedback2_number,feedback2_meaning,feedback3_kind,feedback3_channel,feedback3_number,feedback3_meaning
-Xone:K1,enc_r1_1,encoder,Encoder Reihe 1,col1,cc,1,0,note,1,48,led_pickup,,,,,,,,
-Xone:K1,enc_r1_2,encoder,Encoder Reihe 1,col2,cc,1,1,note,1,49,led_pickup,,,,,,,,
-Xone:K1,enc_r1_3,encoder,Encoder Reihe 1,col3,cc,1,2,note,1,50,led_pickup,,,,,,,,
-Xone:K1,enc_r1_4,encoder,Encoder Reihe 1,col4,cc,1,3,note,1,51,led_pickup,,,,,,,,
-Xone:K1,enc_r1_1_push,push,Encoder Reihe 1 Push,col1,note,1,52,note,1,52,status_red,note,1,88,status_amber,note,1,124,status_green
-Xone:K1,enc_r1_2_push,push,Encoder Reihe 1 Push,col2,note,1,53,note,1,53,status_red,note,1,89,status_amber,note,1,125,status_green
-Xone:K1,enc_r1_3_push,push,Encoder Reihe 1 Push,col3,note,1,54,note,1,54,status_red,note,1,90,status_amber,note,1,126,status_green
-Xone:K1,enc_r1_4_push,push,Encoder Reihe 1 Push,col4,note,1,55,note,1,55,status_red,note,1,91,status_amber,note,1,127,status_green
-Xone:K1,enc_r2_1,encoder,Encoder Reihe 2,col1,cc,1,4,note,1,32,led_pickup,,,,,,,,
-Xone:K1,enc_r2_2,encoder,Encoder Reihe 2,col2,cc,1,5,note,1,33,led_pickup,,,,,,,,
-Xone:K1,enc_r2_3,encoder,Encoder Reihe 2,col3,cc,1,6,note,1,34,led_pickup,,,,,,,,
-Xone:K1,enc_r2_4,encoder,Encoder Reihe 2,col4,cc,1,7,note,1,35,led_pickup,,,,,,,,
-Xone:K1,enc_r3_1,encoder,Encoder Reihe 3,col1,cc,1,8,note,1,44,led_pickup,,,,,,,,
-Xone:K1,enc_r3_2,encoder,Encoder Reihe 3,col2,cc,1,9,note,1,45,led_pickup,,,,,,,,
-Xone:K1,enc_r3_3,encoder,Encoder Reihe 3,col3,cc,1,10,note,1,46,led_pickup,,,,,,,,
-Xone:K1,enc_r3_4,encoder,Encoder Reihe 3,col4,cc,1,11,note,1,47,led_pickup,,,,,,,,
-Xone:K1,enc_r4_1,encoder,Encoder Reihe 4,col1,cc,1,12,note,1,40,led_pickup,,,,,,,,
-Xone:K1,enc_r4_2,encoder,Encoder Reihe 4,col2,cc,1,13,note,1,41,led_pickup,,,,,,,,
-Xone:K1,enc_r4_3,encoder,Encoder Reihe 4,col3,cc,1,14,note,1,42,led_pickup,,,,,,,,
-Xone:K1,enc_r4_4,encoder,Encoder Reihe 4,col4,cc,1,15,note,1,43,led_pickup,,,,,,,,
-Xone:K1,fader1,fader,Fader,col1,cc,1,16,note,1,36,led_pickup,,,,,,,,
-Xone:K1,fader2,fader,Fader,col2,cc,1,17,note,1,37,led_pickup,,,,,,,,
-Xone:K1,fader3,fader,Fader,col3,cc,1,18,note,1,38,led_pickup,,,,,,,,
-Xone:K1,fader4,fader,Fader,col4,cc,1,19,note,1,39,led_pickup,,,,,,,,
-Xone:K1,setup1,knob,Setup,,cc,1,20,,,,,,,,,,,,
-Xone:K1,setup2,knob,Setup,,cc,1,21,,,,,,,,,,,,
-Xone:K1,btn_C3,pad,Taster unter Encoder-Reihe 1,,note,1,48,note,1,48,led,note,1,84,led_layer_b,note,1,120,led_layer_c
-Xone:K1,btn_Cs3,pad,Taster unter Encoder-Reihe 1,,note,1,49,note,1,49,led,note,1,85,led_layer_b,note,1,121,led_layer_c
-Xone:K1,btn_D3,pad,Taster unter Encoder-Reihe 1,,note,1,50,note,1,50,led,note,1,86,led_layer_b,note,1,122,led_layer_c
-Xone:K1,btn_Ds3,pad,Taster unter Encoder-Reihe 1,,note,1,51,note,1,51,led,note,1,87,led_layer_b,note,1,123,led_layer_c
-Xone:K1,btn_Gs2,pad,Taster unter Encoder-Reihe 3,,note,1,44,note,1,44,led,note,1,80,led_layer_b,note,1,116,led_layer_c
-Xone:K1,btn_A2,pad,Taster unter Encoder-Reihe 3,,note,1,45,note,1,45,led,note,1,81,led_layer_b,note,1,117,led_layer_c
-Xone:K1,btn_As2,pad,Taster unter Encoder-Reihe 3,,note,1,46,note,1,46,led,note,1,82,led_layer_b,note,1,118,led_layer_c
-Xone:K1,btn_B2,pad,Taster unter Encoder-Reihe 3,,note,1,47,note,1,47,led,note,1,83,led_layer_b,note,1,119,led_layer_c
-Xone:K1,btn_E2,pad,Taster unter Encoder-Reihe 4,,note,1,40,note,1,40,led,note,1,76,led_layer_b,note,1,112,led_layer_c
-Xone:K1,btn_F2,pad,Taster unter Encoder-Reihe 4,,note,1,41,note,1,41,led,note,1,77,led_layer_b,note,1,113,led_layer_c
-Xone:K1,btn_Fs2,pad,Taster unter Encoder-Reihe 4,,note,1,42,note,1,42,led,note,1,78,led_layer_b,note,1,114,led_layer_c
-Xone:K1,btn_G2,pad,Taster unter Encoder-Reihe 4,,note,1,43,note,1,43,led,note,1,79,led_layer_b,note,1,115,led_layer_c
-Xone:K1,pad_a,pad,Pad-Grid A-D,,note,1,36,note,1,36,led,note,1,72,led_layer_b,note,1,108,led_layer_c
-Xone:K1,pad_b,pad,Pad-Grid A-D,,note,1,37,note,1,37,led,note,1,73,led_layer_b,note,1,109,led_layer_c
-Xone:K1,pad_c,pad,Pad-Grid A-D,,note,1,38,note,1,38,led,note,1,74,led_layer_b,note,1,110,led_layer_c
-Xone:K1,pad_d,pad,Pad-Grid A-D,,note,1,39,note,1,39,led,note,1,75,led_layer_b,note,1,111,led_layer_c
-Xone:K1,pad_e,pad,Pad-Grid E-H,,note,1,32,note,1,32,led,note,1,68,led_layer_b,note,1,104,led_layer_c
-Xone:K1,pad_f,pad,Pad-Grid E-H,,note,1,33,note,1,33,led,note,1,69,led_layer_b,note,1,105,led_layer_c
-Xone:K1,pad_g,pad,Pad-Grid E-H,,note,1,34,note,1,34,led,note,1,70,led_layer_b,note,1,106,led_layer_c
-Xone:K1,pad_h,pad,Pad-Grid E-H,,note,1,35,note,1,35,led,note,1,71,led_layer_b,note,1,107,led_layer_c
-Xone:K1,pad_i,pad,Pad-Grid I-L,,note,1,28,note,1,28,led,note,1,64,led_layer_b,note,1,100,led_layer_c
-Xone:K1,pad_j,pad,Pad-Grid I-L,,note,1,29,note,1,29,led,note,1,65,led_layer_b,note,1,101,led_layer_c
-Xone:K1,pad_k,pad,Pad-Grid I-L,,note,1,30,note,1,30,led,note,1,66,led_layer_b,note,1,102,led_layer_c
-Xone:K1,pad_l,pad,Pad-Grid I-L,,note,1,31,note,1,31,led,note,1,67,led_layer_b,note,1,103,led_layer_c
-Xone:K1,pad_m,pad,Pad-Grid M-P,,note,1,24,note,1,24,led,note,1,60,led_layer_b,note,1,96,led_layer_c
-Xone:K1,pad_n,pad,Pad-Grid M-P,,note,1,25,note,1,25,led,note,1,61,led_layer_b,note,1,97,led_layer_c
-Xone:K1,pad_o,pad,Pad-Grid M-P,,note,1,26,note,1,26,led,note,1,62,led_layer_b,note,1,98,led_layer_c
-Xone:K1,pad_p,pad,Pad-Grid M-P,,note,1,27,note,1,27,led,note,1,63,led_layer_b,note,1,99,led_layer_c
-Xone:K1,shift,pad,Shift/Setup,,note,1,12,note,1,12,led,note,1,48,led_layer_b,note,1,84,led_layer_c
-Xone:K1,exit_setup,pad,Shift/Setup,,note,1,15,note,1,15,led,note,1,23,led_layer_b,,,,
+device,id,type,section,group,role,send_kind,send_channel,send_number,feedback1_kind,feedback1_channel,feedback1_number,feedback1_meaning,feedback2_kind,feedback2_channel,feedback2_number,feedback2_meaning,feedback3_kind,feedback3_channel,feedback3_number,feedback3_meaning
+Xone:K1,enc_r1_1,encoder,Encoder Reihe 1,col1,layer_select,cc,1,0,,,,,,,,,,,,
+Xone:K1,enc_r1_2,encoder,Encoder Reihe 1,col2,layer_select,cc,1,1,,,,,,,,,,,,
+Xone:K1,enc_r1_3,encoder,Encoder Reihe 1,col3,layer_select,cc,1,2,,,,,,,,,,,,
+Xone:K1,enc_r1_4,encoder,Encoder Reihe 1,col4,layer_select,cc,1,3,,,,,,,,,,,,
+Xone:K1,enc_r1_1_push,push,Encoder Reihe 1 Push,col1,,note,1,52,note,1,52,status_red,note,1,88,status_amber,note,1,124,status_green
+Xone:K1,enc_r1_2_push,push,Encoder Reihe 1 Push,col2,,note,1,53,note,1,53,status_red,note,1,89,status_amber,note,1,125,status_green
+Xone:K1,enc_r1_3_push,push,Encoder Reihe 1 Push,col3,,note,1,54,note,1,54,status_red,note,1,90,status_amber,note,1,126,status_green
+Xone:K1,enc_r1_4_push,push,Encoder Reihe 1 Push,col4,,note,1,55,note,1,55,status_red,note,1,91,status_amber,note,1,127,status_green
+Xone:K1,enc_r2_1,encoder,Encoder Reihe 2,col1,,cc,1,4,note,1,32,led_pickup,,,,,,,,
+Xone:K1,enc_r2_2,encoder,Encoder Reihe 2,col2,,cc,1,5,note,1,33,led_pickup,,,,,,,,
+Xone:K1,enc_r2_3,encoder,Encoder Reihe 2,col3,,cc,1,6,note,1,34,led_pickup,,,,,,,,
+Xone:K1,enc_r2_4,encoder,Encoder Reihe 2,col4,,cc,1,7,note,1,35,led_pickup,,,,,,,,
+Xone:K1,enc_r3_1,encoder,Encoder Reihe 3,col1,,cc,1,8,note,1,44,led_pickup,,,,,,,,
+Xone:K1,enc_r3_2,encoder,Encoder Reihe 3,col2,,cc,1,9,note,1,45,led_pickup,,,,,,,,
+Xone:K1,enc_r3_3,encoder,Encoder Reihe 3,col3,,cc,1,10,note,1,46,led_pickup,,,,,,,,
+Xone:K1,enc_r3_4,encoder,Encoder Reihe 3,col4,,cc,1,11,note,1,47,led_pickup,,,,,,,,
+Xone:K1,enc_r4_1,encoder,Encoder Reihe 4,col1,,cc,1,12,note,1,40,led_pickup,,,,,,,,
+Xone:K1,enc_r4_2,encoder,Encoder Reihe 4,col2,,cc,1,13,note,1,41,led_pickup,,,,,,,,
+Xone:K1,enc_r4_3,encoder,Encoder Reihe 4,col3,,cc,1,14,note,1,42,led_pickup,,,,,,,,
+Xone:K1,enc_r4_4,encoder,Encoder Reihe 4,col4,,cc,1,15,note,1,43,led_pickup,,,,,,,,
+Xone:K1,fader1,fader,Fader,col1,,cc,1,16,note,1,36,led_pickup,,,,,,,,
+Xone:K1,fader2,fader,Fader,col2,,cc,1,17,note,1,37,led_pickup,,,,,,,,
+Xone:K1,fader3,fader,Fader,col3,,cc,1,18,note,1,38,led_pickup,,,,,,,,
+Xone:K1,fader4,fader,Fader,col4,,cc,1,19,note,1,39,led_pickup,,,,,,,,
+Xone:K1,setup1,knob,Setup,,,cc,1,20,,,,,,,,,,,,
+Xone:K1,setup2,knob,Setup,,,cc,1,21,,,,,,,,,,,,
+Xone:K1,btn_C3,pad,Taster unter Encoder-Reihe 1,col1,,note,1,48,note,1,48,led,note,1,84,led_layer_b,note,1,120,led_layer_c
+Xone:K1,btn_Cs3,pad,Taster unter Encoder-Reihe 1,col2,,note,1,49,note,1,49,led,note,1,85,led_layer_b,note,1,121,led_layer_c
+Xone:K1,btn_D3,pad,Taster unter Encoder-Reihe 1,col3,,note,1,50,note,1,50,led,note,1,86,led_layer_b,note,1,122,led_layer_c
+Xone:K1,btn_Ds3,pad,Taster unter Encoder-Reihe 1,col4,,note,1,51,note,1,51,led,note,1,87,led_layer_b,note,1,123,led_layer_c
+Xone:K1,btn_Gs2,pad,Taster unter Encoder-Reihe 3,col1,,note,1,44,note,1,44,led,note,1,80,led_layer_b,note,1,116,led_layer_c
+Xone:K1,btn_A2,pad,Taster unter Encoder-Reihe 3,col2,,note,1,45,note,1,45,led,note,1,81,led_layer_b,note,1,117,led_layer_c
+Xone:K1,btn_As2,pad,Taster unter Encoder-Reihe 3,col3,,note,1,46,note,1,46,led,note,1,82,led_layer_b,note,1,118,led_layer_c
+Xone:K1,btn_B2,pad,Taster unter Encoder-Reihe 3,col4,,note,1,47,note,1,47,led,note,1,83,led_layer_b,note,1,119,led_layer_c
+Xone:K1,btn_E2,pad,Taster unter Encoder-Reihe 4,col1,,note,1,40,note,1,40,led,note,1,76,led_layer_b,note,1,112,led_layer_c
+Xone:K1,btn_F2,pad,Taster unter Encoder-Reihe 4,col2,,note,1,41,note,1,41,led,note,1,77,led_layer_b,note,1,113,led_layer_c
+Xone:K1,btn_Fs2,pad,Taster unter Encoder-Reihe 4,col3,,note,1,42,note,1,42,led,note,1,78,led_layer_b,note,1,114,led_layer_c
+Xone:K1,btn_G2,pad,Taster unter Encoder-Reihe 4,col4,,note,1,43,note,1,43,led,note,1,79,led_layer_b,note,1,115,led_layer_c
+Xone:K1,pad_a,pad,Pad-Grid A-D,col1,,note,1,36,note,1,36,led,note,1,72,led_layer_b,note,1,108,led_layer_c
+Xone:K1,pad_b,pad,Pad-Grid A-D,col2,,note,1,37,note,1,37,led,note,1,73,led_layer_b,note,1,109,led_layer_c
+Xone:K1,pad_c,pad,Pad-Grid A-D,col3,,note,1,38,note,1,38,led,note,1,74,led_layer_b,note,1,110,led_layer_c
+Xone:K1,pad_d,pad,Pad-Grid A-D,col4,,note,1,39,note,1,39,led,note,1,75,led_layer_b,note,1,111,led_layer_c
+Xone:K1,pad_e,pad,Pad-Grid E-H,col1,,note,1,32,note,1,32,led,note,1,68,led_layer_b,note,1,104,led_layer_c
+Xone:K1,pad_f,pad,Pad-Grid E-H,col2,,note,1,33,note,1,33,led,note,1,69,led_layer_b,note,1,105,led_layer_c
+Xone:K1,pad_g,pad,Pad-Grid E-H,col3,,note,1,34,note,1,34,led,note,1,70,led_layer_b,note,1,106,led_layer_c
+Xone:K1,pad_h,pad,Pad-Grid E-H,col4,,note,1,35,note,1,35,led,note,1,71,led_layer_b,note,1,107,led_layer_c
+Xone:K1,pad_i,pad,Pad-Grid I-L,col1,,note,1,28,note,1,28,led,note,1,64,led_layer_b,note,1,100,led_layer_c
+Xone:K1,pad_j,pad,Pad-Grid I-L,col2,,note,1,29,note,1,29,led,note,1,65,led_layer_b,note,1,101,led_layer_c
+Xone:K1,pad_k,pad,Pad-Grid I-L,col3,,note,1,30,note,1,30,led,note,1,66,led_layer_b,note,1,102,led_layer_c
+Xone:K1,pad_l,pad,Pad-Grid I-L,col4,,note,1,31,note,1,31,led,note,1,67,led_layer_b,note,1,103,led_layer_c
+Xone:K1,pad_m,pad,Pad-Grid M-P,col1,,note,1,24,note,1,24,led,note,1,60,led_layer_b,note,1,96,led_layer_c
+Xone:K1,pad_n,pad,Pad-Grid M-P,col2,,note,1,25,note,1,25,led,note,1,61,led_layer_b,note,1,97,led_layer_c
+Xone:K1,pad_o,pad,Pad-Grid M-P,col3,,note,1,26,note,1,26,led,note,1,62,led_layer_b,note,1,98,led_layer_c
+Xone:K1,pad_p,pad,Pad-Grid M-P,col4,,note,1,27,note,1,27,led,note,1,63,led_layer_b,note,1,99,led_layer_c
+Xone:K1,shift,pad,Shift/Setup,,,note,1,12,note,1,12,led,note,1,48,led_layer_b,note,1,84,led_layer_c
+Xone:K1,exit_setup,pad,Shift/Setup,,,note,1,15,note,1,15,led,note,1,23,led_layer_b,,,,

@@ -106,6 +106,7 @@ set(CONDUIT_CPP_SOURCES
     Source/Core/AudioDeviceController.cpp
     Source/Core/CcControlModel.cpp
     Source/Core/ChannelNames.cpp
+    Source/Core/ChannelStripLayers.cpp
     Source/Core/ChordMemory.cpp
     Source/Core/ControllerProfile.cpp
     Source/Core/ControllerProfileLibrary.cpp
@@ -651,6 +652,7 @@ if(CONDUIT_BUILD_TESTS)
         Tests/Core/MpeEncoderTests.cpp
         Tests/Core/MpeMidiSinkTests.cpp
         Tests/Core/MacroBindingsTests.cpp
+        Tests/Core/ChannelStripLayersTests.cpp
         Tests/Core/FigmaSnapTests.cpp
         Tests/Core/MidiDeviceProfileTests.cpp
         Tests/Core/MidiInBindingsTests.cpp
@@ -710,6 +712,7 @@ if(CONDUIT_BUILD_TESTS)
         Source/Core/AudioDeviceController.cpp
         Source/Core/CcControlModel.cpp
         Source/Core/ChannelNames.cpp
+        Source/Core/ChannelStripLayers.cpp
         Source/Core/ChordMemory.cpp
         Source/Core/ControllerProfile.cpp
         Source/Core/ControllerProfileLibrary.cpp

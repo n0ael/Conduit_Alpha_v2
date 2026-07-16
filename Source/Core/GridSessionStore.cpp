@@ -19,6 +19,7 @@ namespace
 
     const juce::Identifier kMidiIn      ("MidiIn");
     const juce::Identifier kMidiInBind  ("Binding");
+    const juce::Identifier kStripLayer  ("StripLayer");   // M7: aktive Ebene je Spalte
 
     const juce::Identifier kMacros      ("Macros");
     const juce::Identifier kMacroControl ("MacroControl");
@@ -197,8 +198,27 @@ juce::ValueTree GridSessionStore::capture (const Refs& refs)
         if (binding.suppressWhileShift)
             bindingState.setProperty ("suppressShift", true, nullptr);
 
+        // M7: Channelstrip-Ebene (fehlend = nicht geebent, rueckwaertskompatibel).
+        // Property "stripLayer" NICHT "layer" -- letzteres belegt keyToState fuer
+        // die Macro-Art des Keys (Kollision -> falscher Key beim Laden).
+        if (binding.column.isNotEmpty())
+        {
+            bindingState.setProperty ("column", binding.column, nullptr);
+            bindingState.setProperty ("stripLayer", binding.layer, nullptr);
+        }
+
         midiIn.appendChild (bindingState, nullptr);
     }
+
+    // M7: aktuell gewaehlte Ebene je Spalte (User-Entscheidung: pro Session).
+    for (const auto& [column, layer] : refs.stripLayers.snapshot())
+    {
+        juce::ValueTree stripState (kStripLayer);
+        stripState.setProperty ("column", column, nullptr);
+        stripState.setProperty ("layer", layer, nullptr);
+        midiIn.appendChild (stripState, nullptr);
+    }
+
     session.appendChild (midiIn, nullptr);
 
     // Macro-Bindings: pro Key die Slot-Liste; Ziele als opakes toState()-Tree
@@ -275,6 +295,20 @@ void GridSessionStore::apply (const juce::ValueTree& session, const Refs& refs,
 
     for (const auto& bindingState : session.getChildWithName (kMidiIn))
     {
+        // M7: aktive Ebene je Spalte -- BEVOR die Bindungen laufen egal, aber
+        // in Modelle und MidiInBindings synchron restaurieren.
+        if (bindingState.hasType (kStripLayer))
+        {
+            const auto column = bindingState.getProperty ("column", juce::String()).toString();
+            const auto layer  = (int) bindingState.getProperty ("layer", 0);
+            if (column.isNotEmpty())
+            {
+                refs.stripLayers.setLayer (column, layer);
+                refs.midiIn.setActiveLayer (column, layer);
+            }
+            continue;
+        }
+
         if (! bindingState.hasType (kMidiInBind))
             continue;
 
@@ -289,12 +323,18 @@ void GridSessionStore::apply (const juce::ValueTree& session, const Refs& refs,
                 modifiers.push_back ({ channel, note });
         }
 
+        // M7: explizite Spalte/Ebene (fehlend = nicht geebent, rueckwaerts-
+        // kompatibel) -- KEIN Auto-Resolve beim Load.
+        const auto column = bindingState.getProperty ("column", juce::String()).toString();
+        const auto layer  = column.isNotEmpty() ? (int) bindingState.getProperty ("stripLayer", -1) : -1;
+
         refs.midiIn.bind (keyFromState (bindingState),
                           (int) bindingState.getProperty ("channel", 1),
                           (int) bindingState.getProperty ("cc", 1),
                           (bool) bindingState.getProperty ("isNote", false),
                           std::move (modifiers),
-                          (bool) bindingState.getProperty ("suppressShift", false));
+                          (bool) bindingState.getProperty ("suppressShift", false),
+                          column, layer);
     }
 
     for (const auto& controlState : session.getChildWithName (kMacros))

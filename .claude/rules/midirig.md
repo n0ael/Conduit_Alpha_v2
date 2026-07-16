@@ -42,4 +42,23 @@ paths:
   status_green/led_pickup) — der Echo-Pfad überspringt diese meanings,
   der Router restauriert beim Verlassen aus dem Echo-Cache (nie blind 0
   senden). `setPickupEnabled` ist idempotent (läuft bei jedem
-  Registry-Broadcast).
+  Registry-Broadcast). M6.1: die Shift-Pad-Anzeige (Mechanismus 4) ist
+  SOLID + richtungskodiert (rot=verringern/orange=erhöhen/grün=gefunden,
+  `led`/`led_layer_b`/`led_layer_c`), nicht blinkend; der Näherungswert
+  bleibt die Spalten-Status-LED. `PickupState` trägt `physicalAbove`/
+  `aligned`; aligned-Einträge sieht nur Mechanismus 4, `waitingFor()`
+  filtert sie für 1–3 aus.
+- Channelstrip-Ebenen (M7): die 4 Top-Encoder (CSV `role=layer_select`)
+  wählen pro Spalte (`group`) eine von 3 Binding-Bänken. 1:1 bleibt — eine
+  Adresse pro (Spalte, Ebene); `bestMatch` filtert geebente Bindungen auf
+  die aktive Ebene, Bänke koexistieren (Dedup schließt column+layer ein).
+  Ebenen-Auflösung profil-getrieben über den `columnResolver` (Besitzer
+  GridPage) — MidiInBindings bleibt profil-agnostisch (`column` opaker
+  String). Ebenen-Anzeige lebt im `PickupLedRouter` als DAUERHAFTE Basis
+  (`setColumnLayer`, alle Spalten-Pads solid in Ebenen-Farbe; aktives Pad
+  8tel-, Ebenen-Wechsel 16tel-Blink, tempo-synchron via `setBeatPosition`/
+  LinkClock) — die Pickup-/Detail-/Shift-Mechanismen 1–4 sind momentane
+  Overrides darüber. Der Echo-Pfad (`onFeedbackEcho`) MUSS Router-verwaltete
+  LEDs via `isManaging` überspringen (sonst überschreibt das Echo die
+  Router-Farbe, Dedup korrigiert nie). Persistenz-Property `stripLayer` NIE
+  `layer` (Kollision mit keyToState).

@@ -11,12 +11,14 @@
 #include "CcControlLayer.h"
 #include "ChordMemoryStrip.h"
 #include "Core/CcControlModel.h"
+#include "Core/ChannelStripLayers.h"
 #include "Core/ChordMemory.h"
 #include "Core/ConduitMacroTargets.h"
 #include "Core/GridPanelSettings.h"
 #include "Core/GridSessionStore.h"
 #include "Core/HardwareCcDatabase.h"
 #include "Core/GridVoiceEngine.h"
+#include "Core/LinkClock.h"
 #include "Core/MacroBindings.h"
 #include "Core/ControllerProfileLibrary.h"
 #include "Core/MidiInBindings.h"
@@ -124,7 +126,8 @@ public:
               MidiProfileLibrary& midiProfileLibraryToUse,
               ControllerProfileLibrary& controllerProfileLibraryToUse,
               EditorDockPanel& dockPanelToUse,
-              IParamModulationSink& paramModSinkToUse);
+              IParamModulationSink& paramModSinkToUse,
+              LinkClock& linkClockToUse);
     ~GridPage() override;
 
     //==========================================================================
@@ -287,6 +290,7 @@ private:
     MidiRigSettings& midiRigSettings;
     MidiProfileLibrary& midiProfileLibrary;   // M2: CSV-Profile (Hardware-Picker)
     ControllerProfileLibrary& controllerProfileLibrary;   // M4: LED-/Motorfader-Feedback
+    LinkClock& linkClock;   // M7b: Beat-Position fuer tempo-synchrone Ebenen-Blinks
     grid::IMidiOutputTarget& midiTarget;
 
     GridPanelSettings& panelSettings;
@@ -337,6 +341,24 @@ private:
     midirig::PickupLedRouter pickupLedRouter;
     std::map<std::pair<bool, int>, int> lastFeedbackSent;
     juce::Uuid pickupRouterDeviceId = juce::Uuid::null();   // Geraete-Wechsel = reset()
+
+    // M7: Channelstrip-Ebenen -- Top-Encoder (role=layer_select) waehlen pro
+    // Spalte eine von 3 Binding-Baenken. Persistiert pro Session (GridSessionStore).
+    midirig::ChannelStripLayers channelStripLayers;
+
+    // CC-Nummer -> Spalte fuer role=layer_select-Encoder (aus dem aktiven
+    // Profil, gepflegt in refreshRigSubscriptions -- kein Profil-Scan je Event).
+    std::map<int, juce::String> layerSelectCcToColumn;
+
+    /** M7: leitet ein Controller-CC zum Ebenen-Selektor, wenn seine Nummer im
+        aktiven Profil role=layer_select traegt (true = verbraucht, nicht an die
+        Bindungen weiterreichen). */
+    bool routeLayerSelectCc (int channel, int number, int value7bit);
+
+    /** M7: den Selektor-Cache aus dem aktiven Profil neu aufbauen (nullptr =
+        leeren). Zusaetzlich fuer jede neue Spalte die aktive Ebene mit der
+        aus channelStripLayers gemerkten synchronisieren. */
+    void rebuildLayerSelectMap (const midirig::ControllerProfile* profile);
 
     /** Controller-Rolle + Profil live aufgeloest (Echo/Router/Restore) --
         nullopt, wenn Rolle unbesetzt oder Profil fehlt/nicht geladen. */

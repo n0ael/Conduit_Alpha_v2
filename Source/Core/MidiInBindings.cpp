@@ -42,8 +42,23 @@ namespace
     }
 }
 
+const juce::String MidiInBindings::kAutoColumn = "\x01__auto__";
+
+void MidiInBindings::setActiveLayer (const juce::String& column, int layer)
+{
+    if (column.isNotEmpty())
+        activeLayerByColumn[column] = layer;
+}
+
+int MidiInBindings::activeLayer (const juce::String& column) const noexcept
+{
+    const auto it = activeLayerByColumn.find (column);
+    return it != activeLayerByColumn.end() ? it->second : 0;
+}
+
 void MidiInBindings::bind (const MacroControlKey& key, int channel, int cc, bool isNote,
-                           ModifierSet modifiers, bool suppressWhileShift)
+                           ModifierSet modifiers, bool suppressWhileShift,
+                           const juce::String& column, int layer)
 {
     const auto clampedChannel = juce::jlimit (1, 16, channel);
     const auto clampedCc      = juce::jlimit (0, 127, cc);
@@ -54,15 +69,30 @@ void MidiInBindings::bind (const MacroControlKey& key, int channel, int cc, bool
     if (isNote)
         eraseSorted (canonical, { clampedChannel, clampedCc });
 
+    // M7: Spalte/Ebene aufloesen. kAutoColumn (Live/Learn) -> Profil-Spalte der
+    // Adresse + deren aktuell aktive Ebene ("aktive Ebene = Lernziel").
+    // Explizite Werte (Persistenz-Load) werden unveraendert uebernommen.
+    juce::String resolvedColumn = column;
+    int          resolvedLayer  = layer;
+    if (column == kAutoColumn)
+    {
+        resolvedColumn = columnResolver != nullptr
+                             ? columnResolver (clampedChannel, clampedCc, isNote)
+                             : juce::String();
+        resolvedLayer  = resolvedColumn.isNotEmpty() ? activeLayer (resolvedColumn) : -1;
+    }
+
     // Bestehende Bindung desselben Keys UND derselben Adresse MIT identischem
-    // Modifier-Set ersetzen -- unterschiedliche Shift-Ebenen derselben
-    // Adresse koexistieren (M5); CC- und Note-Namensraum bleiben getrennt (M4).
+    // Modifier-Set UND identischer Ebene ersetzen -- unterschiedliche Shift-
+    // (M5) bzw. Channelstrip-Ebenen (M7) derselben Adresse koexistieren; CC-
+    // und Note-Namensraum bleiben getrennt (M4).
     bindings.erase (std::remove_if (bindings.begin(), bindings.end(),
                         [&] (const Binding& b)
                         {
                             return b.key == key
                                    || (b.channel == clampedChannel && b.cc == clampedCc
-                                       && b.isNote == isNote && b.modifiers == canonical);
+                                       && b.isNote == isNote && b.modifiers == canonical
+                                       && b.column == resolvedColumn && b.layer == resolvedLayer);
                         }),
                     bindings.end());
 
@@ -72,6 +102,8 @@ void MidiInBindings::bind (const MacroControlKey& key, int channel, int cc, bool
     binding.isNote    = isNote;
     binding.modifiers = std::move (canonical);
     binding.suppressWhileShift = suppressWhileShift;
+    binding.column    = resolvedColumn;
+    binding.layer     = resolvedLayer;
     binding.key       = key;
     bindings.push_back (std::move (binding));
 
@@ -206,6 +238,11 @@ MidiInBindings::Binding* MidiInBindings::bestMatch (int channel, int number, boo
 
         if (! std::includes (heldNotes.begin(), heldNotes.end(),
                              binding.modifiers.begin(), binding.modifiers.end()))
+            continue;
+
+        // M7: eine geebente Bindung matcht nur auf der aktiven Ebene ihrer
+        // Spalte (nicht geebent = column leer -> immer gueltig).
+        if (binding.column.isNotEmpty() && binding.layer != activeLayer (binding.column))
             continue;
 
         // Exakteste Ebene gewinnt; bei Gleichstand die zuletzt gebundene.
@@ -432,21 +469,29 @@ void MidiInBindings::updatePickupStates (const std::function<float (const MacroC
         // belegter Konflikt, kein Weihnachtsbaum nach App-Start).
         if (pickupEnabled)
             if (auto* active = bestMatch (address.channel, address.number, address.isNote))
-                if (! active->takeover.engaged)
-                    if (const auto physical = physicalPositions.find (address);
-                        physical != physicalPositions.end())
-                    {
-                        const auto current  = currentValueFor != nullptr
-                                                  ? currentValueFor (active->key) : 0.0f;
-                        const auto distance = std::abs (physical->second - current);
+                if (const auto physical = physicalPositions.find (address);
+                    physical != physicalPositions.end())
+                {
+                    const auto current = currentValueFor != nullptr
+                                             ? currentValueFor (active->key) : 0.0f;
+                    const auto delta    = physical->second - current;   // Vorzeichen = Richtung
+                    const auto distance = std::abs (delta);
 
-                        if (distance > kPickupEpsilon)
-                        {
-                            next.waiting    = true;
-                            next.distance01 = distance;
-                            next.modifiers  = active->modifiers;
-                        }
+                    next.modifiers     = active->modifiers;
+                    next.physicalAbove = delta > 0.0f;   // Knob hoeher -> verringern
+
+                    if (! active->takeover.engaged && distance > kPickupEpsilon)
+                    {
+                        next.waiting    = true;
+                        next.distance01 = distance;
                     }
+                    else if (! active->modifiers.empty())
+                    {
+                        // Abgeholt: gruene Richtungsanzeige NUR fuer Shift-Ebenen
+                        // (Basis-Controls brauchen kein Halte-Feedback -> erased).
+                        next.aligned = true;
+                    }
+                }
 
         if (const auto activity = lastActivityTick.find (address);
             activity != lastActivityTick.end())
@@ -455,16 +500,19 @@ void MidiInBindings::updatePickupStates (const std::function<float (const MacroC
         const auto known = pickupStates.find (address);
         const auto prev  = known != pickupStates.end() ? known->second : PickupState{};
 
+        const auto tracked = next.waiting || next.aligned;
         const auto changed = prev.waiting != next.waiting
-                             || (next.waiting
+                             || prev.aligned != next.aligned
+                             || (tracked
                                  && (std::abs (prev.distance01 - next.distance01) > kDistanceReportDelta
                                      || prev.activeRecently != next.activeRecently
+                                     || prev.physicalAbove != next.physicalAbove
                                      || prev.modifiers != next.modifiers));
 
         if (changed)
             onPickupStateChanged (address, next);
 
-        if (next.waiting)
+        if (tracked)
             pickupStates[address] = next;
         else
             pickupStates.erase (address);

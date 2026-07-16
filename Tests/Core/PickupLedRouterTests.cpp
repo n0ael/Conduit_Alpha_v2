@@ -27,12 +27,15 @@ namespace
             "TestK1,fader1,fader,col1,cc,1,16,note,1,24,led_pickup,,,,,,,,\n"
             "TestK1,pad_a,pad,,note,1,36,note,1,36,led,note,1,72,led_layer_b,note,1,108,led_layer_c\n"
             "TestK1,pad_m,pad,,note,1,24,note,1,24,led,note,1,60,led_layer_b,note,1,96,led_layer_c\n"
-            "TestK1,shiftpad,pad,,note,1,12,note,1,12,led,,,,,,,,\n"
-            "TestK1,solo,knob,,cc,1,30,note,1,40,led_pickup,,,,,,,,\n");
+            "TestK1,shiftpad,pad,,note,1,12,note,1,12,led,note,1,48,led_layer_b,note,1,84,led_layer_c\n"
+            "TestK1,solo,knob,,cc,1,30,note,1,40,led_pickup,,,,,,,,\n"
+            // M7: zwei Spalten-Pads (group col1) fuer den Ebenen-Blink.
+            "TestK1,strippad1,pad,col1,note,1,100,note,1,100,led,note,1,101,led_layer_b,note,1,102,led_layer_c\n"
+            "TestK1,strippad2,pad,col1,note,1,103,note,1,103,led,note,1,104,led_layer_b,note,1,105,led_layer_c\n");
 
         ControllerParseReport report;
         const auto profile = parseControllerProfileCsv (csv, &report);
-        REQUIRE (report.accepted == 7);
+        REQUIRE (report.accepted == 9);
         return profile;
     }
 
@@ -96,6 +99,28 @@ namespace
     grid::MidiInBindings::PickupState notWaiting()
     {
         return {};
+    }
+
+    // Shift-Ebene wartet (Richtung ueber physicalAbove: true = verringern/rot).
+    grid::MidiInBindings::PickupState shiftWaiting (grid::ModifierSet modifiers,
+                                                    bool physicalAbove,
+                                                    float distance = 0.4f)
+    {
+        grid::MidiInBindings::PickupState state;
+        state.waiting       = true;
+        state.distance01    = distance;
+        state.modifiers     = std::move (modifiers);
+        state.physicalAbove = physicalAbove;
+        return state;
+    }
+
+    // Shift-Ebene abgeholt (gruen), Pad noch gehalten.
+    grid::MidiInBindings::PickupState shiftAligned (grid::ModifierSet modifiers)
+    {
+        grid::MidiInBindings::PickupState state;
+        state.aligned   = true;
+        state.modifiers = std::move (modifiers);
+        return state;
     }
 }
 
@@ -212,27 +237,115 @@ TEST_CASE ("PickupLedRouter: led_pickup ohne Gruppe blinkt immer bei waiting", "
     CHECK (rig.lastValueFor (true, 40) == 0);
 }
 
-TEST_CASE ("PickupLedRouter: Shift-Pad blinkt nur bei gehaltenem Pad UND Bewegung", "[midirig]")
+TEST_CASE ("PickupLedRouter: Shift-Pad zeigt die Richtung solid (kein Blinken)", "[midirig]")
 {
     RouterRig rig;
+    // shiftpad: led=12 (rot), led_layer_b=48 (orange), led_layer_c=84 (gruen).
 
-    // Wartende Shift-Ebene ohne Bewegung: Shift-Pad bleibt still.
-    rig.router.handleControllerNote (12, true);
+    // Nur wartende Ebene, Pad NICHT gehalten: keine Anzeige.
     rig.router.updatePickupState ({ 1, 30, false },
-                                  waitingState (0.4f, { { 1, 12 } }, false));
+                                  shiftWaiting ({ { 1, 12 } }, /*physicalAbove*/ true));
     rig.router.tick();
     CHECK (rig.lastValueFor (true, 12) == -1);
 
-    // Bewegung (activeRecently): Shift-Pad-LED blinkt distanz-kodiert.
-    rig.router.updatePickupState ({ 1, 30, false },
-                                  waitingState (0.4f, { { 1, 12 } }, true));
+    // Pad gehalten + physisch ueber Software: rot solid (verringern), ohne
+    // Bewegung -- der Status steht schon "im Moment des Drueckens".
+    rig.router.handleControllerNote (12, true);
     rig.router.tick();
     CHECK (rig.lastValueFor (true, 12) == PickupLedRouter::kLedOn);
+    CHECK (rig.lastValueFor (true, 48) == 0);
+    CHECK (rig.lastValueFor (true, 84) == 0);
+
+    // Der Router "besitzt" die Farb-LEDs jetzt -- das Echo muss sie ueberspringen.
+    CHECK (rig.router.isManaging (true, 12));
+    CHECK (rig.router.isManaging (true, 48));
+    CHECK (rig.router.isManaging (true, 84));
+
+    // Solid: ueber viele Ticks kein Toggle (genau ein Send dank Dedupe).
+    rig.ticks (30);
+    CHECK (rig.sendCountFor (true, 12) == 1);
+
+    // Richtung dreht: physisch unter Software -> orange (erhoehen), rot aus.
+    rig.router.updatePickupState ({ 1, 30, false },
+                                  shiftWaiting ({ { 1, 12 } }, /*physicalAbove*/ false));
+    rig.router.tick();
+    CHECK (rig.lastValueFor (true, 48) == PickupLedRouter::kLedOn);
+    CHECK (rig.lastValueFor (true, 12) == 0);
+
+    // Abgeholt (aligned): gruen solid, obwohl nicht mehr "waiting".
+    rig.router.updatePickupState ({ 1, 30, false }, shiftAligned ({ { 1, 12 } }));
+    rig.router.tick();
+    CHECK (rig.lastValueFor (true, 84) == PickupLedRouter::kLedOn);
+    CHECK (rig.lastValueFor (true, 48) == 0);
 
     // Pad loslassen: Anzeige endet (Restore auf 0, kein Echo-Stand).
     rig.router.handleControllerNote (12, false);
     rig.router.tick();
-    CHECK (rig.lastValueFor (true, 12) == 0);
+    CHECK (rig.lastValueFor (true, 84) == 0);
+    CHECK_FALSE (rig.router.isManaging (true, 84));   // Echo darf wieder senden
+}
+
+TEST_CASE ("PickupLedRouter: Channelstrip-Ebene dauerhaft + tempo-synchrone Blinks (M7b)", "[midirig]")
+{
+    // strippad1: led=100 (rot), led_layer_b=101 (orange), led_layer_c=102 (gruen).
+    // strippad2: 103/104/105. (col1)
+    SECTION ("Basis: alle Spalten-Pads SOLID in der Ebenen-Farbe")
+    {
+        RouterRig rig;
+        rig.router.setColumnLayer ("col1", 1);   // gruen = led_layer_c
+        rig.router.tick();
+        CHECK (rig.lastValueFor (true, 102) == PickupLedRouter::kLedOn);   // strippad1 gruen
+        CHECK (rig.lastValueFor (true, 105) == PickupLedRouter::kLedOn);   // strippad2 gruen
+        CHECK (rig.lastValueFor (true, 100) == 0);                         // rot aus
+
+        // Solid: ueber viele Ticks genau EIN Send (Dedupe, kein Blinken).
+        rig.ticks (30);
+        CHECK (rig.sendCountFor (true, 102) == 1);
+
+        // Ebene 0 -> rot=Basis, Ebene 2 -> orange=led_layer_b.
+        rig.router.setColumnLayer ("col1", 0);
+        rig.router.tick();
+        CHECK (rig.lastValueFor (true, 100) == PickupLedRouter::kLedOn);
+        CHECK (rig.lastValueFor (true, 102) == 0);
+    }
+
+    SECTION ("Aktives Pad (Echo>0) blinkt im 8tel-Takt, ruhende bleiben solid")
+    {
+        RouterRig rig;
+        rig.echo[{ true, 100 }] = 127;           // strippad1 als Toggle AN
+        rig.router.setColumnLayer ("col1", 0);   // rot = led-Basis (100/103)
+
+        rig.router.setBeatPosition (0.0);        // 8tel-Phase AN
+        rig.router.tick();
+        CHECK (rig.lastValueFor (true, 100) == PickupLedRouter::kLedOn);
+        CHECK (rig.lastValueFor (true, 103) == PickupLedRouter::kLedOn);   // strippad2 solid
+
+        rig.router.setBeatPosition (0.25);       // frac(0.25/0.5)=0.5 -> AUS
+        rig.router.tick();
+        CHECK (rig.lastValueFor (true, 100) == 0);              // aktives Pad blinkt aus
+        CHECK (rig.lastValueFor (true, 103) == PickupLedRouter::kLedOn);   // ruhendes bleibt an
+    }
+
+    SECTION ("Ebenen-Wechsel: 16tel-Flackern, danach wieder solid")
+    {
+        RouterRig rig;
+        rig.router.setColumnLayer ("col1", 0);   // Erst-Init (kein Fenster)
+        rig.router.setColumnLayer ("col1", 1);   // Wechsel -> 16tel-Fenster
+
+        rig.router.setBeatPosition (0.0);        // 16tel-Phase AN
+        rig.router.tick();
+        CHECK (rig.lastValueFor (true, 102) == PickupLedRouter::kLedOn);
+
+        rig.router.setBeatPosition (0.125);      // frac(0.125/0.25)=0.5 -> AUS
+        rig.router.tick();
+        CHECK (rig.lastValueFor (true, 102) == 0);
+
+        // Fenster laeuft ab -> solid gruen, unabhaengig von der Beat-Phase.
+        rig.ticks (PickupLedRouter::kLayerChangeTicks + 2);
+        rig.router.setBeatPosition (0.125);
+        rig.router.tick();
+        CHECK (rig.lastValueFor (true, 102) == PickupLedRouter::kLedOn);
+    }
 }
 
 TEST_CASE ("PickupLedRouter: reset verwirft Zustand ohne Sends, clearProfile restauriert", "[midirig]")

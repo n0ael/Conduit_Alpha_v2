@@ -48,12 +48,42 @@ void PickupLedRouter::reset()
     lastSent.clear();
     blinkPhases.clear();
     heldNotes.clear();
+    columnLayer.clear();
+    layerChangeWindow.clear();
+}
+
+void PickupLedRouter::setColumnLayer (const juce::String& column, int layer)
+{
+    if (column.isEmpty())
+        return;
+
+    const auto it = columnLayer.find (column);
+    const auto changed = it == columnLayer.end() || it->second != layer;
+    columnLayer[column] = layer;
+
+    // Ebenen-Wechsel (nicht die Erst-Initialisierung) startet das 16tel-
+    // Flackern -- eine unveraenderte Wiederholung (idempotenter Setter,
+    // Profil-Reload) NICHT.
+    if (changed && it != columnLayer.end())
+        layerChangeWindow[column] = kLayerChangeTicks;
+}
+
+bool PickupLedRouter::beatBlinkOn (double subdivisionBeats) const noexcept
+{
+    if (subdivisionBeats <= 0.0)
+        return true;
+
+    const auto phase = beatPosition / subdivisionBeats;
+    return (phase - std::floor (phase)) < 0.5;   // an in der ersten Haelfte
 }
 
 void PickupLedRouter::updatePickupState (const grid::InputAddress& address,
                                          const grid::MidiInBindings::PickupState& state)
 {
-    if (state.waiting)
+    // `tracked` = wartend ODER abgeholt-und-gehalten (aligned, nur Shift-Ebenen).
+    // Aligned-Eintraege braucht ausschliesslich die Shift-Pad-Anzeige (unten);
+    // waitingFor() blendet sie fuer die Gruppen-/Einfach-Mechanismen aus.
+    if (state.waiting || state.aligned)
         waiting[address] = state;
     else
         waiting.erase (address);
@@ -75,7 +105,8 @@ const grid::MidiInBindings::PickupState* PickupLedRouter::waitingFor (
     const auto wantNote = kind == AddressKind::note;
 
     for (const auto& entry : waiting)
-        if (entry.first.isNote == wantNote && entry.first.number == number)
+        if (entry.second.waiting   // aligned-Eintraege sind nur fuer die Shift-Pad-Anzeige
+            && entry.first.isNote == wantNote && entry.first.number == number)
             return &entry.second;
 
     return nullptr;
@@ -103,6 +134,52 @@ std::map<PickupLedRouter::LedAddress, PickupLedRouter::DesiredLed> PickupLedRout
         return isAddressBound != nullptr
                && isAddressBound (control.sendKind == AddressKind::note, control.sendNumber);
     };
+
+    //---- 0. BASIS: Channelstrip-Ebenen-Farbe (M7b) --------------------------
+    // Alle Pads einer geebenten Spalte leuchten DAUERHAFT in der Ebenen-Farbe
+    // (0 rot=led, 1 gruen=led_layer_c, 2 orange=led_layer_b). Aktives Pad
+    // (Echo-Wert > 0, also Toggle/Button an) blinkt im 8tel-Takt; ein laufendes
+    // Ebenen-Wechsel-Fenster laesst die ganze Spalte im 16tel-Takt flackern.
+    // Bewusst ZUERST -- die momentanen Pickup-/Detail-/Shift-Anzeigen
+    // (Mechanismen 1-4) ueberschreiben diese Basis, wo sie greifen.
+    for (const auto& [column, layer] : columnLayer)
+    {
+        const auto* colorMeaning = layer == 0 ? kMeaningLed
+                                 : layer == 1 ? kMeaningLedLayerC
+                                              : kMeaningLedLayerB;
+        const auto columnChanging = layerChangeWindow.count (column) > 0;
+
+        for (const auto& control : profile.controls)
+        {
+            if (! control.type.equalsIgnoreCase ("pad") || control.group != column)
+                continue;
+
+            const auto* red   = findFeedback (control, kMeaningLed);
+            const auto* amber = findFeedback (control, kMeaningLedLayerB);
+            const auto* green = findFeedback (control, kMeaningLedLayerC);
+
+            // Erst alle Farb-Ebenen aus, dann die aktive Ebenen-Farbe setzen.
+            for (const auto* fb : { red, amber, green })
+                if (fb != nullptr)
+                    desired[addressOf (*fb)] = DesiredLed {};
+
+            const auto* colorFb = findFeedback (control, colorMeaning);
+            if (colorFb == nullptr)
+                colorFb = red;   // Fallback: Basis-LED
+            if (colorFb == nullptr)
+                continue;
+
+            // Ist-Zustand des Pads aus dem Echo-Cache (Toggle/Button an?).
+            const auto padOn = red != nullptr && lastEchoValueFor != nullptr
+                               && lastEchoValueFor (red->kind == AddressKind::note, red->number) > 0;
+
+            const auto on = columnChanging ? beatBlinkOn (kSixteenthBeats)
+                          : padOn          ? beatBlinkOn (kEighthBeats)
+                                           : true;   // ruhend: solid
+
+            desired[addressOf (*colorFb)] = DesiredLed { false, on ? kLedOn : 0, 0.0f };
+        }
+    }
 
     //---- 1./2. Gruppen: Status-LED-Aggregat + momentary Detail-Modus --------
     struct GroupInfo
@@ -245,15 +322,18 @@ std::map<PickupLedRouter::LedAddress, PickupLedRouter::DesiredLed> PickupLedRout
             desired[addressOf (*pickupFb)] = DesiredLed { true, 0, state->distance01 };
     }
 
-    //---- 4. Shift-Pad-Anzeige: gehaltene Modifier-Pads blinken mit ----------
+    //---- 4. Shift-Pad-Anzeige: gehaltene Modifier-Pads zeigen die RICHTUNG ---
+    // Solide Farbe (kein Blinken, User 15.07.2026): rot = Wert verringern,
+    // orange = Wert erhoehen, gruen = gefunden. Der Naeherungswert (Blink)
+    // bleibt der Spalten-Status-LED ueberlassen (Mechanismus 1). Angezeigt,
+    // sobald das Modifier-Pad gehalten wird und die Position bekannt ist --
+    // ein `activeRecently`-Gate wird bewusst NICHT verlangt, damit der Status
+    // schon "im Moment des Drueckens" steht.
     for (const auto& waitingEntry : waiting)
     {
         const auto& state = waitingEntry.second;
 
-        // Aktivierung erst durch Bewegung (User 15.07.2026): ein Pad kann
-        // mehrere Controls shiften -- erst das Event identifiziert das
-        // gemeinte Control.
-        if (state.modifiers.empty() || ! state.activeRecently)
+        if (state.modifiers.empty())
             continue;
 
         for (const auto& modifier : state.modifiers)
@@ -265,13 +345,27 @@ std::map<PickupLedRouter::LedAddress, PickupLedRouter::DesiredLed> PickupLedRout
             if (pad == nullptr)
                 continue;
 
-            const auto* led = findFeedback (*pad, "led");
-            if (led == nullptr && ! pad->feedback.empty())
-                led = &pad->feedback.front();
-            if (led == nullptr)
-                continue;
+            const auto* redLed   = findFeedback (*pad, "led");
+            const auto* amberLed = findFeedback (*pad, "led_layer_b");
+            const auto* greenLed = findFeedback (*pad, "led_layer_c");
+            if (redLed == nullptr && ! pad->feedback.empty())
+                redLed = &pad->feedback.front();   // Fallback: erste Adresse
 
-            desired[addressOf (*led)] = DesiredLed { true, 0, state.distance01 };
+            // Erst alle Farb-Ebenen des Pads loeschen, dann die aktive setzen
+            // (getrennte Notennummern je Farbe -- sonst leuchten mehrere).
+            for (const auto* fb : { redLed, amberLed, greenLed })
+                if (fb != nullptr)
+                    desired[addressOf (*fb)] = DesiredLed {};
+
+            const FeedbackAddress* colorFb = nullptr;
+            if (state.aligned)
+                colorFb = greenLed != nullptr ? greenLed : redLed;
+            else
+                colorFb = state.physicalAbove ? redLed
+                                              : (amberLed != nullptr ? amberLed : redLed);
+
+            if (colorFb != nullptr)
+                desired[addressOf (*colorFb)] = DesiredLed { false, kLedOn, 0.0f };
         }
     }
 
@@ -280,6 +374,15 @@ std::map<PickupLedRouter::LedAddress, PickupLedRouter::DesiredLed> PickupLedRout
 
 void PickupLedRouter::tick()
 {
+    // M7b: 16tel-Wechsel-Fenster herunterzaehlen (Basis-Layer bleibt danach).
+    for (auto it = layerChangeWindow.begin(); it != layerChangeWindow.end();)
+    {
+        if (--it->second <= 0)
+            it = layerChangeWindow.erase (it);
+        else
+            ++it;
+    }
+
     auto desired = computeDesired();
 
     // Verwaiste Blink-Phasen abbauen (Adresse blinkt nicht mehr).

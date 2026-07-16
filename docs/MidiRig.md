@@ -498,8 +498,23 @@ M4 sind entfernt).
   Einzel-Status (grün-Ebene solid = abgeholt, Basis rot-blinkend =
   wartet, aus = ungebunden; grüne Ebene via `led_layer_c` des Ziel-Pads
   aufgelöst). (3) Einfache Profile: `led_pickup` OHNE Gruppe blinkt
-  immer bei waiting. (4) Shift-Pad-Anzeige (profil-unabhängig): wartende
-  Shift-Ebene + Bewegung → LEDs der gehaltenen Modifier-Pads blinken mit.
+  immer bei waiting. (4) Shift-Pad-Anzeige (profil-unabhängig, **M6.1
+  geändert 15.07.2026**): solange ein Modifier-Pad gehalten wird und die
+  physische Position der Shift-Ebene bekannt ist, zeigt das Pad die
+  RICHTUNG **solid** (rot=`led`=verringern, orange=`led_layer_b`=erhöhen,
+  grün=`led_layer_c`=gefunden; kein Blinken, kein `activeRecently`-Gate —
+  Status steht „im Moment des Drückens"). Den Näherungswert (Blink) trägt
+  weiterhin die Spalten-Status-LED aus Mechanismus 1. Dafür meldet
+  `PickupState` jetzt `physicalAbove` (Vorzeichen `physisch−Software`) und
+  `aligned` (abgeholt/engaged, NUR für Shift-Ebenen mit Modifiern) —
+  aligned-Einträge landen im Router-`waiting`-Store, `waitingFor()` filtert
+  sie für Mechanismus 1–3 aus. **Feldtest-Fix (15.07.2026):** rot/orange
+  flackerten nur kurz und wurden dann dunkel — Ursache war der Echo-Pfad
+  (`onFeedbackEcho` sendet für ein Pad ALLE Farb-LEDs), der die Router-Farbe
+  überschrieb, während der Router-Dedup (eigenes `lastSent`) die Korrektur
+  verhinderte. Fix: `onFeedbackEcho` überspringt LEDs mit
+  `PickupLedRouter::isManaging(...)` (hält aber den Echo-Cache aktuell für den
+  späteren Restore).
   LED-Restore beim Verlassen jedes Zustands aus dem Echo-Cache
   (`GridPage::lastFeedbackSent`) — bloßes 0-Senden würde Toggle-LEDs
   löschen. Der Echo-Pfad überspringt `led_pickup` und `status_...`
@@ -524,6 +539,75 @@ M4 sind entfernt).
 - **Dokumentierte Grenze:** Echo und Blink können auf geteilten Pad-LEDs
   kurz konkurrieren (Restore heilt) — Echo-Suppression wäre Nachschlag.
   Blink-Konstanten hängen an der 60-Hz-Hub-Tick-Annahme.
+
+## M7 — Channelstrip-Ebenen (Top-Encoder) (07/2026)
+
+User-Idee (15.07.2026): die 4 K1-Top-Encoder (CC0–3) drehen statt zu senden
+je eine von **3 Binding-Bänken** für alle übrigen Controls IHRER Spalte
+(Channelstrip) — verdreifacht die Belegung von 3 Knobs + Fader + 7 Pads pro
+Spalte. Spalte = Profil-`group` (col1–4); layer-neutral bleiben nur die
+Setup-Knobs (CC20/21) und die Shift/Setup-Reihe.
+
+User-Entscheidungen (15.07.2026): Belegung über „**aktive Ebene =
+Lernziel**" (Encoder auf die Ebene drehen, dann Control per MIDI-Learn — kein
+neues UI, spiegelt M5a); Ebene **pro Session** persistiert; Ebenen-Farben
+**1 rot / 2 grün / 3 orange**; beim Drehen blinken alle Pads der Spalte kurz
+in der Ebenen-Farbe; Encoder dauerhaft Layer-Selektoren (keine Macro-Knobs
+mehr auf CC0–3). Zuordnung Encoder→Spalte = ganzer vertikaler Channelstrip
+(User-Chart `xone K1 midi.png`), NICHT horizontale Reihe.
+
+- **`Source/Core/ChannelStripLayers.h/.cpp` (headless, testbar):** Schritt-
+  Akkumulator pro Spalte, `kStepsPerLayer=8` Detents je Zone, 3 volle Zonen
+  (`kMaxPos=23`), an den Enden geklemmt (kein Wrap 3→1). Endlos-Encoder
+  signed dekodiert (`decodeSignedDelta`: 1..63=+, 65..127=−, 0/64=0) —
+  isoliert, weil geräteabhängig (Feldtest kann die Kodierung hier justieren).
+  `feed()`→{layer, layerChanged}, `setLayer`/`snapshot` für Persistenz.
+- **`MidiInBindings` (Ebenen-Dimension):** `Binding` trägt `column`
+  (Profil-`group`, leer = nicht geebent → immer aktiv) + `layer`. `bind()`
+  löst bei `column==kAutoColumn` (Live/Learn) Spalte über den `columnResolver`
+  (Besitzer GridPage, profil-getrieben) + die aktuell aktive Ebene auf; der
+  Persistenz-Load übergibt explizite Werte. **Dedup schließt column+layer ein**
+  (Bänke derselben Adresse koexistieren, analog M5-Shift-Ebenen).
+  `bestMatch` filtert eine geebente Bindung aus, wenn `layer !=
+  activeLayer(column)`. `setActiveLayer`/`activeLayer` je Spalte.
+- **`PickupLedRouter` (Basis-Mechanismus, M7b geändert):** `setColumnLayer`
+  hält die aktive Ebene je Spalte DAUERHAFT — alle `type=="pad"`-Controls der
+  Spalte leuchten solid in der Ebenen-Farbe (0 `led`=rot, 1 `led_layer_c`=grün,
+  2 `led_layer_b`=orange) als BASIS (erster Block in `computeDesired`, die
+  Pickup-/Detail-/Shift-Mechanismen 1–4 überschreiben sie als momentane
+  Overrides). Aktives Pad (Echo-Wert > 0 = Toggle/Button an) blinkt im
+  8tel-Takt, ein Ebenen-Wechsel lässt die Spalte `kLayerChangeTicks` lang im
+  16tel-Takt flackern — beide **tempo-synchron** über `setBeatPosition`
+  (LinkClock.getBeatPosition, GridPage füttert je Tick; `beatBlinkOn` = an in
+  der ersten Hälfte jeder Unterteilung). **User-Entscheidung 15.07.2026:**
+  dauerhafte Layer-Farbe statt transientem Blink.
+- **`ControllerProfile.role` (+ Parser-Spalte `role`):** `role=layer_select`
+  markiert den Spalten-Selektor. Neuer Controller bekommt Ebenen NUR über CSV
+  (Rule midirig: kein Code). K1-CSV: `enc_r1_1..4` `role=layer_select` (kein
+  led_pickup mehr), alle Pads mit `group=col1..4` (Spaltenzuordnung aus dem
+  User-Chart), Status-Pushes/Setup layer-neutral.
+- **GridPage:** `channelStripLayers`-Member; `refreshRigSubscriptions` baut den
+  `layerSelectCcToColumn`-Cache aus dem aktiven Profil (kein Profil-Scan je
+  Event) und spiegelt die persistierte Ebene in Bindungen UND Router-Basis
+  (`setColumnLayer`); `routeLayerSelectCc` fängt Selektor-CCs VOR den Bindungen
+  ab (`feed` → `setActiveLayer` + `setColumnLayer`). `columnResolver` liefert
+  die `group` NUR für „normale" Spalten-Controls (nicht Selektor, nicht
+  Status-Push). LinkClock durchgereicht (Ctor-Param) für `setBeatPosition`.
+- **Persistenz (`GridSessionStore`):** pro Binding `column`/`stripLayer`
+  (fehlend = ungeebent, rückwärtskompatibel) + `StripLayer`-Kinder
+  (column→aktive Ebene). **Property heißt `stripLayer`, NICHT `layer`** —
+  `keyToState` belegt `layer` bereits für die Macro-Art des Keys (Kollision =
+  falscher Key beim Laden, s. Lektionen).
+
+**Grenzen/offen:** K1-Encoder-Relativkodierung ist eine Annahme (Feldtest);
+Knob-/Fader-`led_pickup` teilen sich physische LEDs mit den geebenten Pads
+(K1-Eigenheit, M6-Grenze); kein On-Screen-Ebenen-Indikator (Hardware-LEDs sind
+das Feedback). **Reconciliation M6.1↔M7b:** die dauerhafte Layer-Farbe ist die
+BASIS, die momentanen Pickup-/Detail-/Shift-Anzeigen (inkl. der M6.1-Richtung
+auf gehaltenen Modifier-Pads) überschreiben sie, solange sie greifen —
+NICHT die vom User genannte „Shift-Pad = immer 8tel Layer-Farbe"-Variante
+(offen: würde die Richtungs-Hilfe ersetzen, bewusst zunächst als Override
+belassen). **Feldtest offen.**
 
 ## Lektionen
 
@@ -564,6 +648,14 @@ M4 sind entfernt).
   `lines`/`patchline`-Quellen/Ziele bis zur `---nrpn <bank> <nummer>`-
   Message-Box verfolgen (inkl. Sprung über Subpatcher-Grenzen via
   `inlet`-Objekte).
+- **ValueTree-Property-Namen kollidieren still** (M7 einmal bezahlt): der
+  Binding-Serialisierer schreibt zuerst `keyToState` (Properties `layer`
+  (Macro-Art!), `controlId`, `axis`), dann eigene Felder. Eine neue Property
+  `layer` für die Channelstrip-Ebene ÜBERSCHRIEB die Key-Art → beim Laden
+  entstand ein falscher Key (Bindung „verschwand"). Symptom: Roundtrip-Test
+  `bindingFor(...) == nullptr` trotz korrektem `count()`. Neue Binding-
+  Properties immer gegen die von `keyToState` gesetzten Namen prüfen; hier
+  `stripLayer` statt `layer`.
 - **Glob-Muster gehören NIE in C-Blockkommentare** (beide Richtungen,
   M2 + M4b je einmal bezahlt): `**/*.csv` — das `*/` BEENDET den
   Kommentar (Kaskadenfehler); `Ordner/*.csv` — das `/*` triggert Clangs
@@ -593,9 +685,10 @@ M4 sind entfernt).
   M3  Semantischer Picker — Geräte-/Parameter-Auswahl-UI (Analogie Ableton-Parameter-Browser Track→Device→Parameter) — erledigt 07/2026
   M4  Controller-Profile + LED — Conduit-Controller-Profile-v1-CSV-Schema, Send-Adresse + bis zu 3 Feedback-Adressen pro Control — erledigt 07/2026
   M5  Map-Modus + Tab + Chord-Learn — M5a Shift-Ebenen/Chord-Learn · M5b app-weites Dock + Map-Tab + Overlay · M5c Conduit-Macro-Ziele mit Modulation — komplett erledigt 07/2026
-  M6  Pickup-LED + Verhalten — Soft-Takeover-Feedback über Controller-Profile-LEDs (PickupLedRouter: Spalten-Status/Detail-Modus/Shift-Pad-Anzeige, TakeoverMode pro Gerät, Ebenen-Wechsel-Sprung-Fix) — erledigt 07/2026 (Feldtest offen)
-  M7  Bidirektional Ribbons — Motorfader-/Ribbon-Feedback in beide Richtungen — offen
-  M8  SysEx-Snippets — Sende-only Hex-Snippets mit optionalem `{v}`-Platzhalterbyte — offen
+  M6  Pickup-LED + Verhalten — Soft-Takeover-Feedback über Controller-Profile-LEDs (PickupLedRouter: Spalten-Status/Detail-Modus/Shift-Pad-Anzeige, TakeoverMode pro Gerät, Ebenen-Wechsel-Sprung-Fix) — erledigt 07/2026 (Feldtest offen); M6.1 (15.07.2026): Shift-Pad zeigt die RICHTUNG solid (rot/orange/grün, kein Blinken) statt zu blinken — Näherungswert bleibt die Spalten-Status-LED
+  M7  Channelstrip-Ebenen — Top-Encoder (role=layer_select) wählen pro Spalte eine von 3 Binding-Bänken (ChannelStripLayers, 8-Step-Zonen, Ebenen-Blink, „aktive Ebene = Lernziel", pro Session persistiert) — erledigt 07/2026 (Feldtest offen)
+  M8  Bidirektional Ribbons — Motorfader-/Ribbon-Feedback in beide Richtungen — offen
+  M9  SysEx-Snippets — Sende-only Hex-Snippets mit optionalem `{v}`-Platzhalterbyte — offen
 
 ## Referenzen
 

@@ -228,6 +228,16 @@ class Track(_Listenable):
             self._set(key, value)
 
 
+class BeatTime(object):
+    """LOM Live.Song.BeatTime-Ausschnitt (get_current_beats_song_time)."""
+
+    def __init__(self, bars, beats, sub_division=1, ticks=1):
+        self.bars = bars
+        self.beats = beats
+        self.sub_division = sub_division
+        self.ticks = ticks
+
+
 class Song(_Listenable):
     def __init__(self, num_tracks=2, num_scenes=8, num_sends=2):
         _Listenable.__init__(self)
@@ -251,6 +261,15 @@ class Song(_Listenable):
         self.scenes = [Scene("Scene %d" % (i + 1)) for i in range(num_scenes)]
 
     # transport methods (LOM names)
+    def get_current_beats_song_time(self):
+        """Wie Live: BeatTime aus current_song_time (in Beats/Vierteln),
+        bars/beats 1-basiert, Taktlaenge aus der Signatur."""
+        beats_per_bar = (self.__dict__["signature_numerator"] * 4.0
+                         / self.__dict__["signature_denominator"])
+        t = float(self.__dict__["current_song_time"])
+        return BeatTime(int(t // beats_per_bar) + 1,
+                        int(t % beats_per_bar) + 1)
+
     def start_playing(self):
         self.is_playing = True
 

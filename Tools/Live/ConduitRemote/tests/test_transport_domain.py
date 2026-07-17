@@ -23,6 +23,8 @@ def test_subscribe_sends_snapshot():
         "session_record": False,
         "sig_num": 4,
         "sig_den": 4,
+        "bar": 1,
+        "beat": 1,
     }
 
 
@@ -103,3 +105,58 @@ def test_double_attach_does_not_duplicate_listeners():
     # had been registered twice and fired mark_dirty/dirty-triggered sends
     # in a way that duplicated output)
     assert len(sender.sent) == 1
+
+
+# -- Song-Position (Live-Remote-Bridge, 07/2026) -------------------------------
+
+def test_beat_change_diffs_bar_and_beat():
+    song, sender, domain = make_domain()
+    domain.on_subscribe()
+    sender.clear()
+
+    song.current_song_time = 5.0   # 4/4: Takt 2, Beat 2
+    domain.on_tick(1)
+
+    assert sender.last()[2] == {"bar": 2, "beat": 2}
+
+
+def test_sub_beat_movement_sends_no_diff():
+    song, sender, domain = make_domain()
+    domain.on_subscribe()
+    sender.clear()
+
+    # Listener feuert (dirty), aber die quantisierten Keys aendern sich
+    # nicht -> compute_diff findet nichts, kein Send (Diff-Drossel).
+    song.current_song_time = 0.25
+    domain.on_tick(1)
+    song.current_song_time = 0.75
+    domain.on_tick(2)
+
+    assert sender.sent == []
+
+
+def test_signature_affects_bar_length():
+    song, sender, domain = make_domain()
+    song.__dict__["signature_numerator"] = 3   # 3/4: Takt = 3 Beats
+    domain.on_subscribe()
+    sender.clear()
+
+    song.current_song_time = 3.0   # Takt 2, Beat 1 (beat unveraendert -> nur bar im Diff)
+    domain.on_tick(1)
+
+    assert sender.last()[2] == {"bar": 2}
+
+
+def test_missing_beats_song_time_capability_omits_keys():
+    song, sender, domain = make_domain()
+
+    def _raise():
+        raise RuntimeError("not supported")
+
+    song.__dict__["get_current_beats_song_time"] = _raise
+    domain.on_subscribe()
+
+    payload = sender.last()[2]
+    assert "bar" not in payload
+    assert "beat" not in payload
+    assert payload["tempo"] == 120.0   # Domain lebt weiter

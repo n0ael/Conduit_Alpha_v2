@@ -719,6 +719,26 @@ Gefuehl offen).
 unter Windows 11 nur mit lokal signiertem Katalog + Testsigning — Skripte
 und Doku unter `C:\Users\leonn\AlphaTrack-signed` (nicht Teil des Repos).
 
+## Live-Remote-Bridge (Verweis, 17.07.2026)
+
+Der AlphaTrack dient zusaetzlich als Ableton-Live-Fernbedienung — die
+Bridge lebt fachlich im TouchLive-Subsystem: **docs/TouchLive.md §10l**
+(`Source/TouchLive/LiveRemoteBridge` + `AlphaTrackLcd`). MIDI-Rig-seitige
+Bausteine:
+
+- **Rolle `MidiRigSettings::liveRemoteDeviceId`** („Live"-Marker im
+  MIDI-Menue, abschaltbar). KONFLIKTREGEL: Grid- UND Live-Rolle auf
+  demselben Geraet → Bridge inaktiv.
+- **CSV-Control-ID-KONVENTION** (Bridge-Rollen-Aufloesung, statt neuer
+  `role`-Werte): `fader` (Pitch-Bend + `touch_number`), `pan`, `f1..f4`,
+  `shift`, `track_l`, `track_r`, `mute`, `solo`, `rec_arm` — Controller,
+  die die Bridge bedienen sollen, muessen diese IDs tragen.
+- **Profil-Spalte `display`** (erste nicht-leere Zelle gewinnt, Muster
+  `device`): Display-Faehigkeit des Geraets; bekannter Wert
+  `alphatrack_lcd` (2x16 via SysEx). SysEx bleibt Sende-only (E6);
+  das Native-Mode-Force-SysEx sendet die Bridge bei jedem Resolve
+  (Treiber-Applet ueberfluessig).
+
 ## Lektionen
 
 - **Relativ-Encoder: positive Richtung beweist NICHTS** (M8.1, Feldtest).

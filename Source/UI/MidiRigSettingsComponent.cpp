@@ -50,6 +50,21 @@ MidiRigSettingsComponent::DeviceRow::DeviceRow (MidiRigSettingsComponent& ownerT
     { owner.settings.setGridControllerDeviceId (deviceId); };
     addChildComponent (gridButton);
 
+    // Live-Remote-Bridge: welches Geraet ist die Ableton-Fernbedienung
+    // (AlphaTrack). Anders als der Grid-Marker abschaltbar (erneuter Klick
+    // gibt die Rolle frei) -- die Bridge haelt sonst Abos aufs Geraet.
+    // KONFLIKT Grid+Live auf demselben Geraet laesst die Bridge inaktiv
+    // (LiveRemoteBridge, doppelte Fader-Konsumenten).
+    liveButton.setClickingTogglesState (false);
+    liveButton.setToggleState (owner.settings.getLiveRemoteDeviceId() == deviceId,
+                               juce::dontSendNotification);
+    liveButton.onClick = [this]
+    {
+        const auto isActive = owner.settings.getLiveRemoteDeviceId() == deviceId;
+        owner.settings.setLiveRemoteDeviceId (isActive ? juce::Uuid::null() : deviceId);
+    };
+    addChildComponent (liveButton);
+
     populatePortCombo (inBox, owner.hub.availableInputs(), device.midiInName);
     inBox.onChange = [this]
     { owner.settings.setMidiInName (deviceId, selectedPortName (inBox, owner.hub.availableInputs())); };
@@ -208,6 +223,7 @@ void MidiRigSettingsComponent::DeviceRow::resized()
     profileBox.setVisible (isController);
     takeoverBox.setVisible (isController);   // M6
     gridButton.setVisible (isController);
+    liveButton.setVisible (isController);    // Bridge: Live-Remote-Marker
 
     auto area = getLocalBounds();
     area.removeFromRight (kStatusWidth);   // Status-LEDs (paint)
@@ -216,6 +232,8 @@ void MidiRigSettingsComponent::DeviceRow::resized()
 
     if (isController)
     {
+        liveButton.setBounds (area.removeFromRight (48).reduced (2, 6));
+        area.removeFromRight (2);
         gridButton.setBounds (area.removeFromRight (48).reduced (2, 6));
         area.removeFromRight (2);
     }

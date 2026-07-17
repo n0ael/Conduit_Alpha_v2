@@ -48,6 +48,13 @@ paths:
   bleibt die Spalten-Status-LED. `PickupState` trägt `physicalAbove`/
   `aligned`; aligned-Einträge sieht nur Mechanismus 4, `waitingFor()`
   filtert sie für 1–3 aus.
+- Live-Remote-Bridge (docs/TouchLive.md §10l): Rolle
+  `liveRemoteDeviceId`; Grid- UND Live-Rolle auf demselben Geraet →
+  Bridge inaktiv (doppelte Fader-Konsumenten). Bridge-Controls werden
+  ueber CSV-Control-IDs aufgeloest (fader/pan/f1..f4/shift/track_l/r/
+  mute/solo/rec_arm — Konvention in docs/MidiRig.md), NICHT ueber die
+  `role`-Spalte (die behaelt layer_select). Profil-Spalte `display`
+  (z. B. alphatrack_lcd) waehlt den Display-Treiber datengetrieben.
 - Relativ-Encoder (M8.1): die Kodierung ist GERAETEABHAENGIG und kommt aus
   dem Profil (CSV `rel_encoding`: signbit/binoffset/leer=twosComplement) —
   nie im Code pro Geraet verzweigen. EINE Quelle: `RelativeEncoding.h`

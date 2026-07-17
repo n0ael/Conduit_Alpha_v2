@@ -104,6 +104,15 @@ public:
     [[nodiscard]] juce::Uuid getGridOutputDeviceId() const noexcept { return gridOutputDeviceId; }
     void setGridOutputDeviceId (const juce::Uuid& id);
 
+    /** Live-Remote-Bridge (07/2026): das Geraet, das als Ableton-Live-
+        Fernbedienung dient (AlphaTrack). Null-Uuid = Rolle unbesetzt.
+        KONFLIKTREGEL: traegt DASSELBE Geraet zusaetzlich die Grid-
+        Controller-Rolle, bleibt die Bridge inaktiv (sonst konsumieren
+        Grid-Bindungen UND Bridge denselben Fader und zwei Motor-Router
+        senden gegeneinander) -- durchgesetzt in LiveRemoteBridge. */
+    [[nodiscard]] juce::Uuid getLiveRemoteDeviceId() const noexcept { return liveRemoteDeviceId; }
+    void setLiveRemoteDeviceId (const juce::Uuid& id);
+
     /** Einmal-Migration der GridPanelSettings-Gerätenamen (M1b): ohne
         gesetztes Migrations-Flag UND mit mindestens einem nicht-leeren
         Namen entstehen zwei RigDevices („Controller" aus controlIn,
@@ -140,6 +149,7 @@ private:
 
     juce::Uuid gridControllerDeviceId = juce::Uuid::null();
     juce::Uuid gridOutputDeviceId     = juce::Uuid::null();
+    juce::Uuid liveRemoteDeviceId     = juce::Uuid::null();
     bool migratedFromGridPanel = false;
     bool useLegacyCcList = true;   // E1b-Schnellpfad, Default an
 

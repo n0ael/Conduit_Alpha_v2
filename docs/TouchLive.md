@@ -695,6 +695,58 @@ dem Message Thread (30-Hz-Timer) — das Spektrum ist reine Anzeige.
 - Eq8Panel repainted per MultiTimer nur bei neuen Analyse-Frames
   (Revision-Zähler) und nur sichtbar.
 
+## 10l. Live-Remote-Bridge (AlphaTrack als Ableton-Fernbedienung, 17.07.2026)
+
+Brueckt das MIDI-Rig (docs/MidiRig.md, Hardware Frontier AlphaTrack, M8)
+mit der TouchLive-Anbindung: der Controller bedient den in Live
+SELEKTIERTEN Track — v1: Volume/Pan/Sends auf dem Motorfader,
+Track-Navigation, Mute/Solo/Arm mit LED-Feedback, Track-Name +
+Song-Position im 2x16-LCD. User-Entscheidungen 17.07.2026 (Fader-Modi
+Volume/Pan-Taste/F1–F4-Sends + SHIFT-Ebene, aktive Taste erneut = Volume,
+TRACK◀/▶ wechseln Lives Selektion, Mute/Solo/Arm sofort mit).
+
+- **`Source/TouchLive/LiveRemoteBridge`** (headless, EngineProcessor-
+  Member, Tick = `MidiPortHub::subscribeTick`): eigene Hub-Abos auf das
+  **Live-Remote-Rollen-Geraet** (`MidiRigSettings::liveRemoteDeviceId`,
+  „Live"-Marker im MIDI-Menue, abschaltbar). Wert-Beobachtung =
+  Tick-Diffing gegen lokale Caches (KEINE ValueTree-Listener); Seams
+  (`sendMidi`/`sendCommand`/`sendTouchValue`/`noteTouched`/
+  `isLiveConnected`/`nowMs`) machen sie ohne Client/Hardware testbar.
+  **KONFLIKTREGEL:** Grid- UND Live-Rolle auf demselben Geraet → Bridge
+  inaktiv (sonst doppelte Fader-Konsumenten + zwei Motor-Router).
+- **Rollen-Aufloesung ueber die CSV-Control-IDs** des Controller-Profils
+  (`fader`, `pan`, `f1..f4`, `shift`, `track_l/r`, `mute`, `solo`,
+  `rec_arm` — Konvention in docs/MidiRig.md); die `role`-Spalte behaelt
+  ihre M7-Semantik. Fader-Touch-Note aus `touch_number`.
+- **Schreiben:** Fader-PB → `/live/track/set/volume|panning|send` via
+  `sendTouchValue` (Fast-Path) + `noteTouchedParameter` (Suppression);
+  Mute/Solo/Arm/Track-Wechsel via `sendCommand` (Args als Int, nie Bool).
+  Anzeige folgt SOFORT dem eigenen Send (`localValue`, frisch <400 ms) —
+  das Modell bleibt waehrend der Suppression absichtlich alt.
+- **Motor:** zweite `PositionFeedbackRouter`-Instanz (M8-Baustein
+  unveraendert): `currentBoundValueFor` = Wert des aktiven Ziels aus der
+  mixer-Domain (vol direkt, pan (v+1)/2, send[idx]); kein Ziel → −1 =
+  Motor steht. Ebenen-/Moduswechsel faehrt automatisch (Router-Diff).
+- **LEDs folgen dem MODELL** (Live ist die Wahrheit), nie dem Tastendruck;
+  Dedupe pro Note; disconnected → alles aus. Send 5–8 teilt die F-LED
+  (Unterscheidung zeigt das LCD).
+- **LCD (`Source/TouchLive/AlphaTrackLcd`,** nur bei Profil-Spalte
+  `display=alphatrack_lcd`): SysEx `f0 00 01 40 20 00 <pos> <ascii> f7`
+  (Zeile 2 = pos 0x10+col), Frame-Diff (nur geaenderte Runs), ASCII-
+  Sanitize. Zeile 1 = Track-Name („-" ohne Track, „Live offline"
+  disconnected); Zeile 2 = `Takt.Beat` aus der transport-Domain
+  (NEU: Script sendet `bar`/`beat`, beat-quantisiert = Diff-Drossel;
+  Listener `add_current_song_time_listener` einzeln try/except), bei
+  Fader-Touch/Moduswechsel (1,5 s) das aktive Ziel: Vol in dB
+  (`faderscale::dbText`), Pan L/C/R, Send = **Name des Return-Tracks**
+  (tracks-Domain kind==return, index==Send-Index) + Prozent.
+- **Native-Mode-Force-SysEx** (`f0 00 01 40 20 01 00 f7`) geht bei jedem
+  Resolve raus — das AlphaTrack-Treiber-Applet ist damit ueberfluessig.
+- **Grenzen (v1, dokumentiert):** selected = Return/Master → Anzeige ja,
+  Steuerung inert (Stable-ID-Resolver der Gegenseite kennt nur regulaere
+  Tracks); Send-Index ≥ vorhandene Sends → inert; Strip/Encoder des
+  AlphaTrack sind im Live-Remote-Modus unbelegt (Folge-Kandidaten).
+
 ## 11. Offen
 
 - Feldtest KOMPLETT bestanden (09.07.2026): Bidirektionalität, Feel

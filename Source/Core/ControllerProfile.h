@@ -102,6 +102,14 @@ inline constexpr const char* kTypeTouch = "touch";
 struct ControllerProfile
 {
     juce::String device;
+
+    /** Live-Remote-Bridge (07/2026): Display-FAEHIGKEIT des Geraets --
+        Treiber-Wahl datengetrieben statt Geraetename-Switch (Rule midirig).
+        Bekannte Werte: "alphatrack_lcd" (2x16 via SysEx). Leer = kein
+        Display. CSV-Spalte `display` (erste nicht-leere Zelle gewinnt,
+        Muster `device`); fehlende Spalte -> leer (Alt-CSVs unveraendert). */
+    juce::String display;
+
     std::vector<ControllerControl> controls;
 
     /** Erstes Control, dessen Send-Adresse zu (kind, number) passt -- Kern

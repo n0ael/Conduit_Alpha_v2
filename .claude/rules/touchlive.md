@@ -100,6 +100,23 @@ Bespoke-UIs (M5):
   (`touchKeyFor`) — NIE auf die nackte Adresse zurückbauen, sonst
   latchen sich Freq+Gain bzw. Multi-Touch-Fader gegenseitig weg.
 
+Live-Remote-Bridge (§10l, 17.07.2026):
+- `Source/TouchLive/LiveRemoteBridge` (EngineProcessor-Member, headless):
+  AlphaTrack bedient den in Live SELEKTIERTEN Track. Wert-Beobachtung =
+  TICK-DIFFING gegen lokale Caches (keine ValueTree-Listener am Modell);
+  Motor = zweite `PositionFeedbackRouter`-Instanz; LEDs folgen dem
+  MODELL, nie dem Tastendruck; eigene Fader-Sends aktualisieren die
+  ANZEIGE sofort lokal (`localValue`, das Modell bleibt waehrend der
+  Suppression alt — nie aufs Echo warten, §5.1).
+- transport-Domain traegt seit 07/2026 `bar`/`beat` (beat-QUANTISIERT in
+  collect() = Diff-Drossel; der current_song_time-Listener ist einzeln
+  try/except gebunden). Beim Erweitern die Quantisierung nicht aufweichen.
+- Mute/Solo/Arm/Track-Wechsel via sendCommand mit INT-Args (nie Bool);
+  Fader via sendTouchValue + noteTouchedParameter.
+- AlphaTrack-LCD (`AlphaTrackLcd`): SysEx-Frames NUR als Diff-Runs pro
+  tick(); `forceRedraw` + LED-Cache-Reset bei Geraete-/Rollen-Wechsel —
+  sonst restauriert das Dedupe nie.
+
 Browser (M4):
 - KEINE Domain — Request/Response (`/remote/browser/roots|children` →
   `/remote/browser/list`, gleiche [seq,chunk,chunks,json]-Hülle, Chunks

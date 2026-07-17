@@ -121,6 +121,25 @@ EngineProcessor::EngineProcessor (const juce::File& settingsFolder)
                                           gridPanelSettings.getEchoMidiInDeviceName());
     midiPortHub.syncFromRegistry();
 
+    // Live-Remote-Bridge: Seams an Hub-Ausgang + TouchLive-Client binden
+    // (Muster PositionFeedbackRouter -- die Bridge selbst bleibt headless
+    // testbar). Danach EINMAL neu aufloesen: der Member-Ctor lief noch ohne
+    // sendMidi, das Native-Mode-SysEx eines bereits gesetzten Geraets
+    // braucht die fertige Verdrahtung.
+    liveRemoteBridge.sendMidi = [this] (const juce::MidiMessage& message)
+    {
+        midiPortHub.outputTargetFor (midiRigSettings.getLiveRemoteDeviceId()).send (message);
+    };
+    liveRemoteBridge.sendCommand = [this] (const juce::OSCMessage& message)
+    { return touchLiveClient.sendCommand (message); };
+    liveRemoteBridge.sendTouchValue = [this] (const juce::OSCMessage& message)
+    { touchLiveClient.sendTouchValue (message); };
+    liveRemoteBridge.noteTouched = [this] (const juce::String& suppressionKey)
+    { touchLiveClient.noteTouchedParameter (suppressionKey); };
+    liveRemoteBridge.isLiveConnected = [this]
+    { return touchLiveClient.getStatus() == TouchLiveClient::Status::connected; };
+    liveRemoteBridge.refreshFromRegistry();
+
     // Eingebetteter Input-Link-Send (7.2): Zustand lebt in channelNames —
     // jeder Broadcast (Enable-Toggle, Pairing, Label-Rename, Device-Wechsel
     // via setActiveDevice) zieht den Diff nach

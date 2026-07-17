@@ -178,6 +178,8 @@ set(CONDUIT_CPP_SOURCES
     Source/Core/MacroBindings.cpp
     Source/Core/ConduitMacroTargets.cpp
     Source/TouchLive/AbletonParamTarget.cpp
+    Source/TouchLive/AlphaTrackLcd.cpp
+    Source/TouchLive/LiveRemoteBridge.cpp
     Source/TouchLive/LiveSetModel.cpp
     Source/TouchLive/LiveTargetResolver.cpp
     Source/TouchLive/LiveSpectrumTap.cpp
@@ -376,8 +378,10 @@ target_sources(Conduit PRIVATE
     Source/Core/Capture/InputMeter.h
     Source/Core/Capture/PreRollBuffer.h
     Source/Core/Capture/SampleClock.h
+    Source/TouchLive/AlphaTrackLcd.h
     Source/TouchLive/IRemoteTransport.h
     Source/TouchLive/LiveFaderScale.h
+    Source/TouchLive/LiveRemoteBridge.h
     Source/TouchLive/LiveSetModel.h
     Source/TouchLive/LiveSpectrumTap.h
     Source/TouchLive/TouchLiveClient.h
@@ -681,7 +685,9 @@ if(CONDUIT_BUILD_TESTS)
         Tests/Core/TransportLinkTests.cpp
         Tests/Core/UiSettingsTests.cpp
         Tests/Core/VoiceAllocatorTests.cpp
+        Tests/TouchLive/AlphaTrackLcdTests.cpp
         Tests/TouchLive/LiveFaderScaleTests.cpp
+        Tests/TouchLive/LiveRemoteBridgeTests.cpp
         Tests/TouchLive/LiveSetModelTests.cpp
         Tests/TouchLive/LiveSpectrumTapTests.cpp
         Tests/TouchLive/TouchLiveClientTests.cpp
@@ -786,6 +792,8 @@ if(CONDUIT_BUILD_TESTS)
         Source/Core/MacroBindings.cpp
         Source/Core/ConduitMacroTargets.cpp
         Source/TouchLive/AbletonParamTarget.cpp
+        Source/TouchLive/AlphaTrackLcd.cpp
+        Source/TouchLive/LiveRemoteBridge.cpp
         Source/TouchLive/LiveSetModel.cpp
         Source/TouchLive/LiveTargetResolver.cpp
         Source/TouchLive/LiveSpectrumTap.cpp

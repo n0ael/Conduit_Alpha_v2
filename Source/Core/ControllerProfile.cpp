@@ -159,6 +159,7 @@ ControllerProfile parseControllerProfileCsv (const juce::String& text, Controlle
     const auto colRelEncoding = columnIndex ("rel_encoding");
     const auto colTouchNumber = columnIndex ("touch_number");
     const auto colDevice      = columnIndex ("device");
+    const auto colDisplay     = columnIndex ("display");
     const auto colSendKind    = columnIndex ("send_kind");
     const auto colSendChannel = columnIndex ("send_channel");
     const auto colSendNumber  = columnIndex ("send_number");
@@ -198,6 +199,13 @@ ControllerProfile parseControllerProfileCsv (const juce::String& text, Controlle
             const auto deviceField = fieldAsString (fields, colDevice);
             if (deviceField.isNotEmpty())
                 profile.device = deviceField;
+        }
+
+        if (profile.display.isEmpty())
+        {
+            const auto displayField = fieldAsString (fields, colDisplay);
+            if (displayField.isNotEmpty())
+                profile.display = displayField;
         }
 
         ControllerControl control;

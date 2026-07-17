@@ -91,6 +91,7 @@ private:
         juce::ComboBox profileBox;      // M4: nur sichtbar bei kind == controller
         juce::ComboBox takeoverBox;     // M6: Pickup/Sprung (nur Controller)
         juce::TextButton gridButton { "Grid" };   // M4b: Grid-Controller-Marker
+        juce::TextButton liveButton { "Live" };   // Bridge: Live-Remote-Marker (AlphaTrack)
         juce::TextButton removeButton { "X" };
 
         bool inConnected = false;

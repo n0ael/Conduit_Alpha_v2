@@ -3,7 +3,29 @@
 > Letzte Aktualisierung: 2026-07-17 | wird nach jedem Meilenstein gepflegt
 > Architektur-Referenz: [CLAUDE.md](CLAUDE.md) | Repo: n0ael/Conduit
 
-## Aktueller Meilenstein (16./17.07.2026) — MIDI-Rig M8 (ADR 006): Bidirektionale Ribbons/Motorfader
+## Aktueller Meilenstein (17.07.2026) — Live-Remote-Bridge: AlphaTrack als Ableton-Fernbedienung
+
+Brückt MIDI-Rig (AlphaTrack, M8) mit TouchLive: der Controller bedient den
+in Live **selektierten Track**. Details: docs/TouchLive.md §10l.
+
+- **Fader-Modi:** Volume (Default) · Pan (PAN-Taste) · Send 1–4 (F1–F4) ·
+  Send 5–8 (SHIFT+F1–F4); aktive Taste erneut = Volume. Motorfader folgt
+  Lives Wert (touch-gated, zweite PositionFeedbackRouter-Instanz).
+- **TRACK◀/▶** wechseln Lives Track-Selektion; **MUTE/SOLO/REC** togglen
+  mit LED-Feedback (LEDs folgen dem Modell, nie dem Tastendruck).
+- **LCD (2×16, SysEx):** Zeile 1 Track-Name, Zeile 2 Song-Position
+  (Takt.Beat — NEU in der transport-Domain, beat-quantisiert); bei
+  Fader-Touch das aktive Ziel (Vol dB / Pan L-C-R / **Return-Track-Name**
+  + Prozent). Frame-Diff, kein Flackern.
+- **Native-Mode-Force-SysEx** bei jedem Resolve — das AlphaTrack-Applet
+  ist überflüssig.
+- Neue Rolle `liveRemoteDeviceId` („Live"-Marker im MIDI-Menü);
+  Konfliktregel Grid+Live = Bridge inaktiv. Profil-Spalte `display`.
+- Tests: 924 Cases / 30299 Assertions + 177 pytest. **Feldtest offen**
+  (LCD-Zeichensatz, Motor-Feel, LED-Latenz); Script-Deploy nötig
+  (robocopy + Live-Neustart).
+
+## Davor (16./17.07.2026) — MIDI-Rig M8 (ADR 006): Bidirektionale Ribbons/Motorfader
 
 **Feldtest am Frontier AlphaTrack bestanden (17.07.2026)** — Motorfader,
 Ribbon und Encoder laufen. Ein Fund (M8.1, gefixt): siehe unten.

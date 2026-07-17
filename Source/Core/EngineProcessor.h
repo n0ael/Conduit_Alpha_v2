@@ -19,6 +19,7 @@
 #include "ControllerProfileLibrary.h"
 #include "MidiProfileLibrary.h"
 #include "MidiRigSettings.h"
+#include "TouchLive/LiveRemoteBridge.h"
 #include "TouchLive/LiveSetModel.h"
 #include "TouchLive/LiveSpectrumTap.h"
 #include "TouchLive/TouchLiveClient.h"
@@ -524,6 +525,14 @@ private:
     LiveSetModel liveSetModel;
     TouchLiveMeterBus touchLiveMeterBus;
     TouchLiveClient touchLiveClient { liveSetModel, touchLiveMeterBus, touchLiveSettings };
+
+    // Live-Remote-Bridge (07/2026): AlphaTrack als Ableton-Fernbedienung --
+    // headless, Message Thread. NACH touchLiveClient deklariert (Seams
+    // referenzieren den Client, die Bridge stirbt zuerst); Hub/Registry/
+    // Profile stehen weiter oben. Seam-Verdrahtung in initLiveRemoteBridge()
+    // (EngineProcessor-Ctor).
+    LiveRemoteBridge liveRemoteBridge { midiPortHub, midiRigSettings,
+                                        controllerProfileLibrary, liveSetModel };
 
     // Spektrum-Zubringer der EQ-Anzeige (§10k): hält die LinkClock als
     // WeakReference, stirbt VOR ihr (nach linkClock deklariert);

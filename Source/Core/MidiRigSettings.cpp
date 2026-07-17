@@ -70,6 +70,7 @@ void MidiRigSettings::loadFromFile()
     migratedFromGridPanel  = xml->getBoolAttribute ("migratedFromGridPanel", false);
     gridControllerDeviceId = juce::Uuid (xml->getStringAttribute ("gridControllerDeviceId"));
     gridOutputDeviceId     = juce::Uuid (xml->getStringAttribute ("gridOutputDeviceId"));
+    liveRemoteDeviceId     = juce::Uuid (xml->getStringAttribute ("liveRemoteDeviceId"));
     useLegacyCcList        = xml->getBoolAttribute ("useLegacyCcList", true);
 
     devices.clear();
@@ -100,6 +101,7 @@ void MidiRigSettings::writeAndNotify()
     xml.setAttribute ("migratedFromGridPanel", migratedFromGridPanel);
     xml.setAttribute ("gridControllerDeviceId", gridControllerDeviceId.toDashedString());
     xml.setAttribute ("gridOutputDeviceId", gridOutputDeviceId.toDashedString());
+    xml.setAttribute ("liveRemoteDeviceId", liveRemoteDeviceId.toDashedString());
     xml.setAttribute ("useLegacyCcList", useLegacyCcList);
 
     for (const auto& device : devices)
@@ -244,6 +246,15 @@ void MidiRigSettings::setGridOutputDeviceId (const juce::Uuid& id)
         return;
 
     gridOutputDeviceId = id;
+    writeAndNotify();
+}
+
+void MidiRigSettings::setLiveRemoteDeviceId (const juce::Uuid& id)
+{
+    if (liveRemoteDeviceId == id)
+        return;
+
+    liveRemoteDeviceId = id;
     writeAndNotify();
 }
 

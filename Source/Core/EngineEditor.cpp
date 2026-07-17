@@ -49,6 +49,10 @@ EngineEditor::EngineEditor (EngineProcessor& engineProcessor,
     // Dialogen und dem Settings-Fenster (CLAUDE.md 10)
     juce::LookAndFeel::setDefaultLookAndFeel (&lookAndFeel);
 
+    // M9c (ADR 007): „HW Presets"-Zweig im Hardware-Picker des MacroPanels.
+    gridPage.setHardwarePresetSources (engineProcessor.getHardwarePresetLibrary(),
+                                       engineProcessor.getHardwarePresetScanner());
+
     // -- TransportBar-Hooks ---------------------------------------------------
     transportBar.onUndo = [this] { undoManager.undo(); };
     transportBar.onRedo = [this] { undoManager.redo(); };

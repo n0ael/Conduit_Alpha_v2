@@ -1379,6 +1379,13 @@ void GridPage::timerCallback()
     saveSession();
 }
 
+void GridPage::setHardwarePresetSources (HardwarePresetLibrary& presetLibrary,
+                                         HardwarePresetScanner& presetScanner)
+{
+    if (macroPanel != nullptr)
+        macroPanel->setPresetSources (presetLibrary, midiRigSettings, presetScanner);
+}
+
 std::unique_ptr<grid::MacroTarget> GridPage::makeTargetFromState (const juce::ValueTree& state)
 {
     if (state.hasType (grid::MidiCcTarget::kStateType))
@@ -1399,6 +1406,15 @@ std::unique_ptr<grid::MacroTarget> GridPage::makeTargetFromState (const juce::Va
             midiTarget, (int) state.getProperty ("channel", 1),
             (int) state.getProperty ("bankMsb", -1),
             (int) state.getProperty ("bankLsb", -1));
+
+    // M9c: Preset-Load-Button (Druckflanke -> Bank-Select + PC).
+    if (state.hasType (grid::MidiPresetLoadTarget::kStateType))
+        return std::make_unique<grid::MidiPresetLoadTarget> (
+            midiTarget, (int) state.getProperty ("channel", 1),
+            (int) state.getProperty ("program", 0),
+            (int) state.getProperty ("bankMsb", -1),
+            (int) state.getProperty ("bankLsb", -1),
+            state.getProperty ("name").toString());
 
     if (state.hasType (grid::AbletonParamTarget::kStateType))
         return std::make_unique<grid::AbletonParamTarget> (

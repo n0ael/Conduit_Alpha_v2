@@ -157,6 +157,42 @@ private:
 };
 
 //==============================================================================
+/** Preset-Load-Ziel (MIDI-Rig M9c, ADR 007): feuert GENAU EIN festes
+    (Bank, Programm) auf der DRUCKFLANKE (value01 >= 0.5 && last < 0.5) --
+    Bank-Select-Vorstufe CC0/CC32 (-1 = ohne), dann Program Change.
+    Release/Halten senden nichts; ein erneuter Press sendet wieder (kein
+    Dedupe ueber Flanken -- der User will das Preset ggf. erneut laden).
+    Anders als MidiProgramChangeTarget (kontinuierlich value01 -> 0..127)
+    ist das die Push-Button-Semantik des Hardware-Preset-Browsers. */
+class MidiPresetLoadTarget final : public MacroTarget
+{
+public:
+    MidiPresetLoadTarget (IMidiOutputTarget& outputToUse, int channelToUse,
+                          int programToUse, int bankMsbToUse, int bankLsbToUse,
+                          juce::String presetNameToUse);
+
+    void sendValue (float value01) override;
+    [[nodiscard]] juce::String describe() const override;
+    [[nodiscard]] juce::ValueTree toState() const override;
+
+    [[nodiscard]] int channel() const noexcept { return midiChannel; }
+    [[nodiscard]] int program() const noexcept { return programNumber; }
+
+    static inline const juce::Identifier kStateType { "PresetLoadTarget" };
+
+private:
+    IMidiOutputTarget& output;
+    int midiChannel;      // 1..16
+    int programNumber;    // 0..127
+    int bankMsb;          // -1 = keine Bank-Vorstufe
+    int bankLsb;
+    juce::String presetName;
+    float lastValue01 = 0.0f;
+
+    JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (MidiPresetLoadTarget)
+};
+
+//==============================================================================
 /** Adressiert die Macro-Bindings eines Control-WERTS: Layer (System-Controls
     des XY+Fader-Modus vs. DIY-CC-Baukasten -- deren Control-Ids kollidieren,
     beide Modelle zaehlen ab 1), Control-Id und Achse (XY-Pads haben zwei

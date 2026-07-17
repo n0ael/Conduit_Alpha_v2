@@ -206,6 +206,10 @@ public:
         GridPage::onFeedbackEcho binden daran. */
     [[nodiscard]] ControllerProfileLibrary& getControllerProfileLibrary() noexcept { return controllerProfileLibrary; }
 
+    // M9b/M9c (ADR 007): Preset-Namen-Cache + Scan-Automat fuer den Picker.
+    [[nodiscard]] HardwarePresetLibrary& getHardwarePresetLibrary() noexcept { return hardwarePresetLibrary; }
+    [[nodiscard]] HardwarePresetScanner& getHardwarePresetScanner() noexcept { return hardwarePresetScanner; }
+
     //==========================================================================
     /** Looper-Quelle (B3/M4) [Message Thread]: Quell-Schlüssel
         ("master" | "hw:{paar}" | "out:{paar}" | "tap:{name}") PRO LOOPER auflösen und

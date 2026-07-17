@@ -78,8 +78,48 @@ void HardwareTargetPicker::chooseRow (int rowIndex)
         return;
     }
 
+    // M9c: Preset-Zeile = Auswahl (wie parameter), Aktions-Zeile = Scan
+    // starten -- der Picker bleibt offen und pollt den Fortschritt.
+    if (row.kind == MidiTargetBrowserModel::Kind::preset)
+    {
+        if (onPresetChosen != nullptr)
+            onPresetChosen (row);
+
+        if (auto* box = findParentComponentOfClass<juce::CallOutBox>())
+            box->dismiss();
+        return;
+    }
+
+    if (row.kind == MidiTargetBrowserModel::Kind::action)
+    {
+        if (onScanRequested != nullptr)
+        {
+            onScanRequested (row.deviceId);
+            startTimerHz (4);   // Status-Polling (<= 10 Hz, Rule ui-design)
+            refresh();
+        }
+        return;
+    }
+
     model.enter (rowIndex);
     searchField.setText ({}, juce::dontSendNotification);
+    refresh();
+}
+
+void HardwareTargetPicker::timerCallback()
+{
+    // Poll-Ende, sobald kein Scan mehr laeuft (Status leer) -- die letzte
+    // refresh()-Runde zeigt dann die frisch gescannten Baenke.
+    auto scanning = false;
+    for (const auto& row : model.currentRows())
+        if (row.kind == MidiTargetBrowserModel::Kind::action
+            && model.scanStatusFor != nullptr
+            && model.scanStatusFor (row.deviceId).isNotEmpty())
+            scanning = true;
+
+    if (! scanning)
+        stopTimer();
+
     refresh();
 }
 
@@ -195,7 +235,10 @@ void HardwareTargetPicker::RowListContent::paint (juce::Graphics& g)
         auto textArea = bounds.reduced (12, 0);
         textArea.removeFromLeft (row.indent * 16);
 
-        const auto navigable = row.kind != MidiTargetBrowserModel::Kind::parameter;
+        // M9c: preset (Auswahl) und action (Scan) sind Blaetter wie parameter.
+        const auto navigable = row.kind != MidiTargetBrowserModel::Kind::parameter
+                               && row.kind != MidiTargetBrowserModel::Kind::preset
+                               && row.kind != MidiTargetBrowserModel::Kind::action;
         if (navigable)
         {
             auto chevronArea = textArea.removeFromRight (20);
@@ -204,7 +247,9 @@ void HardwareTargetPicker::RowListContent::paint (juce::Graphics& g)
             g.drawText (juce::String::fromUTF8 ("\xe2\x96\xb8"), chevronArea, juce::Justification::centred);
         }
 
-        g.setColour (push::colours::text);
+        g.setColour (row.kind == MidiTargetBrowserModel::Kind::action
+                         ? push::colours::ledOrange
+                         : push::colours::text);
         g.setFont (push::scaledFont (13.0f));
         g.drawFittedText (row.label, textArea, juce::Justification::centredLeft, 1, 1.0f);
     }

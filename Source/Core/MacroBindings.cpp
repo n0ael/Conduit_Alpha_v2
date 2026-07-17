@@ -145,6 +145,58 @@ juce::ValueTree MidiProgramChangeTarget::toState() const
 }
 
 //==============================================================================
+MidiPresetLoadTarget::MidiPresetLoadTarget (IMidiOutputTarget& outputToUse, int channelToUse,
+                                            int programToUse, int bankMsbToUse, int bankLsbToUse,
+                                            juce::String presetNameToUse)
+    : output (outputToUse),
+      midiChannel (juce::jlimit (1, 16, channelToUse)),
+      programNumber (juce::jlimit (0, 127, programToUse)),
+      bankMsb (juce::jlimit (-1, 127, bankMsbToUse)),
+      bankLsb (juce::jlimit (-1, 127, bankLsbToUse)),
+      presetName (std::move (presetNameToUse))
+{
+}
+
+void MidiPresetLoadTarget::sendValue (float value01)
+{
+    // Druckflanke: Press sendet, Halten/Release nicht; erneuter Press
+    // sendet wieder (bewusst KEIN Dedupe ueber Flanken hinweg).
+    const auto pressed = value01 >= 0.5f && lastValue01 < 0.5f;
+    lastValue01 = value01;
+
+    if (! pressed)
+        return;
+
+    if (bankMsb >= 0)
+        output.send (juce::MidiMessage::controllerEvent (midiChannel, 0, bankMsb));
+    if (bankLsb >= 0)
+        output.send (juce::MidiMessage::controllerEvent (midiChannel, 32, bankLsb));
+
+    output.send (juce::MidiMessage::programChange (midiChannel, programNumber));
+}
+
+juce::String MidiPresetLoadTarget::describe() const
+{
+    auto text = "Preset: " + (presetName.isNotEmpty() ? presetName
+                                                      : juce::String (programNumber + 1));
+    if (bankLsb >= 0 || bankMsb >= 0)
+        text += " (Bank " + juce::String (juce::jmax (0, bankMsb) * 128
+                                          + juce::jmax (0, bankLsb) + 1) + ")";
+    return text + " / Kanal " + juce::String (midiChannel);
+}
+
+juce::ValueTree MidiPresetLoadTarget::toState() const
+{
+    juce::ValueTree state (kStateType);
+    state.setProperty ("channel", midiChannel, nullptr);
+    state.setProperty ("program", programNumber, nullptr);
+    state.setProperty ("bankMsb", bankMsb, nullptr);
+    state.setProperty ("bankLsb", bankLsb, nullptr);
+    state.setProperty ("name", presetName, nullptr);
+    return state;
+}
+
+//==============================================================================
 MacroBinding* MacroBindings::add (const MacroControlKey& key)
 {
     auto& list = bindings[key];

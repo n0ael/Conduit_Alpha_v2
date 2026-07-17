@@ -7,6 +7,7 @@
 
 #include "Core/ConduitMacroTargets.h"
 #include "Core/HardwareCcDatabase.h"
+#include "Core/HardwarePresetScanner.h"
 #include "Core/MacroBindings.h"
 #include "Core/MidiInBindings.h"
 #include "Core/MidiProfileLibrary.h"
@@ -61,6 +62,13 @@ public:
         Anzeigename) — GridPage setzt den Hook nach der Konstruktion
         (enumeriert beide CcControlModels live beim Öffnen). */
     std::function<std::vector<std::pair<grid::MacroControlKey, juce::String>>()> gridControlEntries;
+
+    /** M9c (ADR 007): „HW Presets"-Zweig im Hardware-Picker aktivieren —
+        GridPage reicht die EngineProcessor-Quellen nach der Konstruktion
+        durch (Muster gridControlEntries). Ohne Aufruf fehlt der Zweig. */
+    void setPresetSources (HardwarePresetLibrary& presetLibraryToUse,
+                           MidiRigSettings& rigSettingsToUse,
+                           HardwarePresetScanner& presetScannerToUse);
 
     /** Long-Press-Ziel setzen: layer/controlId (Achse 0); hasYAxis = true
         bei XY-Controls (X/Y-Umschalter erscheint). */
@@ -134,6 +142,7 @@ private:
             wechsel dieselbe Auswahl mit neuem Kanal neu baut. */
         void openHardwareTargetPicker();
         void createHardwareTarget (const MidiTargetBrowserModel::Row& selection);
+        void createPresetLoadTarget (const MidiTargetBrowserModel::Row& selection);
         void rebuildHardwareTargetForChannelChange();
         void updateHwSummaryText();
 
@@ -203,6 +212,11 @@ private:
     grid::MidiInBindings& midiInBindings;
     grid::HardwareCcDatabase& hardwareDb;   // Block L2 (Klartext-Schnellpfad)
     MidiProfileLibrary& profileLibrary;     // M2: midi.guide-CSV-Profile
+
+    // M9c: optionale Preset-Quellen (setPresetSources) — nullptr = kein Zweig.
+    HardwarePresetLibrary* presetLibrary = nullptr;
+    MidiRigSettings* rigSettings = nullptr;
+    HardwarePresetScanner* presetScanner = nullptr;
 
     // M5c: Conduit-Ziele (Modulation) — Tree fuer den Picker/describe,
     // Senken fuer Parameter- bzw. Grid-Control-Modulation.

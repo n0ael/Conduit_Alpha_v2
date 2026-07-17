@@ -278,3 +278,46 @@ TEST_CASE ("MidiProgramChangeTarget: PC mit optionaler Bank, Dedupe", "[midirig]
         REQUIRE ((int) state.getProperty ("bankLsb") == -1);
     }
 }
+
+TEST_CASE ("MidiPresetLoadTarget: Druckflanke sendet Bank+PC genau einmal, State-Roundtrip", "[midirig][macro][sysex]")
+{
+    grid::FakeMidiTarget out;
+    grid::MidiPresetLoadTarget target { out, 3, 87, -1, 2, "Fat Bass" };
+
+    // Press: CC32 (Bank-LSB) + Program Change, genau einmal.
+    target.sendValue (1.0f);
+    REQUIRE (out.messages.size() == 2);
+    CHECK (out.messages[0].isController());
+    CHECK (out.messages[0].getControllerNumber() == 32);
+    CHECK (out.messages[0].getControllerValue() == 2);
+    CHECK (out.messages[1].isProgramChange());
+    CHECK (out.messages[1].getProgramChangeNumber() == 87);
+    CHECK (out.messages[1].getChannel() == 3);
+
+    // Halten + Release: nichts.
+    target.sendValue (1.0f);
+    target.sendValue (0.7f);
+    target.sendValue (0.0f);
+    CHECK (out.messages.size() == 2);
+
+    // Erneuter Press sendet WIEDER (kein Dedupe ueber Flanken).
+    target.sendValue (1.0f);
+    CHECK (out.messages.size() == 4);
+
+    // describe traegt den Preset-Namen; toState-Roundtrip vollstaendig.
+    CHECK (target.describe().contains ("Fat Bass"));
+    const auto state = target.toState();
+    CHECK (state.hasType (grid::MidiPresetLoadTarget::kStateType));
+    CHECK ((int) state.getProperty ("channel") == 3);
+    CHECK ((int) state.getProperty ("program") == 87);
+    CHECK ((int) state.getProperty ("bankMsb") == -1);
+    CHECK ((int) state.getProperty ("bankLsb") == 2);
+    CHECK (state.getProperty ("name").toString() == "Fat Bass");
+
+    // Ohne Bank nur der PC.
+    grid::FakeMidiTarget plainOut;
+    grid::MidiPresetLoadTarget plain { plainOut, 1, 5, -1, -1, {} };
+    plain.sendValue (1.0f);
+    REQUIRE (plainOut.messages.size() == 1);
+    CHECK (plainOut.messages[0].isProgramChange());
+}

@@ -188,3 +188,129 @@ TEST_CASE ("MidiTargetBrowserModel: setFilter durchsucht rekursiv unter der aktu
     rig.model.enter (0);
     CHECK (rig.model.filter().isEmpty());
 }
+
+//==============================================================================
+// M9c (ADR 007): Preset-Zweig "HW Presets"
+
+namespace
+{
+    struct PresetRig : Rig
+    {
+        juce::ScopedJuceInitialiser_GUI juceRuntime;
+
+        juce::File folder = juce::File::getSpecialLocation (juce::File::tempDirectory)
+                                .getChildFile ("ConduitBrowserPresetTests")
+                                .getChildFile (juce::Uuid().toString());
+        juce::File settingsFolder = folder.getChildFile ("settings");
+        juce::File presetFolder = folder.getChildFile ("presets");
+
+        conduit::MidiRigSettings settings;
+        conduit::HardwarePresetLibrary presetLibrary { presetFolder };
+        juce::Uuid mopho;
+
+        PresetRig()
+            : settings ([this]
+                        {
+                            juce::PropertiesFile::Options o;
+                            o.applicationName = "BrowserPresetTests";
+                            o.filenameSuffix = ".settings";
+                            settingsFolder.createDirectory();
+                            o.folderName = settingsFolder.getFullPathName();
+                            return o;
+                        }())
+        {
+            mopho = settings.addDevice ("Mopho", conduit::RigDeviceKind::soundGenerator);
+            settings.addDevice ("AlphaTrack", conduit::RigDeviceKind::controller);
+
+            conduit::HardwarePresetLibrary::DevicePresets presets;
+            presets.deviceIdByte = 0x25;
+            presets.programsPerBank = 3;
+            presets.names = { "Init", "Fat Bass", "Pad", "Lead", "Keys", "Pluck" };
+            presetLibrary.setPresets (mopho, std::move (presets));
+
+            model.setPresetSources (&presetLibrary, &settings);
+        }
+
+        ~PresetRig() { folder.deleteRecursively(); }
+    };
+}
+
+TEST_CASE ("BrowserModel HW-Presets: Navigation Root -> Geraet -> Bank -> Preset", "[midirig][sysex]")
+{
+    PresetRig rig;
+
+    // Oben angepinnt (erste Zeile), nur Klangerzeuger erscheinen darunter.
+    auto rows = rig.model.currentRows();
+    REQUIRE (! rows.empty());
+    CHECK (rows[0].kind == MidiTargetBrowserModel::Kind::presetRoot);
+    CHECK (rows[0].label == "HW Presets");
+
+    rig.model.enter (0);
+    rows = rig.model.currentRows();
+    REQUIRE (rows.size() == 1);   // nur der Mopho (AlphaTrack ist Controller)
+    CHECK (rows[0].kind == MidiTargetBrowserModel::Kind::presetDevice);
+    CHECK (rows[0].label == "Mopho");
+
+    rig.model.enter (0);
+    rows = rig.model.currentRows();
+    REQUIRE (rows.size() == 3);   // Scan-Aktion + 2 Baenke
+    CHECK (rows[0].kind == MidiTargetBrowserModel::Kind::action);
+    CHECK (rows[0].deviceId == rig.mopho);
+    CHECK (rows[1].label == "Bank 1");
+    CHECK (rows[2].label == "Bank 2");
+
+    // Aktion/Preset sind nicht navigierbar (enter = no-op).
+    rig.model.enter (0);
+    CHECK (rig.model.currentRows().size() == 3);
+
+    rig.model.enter (2);   // Bank 2
+    rows = rig.model.currentRows();
+    REQUIRE (rows.size() == 3);
+    CHECK (rows[0].kind == MidiTargetBrowserModel::Kind::preset);
+    CHECK (rows[0].label == "1: Lead");
+    CHECK (rows[0].deviceId == rig.mopho);
+    CHECK (rows[0].bank == 1);
+    CHECK (rows[0].program == 0);
+    CHECK (rows[2].displayName == "Pluck");
+
+    CHECK (rig.model.breadcrumbText().contains ("Bank 2"));
+    CHECK (rig.model.goBack());
+}
+
+TEST_CASE ("BrowserModel HW-Presets: Filter durchsucht Preset-Namen, Scan-Status ersetzt das Aktions-Label", "[midirig][sysex]")
+{
+    PresetRig rig;
+
+    rig.model.enter (0);   // HW Presets
+    rig.model.setFilter ("bass");
+    auto rows = rig.model.currentRows();
+    REQUIRE (rows.size() == 1);
+    CHECK (rows[0].kind == MidiTargetBrowserModel::Kind::preset);
+    CHECK (rows[0].program == 1);
+    CHECK (rows[0].label.contains ("Fat Bass"));
+
+    // Scan-Status-Hook: Aktions-Zeile zeigt den Fortschritt.
+    rig.model.setFilter ({});
+    rig.model.scanStatusFor = [] (const juce::Uuid&) { return juce::String ("Scanne... 42/384"); };
+    rig.model.enter (0);   // Mopho
+    rows = rig.model.currentRows();
+    REQUIRE (! rows.empty());
+    CHECK (rows[0].label == "Scanne... 42/384");
+}
+
+TEST_CASE ("BrowserModel HW-Presets: ohne Quellen kein Zweig, ohne Cache nur die Scan-Aktion", "[midirig][sysex]")
+{
+    Rig plain;
+    const auto rows = plain.model.currentRows();
+    for (const auto& row : rows)
+        CHECK (row.kind != MidiTargetBrowserModel::Kind::presetRoot);
+
+    PresetRig rig;
+    rig.presetLibrary.clearPresets (rig.mopho);
+    rig.model.enter (0);   // HW Presets
+    rig.model.enter (0);   // Mopho
+    const auto deviceRows = rig.model.currentRows();
+    REQUIRE (deviceRows.size() == 1);
+    CHECK (deviceRows[0].kind == MidiTargetBrowserModel::Kind::action);
+    CHECK (deviceRows[0].label.contains ("scannen"));
+}

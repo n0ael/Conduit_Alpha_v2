@@ -3,7 +3,33 @@
 > Letzte Aktualisierung: 2026-07-17 | wird nach jedem Meilenstein gepflegt
 > Architektur-Referenz: [CLAUDE.md](CLAUDE.md) | Repo: n0ael/Conduit
 
-## Aktueller Meilenstein (17.07.2026) — Live-Remote-Bridge: AlphaTrack als Ableton-Fernbedienung
+## Aktueller Meilenstein (17.07.2026) — MIDI-Rig M9 (ADR 007): SysEx-Empfang + Hardware-Preset-Browser
+
+DSI-Mopho-Presets mit NAMEN auf Push-Buttons laden. ADR 007 hebt E6
+(„SysEx sende-only") eng umrissen auf: Empfang NUR fuer selbst
+angeforderte, User-angestossene Dumps auf einem „armed" Port. Details:
+docs/MidiRig.md (M9) + docs/adr/007. Alter M9 (Sende-Snippets) = M10.
+
+- **M9a:** `midi::SysExChunk`-SpscQueue pro Port im MidiPortHub
+  (armed-gated, nur komplette Nachrichten, Reassembly im 60-Hz-Drain,
+  `subscribeSysEx`/`setSysExCaptureEnabled`); `Sysex/DsiSysex`-Codec
+  (Packed-MS-Bit 256↔293, Dump-Request/-Parser, Name @ Offset 184,
+  Universal Device Inquiry).
+- **M9b:** `HardwarePresetScanner` (Inquiry 200 ms → Fallback 0x25;
+  384 Ping-Pong-Dumps, 300 ms Timeout, 2 Retries, „?"-Platzhalter;
+  Cancel) + `HardwarePresetLibrary` (XML-Cache
+  `Conduit/Devices/Presets/<uuid>.xml`, Rescan nur manuell).
+- **M9c:** „HW Presets"-Zweig im HardwareTargetPicker (Gerät → Bank →
+  Preset, Scan-Aktion mit 4-Hz-Fortschritts-Poll) +
+  `MidiPresetLoadTarget` (Druckflanke → CC32-Bank + Program Change) —
+  ein Pad/Macro wird damit zum Preset-Load-Button.
+- Tests: 951 Cases / 32493 Assertions, ASan grün. **Feldtest am Mopho
+  offen** (v. a. Name-Offset 184 verifizieren; bei Zeichensalat
+  `kNameOffset` in DsiSysex.h korrigieren).
+- Notierte Zukunfts-Vision (nicht geplant): Grid-Page-Split MPE-Grid +
+  „DIY-Grid" (Fader/Pads frei zu einem Controller zusammenbaubar).
+
+## Davor (17.07.2026) — Live-Remote-Bridge: AlphaTrack als Ableton-Fernbedienung
 
 Brückt MIDI-Rig (AlphaTrack, M8) mit TouchLive: der Controller bedient den
 in Live **selektierten Track**. Details: docs/TouchLive.md §10l.

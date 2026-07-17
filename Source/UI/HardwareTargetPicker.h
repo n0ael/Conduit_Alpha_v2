@@ -33,7 +33,8 @@ namespace conduit
     CallOutBox waehrend der Navigation noetig.
 */
 class HardwareTargetPicker final : public juce::Component,
-                                   private juce::FocusChangeListener
+                                   private juce::FocusChangeListener,
+                                   private juce::Timer
 {
 public:
     explicit HardwareTargetPicker (MidiTargetBrowserModel modelToUse);
@@ -43,6 +44,16 @@ public:
         MacroTarget; der Picker schliesst danach selbst seine CallOutBox
         (Muster TrackSelectorPanel::mouseUp). */
     std::function<void (const MidiTargetBrowserModel::Row& selected)> onTargetChosen;
+
+    /** M9c: Tap auf eine Preset-Zeile (HW-Presets-Zweig) -- der Aufrufer
+        baut ein MidiPresetLoadTarget; der Picker schliesst sich selbst. */
+    std::function<void (const MidiTargetBrowserModel::Row& selected)> onPresetChosen;
+
+    /** M9c: Tap auf die Scan-Aktions-Zeile -- der Aufrufer startet den
+        HardwarePresetScanner; der Picker bleibt offen und pollt den
+        Fortschritt niederfrequent (4 Hz, Status-Polling-Ausnahme der
+        UI-Framerate-Regel) ueber model.scanStatusFor. */
+    std::function<void (const juce::Uuid& deviceId)> onScanRequested;
 
     void paint (juce::Graphics& g) override;
     void resized() override;
@@ -80,6 +91,9 @@ private:
 
     // juce::FocusChangeListener -- klappt die Tastatur auf/zu
     void globalFocusChanged (juce::Component* focusedComponent) override;
+
+    // M9c: Scan-Fortschritts-Poll (laeuft nur waehrend eines Scans)
+    void timerCallback() override;
 
     MidiTargetBrowserModel model;
 

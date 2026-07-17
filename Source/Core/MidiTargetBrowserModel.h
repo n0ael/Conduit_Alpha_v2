@@ -5,7 +5,9 @@
 #include <juce_core/juce_core.h>
 
 #include "HardwareCcDatabase.h"
+#include "HardwarePresetLibrary.h"
 #include "MidiProfileLibrary.h"
+#include "MidiRigSettings.h"
 
 namespace conduit
 {
@@ -30,7 +32,8 @@ namespace conduit
 class MidiTargetBrowserModel
 {
 public:
-    enum class Kind { manufacturer, device, section, parameter };
+    enum class Kind { manufacturer, device, section, parameter,
+                      presetRoot, presetDevice, presetBank, preset, action };
 
     struct Row
     {
@@ -44,10 +47,25 @@ public:
         int minValue = 0;
         int maxValue = 127;         // nur fuer NRPN relevant
         juce::String displayName;   // "Geraet: Param" -- fuer MidiNrpnTarget-Anzeigename
+
+        // Nur im Preset-Zweig belegt (M9c, ADR 007):
+        juce::Uuid deviceId;        // RigDevice (presetDevice/preset/action)
+        int bank = -1;              // preset: Bank-Index 0..2
+        int program = -1;           // preset: Programm 0..127
     };
 
     MidiTargetBrowserModel (const grid::HardwareCcDatabase& hardwareDbToUse,
                             const MidiProfileLibrary& profileLibraryToUse);
+
+    /** M9c: Preset-Zweig „HW Presets" aktivieren (Geraete = RigDevices
+        kind == soundGenerator; Namen aus der Preset-Library). Optional —
+        ohne Aufruf verhaelt sich das Modell wie vor M9. */
+    void setPresetSources (const HardwarePresetLibrary* presetLibraryToUse,
+                           const MidiRigSettings* rigSettingsToUse);
+
+    /** M9c: liefert einen Status-Text fuer die Scan-Aktions-Zeile eines
+        Geraets (leer = kein Scan aktiv, Zeile zeigt „Presets scannen…"). */
+    std::function<juce::String (const juce::Uuid&)> scanStatusFor;
 
     /** Zeilen der aktuellen Ebene -- bei aktivem Filter eine flache,
         rekursiv gesammelte Trefferliste aus Parameter-Zeilen (kein
@@ -102,8 +120,20 @@ private:
     [[nodiscard]] std::vector<Row> allParameterRowsUnderCurrentPath() const;
     [[nodiscard]] static std::vector<Row> filterRows (std::vector<Row> rows, const juce::String& filterText);
 
+    // Preset-Zweig (M9c) — nur aktiv, wenn beide Quellen gesetzt sind.
+    [[nodiscard]] bool presetsEnabled() const noexcept
+    {
+        return presetLibrary != nullptr && rigSettings != nullptr;
+    }
+    [[nodiscard]] std::vector<LevelEntry> buildPresetLevel (const PathEntry& top) const;
+    [[nodiscard]] std::vector<Row> presetRowsForDeviceBank (const juce::Uuid& deviceId,
+                                                            int bank) const;
+    [[nodiscard]] std::vector<Row> allPresetRowsUnderCurrentPath() const;
+
     const grid::HardwareCcDatabase& hardwareDb;
     const MidiProfileLibrary& profileLibrary;
+    const HardwarePresetLibrary* presetLibrary = nullptr;
+    const MidiRigSettings* rigSettings = nullptr;
 
     std::vector<PathEntry> path;
     juce::String filterText;

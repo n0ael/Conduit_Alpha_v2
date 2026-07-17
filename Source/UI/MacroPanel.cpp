@@ -119,6 +119,13 @@ void MacroPanel::TargetRow::rebuildFromBinding()
             channelField.setValue (pc->channel(), juce::dontSendNotification);
             hasHwSelection = false;
         }
+        else if (auto* preset = dynamic_cast<grid::MidiPresetLoadTarget*> (b->target.get()))
+        {
+            // M9c: geladene Preset-Load-Ziele erkennen (M3-Lektion).
+            targetType = TargetType::hardware;
+            channelField.setValue (preset->channel(), juce::dontSendNotification);
+            hasHwSelection = false;
+        }
         else if (auto* midi = dynamic_cast<grid::MidiCcTarget*> (b->target.get()))
         {
             targetType = TargetType::midi;
@@ -460,14 +467,55 @@ void MacroPanel::TargetRow::createAbletonTarget()
 
 void MacroPanel::TargetRow::openHardwareTargetPicker()
 {
-    auto picker = std::make_unique<HardwareTargetPicker> (
-        MidiTargetBrowserModel (owner.hardwareDb, owner.profileLibrary));
+    auto model = MidiTargetBrowserModel (owner.hardwareDb, owner.profileLibrary);
+
+    // M9c (ADR 007): „HW Presets"-Zweig, wenn die Quellen verdrahtet sind;
+    // die Scan-Aktions-Zeile zeigt den laufenden Fortschritt.
+    if (owner.presetLibrary != nullptr && owner.rigSettings != nullptr)
+    {
+        model.setPresetSources (owner.presetLibrary, owner.rigSettings);
+        if (auto* scanner = owner.presetScanner)
+            model.scanStatusFor = [scanner] (const juce::Uuid&)
+            {
+                return scanner->isScanning()
+                           ? juce::String::fromUTF8 ("Scanne\xe2\x80\xa6")
+                           : juce::String();
+            };
+    }
+
+    auto picker = std::make_unique<HardwareTargetPicker> (std::move (model));
 
     picker->onTargetChosen = [this] (const MidiTargetBrowserModel::Row& selection)
     { createHardwareTarget (selection); };
 
+    picker->onPresetChosen = [this] (const MidiTargetBrowserModel::Row& selection)
+    { createPresetLoadTarget (selection); };
+
+    if (auto* scanner = owner.presetScanner)
+        picker->onScanRequested = [scanner] (const juce::Uuid& deviceId)
+        { scanner->start (deviceId); };
+
     juce::CallOutBox::launchAsynchronously (std::move (picker),
                                             hwSummaryTile.getScreenBounds(), nullptr);
+}
+
+void MacroPanel::TargetRow::createPresetLoadTarget (const MidiTargetBrowserModel::Row& selection)
+{
+    auto* b = binding();
+    if (b == nullptr || targetType != TargetType::hardware)
+        return;
+
+    hwSelection = selection;
+    hasHwSelection = true;
+
+    // Mopho-Bank reist als CC32 (LSB); der Kanal kommt aus dem Kanal-Feld
+    // der Zeile (Geraete-Eigenschaft, M4b-Konvention).
+    b->target = std::make_unique<grid::MidiPresetLoadTarget> (
+        owner.midiTarget, (int) channelField.getValue(), selection.program,
+        -1, selection.bank, selection.displayName);
+
+    updateHwSummaryText();
+    repaint();
 }
 
 void MacroPanel::TargetRow::createHardwareTarget (const MidiTargetBrowserModel::Row& selection)
@@ -499,7 +547,12 @@ void MacroPanel::TargetRow::rebuildHardwareTargetForChannelChange()
 {
     if (hasHwSelection)
     {
-        createHardwareTarget (hwSelection);
+        // M9c: Preset-Auswahl bleibt Preset-Ziel (createHardwareTarget baute
+        // sonst faelschlich ein NRPN-Ziel mit number -1).
+        if (hwSelection.kind == MidiTargetBrowserModel::Kind::preset)
+            createPresetLoadTarget (hwSelection);
+        else
+            createHardwareTarget (hwSelection);
         return;
     }
 
@@ -517,6 +570,17 @@ void MacroPanel::TargetRow::rebuildHardwareTargetForChannelChange()
     else if (auto* cc = dynamic_cast<grid::MidiCcTarget*> (b->target.get()))
         b->target = std::make_unique<grid::MidiCcTarget> (
             owner.midiTarget, (int) channelField.getValue(), cc->ccNumber());
+    else if (auto* preset = dynamic_cast<grid::MidiPresetLoadTarget*> (b->target.get()))
+    {
+        // M9c: aus dem geladenen Zustand rekonstruieren (nur Kanal neu).
+        const auto state = preset->toState();
+        b->target = std::make_unique<grid::MidiPresetLoadTarget> (
+            owner.midiTarget, (int) channelField.getValue(),
+            (int) state.getProperty ("program", 0),
+            (int) state.getProperty ("bankMsb", -1),
+            (int) state.getProperty ("bankLsb", -1),
+            state.getProperty ("name").toString());
+    }
 
     updateHwSummaryText();
     repaint();
@@ -815,6 +879,15 @@ MacroPanel::MacroPanel (grid::MacroBindings& bindingsToUse, grid::IMidiOutputTar
 }
 
 MacroPanel::~MacroPanel() = default;
+
+void MacroPanel::setPresetSources (HardwarePresetLibrary& presetLibraryToUse,
+                                   MidiRigSettings& rigSettingsToUse,
+                                   HardwarePresetScanner& presetScannerToUse)
+{
+    presetLibrary = &presetLibraryToUse;
+    rigSettings = &rigSettingsToUse;
+    presetScanner = &presetScannerToUse;
+}
 
 grid::MacroControlKey MacroPanel::currentKey() const noexcept
 {

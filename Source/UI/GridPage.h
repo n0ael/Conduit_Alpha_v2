@@ -21,6 +21,8 @@
 #include "Core/LinkClock.h"
 #include "Core/MacroBindings.h"
 #include "Core/ControllerProfileLibrary.h"
+#include "Core/HardwarePresetLibrary.h"
+#include "Core/HardwarePresetScanner.h"
 #include "Core/MidiInBindings.h"
 #include "Core/MidiPortHub.h"
 #include "Core/MidiProfileLibrary.h"
@@ -144,6 +146,12 @@ public:
         onActiveTabChanged weiter) — CC-/Map-Modus der Overlays neu
         bestimmen. */
     void refreshDockModes() { updateCcMode(); }
+
+    /** M9c (ADR 007): Preset-Quellen an das MacroPanel durchreichen —
+        EngineEditor ruft das nach der Konstruktion (Muster
+        gridControlEntries; GridPage besitzt das Panel im Dock). */
+    void setHardwarePresetSources (HardwarePresetLibrary& presetLibrary,
+                                   HardwarePresetScanner& presetScanner);
 
     void resized() override;
 

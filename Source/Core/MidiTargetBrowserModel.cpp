@@ -40,6 +40,13 @@ MidiTargetBrowserModel::MidiTargetBrowserModel (const grid::HardwareCcDatabase& 
 {
 }
 
+void MidiTargetBrowserModel::setPresetSources (const HardwarePresetLibrary* presetLibraryToUse,
+                                               const MidiRigSettings* rigSettingsToUse)
+{
+    presetLibrary = presetLibraryToUse;
+    rigSettings = rigSettingsToUse;
+}
+
 std::vector<MidiTargetBrowserModel::Row> MidiTargetBrowserModel::currentRows() const
 {
     if (filterText.isEmpty())
@@ -61,8 +68,9 @@ void MidiTargetBrowserModel::enter (int rowIndex)
     if (rowIndex < 0 || rowIndex >= (int) entries.size())
         return;
 
-    if (entries[(size_t) rowIndex].row.kind == Kind::parameter)
-        return;   // nicht navigierbar -- Auswahl macht der Aufrufer direkt
+    const auto kind = entries[(size_t) rowIndex].row.kind;
+    if (kind == Kind::parameter || kind == Kind::preset || kind == Kind::action)
+        return;   // nicht navigierbar -- Auswahl/Aktion macht der Aufrufer direkt
 
     path.push_back (entries[(size_t) rowIndex].entry);
 }
@@ -132,10 +140,34 @@ std::vector<MidiTargetBrowserModel::LevelEntry> MidiTargetBrowserModel::buildCur
         std::stable_sort (entries.begin(), entries.end(),
                           [] (const LevelEntry& a, const LevelEntry& b)
                           { return a.row.label.compareIgnoreCase (b.row.label) < 0; });
+
+        // M9c: Preset-Zweig OBEN anpinnen (kein Sortier-Kandidat) -- nur
+        // wenn Quellen gesetzt sind und mindestens ein Klangerzeuger existiert.
+        if (presetsEnabled())
+        {
+            auto hasSoundGenerator = false;
+            for (int i = 0; i < rigSettings->getNumDevices() && ! hasSoundGenerator; ++i)
+                hasSoundGenerator = rigSettings->getDevice (i).kind
+                                        == RigDeviceKind::soundGenerator;
+
+            if (hasSoundGenerator)
+            {
+                LevelEntry e;
+                e.row.kind = Kind::presetRoot;
+                e.row.label = "HW Presets";
+                e.entry.kind = Kind::presetRoot;
+                e.entry.label = e.row.label;
+                entries.insert (entries.begin(), std::move (e));
+            }
+        }
         return entries;
     }
 
     const auto& top = path.back();
+
+    if (top.kind == Kind::presetRoot || top.kind == Kind::presetDevice
+        || top.kind == Kind::presetBank)
+        return buildPresetLevel (top);
 
     if (top.kind == Kind::manufacturer)
     {
@@ -222,6 +254,150 @@ std::vector<MidiTargetBrowserModel::LevelEntry> MidiTargetBrowserModel::buildCur
     }
 
     return entries;   // kind == parameter kann nie Pfad-Ziel sein
+}
+
+//==============================================================================
+// M9c: Preset-Zweig (ADR 007) — HW Presets -> Geraet -> Bank -> Preset
+
+std::vector<MidiTargetBrowserModel::LevelEntry>
+    MidiTargetBrowserModel::buildPresetLevel (const PathEntry& top) const
+{
+    std::vector<LevelEntry> entries;
+    if (! presetsEnabled())
+        return entries;
+
+    if (top.kind == Kind::presetRoot)
+    {
+        for (int i = 0; i < rigSettings->getNumDevices(); ++i)
+        {
+            const auto device = rigSettings->getDevice (i);
+            if (device.kind != RigDeviceKind::soundGenerator)
+                continue;
+
+            LevelEntry e;
+            e.row.kind = Kind::presetDevice;
+            e.row.label = device.label;
+            e.row.deviceId = device.id;
+            e.entry.kind = Kind::presetDevice;
+            e.entry.label = device.label;
+            e.entry.stringKey = device.id.toString();
+            entries.push_back (std::move (e));
+        }
+        return entries;
+    }
+
+    if (top.kind == Kind::presetDevice)
+    {
+        const juce::Uuid deviceId { top.stringKey };
+
+        // Scan-Aktion zuoberst; waehrend eines Scans zeigt die Zeile den
+        // Fortschritt (scanStatusFor-Hook, der Picker pollt niederfrequent).
+        LevelEntry action;
+        action.row.kind = Kind::action;
+        const auto status = scanStatusFor != nullptr ? scanStatusFor (deviceId)
+                                                     : juce::String();
+        action.row.label = status.isNotEmpty()
+                               ? status
+                               : juce::String::fromUTF8 (presetLibrary->hasPresets (deviceId)
+                                                             ? "Presets neu scannen\xe2\x80\xa6"
+                                                             : "Presets scannen\xe2\x80\xa6");
+        action.row.deviceId = deviceId;
+        entries.push_back (std::move (action));
+
+        for (int bank = 0; bank < presetLibrary->bankCount (deviceId); ++bank)
+        {
+            LevelEntry e;
+            e.row.kind = Kind::presetBank;
+            e.row.label = "Bank " + juce::String (bank + 1);
+            e.row.deviceId = deviceId;
+            e.row.bank = bank;
+            e.entry.kind = Kind::presetBank;
+            e.entry.label = e.row.label;
+            e.entry.stringKey = top.stringKey;
+            e.entry.intKey = bank;
+            entries.push_back (std::move (e));
+        }
+        return entries;
+    }
+
+    // top.kind == Kind::presetBank
+    for (auto& row : presetRowsForDeviceBank (juce::Uuid { top.stringKey }, top.intKey))
+        entries.push_back ({ std::move (row), {} });
+    return entries;
+}
+
+std::vector<MidiTargetBrowserModel::Row>
+    MidiTargetBrowserModel::presetRowsForDeviceBank (const juce::Uuid& deviceId, int bank) const
+{
+    std::vector<Row> rows;
+    if (! presetsEnabled())
+        return rows;
+
+    for (int program = 0; program < presetLibrary->programsPerBank (deviceId); ++program)
+    {
+        const auto name = presetLibrary->presetName (deviceId, bank, program);
+
+        Row row;
+        row.kind = Kind::preset;
+        row.label = juce::String (program + 1) + ": "
+                    + (name.isNotEmpty() ? name : juce::String ("?"));
+        row.displayName = name;
+        row.deviceId = deviceId;
+        row.bank = bank;
+        row.program = program;
+        rows.push_back (std::move (row));
+    }
+    return rows;
+}
+
+std::vector<MidiTargetBrowserModel::Row> MidiTargetBrowserModel::allPresetRowsUnderCurrentPath() const
+{
+    if (path.empty() || ! presetsEnabled())
+        return {};
+
+    const auto& top = path.back();
+
+    if (top.kind == Kind::presetBank)
+        return presetRowsForDeviceBank (juce::Uuid { top.stringKey }, top.intKey);
+
+    if (top.kind == Kind::presetDevice)
+    {
+        const juce::Uuid deviceId { top.stringKey };
+        std::vector<Row> rows;
+        for (int bank = 0; bank < presetLibrary->bankCount (deviceId); ++bank)
+        {
+            auto bankRows = presetRowsForDeviceBank (deviceId, bank);
+            for (auto& row : bankRows)
+                row.label = "Bank " + juce::String (bank + 1) + " - " + row.label;
+            rows.insert (rows.end(), std::make_move_iterator (bankRows.begin()),
+                         std::make_move_iterator (bankRows.end()));
+        }
+        return rows;
+    }
+
+    if (top.kind == Kind::presetRoot)
+    {
+        std::vector<Row> rows;
+        for (int i = 0; i < rigSettings->getNumDevices(); ++i)
+        {
+            const auto device = rigSettings->getDevice (i);
+            if (device.kind != RigDeviceKind::soundGenerator)
+                continue;
+
+            for (int bank = 0; bank < presetLibrary->bankCount (device.id); ++bank)
+            {
+                auto bankRows = presetRowsForDeviceBank (device.id, bank);
+                for (auto& row : bankRows)
+                    row.label = device.label + " - Bank " + juce::String (bank + 1)
+                                + " - " + row.label;
+                rows.insert (rows.end(), std::make_move_iterator (bankRows.begin()),
+                             std::make_move_iterator (bankRows.end()));
+            }
+        }
+        return rows;
+    }
+
+    return {};
 }
 
 std::vector<MidiTargetBrowserModel::Row>
@@ -349,6 +525,11 @@ std::vector<MidiTargetBrowserModel::Row> MidiTargetBrowserModel::allParameterRow
     }
 
     const auto& top = path.back();
+
+    // M9c: innerhalb des Preset-Zweigs durchsucht der Filter Preset-Namen.
+    if (top.kind == Kind::presetRoot || top.kind == Kind::presetDevice
+        || top.kind == Kind::presetBank)
+        return allPresetRowsUnderCurrentPath();
 
     if (top.kind == Kind::manufacturer)
         return allParameterRowsForManufacturer (top.stringKey);

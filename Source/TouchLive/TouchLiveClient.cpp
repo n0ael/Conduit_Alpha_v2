@@ -354,6 +354,25 @@ void TouchLiveClient::noteTouchedParameter (const juce::String& suppressionKey)
         touchedUntilMs[suppressionKey] = nowMs() + echoSuppressionReleaseMs;
 }
 
+void TouchLiveClient::applyLocalMixerValue (const juce::String& key,
+                                            const juce::Identifier& field, const juce::var& value)
+{
+    JUCE_ASSERT_MESSAGE_THREAD
+
+    model.setItemField ("mixer", key, field, value);
+    noteTouchedParameter (makeParameterKey ("mixer", key, field.toString()));
+}
+
+void TouchLiveClient::applyLocalMixerArrayElement (const juce::String& key,
+                                                   const juce::Identifier& field, int index,
+                                                   const juce::var& value)
+{
+    JUCE_ASSERT_MESSAGE_THREAD
+
+    model.setItemArrayElement ("mixer", key, field, index, value);
+    noteTouchedParameter (makeParameterKey ("mixer", key, field.toString()));
+}
+
 juce::String TouchLiveClient::makeParameterKey (const juce::String& domainName,
                                                 const juce::String& key,
                                                 const juce::String& field)

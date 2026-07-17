@@ -409,6 +409,39 @@ TEST_CASE ("TouchLiveClient: Echo-Suppression verwirft berührte Keys, Release g
     REQUIRE (static_cast<double> (item.getProperty ("volume")) == Approx (0.9));
 }
 
+TEST_CASE ("TouchLiveClient: applyLocalMixerValue schreibt optimistisch und suppress't das Echo", "[touchlive]")
+{
+    ClientRig rig;
+    rig.enable();
+
+    rig.deliver (stateMessage ("mixer", "snapshot", 1, 1, 1,
+                               R"({"tr:0":{"vol":0.5,"pan":0.0,"sends":[0.1,0.2]}})"));
+
+    // Optimistischer Edit (wie ihn ein UI-Strip beim Fader-Drag macht): das
+    // Modell traegt den Wert SOFORT -> andere lokale Controller sehen ihn.
+    rig.client->applyLocalMixerValue ("tr:0", "vol", 0.8);
+    auto item = rig.model.findItem ("mixer", "tr:0");
+    REQUIRE (static_cast<double> (item.getProperty ("vol")) == Approx (0.8));
+
+    // Lives (redundantes) Echo waehrend der Suppression wird verworfen (Diffs
+    // tragen das ganze Mixer-Objekt der Gegenseite -> vol suppressed, Rest greift).
+    rig.deliver (stateMessage ("mixer", "diff", 2, 1, 1,
+                               R"({"tr:0":{"vol":0.5,"pan":0.0,"sends":[0.1,0.2]}})"));
+    REQUIRE (static_cast<double> (item.getProperty ("vol")) == Approx (0.8));
+
+    // ... nach dem Release greift Lives Wert wieder.
+    rig.fakeNowMs += conduit::TouchLiveClient::echoSuppressionReleaseMs + 1.0;
+    rig.deliver (stateMessage ("mixer", "diff", 3, 1, 1,
+                               R"({"tr:0":{"vol":0.42,"pan":0.0,"sends":[0.1,0.2]}})"));
+    REQUIRE (static_cast<double> (item.getProperty ("vol")) == Approx (0.42));
+
+    // Array-Element (Send)
+    rig.client->applyLocalMixerArrayElement ("tr:0", "sends", 1, 0.66);
+    const auto* sends = rig.model.findItem ("mixer", "tr:0").getProperty ("sends").getArray();
+    REQUIRE (sends != nullptr);
+    REQUIRE (static_cast<double> (sends->getReference (1)) == Approx (0.66));
+}
+
 TEST_CASE ("TouchLiveClient: Touch-Thinning — 100 Sends in 100 ms werden gedrosselt, letzter Wert gewinnt", "[touchlive]")
 {
     ClientRig rig;

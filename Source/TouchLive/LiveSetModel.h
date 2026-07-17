@@ -76,6 +76,21 @@ public:
     void applyDiff (const juce::String& domainName, const juce::var& payload,
                     const SuppressionCheck& shouldSuppress = {});
 
+    /** Optimistischer lokaler Edit eines Item-Feldes (Feel-Regel §5.1): schreibt
+        den Wert SOFORT in den Spiegel, damit ANDERE lokale Controller (z. B. die
+        AlphaTrack-Bridge und die Mixer-View gleichzeitig) ihn sehen, bevor Lives
+        per Echo-Suppression verworfenes Echo eintrifft. No-op ohne Item; setzt
+        nur bei echter Wertänderung (kein Flackern). [Message Thread] */
+    void setItemField (const juce::String& domainName, const juce::String& key,
+                       const juce::Identifier& field, const juce::var& value);
+
+    /** Wie setItemField, aber ein einzelnes Array-Element (z. B. sends[i]) — baut
+        das Array neu, damit der ValueTree-Listener feuert (var vergleicht Arrays
+        über den Pointer). No-op bei fehlendem Item/Feld/Index. [Message Thread] */
+    void setItemArrayElement (const juce::String& domainName, const juce::String& key,
+                              const juce::Identifier& field, int index,
+                              const juce::var& value);
+
 private:
     void applyKeyValue (juce::ValueTree domainTree, const juce::String& domainName,
                         const juce::String& key, const juce::var& value,

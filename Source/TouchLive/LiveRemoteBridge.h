@@ -102,10 +102,6 @@ public:
     // LCD-Override-Dauer nach einem Moduswechsel (User sieht das neue Ziel).
     static constexpr double kOverrideMs = 1500.0;
 
-    // Eigene Fader-Sends gelten fuer Anzeige-Zwecke solange als frisch
-    // (die Echo-Suppression haelt das Modell waehrenddessen absichtlich alt).
-    static constexpr double kLocalValueFreshMs = 400.0;
-
 private:
     void changeListenerCallback (juce::ChangeBroadcaster* source) override;
 
@@ -117,12 +113,19 @@ private:
 
     void sendFaderValueToLive (float value01);
 
+    /** Echo-Suppression fuer ein Mixer-Feld setzen (noteTouched-Seam). */
+    void noteTouchedMixer (const juce::String& key, const juce::String& field);
+
     /** Wert des aktiven Ziels aus dem Modell (0..1), < 0 = kein Ziel. */
     [[nodiscard]] float currentTargetValue() const;
 
-    /** Anzeige-Wert: frischer lokaler Send gewinnt ueber das (waehrend der
-        Suppression absichtlich alte) Modell. */
+    /** Anzeige-/Motor-Wert: der gelatchte eigene Send gewinnt ueber das
+        (waehrend der Suppression absichtlich alte) Modell. */
     [[nodiscard]] float displayTargetValue() const;
+
+    /** Loest den Send-Latch, sobald das Modell vom Stand beim eigenen Send
+        abweicht (verspaetetes Echo oder Fremdaenderung). Laeuft je tick(). */
+    void releaseLatchOnModelDrift();
 
     [[nodiscard]] juce::String selectedTrackKey() const;
     [[nodiscard]] juce::ValueTree selectedMixerItem() const;
@@ -168,8 +171,9 @@ private:
     bool faderTouched = false;
     double overrideUntilMs = 0.0;
 
-    float  localValue01 = -1.0f;   // letzter selbst gesendeter Fader-Wert
-    double localValueAtMs = -1.0e9;
+    float  localValue01 = -1.0f;      // letzter selbst gesendeter Fader-Wert
+    bool   localValueLatched = false; // haelt Motor+Anzeige bis zum Modell-Drift
+    float  modelValueAtSend = -1.0f;  // Modellstand beim eigenen Send (Drift-Referenz)
 
     int controllerToken = -1, noteToken = -1, tickToken = -1;
     std::map<int, bool> ledState;   // Note -> zuletzt gesendeter LED-Zustand

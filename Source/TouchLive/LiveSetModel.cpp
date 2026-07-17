@@ -168,6 +168,42 @@ void LiveSetModel::applyDiff (const juce::String& domainName, const juce::var& p
 }
 
 //==============================================================================
+void LiveSetModel::setItemField (const juce::String& domainName, const juce::String& key,
+                                 const juce::Identifier& field, const juce::var& value)
+{
+    JUCE_ASSERT_MESSAGE_THREAD
+
+    auto item = findItem (domainName, key);
+
+    if (item.isValid() && ! deepEquals (item.getProperty (field), value))
+        item.setProperty (field, value, nullptr);
+}
+
+void LiveSetModel::setItemArrayElement (const juce::String& domainName, const juce::String& key,
+                                        const juce::Identifier& field, int index,
+                                        const juce::var& value)
+{
+    JUCE_ASSERT_MESSAGE_THREAD
+
+    auto item = findItem (domainName, key);
+
+    if (! item.isValid())
+        return;
+
+    const auto* source = item.getProperty (field).getArray();
+
+    if (source == nullptr || index < 0 || index >= source->size()
+        || deepEquals (source->getReference (index), value))
+        return;
+
+    // Neues Array bauen: var vergleicht Arrays über den Pointer, in-place-Mutation
+    // löste sonst KEINE Listener-Benachrichtigung aus (LiveSetModel-var-Falle).
+    juce::Array<juce::var> updated (*source);
+    updated.set (index, value);
+    item.setProperty (field, juce::var (std::move (updated)), nullptr);
+}
+
+//==============================================================================
 void LiveSetModel::applyKeyValue (juce::ValueTree domainTree, const juce::String& domainName,
                                   const juce::String& key, const juce::var& value,
                                   const SuppressionCheck& shouldSuppress)

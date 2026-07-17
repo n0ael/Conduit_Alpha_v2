@@ -721,12 +721,32 @@ TRACK◀/▶ wechseln Lives Selektion, Mute/Solo/Arm sofort mit).
 - **Schreiben:** Fader-PB → `/live/track/set/volume|panning|send` via
   `sendTouchValue` (Fast-Path) + `noteTouchedParameter` (Suppression);
   Mute/Solo/Arm/Track-Wechsel via `sendCommand` (Args als Int, nie Bool).
-  Anzeige folgt SOFORT dem eigenen Send (`localValue`, frisch <400 ms) —
-  das Modell bleibt waehrend der Suppression absichtlich alt.
+- **Lokaler Zwei-Controller-Sync (Feldtest 17.07.2026):** Bridge UND die
+  Conduit-Mixer-View steuern denselben selektierten Track und haengen am
+  SELBEN `LiveSetModel`. Ohne Gegenmassnahme sah der jeweils ANDERE lokale
+  Controller die Aenderung nie — die Echo-Suppression haelt das Modell
+  waehrend des eigenen Sends absichtlich alt, und Live meldet den Endwert
+  teils nie zurueck. **Fix:** wer sendet, schreibt seinen Wert OPTIMISTISCH
+  ins Modell — die Bridge direkt (`LiveSetModel::setItemField` /
+  `setItemArrayElement` fuer vol/pan/sends/mute/solo/arm), die UI ueber
+  `TouchLiveClient::applyLocalMixerValue` / `...ArrayElement` (buendelt
+  Modell-Write + Suppression). Die Suppression verwirft danach nur noch
+  Lives redundantes Echo; beide Controller lesen den gemeinsamen Spiegel und
+  laufen synchron. Selbst-Feedback ist entschaerft (`TouchLiveFader`
+  ignoriert `setRemoteValue` waehrend der Geste; Pan/Send-`juce::Slider`
+  setzen mit `dontSendNotification`).
 - **Motor:** zweite `PositionFeedbackRouter`-Instanz (M8-Baustein
-  unveraendert): `currentBoundValueFor` = Wert des aktiven Ziels aus der
-  mixer-Domain (vol direkt, pan (v+1)/2, send[idx]); kein Ziel → −1 =
-  Motor steht. Ebenen-/Moduswechsel faehrt automatisch (Router-Diff).
+  unveraendert): `currentBoundValueFor` = `displayTargetValue()` = Wert des
+  aktiven Ziels aus der mixer-Domain (vol direkt, pan (v+1)/2, send[idx]);
+  kein Ziel → −1 = Motor steht. Ebenen-/Moduswechsel faehrt automatisch
+  (Router-Diff). **Send-Latch (`localValueLatched`):** der eigene Fader-Send
+  haelt Motor+Anzeige, bis das Modell nachweislich driftet
+  (`releaseLatchOnModelDrift`, je tick — verspaetetes Echo == derselbe Wert,
+  nahtlos; Fremdaenderung uebernimmt). Ein reines Zeitfenster liesse den
+  Motor beim Loslassen auf die Ausgangsposition zurueckfahren, wenn Lives
+  Echo waehrend der Suppression ausbleibt (Feldtest 17.07.2026). Mit dem
+  optimistischen Modell-Write ist das Modell ohnehin sofort korrekt — der
+  Latch ist das Sicherheitsnetz.
 - **LEDs folgen dem MODELL** (Live ist die Wahrheit), nie dem Tastendruck;
   Dedupe pro Note; disconnected → alles aus. Send 5–8 teilt die F-LED
   (Unterscheidung zeigt das LCD).

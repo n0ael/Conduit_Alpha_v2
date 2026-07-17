@@ -290,6 +290,55 @@ TEST_CASE ("Bridge: Motor folgt dem Modellwert, dedupet, Touch gated", "[bridge]
     CHECK (rig.lastMotorValue() == juce::roundToInt (0.2f * 16383.0f));
 }
 
+TEST_CASE ("Bridge: eigener Fader-Send haelt den Motor ohne Modell-Echo", "[bridge]")
+{
+    BridgeRig rig;
+    rig.bridge.tick();   // Modell-Volume 0.85
+
+    // User schiebt den Motorfader an der Hardware: Touch-Gate zu, Wert geht an
+    // Live -- aber das Modell bleibt (Echo-Suppression) auf 0.85.
+    rig.noteOn (104);
+    rig.moveFader (0.3f);
+    rig.bridge.tick();   // Gate zu -> kein Motor-Send
+
+    // Loslassen: der Motor haelt den selbst gesendeten Wert, faehrt NICHT auf
+    // die alte Modell-Position (0.85) zurueck.
+    rig.noteOff (104);
+    rig.bridge.tick();
+    CHECK (rig.lastMotorValue() == juce::roundToInt (0.3f * 16383.0f));
+
+    // Bleibt gehalten, solange das Modell nicht driftet.
+    const auto held = rig.motorSendCount();
+    rig.bridge.tick();
+    CHECK (rig.motorSendCount() == held);
+
+    // Echte Fremdaenderung in Live loest den Latch -> Motor folgt dem Modell.
+    rig.applyMixer ("{\"tr:1\":{\"vol\":0.6,\"pan\":0.0,\"sends\":[0.25,0.5],"
+                    "\"mute\":false,\"solo\":false,\"arm\":false}}");
+    rig.bridge.tick();
+    CHECK (rig.lastMotorValue() == juce::roundToInt (0.6f * 16383.0f));
+}
+
+TEST_CASE ("Bridge: verspaetetes Echo des eigenen Werts erzeugt keinen Sprung", "[bridge]")
+{
+    BridgeRig rig;
+    rig.bridge.tick();
+
+    rig.noteOn (104);
+    rig.moveFader (0.3f);
+    rig.noteOff (104);
+    rig.bridge.tick();
+    const auto sends = rig.motorSendCount();
+
+    // Live meldet denselben Wert verspaetet zurueck (Suppression vorbei):
+    // Latch loest, Modell == localValue -> kein erneuter Motor-Send.
+    rig.applyMixer ("{\"tr:1\":{\"vol\":0.3,\"pan\":0.0,\"sends\":[0.25,0.5],"
+                    "\"mute\":false,\"solo\":false,\"arm\":false}}");
+    rig.bridge.tick();
+    CHECK (rig.motorSendCount() == sends);
+    CHECK (rig.bridge.faderMode() == LiveRemoteBridge::FaderMode::volume);
+}
+
 TEST_CASE ("Bridge: Moduswechsel faehrt den Motor auf den neuen Zielwert", "[bridge]")
 {
     BridgeRig rig;
@@ -302,6 +351,45 @@ TEST_CASE ("Bridge: Moduswechsel faehrt den Motor auf den neuen Zielwert", "[bri
     rig.pressNote (42);   // Pan (0.0 -> Mitte = 0.5)
     rig.bridge.tick();
     CHECK (rig.lastMotorValue() == juce::roundToInt (0.5f * 16383.0f));
+}
+
+TEST_CASE ("Bridge: Fader-Send schreibt den Wert optimistisch ins Modell", "[bridge]")
+{
+    // Sync-Regel: der eigene Send aktualisiert sofort den gemeinsamen Spiegel,
+    // damit die Conduit-Mixer-View mitzieht (nicht auf Lives Echo warten).
+    BridgeRig rig;
+    auto item = rig.model.findItem ("mixer", "tr:1");
+    REQUIRE (item.isValid());
+
+    rig.moveFader (0.4f);   // Volume-Modus
+    CHECK ((double) item.getProperty ("vol") == Approx (0.4).margin (0.002));
+
+    rig.pressNote (42);     // Pan
+    rig.moveFader (0.75f);  // -> pan +0.5
+    CHECK ((double) item.getProperty ("pan") == Approx (0.5).margin (0.002));
+
+    rig.pressNote (42);     // zurueck Volume
+    rig.pressNote (54);     // F1 -> Send 1 (Index 0)
+    rig.moveFader (0.6f);
+    const auto* sends = item.getProperty ("sends").getArray();
+    REQUIRE (sends != nullptr);
+    CHECK ((double) sends->getReference (0) == Approx (0.6).margin (0.002));
+    CHECK ((double) sends->getReference (1) == Approx (0.5).margin (0.002));   // unberuehrt
+}
+
+TEST_CASE ("Bridge: Mute/Solo/Arm schreiben den Toggle optimistisch ins Modell", "[bridge]")
+{
+    BridgeRig rig;
+    auto item = rig.model.findItem ("mixer", "tr:1");
+
+    rig.pressNote (16);   // MUTE false -> true
+    CHECK (static_cast<bool> (item.getProperty ("mute")));
+
+    rig.pressNote (16);   // wieder aus (liest den optimistischen Stand)
+    CHECK_FALSE (static_cast<bool> (item.getProperty ("mute")));
+    REQUIRE (rig.commands.size() >= 2);
+    CHECK (rig.commands[rig.commands.size() - 2][1].getInt32() == 1);
+    CHECK (rig.commands.back()[1].getInt32() == 0);
 }
 
 TEST_CASE ("Bridge: TRACK-Tasten navigieren mit Klemmen an den Enden", "[bridge]")

@@ -119,6 +119,18 @@ public:
         250 ms nach dem letzten Aufruf verworfen. */
     void noteTouchedParameter (const juce::String& suppressionKey);
 
+    /** Optimistischer lokaler Mixer-Edit (§5.1): schreibt den Wert SOFORT in den
+        Modell-Spiegel (damit ANDERE lokale Controller wie die AlphaTrack-Bridge
+        ihn sehen — Lives Echo bliebe während der Suppression aus) UND setzt die
+        Echo-Suppression. Ersetzt den separaten noteTouchedParameter-Aufruf beim
+        Senden eines Wertes. [Message Thread] */
+    void applyLocalMixerValue (const juce::String& key, const juce::Identifier& field,
+                               const juce::var& value);
+
+    /** Wie applyLocalMixerValue für ein Send-Array-Element (sends[index]). */
+    void applyLocalMixerArrayElement (const juce::String& key, const juce::Identifier& field,
+                                      int index, const juce::var& value);
+
     /** Key-Schema Domain + Stable-ID + Feld, z. B. ("mixer", "tr:3", "volume").
         Für Skalar-Domains ohne Stable-ID ist der Top-Level-Key das Feld:
         ("transport", "tempo"). */

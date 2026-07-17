@@ -47,8 +47,10 @@ LiveRemoteBridge::LiveRemoteBridge (MidiPortHub& hubToUse,
       model (modelToUse)
 {
     // Motor-Feedback: zweite PositionFeedbackRouter-Instanz (M8-Baustein) --
-    // Quelle ist das AKTIVE Bridge-Ziel statt einer MIDI-Bindung.
-    motorRouter.currentBoundValueFor = [this] (int, bool) { return currentTargetValue(); };
+    // Quelle ist das AKTIVE Bridge-Ziel statt einer MIDI-Bindung. displayTargetValue
+    // laesst den eigenen Fader-Send den Motor halten, solange das Modell noch alt ist
+    // (Echo-Suppression) -- sonst faehrt der Motor beim Loslassen auf den alten Wert.
+    motorRouter.currentBoundValueFor = [this] (int, bool) { return displayTargetValue(); };
     motorRouter.send = [this] (const midirig::FeedbackAddress& address, int value14)
     {
         if (sendMidi == nullptr)
@@ -267,9 +269,10 @@ void LiveRemoteBridge::handleModeKey (FaderMode requested, int requestedSendInde
     mode      = isCurrent ? FaderMode::volume : requested;
     sendIndex = mode == FaderMode::send ? requestedSendIndex : -1;
 
-    // Lokale Anzeige-Werte gehoeren zum alten Ziel.
+    // Lokale Anzeige-Werte gehoeren zum alten Ziel -- Latch loesen, das neue
+    // Ziel kommt frisch aus dem Modell.
     localValue01 = -1.0f;
-    localValueAtMs = -1.0e9;
+    localValueLatched = false;
 
     // LCD zeigt das neue Ziel kurz an; der Motor faehrt im naechsten Tick
     // von selbst auf den neuen Zielwert (Router-Diff).
@@ -285,6 +288,12 @@ void LiveRemoteBridge::handleController (const midi::ControllerEvent& event)
     sendFaderValueToLive ((float) juce::jlimit (0, 16383, event.value) / 16383.0f);
 }
 
+void LiveRemoteBridge::noteTouchedMixer (const juce::String& key, const juce::String& field)
+{
+    if (noteTouched != nullptr)
+        noteTouched (TouchLiveClient::makeParameterKey ("mixer", key, field));
+}
+
 //==============================================================================
 void LiveRemoteBridge::sendFaderValueToLive (float value01)
 {
@@ -295,10 +304,12 @@ void LiveRemoteBridge::sendFaderValueToLive (float value01)
     if (key.isEmpty())
         return;
 
-    // Anzeige folgt SOFORT dem eigenen Send (Feel-Regel 5.1) -- das Modell
-    // bleibt waehrend der Echo-Suppression absichtlich alt.
+    // Anzeige + Motor folgen SOFORT dem eigenen Send (Feel-Regel 5.1) -- das
+    // Modell bleibt waehrend der Echo-Suppression absichtlich alt. Der Latch
+    // haelt den Wert, bis das Modell nachweislich driftet (releaseLatchOnModelDrift).
     localValue01 = juce::jlimit (0.0f, 1.0f, value01);
-    localValueAtMs = now();
+    modelValueAtSend = currentTargetValue();   // Referenzstand fuer die Drift-Erkennung
+    localValueLatched = true;
 
     switch (mode)
     {
@@ -308,19 +319,22 @@ void LiveRemoteBridge::sendFaderValueToLive (float value01)
             message.addString (key);
             message.addFloat32 (localValue01);
             sendTouchValue (message);
-            if (noteTouched != nullptr)
-                noteTouched (TouchLiveClient::makeParameterKey ("mixer", key, "vol"));
+            noteTouchedMixer (key, "vol");
+            // Optimistisch ins Modell (§5.1): die Conduit-Mixer-View sieht den
+            // Wert sofort, statt auf Lives unterdrücktes Echo zu warten.
+            model.setItemField ("mixer", key, "vol", localValue01);
             break;
         }
 
         case FaderMode::pan:
         {
+            const auto panValue = localValue01 * 2.0f - 1.0f;
             juce::OSCMessage message { "/live/track/set/panning" };
             message.addString (key);
-            message.addFloat32 (localValue01 * 2.0f - 1.0f);
+            message.addFloat32 (panValue);
             sendTouchValue (message);
-            if (noteTouched != nullptr)
-                noteTouched (TouchLiveClient::makeParameterKey ("mixer", key, "pan"));
+            noteTouchedMixer (key, "pan");
+            model.setItemField ("mixer", key, "pan", panValue);
             break;
         }
 
@@ -337,8 +351,8 @@ void LiveRemoteBridge::sendFaderValueToLive (float value01)
             message.addInt32 (sendIndex);
             message.addFloat32 (localValue01);
             sendTouchValue (message);
-            if (noteTouched != nullptr)
-                noteTouched (TouchLiveClient::makeParameterKey ("mixer", key, "sends"));
+            noteTouchedMixer (key, "sends");
+            model.setItemArrayElement ("mixer", key, "sends", sendIndex, localValue01);
             break;
         }
     }
@@ -401,11 +415,17 @@ void LiveRemoteBridge::toggleTrackFlag (const juce::String& field, const juce::S
         return;   // Track ohne diese Faehigkeit (z. B. arm auf Gruppen) -- no-op
 
     const auto current = (bool) item.getProperty (field, false);
+    const auto toggled = ! current;
 
     juce::OSCMessage message { address };
     message.addString (key);
-    message.addInt32 (current ? 0 : 1);   // Int, nie Bool (OSC-Codec-Falle)
+    message.addInt32 (toggled ? 1 : 0);   // Int, nie Bool (OSC-Codec-Falle)
     sendCommand (message);
+
+    // Optimistisch ins Modell + Suppression (§5.1): LED-Sync mit der Mixer-View
+    // ohne auf Lives Echo zu warten.
+    noteTouchedMixer (key, field);
+    model.setItemField ("mixer", key, juce::Identifier (field), toggled);
 }
 
 //==============================================================================
@@ -471,10 +491,24 @@ float LiveRemoteBridge::currentTargetValue() const
 
 float LiveRemoteBridge::displayTargetValue() const
 {
-    if (localValue01 >= 0.0f && now() - localValueAtMs <= kLocalValueFreshMs)
-        return localValue01;
+    // Der eigene Fader-Send haelt Motor + Anzeige, bis das Modell driftet.
+    // Ein reines Zeitfenster genuegt NICHT: meldet Live den Wert waehrend der
+    // Echo-Suppression nie zurueck, bliebe das Modell alt und der Motor fuehre
+    // beim Ablauf des Fensters auf die Ausgangsposition zurueck (Feldtest 17.07.).
+    return localValueLatched ? localValue01 : currentTargetValue();
+}
 
-    return currentTargetValue();
+void LiveRemoteBridge::releaseLatchOnModelDrift()
+{
+    if (! localValueLatched)
+        return;
+
+    // Bewegt sich das Modell weg vom Stand beim eigenen Send, hat Live einen
+    // neuen Wert geliefert (verspaetetes Echo == derselbe Wert -> nahtlos, oder
+    // echte Fremdaenderung) -> Latch loesen, das Modell uebernimmt wieder.
+    const auto modelNow = currentTargetValue();
+    if (modelNow < 0.0f || ! juce::approximatelyEqual (modelNow, modelValueAtSend))
+        localValueLatched = false;
 }
 
 //==============================================================================
@@ -482,6 +516,8 @@ void LiveRemoteBridge::tick()
 {
     if (! active)
         return;
+
+    releaseLatchOnModelDrift();
 
     const auto mixerItem = selectedMixerItem();
 

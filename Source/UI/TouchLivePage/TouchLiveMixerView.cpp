@@ -153,7 +153,9 @@ void TouchLiveChannelStrip::refreshButtonLeds()
 //==============================================================================
 void TouchLiveChannelStrip::sendVolume (float value)
 {
-    client.noteTouchedParameter (TouchLiveClient::makeParameterKey ("mixer", key, "vol"));
+    // Optimistisch ins Modell (§5.1): andere lokale Controller (AlphaTrack-Bridge)
+    // sehen den Wert sofort, statt auf Lives unterdrücktes Echo zu warten.
+    client.applyLocalMixerValue (key, "vol", value);
 
     if (kind == "master")
     {
@@ -180,7 +182,7 @@ void TouchLiveChannelStrip::sendVolume (float value)
 
 void TouchLiveChannelStrip::sendPan (float value)
 {
-    client.noteTouchedParameter (TouchLiveClient::makeParameterKey ("mixer", key, "pan"));
+    client.applyLocalMixerValue (key, "pan", value);
 
     if (kind == "master")
     {
@@ -207,7 +209,7 @@ void TouchLiveChannelStrip::sendPan (float value)
 
 void TouchLiveChannelStrip::sendSend (int sendIndex, float value)
 {
-    client.noteTouchedParameter (TouchLiveClient::makeParameterKey ("mixer", key, "sends"));
+    client.applyLocalMixerArrayElement (key, "sends", sendIndex, value);
 
     juce::OSCMessage message { juce::OSCAddressPattern ("/live/track/set/send") };
     message.addString (key);
@@ -221,7 +223,7 @@ void TouchLiveChannelStrip::toggleMute()
     // Optimistisch (Feel-Regel 5.1: nie auf Live-Feedback warten)
     muted = ! muted;
     refreshButtonLeds();
-    client.noteTouchedParameter (TouchLiveClient::makeParameterKey ("mixer", key, "mute"));
+    client.applyLocalMixerValue (key, "mute", muted);
 
     juce::OSCMessage message { juce::OSCAddressPattern ("/live/track/set/mute") };
     message.addString (key);
@@ -233,7 +235,7 @@ void TouchLiveChannelStrip::toggleSolo()
 {
     soloed = ! soloed;
     refreshButtonLeds();
-    client.noteTouchedParameter (TouchLiveClient::makeParameterKey ("mixer", key, "solo"));
+    client.applyLocalMixerValue (key, "solo", soloed);
 
     juce::OSCMessage message { juce::OSCAddressPattern ("/live/track/set/solo") };
     message.addString (key);
@@ -245,7 +247,7 @@ void TouchLiveChannelStrip::toggleArm()
 {
     armed = ! armed;
     refreshButtonLeds();
-    client.noteTouchedParameter (TouchLiveClient::makeParameterKey ("mixer", key, "arm"));
+    client.applyLocalMixerValue (key, "arm", armed);
 
     juce::OSCMessage message { juce::OSCAddressPattern ("/live/track/set/arm") };
     message.addString (key);

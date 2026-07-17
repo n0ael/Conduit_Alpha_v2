@@ -113,6 +113,21 @@ Live-Remote-Bridge (§10l, 17.07.2026):
   try/except gebunden). Beim Erweitern die Quantisierung nicht aufweichen.
 - Mute/Solo/Arm/Track-Wechsel via sendCommand mit INT-Args (nie Bool);
   Fader via sendTouchValue + noteTouchedParameter.
+- **Lokaler Zwei-Controller-Sync (§5.1):** Bridge UND Mixer-View haengen am
+  SELBEN `LiveSetModel`. Wer sendet, schreibt seinen Wert OPTIMISTISCH ins
+  Modell (`LiveSetModel::setItemField`/`setItemArrayElement`; UI ueber
+  `TouchLiveClient::applyLocalMixerValue`/`...ArrayElement`, das Modell +
+  Suppression buendelt) — sonst haelt die Echo-Suppression das Modell alt und
+  der ANDERE lokale Controller sieht die Aenderung nie (Feldtest 17.07.2026:
+  AlphaTrack-Motor und Conduit-Fader liefen nur bei Live→Conduit synchron).
+  Die Suppression verwirft danach nur noch Lives redundantes Echo. Selbst-
+  Feedback ist entschaerft: `TouchLiveFader` ignoriert `setRemoteValue`
+  waehrend der Geste, Pan/Send-Slider setzen mit `dontSendNotification`.
+- **Motor-Latch (Bridge):** der eigene Fader-Send haelt Motor+Anzeige
+  (`localValueLatched`), bis das Modell nachweislich driftet
+  (`releaseLatchOnModelDrift`, je tick) — ein reines Zeitfenster liesse den
+  Motor beim Loslassen auf die Ausgangsposition zurueckfahren, wenn Lives Echo
+  waehrend der Suppression nie eintrifft.
 - AlphaTrack-LCD (`AlphaTrackLcd`): SysEx-Frames NUR als Diff-Runs pro
   tick(); `forceRedraw` + LED-Cache-Reset bei Geraete-/Rollen-Wechsel —
   sonst restauriert das Dedupe nie.

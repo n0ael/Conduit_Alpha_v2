@@ -185,3 +185,65 @@ TEST_CASE ("LiveSetModel: Echo-Suppression-Prädikat lässt berührte Felder una
     REQUIRE (static_cast<double> (item.getProperty ("volume")) == Approx (0.5));
     REQUIRE (static_cast<double> (item.getProperty ("pan")) == Approx (0.25));
 }
+
+//==============================================================================
+TEST_CASE ("LiveSetModel: setItemField schreibt optimistisch und feuert Listener", "[touchlive]")
+{
+    juce::ScopedJuceInitialiser_GUI juceRuntime;
+    conduit::LiveSetModel model;
+
+    model.applySnapshot ("mixer", parse (R"({"tr:0":{"vol":0.5,"pan":0.0,"mute":false}})"));
+
+    TreeEventCounter counter;
+    auto state = model.getState();   // Handle halten: Listener leben pro Instanz
+    state.addListener (&counter);
+
+    model.setItemField ("mixer", "tr:0", "vol", 0.8);
+    auto item = model.findItem ("mixer", "tr:0");
+    REQUIRE (static_cast<double> (item.getProperty ("vol")) == Approx (0.8));
+    REQUIRE (counter.propertyChanges == 1);
+
+    // Bool-Feld (mute/solo/arm)
+    model.setItemField ("mixer", "tr:0", "mute", true);
+    REQUIRE (static_cast<bool> (item.getProperty ("mute")));
+
+    // Gleicher Wert -> kein zweites Event (Flacker-Schutz)
+    const auto before = counter.total();
+    model.setItemField ("mixer", "tr:0", "vol", 0.8);
+    REQUIRE (counter.total() == before);
+
+    // Fehlendes Item -> No-op
+    model.setItemField ("mixer", "tr:99", "vol", 0.3);
+    REQUIRE (counter.total() == before);
+
+    state.removeListener (&counter);
+}
+
+TEST_CASE ("LiveSetModel: setItemArrayElement ersetzt ein Send und benachrichtigt", "[touchlive]")
+{
+    juce::ScopedJuceInitialiser_GUI juceRuntime;
+    conduit::LiveSetModel model;
+
+    model.applySnapshot ("mixer", parse (R"({"tr:0":{"vol":0.5,"sends":[0.1,0.2,0.3]}})"));
+
+    TreeEventCounter counter;
+    auto state = model.getState();   // Handle halten: Listener leben pro Instanz
+    state.addListener (&counter);
+
+    model.setItemArrayElement ("mixer", "tr:0", "sends", 1, 0.75);
+    auto item = model.findItem ("mixer", "tr:0");
+    const auto* sends = item.getProperty ("sends").getArray();
+    REQUIRE (sends != nullptr);
+    REQUIRE (static_cast<double> (sends->getReference (0)) == Approx (0.1));
+    REQUIRE (static_cast<double> (sends->getReference (1)) == Approx (0.75));
+    REQUIRE (static_cast<double> (sends->getReference (2)) == Approx (0.3));
+    REQUIRE (counter.propertyChanges == 1);   // neuer Array-Pointer -> genau ein Event
+
+    // Index ausserhalb / gleicher Wert -> No-op
+    const auto before = counter.total();
+    model.setItemArrayElement ("mixer", "tr:0", "sends", 9, 0.5);
+    model.setItemArrayElement ("mixer", "tr:0", "sends", 1, 0.75);
+    REQUIRE (counter.total() == before);
+
+    state.removeListener (&counter);
+}

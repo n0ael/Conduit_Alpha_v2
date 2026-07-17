@@ -21,6 +21,7 @@ class LinkClock;
 class ModuleFactory;
 class ModuleUiDefaults;
 class NodeUiRegistry;
+class PageManager;
 class ProcessorModule;
 
 //==============================================================================
@@ -285,6 +286,12 @@ public:
         nullptr → keine Defaults (Tests). Message Thread. */
     void setModuleUiDefaults (ModuleUiDefaults* defaults) noexcept;
 
+    /** Seiten-Verwaltung (ADR 008 M1, Owner: EngineProcessor) —
+        addModuleNode setzt die pageUuid der aktiven Seite auf neue Nodes.
+        nullptr → Nodes ohne pageUuid (Tests; migrateAndRepair zieht nach).
+        Message Thread. */
+    void setPageManager (PageManager* pages) noexcept;
+
     //==========================================================================
     /** Auto-Naming (7.2 Schritt 3): übernimmt für ALLE Eingänge eines Send-
         Nodes den aktuellen Quell-Namen als autoName (userName bleibt), in
@@ -449,6 +456,9 @@ private:
 
     // Modul-Typ-Defaults des Dev-Modus (Owner: EngineProcessor)
     ModuleUiDefaults* uiDefaults = nullptr;
+
+    // Seiten-Verwaltung (ADR 008 M1, Owner: EngineProcessor)
+    PageManager* pageManager = nullptr;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (GraphManager)
 };

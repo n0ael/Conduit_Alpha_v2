@@ -90,6 +90,11 @@ EngineProcessor::EngineProcessor (const juce::File& settingsFolder)
     // Modul-Typ-Defaults des Dev-Modus (4.6) — Overlay bei Neu-Anlagen
     graphManager.setModuleUiDefaults (&moduleUiDefaults);
 
+    // Seiten-Verwaltung (ADR 008 M1): neue Nodes erhalten die pageUuid der
+    // aktiven Seite; Migration deckt den frischen Tree gleich mit ab
+    graphManager.setPageManager (&pageManager);
+    pageManager.migrateAndRepair();
+
     // Globale Session-Skala (6.2): Defaults sicherstellen, Properties spiegeln
     ensureSessionScaleDefaults();
     rootState.addListener (this);
@@ -881,6 +886,7 @@ void EngineProcessor::setStateInformation (const void* data, int sizeInBytes)
             rootState.copyPropertiesAndChildrenFrom (loaded, nullptr);
             ensureIONodeStates();          // Presets ohne I/O-Nodes reparieren
             ensureSessionScaleDefaults();  // ... und ohne Skalen-Properties
+            pageManager.migrateAndRepair();  // ... und ohne Pages-Zweig (ADR 008 M1)
         }
     }
 }
@@ -927,6 +933,7 @@ juce::Result EngineProcessor::loadPreset (const juce::File& file)
     rootState.copyPropertiesAndChildrenFrom (loaded, &undoManager);
     ensureIONodeStates();          // Presets ohne I/O-Nodes reparieren
     ensureSessionScaleDefaults();  // ... und ohne Skalen-Properties
+    pageManager.migrateAndRepair();  // ... und ohne Pages-Zweig (ADR 008 M1, undo-frei)
 
     return juce::Result::ok();
 }
@@ -936,6 +943,7 @@ juce::ValueTree EngineProcessor::getRootState() noexcept       { return rootStat
 juce::UndoManager& EngineProcessor::getUndoManager() noexcept  { return undoManager; }
 GraphManager& EngineProcessor::getGraphManager() noexcept      { return graphManager; }
 NodeUiRegistry& EngineProcessor::getNodeUiRegistry() noexcept  { return nodeUiRegistry; }
+PageManager& EngineProcessor::getPageManager() noexcept        { return pageManager; }
 ModuleFactory& EngineProcessor::getModuleFactory() noexcept    { return moduleFactory; }
 OscController& EngineProcessor::getOscController() noexcept    { return oscController; }
 LinkClock& EngineProcessor::getLinkClock() noexcept            { return linkClock; }

@@ -38,6 +38,7 @@
 #include "UiSettings.h"
 #include "NodeUiRegistry.h"
 #include "OscController.h"
+#include "PageManager.h"
 #include "OscSendService.h"
 #include "OscSendSettings.h"
 #include "TransportSettings.h"
@@ -145,6 +146,7 @@ public:
 
     [[nodiscard]] GraphManager& getGraphManager() noexcept;
     [[nodiscard]] NodeUiRegistry& getNodeUiRegistry() noexcept;
+    [[nodiscard]] PageManager& getPageManager() noexcept;
 
     /** Statische Modul-Metadaten (Descriptors) fürs Browser-Panel. */
     [[nodiscard]] ModuleFactory& getModuleFactory() noexcept;
@@ -346,6 +348,10 @@ private:
 
     juce::ValueTree rootState;
     juce::UndoManager undoManager;
+
+    // Seiten-Verwaltung (ADR 008 M1) — Message-Thread-only, arbeitet nur
+    // auf dem ValueTree; nach rootState/undoManager deklariert
+    PageManager pageManager { rootState, undoManager };
 
     // Globale Skala + Session-Swing: Message Thread schreibt, Audio Thread
     // liest (→ ClockBus)

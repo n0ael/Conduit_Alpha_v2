@@ -149,6 +149,7 @@ set(CONDUIT_CPP_SOURCES
     Source/Core/OscSendService.cpp
     Source/Core/OscSendSettings.cpp
     Source/Core/PadGridLayout.cpp
+    Source/Core/PageManager.cpp
     Source/Core/RemoteModuleBinder.cpp
     Source/Core/ResponseCurve.cpp
     Source/Core/RingTouchModel.cpp
@@ -360,6 +361,7 @@ target_sources(Conduit PRIVATE
     Source/Core/OscSendService.h
     Source/Core/OscSendSettings.h
     Source/Core/PadGridLayout.h
+    Source/Core/PageManager.h
     Source/Core/RemoteModuleBinder.h
     Source/Core/ResponseCurve.h
     Source/Core/RingTouchModel.h
@@ -676,6 +678,7 @@ if(CONDUIT_BUILD_TESTS)
         Tests/Core/NrpnAssemblerTests.cpp
         Tests/Core/OscControllerTests.cpp
         Tests/Core/OscSendServiceTests.cpp
+        Tests/Core/PageManagerTests.cpp
         Tests/Core/PatchingTests.cpp
         Tests/Core/PickupLedRouterTests.cpp
         Tests/Core/PositionFeedbackRouterTests.cpp
@@ -768,6 +771,7 @@ if(CONDUIT_BUILD_TESTS)
         Source/Core/OscSendService.cpp
         Source/Core/OscSendSettings.cpp
         Source/Core/PadGridLayout.cpp
+        Source/Core/PageManager.cpp
         Source/Core/RemoteModuleBinder.cpp
         Source/Core/ResponseCurve.cpp
         Source/Core/RingTouchModel.cpp

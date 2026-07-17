@@ -21,6 +21,21 @@ namespace id
     inline const juce::Identifier scaleType { "scaleType" };  // "chromatic"/"major"/"minor"/"pentatonic"
     inline const juce::Identifier globalSwing { "globalSwing" };  // globaler Session-Swing 0..0.75 (4.5)
 
+    // Pages (ADR 008 M1): Seiten als reine View-Schicht über EINEM Graph —
+    // Message-Thread-only, der Audio-Thread kennt keine Seiten.
+    // rootStateVersion gated die Root-Migration beim Laden (Bestand ohne
+    // Feld gilt als Version 1; Pages-Migration hebt auf PageManager-Wert).
+    inline const juce::Identifier pages            { "Pages" };
+    inline const juce::Identifier page             { "Page" };
+    inline const juce::Identifier pageUuid         { "pageUuid" };  // Page-Key UND Node-Property
+    inline const juce::Identifier pageGridX        { "gridX" };
+    inline const juce::Identifier pageGridY        { "gridY" };
+    inline const juce::Identifier pageName         { "name" };
+    inline const juce::Identifier viewOffsetX      { "viewOffsetX" };
+    inline const juce::Identifier viewOffsetY      { "viewOffsetY" };
+    inline const juce::Identifier viewZoom         { "viewZoom" };
+    inline const juce::Identifier rootStateVersion { "rootStateVersion" };
+
     // Node
     inline const juce::Identifier node          { "Node" };
     inline const juce::Identifier nodeId        { "nodeId" };

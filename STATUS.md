@@ -1,9 +1,35 @@
 # Conduit Alpha — Projektstatus
 
-> Letzte Aktualisierung: 2026-07-17 | wird nach jedem Meilenstein gepflegt
+> Letzte Aktualisierung: 2026-07-18 | wird nach jedem Meilenstein gepflegt
 > Architektur-Referenz: [CLAUDE.md](CLAUDE.md) | Repo: n0ael/Conduit
 
-## Aktueller Meilenstein (17.07.2026) — MIDI-Rig M9 (ADR 007): SysEx-Empfang + Hardware-Preset-Browser
+## Aktueller Meilenstein (18.07.2026) — Node-Page Multipage M1 (ADR 008): Pages-Datenmodell + Migration
+
+Seiten als reine View-Schicht über EINEM Graph (ADR 008 + ADR 009,
+CLAUDE.md v5.4). M0-Inventur abgeschlossen (kein Zoom/Pan/Viewport
+existiert → Neubau in M3a; Doppel-Tap-Kollision aufgelöst; 3-Finger-
+HOLD fixiert). M1 umgesetzt:
+
+- Schema: `Pages[]`-Zweig (pageUuid persistent, gridX/gridY, name,
+  Viewport-Tripel) + `pageUuid`-Node-Property + `rootStateVersion`
+  (Pages = 2; ADR-009-I/O-Wandlung bumpt separat in M2).
+- `Core/PageManager` (Message-Thread-only, nur ValueTree):
+  create/find/delete Page (Regel a: nur leere Seiten), setNodePage als
+  reines setProperty (EIN Undo-Step, nie removeChild/addChild),
+  ensureDefaultPage, migrateAndRepair (undo-frei, idempotent — deckt
+  auch von ensureIONodeStates ergänzte I/O-Nodes ab).
+- GraphManager: addModuleNode setzt pageUuid der aktiven Seite
+  (setPageManager-Seam, nullptr-tolerant); EngineProcessor migriert im
+  Ctor + setStateInformation + loadPreset (nach den ensure*-Hooks).
+- Tests: 5 neue Cases (Legacy-Migration, Round-Trip-Idempotenz,
+  Regel a, Listener-Spy „kein ChildRemoved/Added", Undo/Redo +
+  Migration ohne Undo-History) — gesamt 959 Cases / 32590 Assertions,
+  ASan grün. KEINE UI-Änderung (Source/UI unberührt).
+- Nächste Schritte: M3a Canvas-Viewport-NEUBAU (Plan-Modus zwingend),
+  M2 I/O als Browser-Module (ADR 009), M3b Navigation, M4 Birdeye,
+  M5 Portal-Badges (Bedarf prüfen).
+
+## Davor (17.07.2026) — MIDI-Rig M9 (ADR 007): SysEx-Empfang + Hardware-Preset-Browser
 
 DSI-Mopho-Presets mit NAMEN auf Push-Buttons laden. ADR 007 hebt E6
 („SysEx sende-only") eng umrissen auf: Empfang NUR fuer selbst

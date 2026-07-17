@@ -15,6 +15,7 @@
 #include "Modules/ModuleFactory.h"
 #include "Modules/ProcessorModule.h"
 #include "NodeUiRegistry.h"
+#include "PageManager.h"
 #include "SourceNameResolver.h"
 
 namespace conduit
@@ -99,6 +100,11 @@ juce::ValueTree GraphManager::addModuleNode (const juce::String& factoryKey, juc
 
     // Eindeutige named_id (OSC-Pfad, 7) — vor dem Einhängen, ohne Listener
     nodeTree.setProperty (id::moduleId, makeUniqueModuleName (factoryKey), nullptr);
+
+    // Seite des neuen Nodes (ADR 008 M1) — die aktive Seite; ohne
+    // PageManager (Tests) zieht migrateAndRepair() die Property nach
+    if (pageManager != nullptr)
+        nodeTree.setProperty (id::pageUuid, pageManager->getActivePageUuid(), nullptr);
 
     undoManager.beginNewTransaction ("Modul hinzufügen");
     rootState.getChildWithName (id::nodes).appendChild (nodeTree, &undoManager);
@@ -824,6 +830,11 @@ void GraphManager::setChannelNames (ChannelNames* names) noexcept
 void GraphManager::setModuleUiDefaults (ModuleUiDefaults* defaults) noexcept
 {
     uiDefaults = defaults;
+}
+
+void GraphManager::setPageManager (PageManager* pages) noexcept
+{
+    pageManager = pages;
 }
 
 bool GraphManager::captureModuleUiDefaults (const juce::String& nodeUuid)

@@ -209,7 +209,9 @@ Connections[], CalibrationProfiles[], Session-Skala/`followAbleton`):
   (Active | FadingOut | FadingIn | Deleting).
 - Reservierte moduleIds `audio_input` / `audio_output`: der GraphManager
   mappt sie auf die Audio-I/O-Prozessoren des EngineProcessor — keine
-  Factory-Materialisierung, nicht löschbar.
+  Factory-Materialisierung, nicht löschbar. **Auslauf-Regel:** entfällt
+  mit Umsetzung von ADR 009 (I/O als reguläre Browser-Module,
+  Meilenstein M2); bis dahin gültig.
 - `remoteId` = dokumentierte Ausnahme zur Laufzeit-ID-Regel oben (7.4).
 - Session-Skala (`scaleRoot`/`scaleType`, 25 Ableton-Presets als 12-Bit-Maske,
   Index-Mapping statt Nearest-Note) und `globalSwing` reisen pro Block im
@@ -282,10 +284,12 @@ Kalibrierungs-Arbeit.**
 | macOS | Primary | CoreAudio | Dev/DAW, 32 Samples problemlos |
 | Linux Desktop | Secondary | JACK + FFADO | FireWire-Interfaces |
 | Linux Kiosk (LinkBox) | Secondary | JACK / PipeWire | PREEMPT_RT, Fullscreen |
-| iOS | Optional / Bonus | CoreAudio Remote I/O | Touch-first |
+| iOS | Secondary | CoreAudio Remote I/O | Touch-first; nativer Build validiert 17.07.2026 (iPad Pro A12X: ~1 % idle, 5–6 % Peak); Distribution erfordert Developer-Account + Apple-Silicon-Dev-Hardware |
 
 **Plattform-Scope-Regel:** Kein plattformspezifischer DSP- oder UI-Code.
-Plattform-spezifisches Setup in `initAudio()` und CMake ist explizit erlaubt.
+Plattform-spezifisches Setup in `initAudio()`, im Fenster-/Input-Setup
+(Fullscreen, Edge-Gesten-Unterdrückung, Touch-Feedback — ADR 008
+Performance-Modus) und in CMake ist explizit erlaubt.
 
 ### 9.1 macOS CoreAudio
 
@@ -309,6 +313,17 @@ Querschnitts-Kern:
 
 - Touch-first: minimale Touch-Target-Größe 44px, vollständig
   Mouse/Keyboard-kompatibel — kein Touch-only Code.
+- **Gesten-Parität (User-Regel 18.07.2026):** Jede Geste existiert in
+  drei Pfaden: Touch nativ, Trackpad (2-Finger nativ via
+  Magnify/Scroll; höhere Ebenen via Modifier-Taste), Maus+Tastatur.
+  Kein Feature ist touch-only, keines touch-verkrüppelt.
+- **Eingaberegeln sind seitenspezifisch (User-Regel 18.07.2026):**
+  Jede Page definiert ihre eigene Eingabe-Tabelle (Touch, Trackpad,
+  Maus+Tasten) in ihrer Rule bzw. ihrem Dossier — Grid: Rule `grid`
+  (MPE-Flächen verhalten sich selbst wie ein Trackpad), TouchLive/EQ8:
+  docs/TouchLive.md, Node-Patch-Editor: ADR 008 (später
+  docs/NodeEditor.md). Die Gesten-Tabelle der Rule `ui-design` gilt
+  nur, wo eine Page nichts Eigenes definiert.
 - **Schrift wird NIE horizontal gestaucht (User-Regel 07/2026):**
   Schriftgröße reduzieren oder Text kürzen — niemals quetschen
   (minimumHorizontalScale = 1.0, Details Rule `ui-design`).
@@ -358,6 +373,9 @@ Vollausbau, OSC-Send, M4L-Announce (+ Max-Testdevice ConduitLFO), Grid M1.
 | TouchLive-Page (Ableton-Live-Remote) | v2.x | M1–M4 + M5/EQ-Eight erledigt (GRID/MIXER/DEVICE/BROWSER auf Slot 2, Meter, Fast-Path, bespoke EQ-Kurve), Meilensteinleiter: docs/TouchLive.md |
 | Capture-Netzwerk-Share (Exports für entferntes Ableton) | v2.x | HTTP-Bereitstellung der Capture-Dateien |
 | MIDI-Rig (Hardware-Mapping, NRPN/PC/SysEx) | v2.x | Meilensteinleiter: docs/MidiRig.md |
+| Node-Page Multipage (Canvas-Seiten) | v2.x | Seiten als View-Schicht über EINEM Graph, Gesten-Leiter 2/3/4/5-Finger, Performance-Modus (ADR 008); I/O als Browser-Module (ADR 009); Meilensteine M0–M5 in ADR 008 |
+| GestureHelper-Spike (separater Prozess) | v2.x, nachrangig | Raw-Trackpad-Multitouch + Systemgesten-Umschaltung je OS; Muster Push-Shuttle (Prozess-Firewall für Private-APIs); NUR falls Modifier-Pfad in der Praxis nicht reicht |
+| AUv3-Hosting (iOS/macOS) | v2.x | JUCE-nativ, lief im Erstversuch (iOS + macOS 17.07.2026); auf iOS einziges Plugin-Format; unabhängig von CLAP-Priorität |
 
 ---
 
@@ -368,6 +386,8 @@ Vollausbau, OSC-Send, M4L-Announce (+ Max-Testdevice ConduitLFO), Grid M1.
 - Hardware-Spezifikation LinkBox Mini / Pro
 - Rechtliche Struktur / UG-Gründung / Pricing
 - Plattformspezifischer DSP- oder UI-Code (Setup-Code in `initAudio()` erlaubt)
+- Android-Port (Musik-Tablet-Markt ist faktisch iOS; JUCE-fähig,
+  bewusst zurückgestellt — Wiedervorlage nur bei belegter Nachfrage)
 
 ---
 
@@ -425,7 +445,11 @@ Index:
 - 004 — Subsystem-Dossiers unter docs/ (+ Descope 10-Finger-Panic)
 - 005 — Subsystem-Invarianten als path-scoped Rules (.claude/rules/)
 - 006 — MIDI-Rig-Subsystem: Klangerzeuger-/Controller-Profile, Transport, Threading
+- 007 — SysEx-Empfang für den Hardware-Preset-Browser (Amendment zu 006 E6)
+- 008 — Node-Page Multipage: Seiten-View-Schicht, Gesten-Leiter,
+  Performance-Modus
+- 009 — I/O als reguläre Browser-Module (§6.2-Regel entfällt)
 
 ---
 
-*Conduit Alpha v3 — Claude Code Instructions v5.2  |  Juli 2026*
+*Conduit Alpha v3 — Claude Code Instructions v5.3  |  Juli 2026*

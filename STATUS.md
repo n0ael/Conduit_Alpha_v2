@@ -23,9 +23,11 @@ docs/MidiRig.md (M9) + docs/adr/007. Alter M9 (Sende-Snippets) = M10.
   Preset, Scan-Aktion mit 4-Hz-Fortschritts-Poll) +
   `MidiPresetLoadTarget` (Druckflanke → CC32-Bank + Program Change) —
   ein Pad/Macro wird damit zum Preset-Load-Button.
-- Tests: 951 Cases / 32493 Assertions, ASan grün. **Feldtest am Mopho
-  offen** (v. a. Name-Offset 184 verifizieren; bei Zeichensalat
-  `kNameOffset` in DsiSysex.h korrigieren).
+- Tests: 951 Cases / 32493 Assertions, ASan grün, CI grün.
+  **Feldtest am Mopho BESTANDEN (17.07.2026):** alle 3 Bänke gelesen +
+  per Push-Button auswählbar; **Name-Offset 184 bestätigt** (Namen
+  korrekt). Geräte-Macke: der Mopho sendete SysEx-Out erst nach einem
+  Power-Cycle (kein Conduit-Fund).
 - Notierte Zukunfts-Vision (nicht geplant): Grid-Page-Split MPE-Grid +
   „DIY-Grid" (Fader/Pads frei zu einem Controller zusammenbaubar).
 

@@ -827,7 +827,7 @@ Bausteine:
   M6  Pickup-LED + Verhalten — Soft-Takeover-Feedback über Controller-Profile-LEDs (PickupLedRouter: Spalten-Status/Detail-Modus/Shift-Pad-Anzeige, TakeoverMode pro Gerät, Ebenen-Wechsel-Sprung-Fix) — erledigt 07/2026 (Feldtest offen); M6.1 (15.07.2026): Shift-Pad zeigt die RICHTUNG solid (rot/orange/grün, kein Blinken) statt zu blinken — Näherungswert bleibt die Spalten-Status-LED
   M7  Channelstrip-Ebenen — Top-Encoder (role=layer_select) wählen pro Spalte eine von 3 Binding-Bänken (ChannelStripLayers, 8-Step-Zonen, Ebenen-Blink, „aktive Ebene = Lernziel", pro Session persistiert) — erledigt 07/2026 (Feldtest offen)
   M8  Bidirektional Ribbons — Motorfader-/Ribbon-Feedback in beide Richtungen (PitchBend-Adressen 128+Kanal, AddressModes direct/scrub/relativeTicks, PositionFeedbackRouter, AlphaTrack-Factory-CSV) — erledigt 07/2026, **Feldtest AlphaTrack bestanden** (17.07.2026); M8.1: Relativ-Kodierung profil-getrieben (`rel_encoding`, RelativeEncoding.h — AlphaTrack ist sign-magnitude, nicht Zweierkomplement)
-  M9  SysEx-Empfang + Hardware-Preset-Browser (ADR 007, User-Entscheidung 17.07.2026) — M9a SysEx-Empfangsinfra (armed-gated Chunk-Transport im Hub, `Source/Core/Sysex/DsiSysex`-Codec: Packed-MS-Bit, Program-Dump/Inquiry-Parser, Name-Extraktion) erledigt 07/2026 · M9b Scanner+Inquiry+Preset-Cache (HardwarePresetScanner/-Library, EngineProcessor-Member) erledigt 07/2026 — Hardware-Verifikation (Name-Offset!) steht aus · M9c Preset-UI (HW-Presets im HardwareTargetPicker) + MidiPresetLoadTarget erledigt 07/2026 — Feldtest am Mopho offen
+  M9  SysEx-Empfang + Hardware-Preset-Browser (ADR 007, User-Entscheidung 17.07.2026) — M9a SysEx-Empfangsinfra (armed-gated Chunk-Transport im Hub, `Source/Core/Sysex/DsiSysex`-Codec: Packed-MS-Bit, Program-Dump/Inquiry-Parser, Name-Extraktion) erledigt 07/2026 · M9b Scanner+Inquiry+Preset-Cache (HardwarePresetScanner/-Library, EngineProcessor-Member) erledigt 07/2026 — Hardware-Verifikation (Name-Offset!) steht aus · M9c Preset-UI (HW-Presets im HardwareTargetPicker) + MidiPresetLoadTarget erledigt 07/2026 — **Mopho-Feldtest BESTANDEN (17.07.2026): 3 Bänke gelesen + per Push-Button auswählbar, Name-Offset 184 bestätigt**
   M10 SysEx-Sende-Snippets — Sende-only Hex-Snippets mit optionalem `{v}`-Platzhalterbyte + AlphaTrack-LCD/Native-Mode-Force generisch (aus dem alten M9 abgespalten, unabhängig vom Empfangspfad) — offen
 
 ## M9: SysEx-Empfang + Hardware-Preset-Browser (ADR 007)
@@ -876,9 +876,12 @@ eng umrissenen Empfangspfad (Details/Verbote: docs/adr/007).
   (ValueTree→XML; korrupte Datei = kein Cache, kein Crash),
   ChangeBroadcaster; Rescan nur manuell. EngineProcessor-Member neben den
   Profil-Bibliotheken.
-- **Hardware-Verifikation steht aus (mit M9c-Feldtest):** Name-Offset 184
-  am echten Mopho prüfen — bei Zeichensalat Offset in `DsiSysex.h`
-  (`kNameOffset`) korrigieren.
+- **Hardware-Verifikation BESTANDEN (17.07.2026):** Name-Offset 184 am
+  echten Mopho korrekt (Namen sauber gelesen), alle 3 Bänke gescannt und
+  per Push-Button ladbar. **Geräte-Macke:** der Mopho gab SysEx-Out erst
+  nach einem Power-Cycle aus (davor kam keine Dump-Antwort — der Scanner
+  lief in Timeouts/„?"; nach dem Power-Cycle vollständig). Kein
+  Conduit-Fund, aber als Bedien-Hinweis notiert.
 
 **M9c (erledigt 07/2026, Feldtest offen):**
 - `MidiTargetBrowserModel`: optionaler Preset-Zweig via

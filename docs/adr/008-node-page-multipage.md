@@ -131,8 +131,10 @@ Seite. Der Audio-Thread kennt keine Seiten.
   Viewport-State, Delete-Geste, Magnify-Event-Handling, AKTUELLES
   HIT-TESTING-ROUTING Modul vs. Canvas-Hintergrund). STOPP bei
   Konflikt.
-- M1: Pages-Datenmodell + Migration (inkl. ADR-009-Wandlung, EIN
-  stateVersion-Bump) + Catch2-Tests. Keine UI.
+- M1: Pages-Datenmodell + Migration (NUR Pages, eigener
+  rootStateVersion-Bump; die ADR-009-I/O-Wandlung bumpt separat in
+  M2 — Sequenz-Korrektur 18.07.2026, siehe Datenmodell) +
+  Catch2-Tests. Keine UI.
 - M2: I/O als Browser-Module (ADR 009).
 - M3a: Canvas-Viewport-NEUBAU (M0-Befund: es existiert kein
   Zoom/Pan/Viewport/Transform, kein mouseMagnify/mouseWheelMove

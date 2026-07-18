@@ -51,7 +51,12 @@ public:
     /** Ebene 3/4/5 beginnt (alle Finger unten, Referenz steht). M3a: no-op. */
     std::function<void (int fingerCount)> onLevelBegin;
 
-    /** Ebene 3/4/5 endet (Fingerzahl ändert sich). M3a: no-op. */
+    /** Ebene 3/4/5, kontinuierlich (M3b): geglättetes Zentroid-Delta der
+        laufenden Geste — der 4-Finger-Swipe (Seiten-Peek) hängt hier. */
+    std::function<void (int fingerCount, juce::Point<double> panDelta)> onLevelDrag;
+
+    /** Ebene 3/4/5 endet (Fingerzahl ändert sich). Der Aufrufer entscheidet
+        Commit/Snap-back über sein akkumuliertes Delta. */
     std::function<void (int fingerCount)> onLevelEnd;
 
     //==========================================================================

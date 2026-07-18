@@ -207,6 +207,38 @@ TEST_CASE ("setNodePage ist ein reines setProperty — kein ChildRemoved/ChildAd
     CHECK (PageManager::pageOf (nodes.getChild (0)) == targetPage);
 }
 
+TEST_CASE ("Aktive Seite (M3b): Property, Validierung, Nachbar-Lookup", "[pages]")
+{
+    juce::ScopedJuceInitialiser_GUI juceRuntime;
+    conduit::test::ScopedSettingsFolder settingsFolder;
+
+    EngineProcessor engine { settingsFolder.folder };
+    auto& pages = engine.getPageManager();
+    const auto root = engine.getRootState();
+
+    // Default: aktive Seite = Default-Seite, Property wird repariert
+    const auto defaultUuid = pages.getActivePageUuid();
+    CHECK (root.getProperty (id::activePage).toString() == defaultUuid);
+
+    // Wechsel auf eine existierende Seite
+    const auto east = pages.createPage (1, 0);
+    REQUIRE (pages.setActivePage (east));
+    CHECK (pages.getActivePageUuid() == east);
+
+    // Unbekannte Uuid wird abgelehnt; Property bleibt
+    CHECK_FALSE (pages.setActivePage ("keine-seite"));
+    CHECK (pages.getActivePageUuid() == east);
+
+    // Nachbar-Lookup im Grid
+    CHECK (pages.neighbourPage (defaultUuid, 1, 0).getProperty (id::pageUuid)
+               .toString() == east);
+    CHECK_FALSE (pages.neighbourPage (defaultUuid, 0, 1).isValid());
+
+    // Aktive Seite wird gelöscht (leer) → Getter fällt auf Default zurück
+    REQUIRE (pages.deletePage (east));
+    CHECK (pages.getActivePageUuid() == defaultUuid);
+}
+
 TEST_CASE ("Undo: Seiten-Aktionen einzeln undo-/redo-fähig, Migration ohne Undo-History", "[pages]")
 {
     juce::ScopedJuceInitialiser_GUI juceRuntime;

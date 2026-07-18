@@ -55,8 +55,38 @@ juce::String PageManager::ensureDefaultPage()
 
 juce::String PageManager::getActivePageUuid()
 {
-    // M1: keine UI, keine aktive-Seite-Auswahl — immer die Default-Seite.
-    return ensureDefaultPage();
+    // M3b: Root-Property, validiert — Fallback + Reparatur auf die
+    // Default-Seite (z. B. nach Preset-Load mit anderem Seiten-Satz)
+    const auto stored = rootState.getProperty (id::activePage).toString();
+
+    if (stored.isNotEmpty() && findPageByUuid (stored).isValid())
+        return stored;
+
+    const auto fallback = ensureDefaultPage();
+    rootState.setProperty (id::activePage, fallback, nullptr);
+    return fallback;
+}
+
+bool PageManager::setActivePage (const juce::String& uuid)
+{
+    JUCE_ASSERT_MESSAGE_THREAD
+
+    if (! findPageByUuid (uuid).isValid())
+        return false;
+
+    rootState.setProperty (id::activePage, uuid, nullptr);   // View-State, kein Undo
+    return true;
+}
+
+juce::ValueTree PageManager::neighbourPage (const juce::String& uuid, int dx, int dy) const
+{
+    const auto page = findPageByUuid (uuid);
+
+    if (! page.isValid())
+        return {};
+
+    return findPage ((int) page.getProperty (id::pageGridX) + dx,
+                     (int) page.getProperty (id::pageGridY) + dy);
 }
 
 //==============================================================================

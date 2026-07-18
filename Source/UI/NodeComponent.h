@@ -148,6 +148,14 @@ public:
     void mouseDrag (const juce::MouseEvent& event) override;
     void mouseUp (const juce::MouseEvent& event) override;
 
+    /** Delete-Armierung (ADR 008 M3b): erster Doppel-Tap armiert (~3 s,
+        roter Rahmen — Output mit Kabeln: Warnzustand), ein zweiter löscht.
+        Gesamte Kachelfläche inkl. Titel-Label (editOnDoubleClick entfiel —
+        Rename via Long-Press auf die Kopfzeile → NodeAttributePanel). */
+    void mouseDoubleClick (const juce::MouseEvent& event) override;
+
+    [[nodiscard]] bool isDeleteArmed() const noexcept { return deleteArmed; }
+
 private:
     //==========================================================================
     // juce::ValueTree::Listener [Message Thread]
@@ -296,6 +304,16 @@ private:
     static constexpr int longPressMs = 500;
     static constexpr int longPressMoveThreshold = 8;
     int longPressChannel = -1;
+    bool longPressHeader = false;   // Kopfzeile → NodeAttributePanel (M3b)
+
+    // Delete-Armierung (ADR 008 M3b) — Disarm via callAfterDelay+SafePointer
+    // (der Member-Timer gehört dem Long-Press und wird von mouseUp gestoppt)
+    static constexpr int deleteArmTimeoutMs = 3000;
+    bool deleteArmed = false;
+    juce::uint32 armedDeadlineMs = 0;
+
+    void disarmDeleteIfExpired();
+    [[nodiscard]] bool isOutputWithConnections() const;
 
     std::unique_ptr<juce::VBlankAttachment> teardownVBlank;
     bool tearingDown = false;

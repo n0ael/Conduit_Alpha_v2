@@ -3,7 +3,31 @@
 > Letzte Aktualisierung: 2026-07-18 | wird nach jedem Meilenstein gepflegt
 > Architektur-Referenz: [CLAUDE.md](CLAUDE.md) | Repo: n0ael/Conduit
 
-## Aktueller Meilenstein (18.07.2026) — Multipage M2 (ADR 009): I/O als reguläre Browser-Module
+## Aktueller Meilenstein (18.07.2026) — Multipage M3b (ADR 008): Seiten-Navigation
+
+Mehrere Canvas-Seiten sind jetzt BEDIENBAR (Umsetzungsnotizen im ADR):
+
+- Aktive Seite = Root-Property `activePage` (View-State, kein Undo;
+  PageManager validiert/repariert); Seitenwechsel läuft über EINEN
+  Property-Listener-Pfad (rebuild + Viewport-Restore pro Seite).
+- Seiten-Filter im Canvas (nur aktive Seite; Nodes ohne pageUuid
+  bleiben sichtbar — Alt-Rigs); Cross-Page-Kabel bis M5 unsichtbar.
+- 4-Finger-Swipe (Recognizer-Ebene 4 via onLevelDrag): Peek =
+  Content-Verschiebung + Ziel-Badge; Commit 15 % Canvas-Breite,
+  dominante Achse, Wisch ins Leere legt Seite an (undo-fähig).
+  Live-Modul-Peek folgt mit den M4-Miniaturen.
+- Parität: Ctrl/Cmd+Alt+Pfeile (Grid-Navigation, legt im Leeren an),
+  Alt+Scroll am Trackpad; nur Device-Page.
+- Doppel-Tap-Delete-Armierung (ganze Kachel, ~3 s roter Rahmen,
+  zweiter Doppel-Tap löscht; Output-mit-Kabeln: ⚠-Warnzustand
+  inline); editOnDoubleClick-Rename ENTFERNT — Rename via Long-Press
+  auf die Kopfzeile (NodeAttributePanel, geht damit auch an I/O).
+- Regel-a-UI (Seiten löschen) bewusst zu M4 verschoben
+  (Kachel-Übersicht); API steht.
+- Tests: +5 (aktive Seite/Nachbar, 4-Finger-Drag, Filter+Navigation,
+  Viewport-pro-Seite, Armierung) — 988 Cases / 32777 Assertions grün.
+
+## Davor (18.07.2026) — Multipage M2 (ADR 009): I/O als reguläre Browser-Module
 
 Die reservierten moduleIds sind Geschichte — Audio-I/O sind normale
 Module (CLAUDE.md v5.5, §6.2 neu gefasst).

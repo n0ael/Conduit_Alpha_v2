@@ -32,7 +32,8 @@ EngineEditor::EngineEditor (EngineProcessor& engineProcessor,
       canvas (rootState, engineProcessor.getGraphManager(), engineProcessor.getNodeUiRegistry(),
               &engineProcessor.getChannelNames(),
               &engineProcessor.getInputLevels(), &engineProcessor.getOutputLevels(),
-              &engineProcessor.getInputLinkSend(), &engineProcessor.getUiSettings()),
+              &engineProcessor.getInputLinkSend(), &engineProcessor.getUiSettings(),
+              &engineProcessor.getPageManager()),
       gridPage (rootState, engineProcessor.getGridVoiceEngine(),
                engineProcessor.getGridPanelSettings(), engineProcessor.getMpeMidiSink(),
                engineProcessor.getLiveSetModel(), engineProcessor.getTouchLiveClient(),
@@ -1478,6 +1479,18 @@ void EngineEditor::resized()
 bool EngineEditor::keyPressed (const juce::KeyPress& key)
 {
     const auto modifier = juce::ModifierKeys::commandModifier;
+
+    // Seiten-Navigation der Node-Page (ADR 008 M3b, Tastatur-Parität):
+    // Ctrl+Alt+Pfeile wechseln im Seiten-Grid — ins Leere legt eine neue
+    // Seite an (wie der 4-Finger-Wisch). Nur auf der Device-Page.
+    if (key.getModifiers().isCommandDown() && key.getModifiers().isAltDown()
+        && pageHost.getPage() == TransportBar::pageDevice)
+    {
+        if (key.getKeyCode() == juce::KeyPress::leftKey)  { canvas.navigatePages (-1, 0); return true; }
+        if (key.getKeyCode() == juce::KeyPress::rightKey) { canvas.navigatePages (1, 0);  return true; }
+        if (key.getKeyCode() == juce::KeyPress::upKey)    { canvas.navigatePages (0, -1); return true; }
+        if (key.getKeyCode() == juce::KeyPress::downKey)  { canvas.navigatePages (0, 1);  return true; }
+    }
 
     if (key == juce::KeyPress ('z', modifier, 0))
         return undoManager.undo();

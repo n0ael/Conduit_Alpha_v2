@@ -76,8 +76,8 @@ void CanvasGestureRecognizer::touchMove (int sourceIndex, juce::Point<float> pos
 
     it->second = position.toDouble();
 
-    if (activeLevel != 2)
-        return;   // Ebenen 3..5: M3a trackt nur, Aktion folgt in M3b/M4
+    if (activeLevel < 2)
+        return;   // 1-Finger-Semantik gehört dem Aufrufer (Klick/Doppel-Tap)
 
     const auto raw = currentReference();
 
@@ -89,6 +89,19 @@ void CanvasGestureRecognizer::touchMove (int sourceIndex, juce::Point<float> pos
     smoothedRef.spread = raw.spread * (1.0 - smoothing)
                        + smoothedRef.spread * smoothing;
     const auto current = smoothedRef;
+
+    // Ebenen 3..5 (M3b): geglättetes Zentroid-Delta melden — der Canvas
+    // akkumuliert (4-Finger-Swipe = Seiten-Peek); kein Zoom auf diesen Ebenen
+    if (activeLevel >= 3)
+    {
+        const auto levelDelta = current.centroid - reference.centroid;
+        reference = current;
+
+        if (onLevelDrag)
+            onLevelDrag (activeLevel, levelDelta);
+
+        return;
+    }
 
     // Weiche Zoom-Dead-Zone (User-Feedback 18.07.2026): die AKKUMULIERTE
     // Spread-Änderung seit Gestenbeginn läuft durch softZoomResponse —

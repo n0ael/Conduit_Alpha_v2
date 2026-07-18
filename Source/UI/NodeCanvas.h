@@ -19,6 +19,8 @@
 namespace conduit
 {
 
+class PageManager;
+
 //==============================================================================
 /**
     Patching-Fläche: spiegelt Nodes[] des Root-Trees als NodeComponents —
@@ -73,7 +75,8 @@ public:
                 LevelMeter* inputLevelsToUse = nullptr,
                 LevelMeter* outputLevelsToUse = nullptr,
                 InputLinkSend* inputSendToUse = nullptr,
-                UiSettings* uiSettingsToUse = nullptr);
+                UiSettings* uiSettingsToUse = nullptr,
+                PageManager* pageManagerToUse = nullptr);
     ~NodeCanvas() override;
 
     [[nodiscard]] int getNumNodeComponents() const noexcept;
@@ -104,11 +107,24 @@ public:
     [[nodiscard]] canvas_view::ViewState getViewState() const noexcept { return view; }
     void setViewState (canvas_view::ViewState newView);
 
+    //==========================================================================
+    // Seiten-Navigation (ADR 008 M3b) — Tastatur-/Modifier-Parität + Tests
+
+    /** Wechselt zur Nachbarseite (gridX+dx, gridY+dy) der aktiven Seite;
+        existiert dort keine, wird sie ANGELEGT (undo-fähig — paritätisch
+        zum Wisch ins Leere). No-op ohne PageManager. Der Rebuild läuft
+        über den activePage-Property-Listener. */
+    void navigatePages (int dx, int dy);
+
+    /** Commit-Schwelle des 4-Finger-Swipes als Anteil der Canvas-Breite. */
+    static constexpr double pageSwipeCommitFraction = 0.15;
+
     /** true, wenn die Modul-Interaktion gesperrt ist (Zoom < Schwelle). */
     [[nodiscard]] bool isInteractionLocked() const noexcept;
 
     //==========================================================================
     void paint (juce::Graphics& g) override;
+    void paintOverChildren (juce::Graphics& g) override;
     void mouseDown (const juce::MouseEvent& event) override;
     void mouseDrag (const juce::MouseEvent& event) override;
     void mouseUp (const juce::MouseEvent& event) override;
@@ -188,8 +204,17 @@ private:
         Preset-Load/Container-Austausch). */
     void restoreViewState();
 
-    /** Aktive Seite — M3a: Pages[0] (M1-Default); M3b bindet die Auswahl an. */
-    [[nodiscard]] juce::ValueTree activePageTree() const;
+    /** Aktive Seite: via PageManager (M3b); Fallback ohne PageManager
+        (Tests): Pages[0]. Repariert ggf. die activePage-Property. */
+    [[nodiscard]] juce::ValueTree activePageTree();
+
+    /** Seiten-Filter (M3b): true, wenn der Node auf der aktiven Seite
+        liegt — Nodes ohne pageUuid (Alt-Rigs) sind immer sichtbar. */
+    [[nodiscard]] bool isOnActivePage (const juce::ValueTree& nodeTree);
+
+    /** 4-Finger-Swipe beendet: Commit (dominante Achse über der Schwelle —
+        Wisch links = Seite rechts) oder Snap-back. */
+    void handleSwipeEnd();
 
     /** Canvas-Punkt → Content-Koordinaten (durch den Transform). */
     [[nodiscard]] juce::Point<int> toContentPosition (juce::Point<int> canvasPosition) const;
@@ -234,9 +259,15 @@ private:
 
     //==========================================================================
     // Viewport (ADR 008 M3a)
-    CanvasGestureRecognizer recognizer;      // Ebene 2 aktiv, 3/4/5 Hooks
+    CanvasGestureRecognizer recognizer;      // Ebene 2 aktiv, 4 = Seiten-Swipe
     canvas_view::ViewState view;
     std::optional<juce::Point<float>> panDragLast;   // mittlere Maustaste
+
+    // Seiten-Navigation (M3b)
+    PageManager* pageManager = nullptr;      // nullptr in Alt-Tests (Filter aus)
+    bool swipeActive = false;                // Ebene-4-Geste läuft
+    juce::Point<double> swipeDelta;          // akkumuliert (Peek-Versatz)
+    double wheelSwipeAccum = 0.0;            // Alt+Scroll-Seitenwechsel
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (NodeCanvas)
 };

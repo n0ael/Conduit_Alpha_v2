@@ -160,6 +160,37 @@ Seite. Der Audio-Thread kennt keine Seiten.
   Ein echtes Bus-/Summenmodul bleibt als unabhängiges
   UtilityModule-Feature möglich.
 
+## Umsetzungsnotizen M3b (18.07.2026)
+- Aktive Seite: Root-Property `activePage` (View-State, kein Undo,
+  persistiert mit der Session; PageManager validiert + repariert auf
+  die Default-Seite). Seitenwechsel = Property-Änderung — Canvas
+  rebuildet + restauriert den Viewport über EINEN Listener-Pfad.
+- Seiten-Filter: der Canvas instanziiert nur Components der aktiven
+  Seite; Nodes ohne pageUuid (Alt-Rigs) bleiben sichtbar.
+  Cross-Page-Kabel sind bis M5 unsichtbar (Kabel mit gefiltertem
+  Endpunkt werden übersprungen) — bewusster Zwischenzustand.
+- 4-Finger-Swipe: Peek = Content-Verschiebe-Feedback + Ziel-Badge
+  („→ Seite (x,y)" / „→ Neue Seite"); das LIVE-Peek der
+  Nachbar-Module kommt mit den M4-Miniaturen (richtiges Werkzeug).
+  Commit-Schwelle 15 % der Canvas-Breite, dominante Achse; Wisch
+  links = Seite rechts (Content folgt dem Finger); Wisch ins Leere
+  legt die Seite an (undo-fähig).
+- Modifier-/Tastatur-Belegung (Entscheidung 18.07.2026):
+  Ctrl/Cmd+Alt+Pfeile = Seitenwechsel im Grid (ins Leere = anlegen,
+  paritätisch zum Wisch); Trackpad: Alt+Scroll = Seitenwechsel
+  (akkumuliert, Schwelle 0.5 Wheel-Einheiten). Nur auf der
+  Device-Page aktiv.
+- Delete-Armierung: Doppel-Tap armiert (~3 s, roter Rahmen), ein
+  ZWEITER Doppel-Tap löscht — Single-Taps/Drags bleiben frei (kein
+  versehentliches Löschen); der ×-Button bleibt parallel.
+  Output-Endpunkte mit Kabeln: Warnfarbe + „⚠ Output trennt Kabel"
+  inline (kein Dialog). editOnDoubleClick des Titel-Labels ist
+  entfernt; Rename läuft über Long-Press auf die KOPFZEILE (öffnet
+  das NodeAttributePanel — funktioniert damit auch an I/O-Kacheln
+  ohne Farbpunkt) bzw. wie bisher über den Farbpunkt.
+- Regel-a-UI (Seiten-Löschen) wandert zu M4: die Kachel-Übersicht
+  ist der natürliche Ort; canDeletePage/deletePage stehen als API.
+
 ## Meilensteine
 - M0: Read-only Gesten-/Canvas-Inventur (Belegung Node-Page,
   Doppel-Tap, 3-Finger-Tap/Hold-Koexistenz, Zoom-Implementierung,

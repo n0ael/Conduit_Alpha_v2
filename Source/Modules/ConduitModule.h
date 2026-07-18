@@ -35,6 +35,7 @@ namespace id
     inline const juce::Identifier viewOffsetY      { "viewOffsetY" };
     inline const juce::Identifier viewZoom         { "viewZoom" };
     inline const juce::Identifier rootStateVersion { "rootStateVersion" };
+    inline const juce::Identifier activePage       { "activePage" };  // View-State (kein Undo), M3b
 
     // Node
     inline const juce::Identifier node          { "Node" };

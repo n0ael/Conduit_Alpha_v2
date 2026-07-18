@@ -50,10 +50,20 @@ public:
         falls (0,0) nicht existiert, aber andere Seiten vorhanden sind). */
     juce::String ensureDefaultPage();
 
-    /** Seite, auf der neue Nodes landen. M1 (keine UI): immer die
-        Default-Seite via ensureDefaultPage(). M3b bindet hier den
-        aktiven-Seite-State an. */
+    /** Aktive Seite (M3b): Root-Property `activePage` (View-State, kein
+        Undo, persistiert mit der Session). Zeigt die Property auf eine
+        gelöschte/unbekannte Seite, fällt der Getter auf die Default-Seite
+        zurück und repariert die Property. Neue Nodes landen hier. */
     [[nodiscard]] juce::String getActivePageUuid();
+
+    /** Aktive Seite wechseln — false, wenn die Uuid keine Seite ist.
+        View-State (kein Undo, Muster Viewport). */
+    bool setActivePage (const juce::String& uuid);
+
+    /** Nachbarseite im Grid (gridX+dx, gridY+dy) relativ zu einer Seite;
+        invalid, wenn dort keine liegt. */
+    [[nodiscard]] juce::ValueTree neighbourPage (const juce::String& uuid,
+                                                 int dx, int dy) const;
 
     //==========================================================================
     /** Legt eine Seite an (gridX, gridY) an — undo-fähig, eine Transaktion.

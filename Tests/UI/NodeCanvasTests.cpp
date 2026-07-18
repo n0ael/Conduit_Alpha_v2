@@ -6,6 +6,7 @@
 #include "Core/GraphFader.h"
 #include "Core/GraphManager.h"
 #include "Core/NodeUiRegistry.h"
+#include "Core/PageManager.h"
 #include "Modules/AttenuatorModule.h"
 #include "Modules/LinkAudioSendModule.h"
 #include "Modules/ModuleFactory.h"
@@ -798,6 +799,100 @@ TEST_CASE ("NodeCanvas: Interaktions-Sperre unter der Zoom-Schwelle", "[ui][canv
 
     rig.canvas.setViewState ({ 0.0, 0.0, 0.51 });
     REQUIRE_FALSE (rig.canvas.isInteractionLocked());
+}
+
+//==============================================================================
+// Seiten-Navigation (ADR 008 M3b)
+
+namespace
+{
+
+/** UiTestRig-Variante MIT PageManager (Seiten-Filter aktiv). */
+struct PagesRig
+{
+    PagesRig()
+    {
+        conduit::registerDefaultModules (factory);
+        pageManager.migrateAndRepair();
+    }
+
+    [[nodiscard]] juce::ValueTree nodes() { return root.getChildWithName (conduit::id::nodes); }
+
+    juce::ScopedJuceInitialiser_GUI juceRuntime;
+    juce::ValueTree root = makeRootTree();
+    juce::AudioProcessorGraph graph;
+    conduit::GraphFader fader;
+    conduit::ModuleFactory factory;
+    juce::UndoManager undoManager;
+    conduit::NodeUiRegistry uiRegistry;
+    conduit::GraphManager manager { root, graph, fader, factory, undoManager, uiRegistry };
+    conduit::PageManager pageManager { root, undoManager };
+    conduit::NodeCanvas canvas { root, manager, uiRegistry, nullptr, nullptr, nullptr,
+                                 nullptr, nullptr, &pageManager };
+};
+
+} // namespace
+
+TEST_CASE ("NodeCanvas: Seiten-Filter zeigt nur die aktive Seite (M3b)", "[ui][canvas][pages]")
+{
+    PagesRig rig;
+    rig.manager.setPageManager (&rig.pageManager);
+    rig.canvas.setSize (800, 600);
+
+    const auto nodeA = rig.manager.addModuleNode (attenuatorId, { 100, 100 });
+    const auto nodeB = rig.manager.addModuleNode (attenuatorId, { 300, 100 });
+    REQUIRE (rig.canvas.getNumNodeComponents() == 2);
+
+    // Node B auf eine zweite Seite verschieben → Component verschwindet
+    const auto east = rig.pageManager.createPage (1, 0);
+    REQUIRE (rig.pageManager.setNodePage (UiTestRig::uuidOf (nodeB), east));
+    REQUIRE (rig.canvas.getNumNodeComponents() == 1);
+    REQUIRE (rig.canvas.findNodeComponent (UiTestRig::uuidOf (nodeA)) != nullptr);
+
+    // Navigation zur Ost-Seite → nur Node B sichtbar
+    rig.canvas.navigatePages (1, 0);
+    REQUIRE (rig.canvas.getNumNodeComponents() == 1);
+    REQUIRE (rig.canvas.findNodeComponent (UiTestRig::uuidOf (nodeB)) != nullptr);
+
+    // Navigation ins Leere legt eine neue Seite an (undo-fähig), Canvas leer
+    const auto pagesBefore = rig.root.getChildWithName (conduit::id::pages).getNumChildren();
+    rig.canvas.navigatePages (0, 1);
+    CHECK (rig.root.getChildWithName (conduit::id::pages).getNumChildren() == pagesBefore + 1);
+    CHECK (rig.canvas.getNumNodeComponents() == 0);
+}
+
+TEST_CASE ("NodeCanvas: Viewport reist pro Seite (M3b)", "[ui][canvas][pages]")
+{
+    PagesRig rig;
+    rig.canvas.setSize (800, 600);
+
+    rig.canvas.setViewState ({ 50.0, 25.0, 1.5 });
+    rig.canvas.navigatePages (1, 0);   // neue Seite → Default-Viewport
+
+    REQUIRE (juce::exactlyEqual (rig.canvas.getViewState().zoom, 1.0));
+
+    rig.canvas.navigatePages (-1, 0);  // zurück → gespeicherter Viewport
+    REQUIRE (juce::exactlyEqual (rig.canvas.getViewState().zoom, 1.5));
+    REQUIRE (juce::exactlyEqual (rig.canvas.getViewState().offsetX, 50.0));
+}
+
+TEST_CASE ("NodeComponent: Doppel-Tap armiert, zweiter Doppel-Tap löscht (M3b)", "[ui][canvas]")
+{
+    UiTestRig rig;
+    const auto node = rig.manager.addModuleNode (attenuatorId, { 60, 60 });
+    auto* component = rig.canvas.findNodeComponent (UiTestRig::uuidOf (node));
+    REQUIRE (component != nullptr);
+
+    REQUIRE_FALSE (component->isDeleteArmed());
+
+    component->mouseDoubleClick (makeDragEvent (*component, { 20.0f, 20.0f },
+                                                { 20.0f, 20.0f }, false));
+    REQUIRE (component->isDeleteArmed());
+    REQUIRE_FALSE (component->isTearingDown());   // armiert ≠ gelöscht
+
+    component->mouseDoubleClick (makeDragEvent (*component, { 20.0f, 20.0f },
+                                                { 20.0f, 20.0f }, false));
+    REQUIRE (component->isTearingDown());         // Phase 1 läuft
 }
 
 TEST_CASE ("NodeCanvas: Sperre blockiert auch Kabel-Trennen und Doppel-Tap", "[ui][canvas]")

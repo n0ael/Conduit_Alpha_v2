@@ -344,3 +344,29 @@ TEST_CASE ("CanvasGestureRecognizer: 4/5-Finger-Ebenen werden erkannt", "[canvas
     CHECK (recognizer.getActiveFingerCount() == 0);
     REQUIRE (log.levelEnds.back() == 5);
 }
+
+TEST_CASE ("CanvasGestureRecognizer: 4-Finger-Drag meldet Zentroid-Deltas (M3b)", "[canvas][gesture]")
+{
+    conduit::CanvasGestureRecognizer recognizer;
+
+    int dragCount = 0, dragFingers = 0;
+    juce::Point<double> totalDelta;
+    recognizer.onLevelDrag = [&] (int fingers, juce::Point<double> delta)
+    {
+        ++dragCount;
+        dragFingers = fingers;
+        totalDelta += delta;
+    };
+
+    for (int i = 0; i < 4; ++i)
+        recognizer.touchDown (i, { 100.0f + 40.0f * (float) i, 200.0f });
+
+    // Alle vier Finger 60 px nach links → Gesamtdelta −60 (Zentroid folgt)
+    for (int i = 0; i < 4; ++i)
+        recognizer.touchMove (i, { 40.0f + 40.0f * (float) i, 200.0f });
+
+    CHECK (dragCount == 4);
+    CHECK (dragFingers == 4);
+    CHECK (totalDelta.x == Approx (-60.0));
+    CHECK (totalDelta.y == Approx (0.0));
+}

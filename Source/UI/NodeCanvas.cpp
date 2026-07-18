@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <cmath>
 
+#include "Core/PageManager.h"
 #include "Modules/AttenuatorModule.h"
 #include "PushLookAndFeel.h"
 #include "UI/Browser/BrowserDragPayload.h"
@@ -17,7 +18,8 @@ NodeCanvas::NodeCanvas (juce::ValueTree rootTree,
                         LevelMeter* inputLevelsToUse,
                         LevelMeter* outputLevelsToUse,
                         InputLinkSend* inputSendToUse,
-                        UiSettings* uiSettingsToUse)
+                        UiSettings* uiSettingsToUse,
+                        PageManager* pageManagerToUse)
     : rootState (std::move (rootTree)),
       graphManager (graphManagerToUse),
       uiRegistry (uiRegistryToUse),
@@ -25,7 +27,8 @@ NodeCanvas::NodeCanvas (juce::ValueTree rootTree,
       inputLevels (inputLevelsToUse),
       outputLevels (outputLevelsToUse),
       inputSend (inputSendToUse),
-      uiSettings (uiSettingsToUse)
+      uiSettings (uiSettingsToUse),
+      pageManager (pageManagerToUse)
 {
     rootState.addListener (this);
 
@@ -52,6 +55,31 @@ NodeCanvas::NodeCanvas (juce::ValueTree rootTree,
         applyViewTransform();
     };
     recognizer.onGestureEnd = [this] { persistViewState(); };
+
+    // Ebene 4 (M3b): Seiten-Swipe — Peek-Versatz während der Geste,
+    // Commit/Snap-back am Ende. Ebenen 3/5 bleiben für M4 reserviert.
+    recognizer.onLevelBegin = [this] (int fingers)
+    {
+        if (fingers == 4)
+        {
+            swipeActive = true;
+            swipeDelta = {};
+        }
+    };
+    recognizer.onLevelDrag = [this] (int fingers, juce::Point<double> delta)
+    {
+        if (fingers == 4 && swipeActive)
+        {
+            swipeDelta += delta;
+            applyViewTransform();   // Peek: Content folgt dem Wisch
+        }
+    };
+    recognizer.onLevelEnd = [this] (int fingers)
+    {
+        if (fingers == 4 && swipeActive)
+            handleSwipeEnd();
+    };
+
     applyRecognizerTuning();
 
     rebuildAll();  // Tree kann schon Nodes tragen (Session-Restore)
@@ -104,6 +132,12 @@ void NodeCanvas::addComponentFor (juce::ValueTree nodeTree)
     if (nodeUuid.isEmpty() || findNodeComponent (nodeUuid) != nullptr)
         return;
 
+    // Seiten-Filter (M3b): nur die aktive Seite rendert — Cross-Page-Kabel
+    // bleiben bis M5 (Portal-Badges) unsichtbar, weil getPortCentreInCanvas
+    // für gefilterte Nodes nullopt liefert
+    if (! isOnActivePage (nodeTree))
+        return;
+
     // Deleting-Nodes (Phase 1 läuft) bekommen keine neue UI — der Subtree
     // verschwindet in Phase 2; nach einem Undo-Restore zieht der
     // nodeState → Active-Übergang die Component nach.
@@ -140,6 +174,27 @@ void NodeCanvas::valueTreePropertyChanged (juce::ValueTree& tree, const juce::Id
     if (property == id::positionX || property == id::positionY)
     {
         repaint();
+        return;
+    }
+
+    // Seitenwechsel (M3b): navigatePages/M4-Übersicht setzen die
+    // activePage-Property — EIN Pfad für alle Auslöser
+    if (property == id::activePage && tree == rootState)
+    {
+        rebuildAll();
+        restoreViewState();
+        return;
+    }
+
+    // Node wandert auf eine andere Seite (setNodePage): Component folgt
+    if (property == id::pageUuid && tree.hasType (id::node))
+    {
+        if (isOnActivePage (tree))
+            addComponentFor (tree);
+        else
+            removeComponentFor (tree.getProperty (id::nodeId).toString());
+
+        refreshFlowColours();
         return;
     }
 
@@ -341,6 +396,46 @@ void NodeCanvas::paint (juce::Graphics& g)
         g.setColour (push::colours::ledOrange.withAlpha (0.6f));
         g.drawRect (getLocalBounds(), 2);
     }
+}
+
+void NodeCanvas::paintOverChildren (juce::Graphics& g)
+{
+    // Swipe-Badge (M3b): Zielseite des laufenden 4-Finger-Swipes — das
+    // Live-Peek der Nachbar-MODULE kommt mit den M4-Miniaturen
+    if (! swipeActive || pageManager == nullptr)
+        return;
+
+    const auto thresholdX = pageSwipeCommitFraction * juce::jmax (1, getWidth());
+    const auto thresholdY = pageSwipeCommitFraction * juce::jmax (1, getHeight());
+    const auto horizontal = std::abs (swipeDelta.x) >= std::abs (swipeDelta.y);
+    const auto committed  = horizontal ? std::abs (swipeDelta.x) > thresholdX
+                                       : std::abs (swipeDelta.y) > thresholdY;
+
+    const auto dx = horizontal ? (swipeDelta.x < 0 ? 1 : -1) : 0;
+    const auto dy = horizontal ? 0 : (swipeDelta.y < 0 ? 1 : -1);
+
+    const auto currentUuid = pageManager->getActivePageUuid();
+    const auto neighbour = pageManager->neighbourPage (currentUuid, dx, dy);
+    const auto current = pageManager->findPageByUuid (currentUuid);
+
+    const auto targetLabel = neighbour.isValid()
+        ? "Seite (" + neighbour.getProperty (id::pageGridX).toString() + ", "
+              + neighbour.getProperty (id::pageGridY).toString() + ")"
+        : juce::String ("Neue Seite (")
+              + juce::String ((int) current.getProperty (id::pageGridX) + dx) + ", "
+              + juce::String ((int) current.getProperty (id::pageGridY) + dy) + ")";
+
+    const auto badge = juce::Rectangle<int> (0, 0, 260, 44)
+                           .withCentre ({ getWidth() / 2, 60 });
+
+    g.setColour (push::colours::background.withAlpha (committed ? 0.95f : 0.75f));
+    g.fillRoundedRectangle (badge.toFloat(), 8.0f);
+    g.setColour (committed ? push::colours::ledGreen
+                           : juce::Colours::white.withAlpha (0.6f));
+    g.drawRoundedRectangle (badge.toFloat(), 8.0f, 2.0f);
+    g.setFont (juce::Font (juce::FontOptions (16.0f)));
+    g.drawText (juce::String::fromUTF8 ("\xe2\x86\x92 ") + targetLabel,
+                badge, juce::Justification::centred);
 }
 
 void NodeCanvas::paintCables (juce::Graphics& g)
@@ -687,6 +782,29 @@ void NodeCanvas::mouseDoubleClick (const juce::MouseEvent& event)
 void NodeCanvas::mouseWheelMove (const juce::MouseEvent& event,
                                  const juce::MouseWheelDetails& wheel)
 {
+    // Alt+Scroll = Seitenwechsel (Ebene-4-Parität, M3b): akkumuliert bis
+    // zur Schwelle; Scroll links (negativ) = Seite rechts (wie der Wisch)
+    if (event.mods.isAltDown())
+    {
+        const auto delta = std::abs ((double) wheel.deltaX) >= std::abs ((double) wheel.deltaY)
+            ? (double) wheel.deltaX
+            : (double) wheel.deltaY;
+
+        // Richtungswechsel setzt den Akku zurück (kein Alt-Reste-Wischen)
+        if (delta * wheelSwipeAccum < 0.0)
+            wheelSwipeAccum = 0.0;
+
+        wheelSwipeAccum += delta;
+
+        if (std::abs (wheelSwipeAccum) >= 0.5)
+        {
+            navigatePages (wheelSwipeAccum < 0 ? 1 : -1, 0);
+            wheelSwipeAccum = 0.0;
+        }
+
+        return;
+    }
+
     // Cmd/Ctrl+Scroll = Zoom um den Zeiger; sonst Pan (Trackpad-2-Finger-
     // Scroll und Mausrad — Gesten-Parität Ebene 2, ADR 008)
     if (event.mods.isCommandDown())
@@ -738,10 +856,14 @@ void NodeCanvas::applyViewTransform()
     // Translation auf ganze Screen-Pixel gerundet ANWENDEN — view selbst
     // bleibt double-genau (sonst verschluckt die Rundung kleine Deltas).
     // Sub-Pixel-Offsets ließen Kacheln/Text beim Pannen zwischen Pixeln
-    // zittern (Smoke-Feedback 18.07.2026).
+    // zittern (Smoke-Feedback 18.07.2026). Während des 4-Finger-Swipes
+    // kommt der transiente Peek-Versatz obendrauf (M3b).
+    const auto peekX = swipeActive ? swipeDelta.x : 0.0;
+    const auto peekY = swipeActive ? swipeDelta.y : 0.0;
+
     content.setTransform (juce::AffineTransform::scale ((float) view.zoom)
-                              .translated ((float) std::round (view.offsetX),
-                                           (float) std::round (view.offsetY)));
+                              .translated ((float) std::round (view.offsetX + peekX),
+                                           (float) std::round (view.offsetY + peekY)));
 
     // Interaktions-Sperre (User-Entscheidung 18.07.2026): unterhalb der
     // Schwelle sind Module reine Navigationsziele
@@ -780,10 +902,65 @@ void NodeCanvas::restoreViewState()
     applyViewTransform();
 }
 
-juce::ValueTree NodeCanvas::activePageTree() const
+juce::ValueTree NodeCanvas::activePageTree()
 {
+    if (pageManager != nullptr)
+        return pageManager->findPageByUuid (pageManager->getActivePageUuid());
+
+    // Fallback ohne PageManager (Tests): Pages[0] wie in M3a
     const auto pages = rootState.getChildWithName (id::pages);
     return pages.getNumChildren() > 0 ? pages.getChild (0) : juce::ValueTree();
+}
+
+bool NodeCanvas::isOnActivePage (const juce::ValueTree& nodeTree)
+{
+    if (pageManager == nullptr)
+        return true;   // Alt-Rigs ohne Seiten-Konzept
+
+    const auto nodePage = PageManager::pageOf (nodeTree);
+    return nodePage.isEmpty() || nodePage == pageManager->getActivePageUuid();
+}
+
+void NodeCanvas::navigatePages (int dx, int dy)
+{
+    if (pageManager == nullptr || (dx == 0 && dy == 0))
+        return;
+
+    const auto currentUuid = pageManager->getActivePageUuid();
+    const auto currentPage = pageManager->findPageByUuid (currentUuid);
+    const auto neighbour = pageManager->neighbourPage (currentUuid, dx, dy);
+
+    // Ziel existiert nicht → anlegen (undo-fähig; paritätisch zum Wisch
+    // ins Leere, ADR 008)
+    const auto targetUuid = neighbour.isValid()
+        ? neighbour.getProperty (id::pageUuid).toString()
+        : pageManager->createPage ((int) currentPage.getProperty (id::pageGridX) + dx,
+                                   (int) currentPage.getProperty (id::pageGridY) + dy);
+
+    persistViewState();   // Viewport der ALTEN Seite sichern
+    pageManager->setActivePage (targetUuid);
+    // Rebuild + Viewport-Restore laufen über den activePage-Listener
+}
+
+void NodeCanvas::handleSwipeEnd()
+{
+    const auto delta = swipeDelta;
+    swipeActive = false;
+    swipeDelta = {};
+
+    const auto thresholdX = pageSwipeCommitFraction * juce::jmax (1, getWidth());
+    const auto thresholdY = pageSwipeCommitFraction * juce::jmax (1, getHeight());
+
+    // Dominante Achse entscheidet; Content folgt dem Finger — Wisch nach
+    // links (delta negativ) zeigt die Seite RECHTS (gridX+1)
+    if (std::abs (delta.x) >= std::abs (delta.y) && std::abs (delta.x) > thresholdX)
+        navigatePages (delta.x < 0 ? 1 : -1, 0);
+    else if (std::abs (delta.y) > thresholdY)
+        navigatePages (0, delta.y < 0 ? 1 : -1);
+    else
+        applyViewTransform();   // Snap-back (Peek-Versatz fällt weg)
+
+    repaint();
 }
 
 juce::Point<int> NodeCanvas::toContentPosition (juce::Point<int> canvasPosition) const

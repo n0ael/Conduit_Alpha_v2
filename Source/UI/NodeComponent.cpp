@@ -65,12 +65,14 @@ NodeComponent::NodeComponent (juce::ValueTree nodeTreeToBind,
     };
     addAndMakeVisible (deleteButton);
 
-    // named_id im Header — Doppelklick benennt um (OSC-Pfad folgt, 7)
+    // named_id im Header — Rename NUR übers NodeAttributePanel (Long-Press
+    // auf Kopfzeile/Farbpunkt): editOnDoubleClick entfernt, weil Doppel-Tap
+    // app-weit die Delete-Armierung ist (ADR 008 M3b, Kollisionsauflösung)
     titleLabel.setText (nodeTree.getProperty (id::moduleId).toString(),
                         juce::dontSendNotification);
     titleLabel.setFont (juce::Font (juce::FontOptions (15.0f)));
     titleLabel.setColour (juce::Label::textColourId, juce::Colours::white.withAlpha (0.9f));
-    titleLabel.setEditable (false, true, false);
+    titleLabel.setEditable (false, false, false);
     titleLabel.onTextChange = [this]
     {
         if (! graphManager.renameNode (nodeUuid, titleLabel.getText()))
@@ -788,6 +790,25 @@ void NodeComponent::paint (juce::Graphics& g)
                     juce::Justification::centredLeft);
     }
 
+    // Delete-Armierung (ADR 008 M3b): roter Rahmen nach dem ersten
+    // Doppel-Tap — ein zweiter Doppel-Tap löscht, Timeout disarmiert.
+    // Output-Endpunkte mit Kabeln: non-modaler Warnzustand (kräftiger,
+    // JUCE_MODAL_LOOPS_PERMITTED=0 — kein Dialog).
+    if (deleteArmed)
+    {
+        const auto warning = isOutputWithConnections();
+        g.setColour (warning ? juce::Colours::orangered : juce::Colours::red.withAlpha (0.85f));
+        g.drawRoundedRectangle (bounds, 8.0f, 3.0f);
+
+        if (warning)
+        {
+            g.setFont (push::scaledFont (12.0f));
+            g.drawText (juce::String::fromUTF8 ("\xe2\x9a\xa0 Output trennt Kabel"),
+                        getLocalBounds().reduced (8).removeFromTop (16),
+                        juce::Justification::centredRight);
+        }
+    }
+
     // Kanal-Labels neben den Ports der I/O-Endpunkte — Touch hat keinen
     // Hover, deshalb gemalt statt nur als Tooltip (ChannelNames-Quelle)
     if (const auto direction = portLabelDirection(); direction.has_value())
@@ -937,24 +958,92 @@ void NodeComponent::mouseDown (const juce::MouseEvent& event)
     toFront (false);  // gegriffene Kachel über überlappende Nachbarn heben
     dragger.startDraggingComponent (this, event);
 
-    // Long-Press auf eine audio_in-Kanalzeile öffnet das Attribut-Panel —
-    // ein Drag über die Schwelle entlarvt die Geste als Node-Verschieben
+    // Long-Press auf eine audio_in-Kanalzeile öffnet das Kanal-Panel;
+    // Long-Press auf die KOPFZEILE das NodeAttributePanel (Rename — ersetzt
+    // den entfallenen Doppelklick, ADR 008 M3b). Ein Drag über die Schwelle
+    // entlarvt die Geste als Node-Verschieben.
     longPressChannel = channelRowAt (event.getPosition());
-    if (longPressChannel >= 0)
+    longPressHeader = longPressChannel < 0
+        && (event.eventComponent == &titleLabel
+            || event.getPosition().y < touchTarget);
+
+    if (longPressChannel >= 0 || longPressHeader)
         startTimer (longPressMs);
+}
+
+void NodeComponent::mouseDoubleClick (const juce::MouseEvent&)
+{
+    // Delete-Armierung (ADR 008 M3b): erster Doppel-Tap armiert (~3 s,
+    // roter Rahmen), ein zweiter Doppel-Tap innerhalb der Frist löscht —
+    // gilt für die GESAMTE Kachelfläche inkl. Titel-Label, alle Modultypen
+    if (tearingDown)
+        return;
+
+    const auto now = juce::Time::getMillisecondCounter();
+
+    if (deleteArmed && now < armedDeadlineMs)
+    {
+        deleteArmed = false;
+        const auto requested = graphManager.requestNodeDelete (nodeUuid);
+        jassertquiet (requested);
+        return;
+    }
+
+    deleteArmed = true;
+    armedDeadlineMs = now + (juce::uint32) deleteArmTimeoutMs;
+    repaint();
+
+    // Disarm nach Ablauf — eigener Delay statt des Member-Timers (der
+    // gehört dem Long-Press und wird von mouseUp gestoppt); SafePointer
+    // schützt vor dem Teardown-Fall
+    juce::Component::SafePointer<NodeComponent> safe (this);
+    juce::Timer::callAfterDelay (deleteArmTimeoutMs + 50, [safe]
+    {
+        if (safe != nullptr)
+            safe->disarmDeleteIfExpired();
+    });
+}
+
+void NodeComponent::disarmDeleteIfExpired()
+{
+    if (deleteArmed && juce::Time::getMillisecondCounter() >= armedDeadlineMs)
+    {
+        deleteArmed = false;
+        repaint();
+    }
+}
+
+bool NodeComponent::isOutputWithConnections() const
+{
+    if (GraphManager::factoryKeyOf (nodeTree) != audioOutputModuleId)
+        return false;
+
+    const auto connections = nodeTree.getRoot().getChildWithName (id::connections);
+
+    for (int i = 0; i < connections.getNumChildren(); ++i)
+    {
+        const auto c = connections.getChild (i);
+
+        if (c.getProperty (id::destNodeId).toString() == nodeUuid
+            || c.getProperty (id::sourceNodeId).toString() == nodeUuid)
+            return true;
+    }
+
+    return false;
 }
 
 void NodeComponent::mouseDrag (const juce::MouseEvent& event)
 {
     // Während der Long-Press wartet, bleibt der Node stehen (kleines Zittern
     // bricht die Geste nicht); erst über der Schwelle wird sie zum Drag
-    if (longPressChannel >= 0)
+    if (longPressChannel >= 0 || longPressHeader)
     {
         if (event.getDistanceFromDragStart() <= longPressMoveThreshold)
             return;
 
         stopTimer();
         longPressChannel = -1;
+        longPressHeader = false;
     }
 
     // ≤ 1-Frame-Feedback: Component bewegt sich sofort, der Tree zieht nach.
@@ -979,6 +1068,7 @@ void NodeComponent::mouseUp (const juce::MouseEvent&)
     // Loslassen vor Ablauf des Long-Press: Geste verwerfen (war ein Tap/Drag)
     stopTimer();
     longPressChannel = -1;
+    longPressHeader = false;
 }
 
 void NodeComponent::timerCallback()
@@ -986,10 +1076,17 @@ void NodeComponent::timerCallback()
     stopTimer();
 
     const auto channel = longPressChannel;
+    const auto header  = longPressHeader;
     longPressChannel = -1;
+    longPressHeader = false;
 
-    if (channel >= 0 && ! tearingDown)
+    if (tearingDown)
+        return;
+
+    if (channel >= 0)
         openChannelAttributePanel (channel);
+    else if (header)
+        openNodeAttributePanel();   // Rename/Farbe (ersetzt Doppelklick-Rename)
 }
 
 int NodeComponent::channelRowAt (juce::Point<int> localPoint) const

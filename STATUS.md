@@ -3,7 +3,28 @@
 > Letzte Aktualisierung: 2026-07-18 | wird nach jedem Meilenstein gepflegt
 > Architektur-Referenz: [CLAUDE.md](CLAUDE.md) | Repo: n0ael/Conduit
 
-## Aktueller Meilenstein (18.07.2026) — Multipage M3b (ADR 008): Seiten-Navigation
+## Aktueller Meilenstein (18.07.2026) — Multipage M4 (ADR 008): Birdeye + Seiten-Selektion
+
+- 3-Finger-HOLD-Birdeye: aktive Seite LIVE rausgezoomt (kein
+  Miniatur-Cache nötig — Vektor), Karte bewegt sich unterm fixen
+  Mittel-Target (Fadenkreuz), Loslassen = Arbeits-Zoom an der Stelle;
+  Interaktions-Sperre greift automatisch. Pegel im Oberfläche-Tab
+  („Arbeits-Zoom" 100 %, „Birdeye-Zoom" 22 %).
+- 5-Finger-Seiten-Selektion: PageOverviewComponent — Kachel-Grid
+  (gridX/gridY), leere Seiten gedimmt, Tap springt (Viewport-Restore),
+  × auf leeren nicht-aktiven Kacheln = Regel-a-Lösch-UI. Miniaturen:
+  schematische Tree-Proxys, juce::Image-Cache, VBlank max. 1/Frame,
+  paint blittet nur (ADR-Invariante).
+- Tastatur: Ctrl/Cmd+Alt+B (Birdeye-Toggle), +O (Übersicht), Esc.
+- Performance-Grundlagen: PerformanceWindowSetup (Win: EdgeGesture-
+  Property, Press-and-Hold/Flicks aus, Feedback-Visuals aus —
+  dynamisch geladen), Aufruf im MainWindow-Ctor.
+- Tests: +3 (Birdeye-Pegel/Sperre, Overview-Kacheln/Sprung/Regel-a,
+  Overlay-Toggle) — 991 Cases / 32793 Assertions grün.
+- Offen: M5-Bedarfsprüfung (Portal-Badges), Feldtest der Gesten-Leiter
+  am Touchscreen, docs/NodeEditor.md-Dossier zum Strang-Abschluss.
+
+## Davor (18.07.2026) — Multipage M3b (ADR 008): Seiten-Navigation
 
 Mehrere Canvas-Seiten sind jetzt BEDIENBAR (Umsetzungsnotizen im ADR):
 

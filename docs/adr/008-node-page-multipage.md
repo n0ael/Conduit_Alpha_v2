@@ -191,6 +191,35 @@ Seite. Der Audio-Thread kennt keine Seiten.
 - Regel-a-UI (Seiten-Löschen) wandert zu M4: die Kachel-Übersicht
   ist der natürliche Ort; canDeletePage/deletePage stehen als API.
 
+## Umsetzungsnotizen M4 (18.07.2026)
+- 3-Finger-Birdeye braucht KEINE Miniaturen: es ist die AKTIVE Seite,
+  live auf den Birdeye-Pegel rausgezoomt (Vektor-Rendering);
+  3-Finger-Drag pannt die Karte unter dem fixen Mittel-Target
+  (Fadenkreuz-Overlay), Loslassen zoomt auf den Arbeits-Pegel an
+  dieser Stelle. Die Interaktions-Sperre greift dabei automatisch
+  (Birdeye-Pegel < interactionMinZoom).
+- Menü-Pegel: `UiSettings::workZoom` (50–200 %, Default 100) und
+  `UiSettings::birdeyeZoom` (10–50 %, Default 22) — Quasimode-Pegel
+  im Oberfläche-Tab.
+- 5-Finger-Seiten-Selektion: `PageOverviewComponent` (Overlay) —
+  Kachel-Grid nach gridX/gridY, leere Seiten GEDIMMT, aktive
+  markiert; Tap springt (Viewport-Restore über den
+  activePage-Listener), × auf leeren, NICHT-aktiven Kacheln löscht
+  (Regel-a-UI — einzige Lösch-Oberfläche). Miniaturen: SCHEMATISCHE
+  Proxys (Node-Rechtecke + Kabellinien aus dem Tree — fremde Seiten
+  haben keine live-Components), juce::Image-Cache, Invalidierung via
+  ValueTree-Listener, Neuaufbau VBlank-gesteuert max. EINE pro
+  Frame, paint() blittet nur (Invariante eingehalten).
+- Tastatur-Parität: Ctrl/Cmd+Alt+B = Birdeye-TOGGLE (Tastatur kennt
+  kein sinnvolles Halten), Ctrl/Cmd+Alt+O = Übersicht; Esc/
+  Hintergrund-Tap schließt.
+- Performance-Modus-Grundlagen: `applyPerformanceTouchSetup`
+  (Source/UI/PerformanceWindowSetup, Aufruf im MainWindow-Ctor):
+  Windows EdgeGesture-Fullscreen-Property, Press-and-Hold/Flicks
+  aus, Touch-Feedback-Visuals aus (SetWindowFeedbackSetting
+  dynamisch geladen — kein SDK-Versions-Risiko). iOS/LinkBox: No-op
+  laut Plan.
+
 ## Meilensteine
 - M0: Read-only Gesten-/Canvas-Inventur (Belegung Node-Page,
   Doppel-Tap, 3-Finger-Tap/Hold-Koexistenz, Zoom-Implementierung,

@@ -3,6 +3,7 @@
 #include "AudioDeviceController.h"
 #include "EngineEditor.h"
 #include "EngineProcessor.h"
+#include "UI/PerformanceWindowSetup.h"
 #include "UI/PushLookAndFeel.h"
 
 namespace conduit
@@ -25,6 +26,10 @@ public:
         setResizable (true, true);
         centreWithSize (getWidth(), getHeight());
         setVisible (true);
+
+        // Performance-Modus-Grundlagen (ADR 008 M4): Touch-Systemgesten
+        // unterdrücken — nach setVisible (der native Peer muss existieren)
+        applyPerformanceTouchSetup (*this);
     }
 
     void closeButtonPressed() override

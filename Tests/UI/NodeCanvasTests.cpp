@@ -1,12 +1,17 @@
 #include <algorithm>
 
+#include <catch2/catch_approx.hpp>
 #include <catch2/catch_test_macros.hpp>
+
+using Catch::Approx;
 
 #include "Core/Capture/LevelMeter.h"
 #include "Core/GraphFader.h"
 #include "Core/GraphManager.h"
 #include "Core/NodeUiRegistry.h"
 #include "Core/PageManager.h"
+#include "Core/UiSettings.h"
+#include "UI/PageOverviewComponent.h"
 #include "Modules/AttenuatorModule.h"
 #include "Modules/LinkAudioSendModule.h"
 #include "Modules/ModuleFactory.h"
@@ -893,6 +898,80 @@ TEST_CASE ("NodeComponent: Doppel-Tap armiert, zweiter Doppel-Tap löscht (M3b)"
     component->mouseDoubleClick (makeDragEvent (*component, { 20.0f, 20.0f },
                                                 { 20.0f, 20.0f }, false));
     REQUIRE (component->isTearingDown());         // Phase 1 läuft
+}
+
+//==============================================================================
+// Birdeye + Seiten-Übersicht (ADR 008 M4)
+
+TEST_CASE ("NodeCanvas: Birdeye-Toggle — Pegel, Sperre, Rückkehr auf Arbeits-Zoom", "[ui][canvas][birdeye]")
+{
+    UiTestRig rig;
+    rig.canvas.setSize (800, 600);
+    rig.canvas.setViewState ({ 0.0, 0.0, 1.0 });
+
+    rig.canvas.toggleBirdeye();
+    REQUIRE (rig.canvas.isBirdeyeActive());
+    CHECK (rig.canvas.getViewState().zoom
+           == Approx ((double) conduit::UiSettings::defaultBirdeyeZoom));
+    CHECK (rig.canvas.isInteractionLocked());   // Übersicht = nur Navigation
+
+    rig.canvas.toggleBirdeye();
+    REQUIRE_FALSE (rig.canvas.isBirdeyeActive());
+    CHECK (rig.canvas.getViewState().zoom
+           == Approx ((double) conduit::UiSettings::defaultWorkZoom));
+    CHECK_FALSE (rig.canvas.isInteractionLocked());
+}
+
+TEST_CASE ("PageOverview: Kacheln, Sprung per Tap, Regel-a-Löschen", "[ui][canvas][pages]")
+{
+    PagesRig rig;
+
+    const auto defaultUuid = rig.pageManager.getActivePageUuid();
+    const auto emptyUuid = rig.pageManager.createPage (1, 0);
+
+    conduit::PageOverviewComponent overview { rig.root, rig.pageManager };
+    overview.setSize (900, 600);
+
+    // Beide Seiten haben Kacheln im Grid
+    const auto defaultTile = overview.tileBoundsFor (defaultUuid);
+    const auto emptyTile = overview.tileBoundsFor (emptyUuid);
+    REQUIRE_FALSE (defaultTile.isEmpty());
+    REQUIRE_FALSE (emptyTile.isEmpty());
+    CHECK (emptyTile.getX() > defaultTile.getX());   // gridX+1 → rechts
+
+    // Tap auf eine Kachel meldet die Seite (Sprung übernimmt der Canvas)
+    juce::String chosen;
+    overview.onPageChosen = [&chosen] (const juce::String& uuid) { chosen = uuid; };
+
+    overview.mouseUp (makeDragEvent (overview, defaultTile.getCentre().toFloat(),
+                                     defaultTile.getCentre().toFloat(), false));
+    CHECK (chosen == defaultUuid);
+
+    // Regel a: × auf der LEEREN, nicht-aktiven Kachel löscht die Seite
+    const juce::Point<float> closePoint ((float) emptyTile.getRight() - 14.0f,
+                                         (float) emptyTile.getY() + 14.0f);
+    overview.mouseUp (makeDragEvent (overview, closePoint, closePoint, false));
+    CHECK_FALSE (rig.pageManager.findPageByUuid (emptyUuid).isValid());
+
+    // Die AKTIVE Kachel hat nie eine ×-Zone (auch wenn leer) — Klick wählt
+    chosen.clear();
+    const juce::Point<float> activeClose ((float) defaultTile.getRight() - 14.0f,
+                                          (float) defaultTile.getY() + 14.0f);
+    overview.mouseUp (makeDragEvent (overview, activeClose, activeClose, false));
+    CHECK (chosen == defaultUuid);
+    CHECK (rig.pageManager.findPageByUuid (defaultUuid).isValid());
+}
+
+TEST_CASE ("NodeCanvas: togglePageOverview zeigt/versteckt das Overlay", "[ui][canvas][pages]")
+{
+    PagesRig rig;
+    rig.canvas.setSize (800, 600);
+
+    REQUIRE_FALSE (rig.canvas.isPageOverviewVisible());
+    rig.canvas.togglePageOverview();
+    REQUIRE (rig.canvas.isPageOverviewVisible());
+    rig.canvas.togglePageOverview();
+    REQUIRE_FALSE (rig.canvas.isPageOverviewVisible());
 }
 
 TEST_CASE ("NodeCanvas: Sperre blockiert auch Kabel-Trennen und Doppel-Tap", "[ui][canvas]")

@@ -130,6 +130,24 @@ public:
     [[nodiscard]] float getGestureSmoothing() const noexcept { return gestureSmoothing; }
     void setGestureSmoothing (float amount);
 
+    // Zoom-PEGEL der Node-Canvas (ADR 008 M4, Quasimode-Prinzip: Gesten
+    // bleiben deterministisch, nur die Stufen sind justierbar):
+    // Arbeits-Zoom = Ziel nach Birdeye-Loslassen/Übersicht-Sprung,
+    // Birdeye-Zoom = Übersichts-Stufe des 3-Finger-HOLD.
+    static constexpr float minWorkZoom     = 0.5f;
+    static constexpr float maxWorkZoom     = 2.0f;
+    static constexpr float defaultWorkZoom = 1.0f;
+
+    static constexpr float minBirdeyeZoom     = 0.1f;
+    static constexpr float maxBirdeyeZoom     = 0.5f;
+    static constexpr float defaultBirdeyeZoom = 0.22f;
+
+    [[nodiscard]] float getWorkZoom() const noexcept { return workZoom; }
+    void setWorkZoom (float level);
+
+    [[nodiscard]] float getBirdeyeZoom() const noexcept { return birdeyeZoom; }
+    void setBirdeyeZoom (float level);
+
 private:
     void loadFromFile();
 
@@ -145,6 +163,8 @@ private:
     float zoomStrength = defaultZoomStrength;
     float zoomCurve = defaultZoomCurve;
     float gestureSmoothing = defaultGestureSmoothing;
+    float workZoom = defaultWorkZoom;
+    float birdeyeZoom = defaultBirdeyeZoom;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (UiSettings)
 };

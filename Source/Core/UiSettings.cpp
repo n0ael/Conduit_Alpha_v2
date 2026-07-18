@@ -16,6 +16,8 @@ namespace
     constexpr const char* zoomStrengthKey       = "zoomStrength";
     constexpr const char* zoomCurveKey          = "zoomCurve";
     constexpr const char* gestureSmoothingKey   = "gestureSmoothing";
+    constexpr const char* workZoomKey           = "canvasWorkZoom";
+    constexpr const char* birdeyeZoomKey        = "canvasBirdeyeZoom";
 
     /** Erlaubte Modi: 120 (Nativ, max) | 60 | 30 — alles andere wird auf
         den nächsten Modus geklemmt (handeditierte Datei, alte Versionen). */
@@ -81,6 +83,10 @@ void UiSettings::loadFromFile()
         gestureSmoothing = juce::jlimit (minGestureSmoothing, maxGestureSmoothing,
             static_cast<float> (file->getDoubleValue (gestureSmoothingKey,
                                                       defaultGestureSmoothing)));
+        workZoom = juce::jlimit (minWorkZoom, maxWorkZoom,
+            static_cast<float> (file->getDoubleValue (workZoomKey, defaultWorkZoom)));
+        birdeyeZoom = juce::jlimit (minBirdeyeZoom, maxBirdeyeZoom,
+            static_cast<float> (file->getDoubleValue (birdeyeZoomKey, defaultBirdeyeZoom)));
     }
 }
 
@@ -187,6 +193,42 @@ void UiSettings::setGestureSmoothing (float amount)
     if (auto* file = applicationProperties.getUserSettings())
     {
         file->setValue (gestureSmoothingKey, static_cast<double> (clamped));
+        file->saveIfNeeded();
+    }
+
+    sendChangeMessage();
+}
+
+void UiSettings::setWorkZoom (float level)
+{
+    const auto clamped = juce::jlimit (minWorkZoom, maxWorkZoom, level);
+
+    if (juce::exactlyEqual (clamped, workZoom))
+        return;
+
+    workZoom = clamped;
+
+    if (auto* file = applicationProperties.getUserSettings())
+    {
+        file->setValue (workZoomKey, static_cast<double> (clamped));
+        file->saveIfNeeded();
+    }
+
+    sendChangeMessage();
+}
+
+void UiSettings::setBirdeyeZoom (float level)
+{
+    const auto clamped = juce::jlimit (minBirdeyeZoom, maxBirdeyeZoom, level);
+
+    if (juce::exactlyEqual (clamped, birdeyeZoom))
+        return;
+
+    birdeyeZoom = clamped;
+
+    if (auto* file = applicationProperties.getUserSettings())
+    {
+        file->setValue (birdeyeZoomKey, static_cast<double> (clamped));
         file->saveIfNeeded();
     }
 

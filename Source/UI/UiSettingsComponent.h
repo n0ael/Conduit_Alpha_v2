@@ -38,7 +38,7 @@ public:
 
     void resized() override;
 
-    [[nodiscard]] static int preferredHeight() noexcept { return 422; }
+    [[nodiscard]] static int preferredHeight() noexcept { return 494; }
 
     //==========================================================================
     // Controls public für headless Tests
@@ -54,6 +54,9 @@ public:
     juce::Slider zoomCurveSlider    { juce::Slider::LinearBar, juce::Slider::TextBoxLeft };
     // Gesten-Glättung gegen Touch-Sensor-Rauschen (Dev-Tuning)
     juce::Slider smoothingSlider    { juce::Slider::LinearBar, juce::Slider::TextBoxLeft };
+    // Zoom-Pegel: Arbeits-Zoom + Birdeye-Stufe (ADR 008 M4, Quasimode)
+    juce::Slider workZoomSlider     { juce::Slider::LinearBar, juce::Slider::TextBoxLeft };
+    juce::Slider birdeyeZoomSlider  { juce::Slider::LinearBar, juce::Slider::TextBoxLeft };
     // Text im ctor via String::fromUTF8 (MSVC-CP1252-Falle bei Umlaut-Literalen)
     juce::ToggleButton devModeToggle;
     juce::ToggleButton dspMeterToggle;
@@ -84,6 +87,8 @@ private:
     juce::Label zoomStrengthLabel  { {}, juce::String::fromUTF8 ("Zoom-Stärke") };
     juce::Label zoomCurveLabel     { {}, juce::String::fromUTF8 ("Zoom-Kurve") };
     juce::Label smoothingLabel     { {}, juce::String::fromUTF8 ("Glättung") };
+    juce::Label workZoomLabel      { {}, juce::String::fromUTF8 ("Arbeits-Zoom") };
+    juce::Label birdeyeZoomLabel   { {}, juce::String::fromUTF8 ("Birdeye-Zoom") };
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (UiSettingsComponent)
 };

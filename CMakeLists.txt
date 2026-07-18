@@ -306,6 +306,8 @@ set(CONDUIT_CPP_SOURCES
     Source/UI/NodeCanvas.cpp
     Source/UI/NodeComponent.cpp
     Source/UI/NoteCircleFadeTracker.cpp
+    Source/UI/PageOverviewComponent.cpp
+    Source/UI/PerformanceWindowSetup.cpp
     Source/UI/NumberFieldBracket.cpp
     Source/UI/OscSettingsComponent.cpp
     Source/UI/LooperPage.cpp
@@ -522,6 +524,8 @@ target_sources(Conduit PRIVATE
     Source/UI/NodeCanvas.h
     Source/UI/NodeCanvasContent.h
     Source/UI/NodeColourDot.h
+    Source/UI/PageOverviewComponent.h
+    Source/UI/PerformanceWindowSetup.h
     Source/UI/NodeComponent.h
     Source/UI/NoteCircleFadeTracker.h
     Source/UI/OscSettingsComponent.h
@@ -937,6 +941,8 @@ if(CONDUIT_BUILD_TESTS)
         Source/UI/NodeCanvas.cpp
         Source/UI/NodeComponent.cpp
         Source/UI/NoteCircleFadeTracker.cpp
+        Source/UI/PageOverviewComponent.cpp
+        Source/UI/PerformanceWindowSetup.cpp
         Source/UI/NumberFieldBracket.cpp
         Source/UI/OscSettingsComponent.cpp
         Source/UI/LooperPage.cpp

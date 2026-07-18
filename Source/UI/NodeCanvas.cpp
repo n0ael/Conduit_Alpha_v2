@@ -6,6 +6,7 @@
 #include "Core/PageManager.h"
 #include "Modules/AttenuatorModule.h"
 #include "PushLookAndFeel.h"
+#include "UI/PageOverviewComponent.h"
 #include "UI/Browser/BrowserDragPayload.h"
 
 namespace conduit
@@ -56,19 +57,38 @@ NodeCanvas::NodeCanvas (juce::ValueTree rootTree,
     };
     recognizer.onGestureEnd = [this] { persistViewState(); };
 
-    // Ebene 4 (M3b): Seiten-Swipe — Peek-Versatz während der Geste,
-    // Commit/Snap-back am Ende. Ebenen 3/5 bleiben für M4 reserviert.
+    // Gesten-Leiter (ADR 008): Ebene 3 = Birdeye-HOLD (M4), Ebene 4 =
+    // Seiten-Swipe (M3b), Ebene 5 = Seiten-Übersicht (M4)
     recognizer.onLevelBegin = [this] (int fingers)
     {
-        if (fingers == 4)
+        if (fingers == 3)
         {
+            startBirdeye();
+        }
+        else if (fingers == 4)
+        {
+            if (birdeyeActive)
+                endBirdeye();   // 3→4: Birdeye sauber verlassen
+
             swipeActive = true;
             swipeDelta = {};
+        }
+        else if (fingers == 5)
+        {
+            swipeActive = false;
+            togglePageOverview();
         }
     };
     recognizer.onLevelDrag = [this] (int fingers, juce::Point<double> delta)
     {
-        if (fingers == 4 && swipeActive)
+        if (fingers == 3 && birdeyeActive)
+        {
+            // Die Karte bewegt sich unter dem fixen Mittel-Target
+            view.offsetX += delta.x;
+            view.offsetY += delta.y;
+            applyViewTransform();
+        }
+        else if (fingers == 4 && swipeActive)
         {
             swipeDelta += delta;
             applyViewTransform();   // Peek: Content folgt dem Wisch
@@ -76,7 +96,9 @@ NodeCanvas::NodeCanvas (juce::ValueTree rootTree,
     };
     recognizer.onLevelEnd = [this] (int fingers)
     {
-        if (fingers == 4 && swipeActive)
+        if (fingers == 3 && birdeyeActive)
+            endBirdeye();
+        else if (fingers == 4 && swipeActive)
             handleSwipeEnd();
     };
 
@@ -400,6 +422,17 @@ void NodeCanvas::paint (juce::Graphics& g)
 
 void NodeCanvas::paintOverChildren (juce::Graphics& g)
 {
+    // Birdeye-Mittel-Target (M4): fixes Fadenkreuz — die Karte bewegt
+    // sich darunter, Loslassen zoomt hierhin
+    if (birdeyeActive)
+    {
+        const auto centre = getLocalBounds().getCentre().toFloat();
+        g.setColour (push::colours::ledGreen.withAlpha (0.8f));
+        g.drawEllipse (centre.x - 14.0f, centre.y - 14.0f, 28.0f, 28.0f, 1.5f);
+        g.drawLine (centre.x - 22.0f, centre.y, centre.x + 22.0f, centre.y, 1.0f);
+        g.drawLine (centre.x, centre.y - 22.0f, centre.x, centre.y + 22.0f, 1.0f);
+    }
+
     // Swipe-Badge (M3b): Zielseite des laufenden 4-Finger-Swipes — das
     // Live-Peek der Nachbar-MODULE kommt mit den M4-Miniaturen
     if (! swipeActive || pageManager == nullptr)
@@ -966,6 +999,100 @@ void NodeCanvas::handleSwipeEnd()
 juce::Point<int> NodeCanvas::toContentPosition (juce::Point<int> canvasPosition) const
 {
     return canvas_view::toContent (view, canvasPosition.toDouble()).roundToInt();
+}
+
+double NodeCanvas::workZoomLevel() const
+{
+    return (double) (uiSettings != nullptr ? uiSettings->getWorkZoom()
+                                           : UiSettings::defaultWorkZoom);
+}
+
+double NodeCanvas::birdeyeZoomLevel() const
+{
+    return (double) (uiSettings != nullptr ? uiSettings->getBirdeyeZoom()
+                                           : UiSettings::defaultBirdeyeZoom);
+}
+
+void NodeCanvas::startBirdeye()
+{
+    if (birdeyeActive)
+        return;
+
+    birdeyeActive = true;
+
+    // Übersicht der AKTIVEN Seite: auf den Birdeye-Pegel um die
+    // Bildschirmmitte (das fixe Mittel-Target) rauszoomen — die Module
+    // rendern LIVE (Vektor), kein Miniatur-Cache nötig
+    view = canvas_view::zoomAbout (view, getLocalBounds().getCentre().toDouble(),
+                                   birdeyeZoomLevel());
+    applyViewTransform();   // Interaktions-Sperre greift automatisch
+    repaint();
+}
+
+void NodeCanvas::endBirdeye()
+{
+    if (! birdeyeActive)
+        return;
+
+    birdeyeActive = false;
+
+    // Loslassen: auf den Arbeits-Pegel an der Stelle unterm Mittel-Target
+    view = canvas_view::zoomAbout (view, getLocalBounds().getCentre().toDouble(),
+                                   workZoomLevel());
+    applyViewTransform();
+    persistViewState();
+    repaint();
+}
+
+void NodeCanvas::toggleBirdeye()
+{
+    if (birdeyeActive)
+        endBirdeye();
+    else
+        startBirdeye();
+}
+
+void NodeCanvas::togglePageOverview()
+{
+    if (pageManager == nullptr)
+        return;
+
+    if (isPageOverviewVisible())
+    {
+        pageOverview.reset();
+        return;
+    }
+
+    auto overview = std::make_unique<PageOverviewComponent> (rootState, *pageManager);
+    overview->onPageChosen = [this] (const juce::String& pageUuid)
+    {
+        persistViewState();
+        pageManager->setActivePage (pageUuid);   // rebuild via Listener
+        pageOverview.reset();
+
+        // Sprung auf den gespeicherten Viewport der Zielseite lief im
+        // Listener (restoreViewState) — Fallback ohne Viewport: Arbeits-Zoom
+        if (! activePageTree().hasProperty (id::viewZoom))
+            setViewState ({ view.offsetX, view.offsetY, workZoomLevel() });
+    };
+    overview->onDismiss = [this] { pageOverview.reset(); };
+
+    overview->setBounds (getLocalBounds());
+    addAndMakeVisible (*overview);
+    overview->grabKeyboardFocus();   // Esc schließt
+    pageOverview = std::move (overview);
+}
+
+bool NodeCanvas::isPageOverviewVisible() const noexcept
+{
+    return pageOverview != nullptr;
+}
+
+void NodeCanvas::resized()
+{
+    // content hat feste Riesen-Bounds (M3a) — nur das Overlay folgt
+    if (pageOverview != nullptr)
+        pageOverview->setBounds (getLocalBounds());
 }
 
 void NodeCanvas::applyRecognizerTuning()

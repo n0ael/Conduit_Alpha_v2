@@ -98,6 +98,24 @@ UiSettingsComponent::UiSettingsComponent (UiSettings& settingsToUse)
     { settings.setGestureSmoothing (static_cast<float> (smoothingSlider.getValue() / 100.0)); };
     addAndMakeVisible (smoothingSlider);
 
+    // Zoom-Pegel (ADR 008 M4): Arbeits-Zoom = Ziel nach Birdeye/Übersicht,
+    // Birdeye-Zoom = Übersichts-Stufe des 3-Finger-HOLD (Quasimode-Pegel)
+    addAndMakeVisible (workZoomLabel);
+    workZoomSlider.setRange (static_cast<double> (UiSettings::minWorkZoom) * 100.0,
+                             static_cast<double> (UiSettings::maxWorkZoom) * 100.0, 1.0);
+    workZoomSlider.setTextValueSuffix (" %");
+    workZoomSlider.onValueChange = [this]
+    { settings.setWorkZoom (static_cast<float> (workZoomSlider.getValue() / 100.0)); };
+    addAndMakeVisible (workZoomSlider);
+
+    addAndMakeVisible (birdeyeZoomLabel);
+    birdeyeZoomSlider.setRange (static_cast<double> (UiSettings::minBirdeyeZoom) * 100.0,
+                                static_cast<double> (UiSettings::maxBirdeyeZoom) * 100.0, 1.0);
+    birdeyeZoomSlider.setTextValueSuffix (" %");
+    birdeyeZoomSlider.onValueChange = [this]
+    { settings.setBirdeyeZoom (static_cast<float> (birdeyeZoomSlider.getValue() / 100.0)); };
+    addAndMakeVisible (birdeyeZoomSlider);
+
     devModeToggle.setButtonText (juce::String::fromUTF8 (
         "Development-Modus (DEV-Buttons in den Modul-Köpfen)"));
     devModeToggle.onClick = [this] { settings.setDevModeEnabled (devModeToggle.getToggleState()); };
@@ -156,6 +174,10 @@ void UiSettingsComponent::syncControls()
                               juce::dontSendNotification);
     smoothingSlider.setValue (static_cast<double> (settings.getGestureSmoothing()) * 100.0,
                               juce::dontSendNotification);
+    workZoomSlider.setValue (static_cast<double> (settings.getWorkZoom()) * 100.0,
+                             juce::dontSendNotification);
+    birdeyeZoomSlider.setValue (static_cast<double> (settings.getBirdeyeZoom()) * 100.0,
+                                juce::dontSendNotification);
     devModeToggle.setToggleState (settings.isDevModeEnabled(), juce::dontSendNotification);
     dspMeterToggle.setToggleState (settings.isDspMeterEnabled(), juce::dontSendNotification);
     softKeyboardToggle.setToggleState (settings.isSoftKeyboardEnabled(),
@@ -187,6 +209,8 @@ void UiSettingsComponent::resized()
     layoutRow (area, zoomStrengthLabel, zoomStrengthSlider);
     layoutRow (area, zoomCurveLabel, zoomCurveSlider);
     layoutRow (area, smoothingLabel, smoothingSlider);
+    layoutRow (area, workZoomLabel, workZoomSlider);
+    layoutRow (area, birdeyeZoomLabel, birdeyeZoomSlider);
 
     devModeToggle.setBounds (area.removeFromTop (30));
     area.removeFromTop (6);

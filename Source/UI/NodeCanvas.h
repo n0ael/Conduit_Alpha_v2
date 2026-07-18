@@ -119,12 +119,28 @@ public:
     /** Commit-Schwelle des 4-Finger-Swipes als Anteil der Canvas-Breite. */
     static constexpr double pageSwipeCommitFraction = 0.15;
 
+    //==========================================================================
+    // Birdeye (ADR 008 M4): 3-Finger-HOLD — transiente Übersicht der
+    // AKTIVEN Seite; die Karte bewegt sich unter dem fixen Mittel-Target,
+    // Loslassen zoomt auf den Arbeits-Pegel an dieser Stelle.
+
+    /** Tastatur-Parität (Ctrl/Cmd+Alt+B): Toggle statt Hold. */
+    void toggleBirdeye();
+
+    [[nodiscard]] bool isBirdeyeActive() const noexcept { return birdeyeActive; }
+
+    /** 5-Finger/Tastatur (Ctrl/Cmd+Alt+O): Seiten-Übersicht ein-/ausblenden. */
+    void togglePageOverview();
+
+    [[nodiscard]] bool isPageOverviewVisible() const noexcept;
+
     /** true, wenn die Modul-Interaktion gesperrt ist (Zoom < Schwelle). */
     [[nodiscard]] bool isInteractionLocked() const noexcept;
 
     //==========================================================================
     void paint (juce::Graphics& g) override;
     void paintOverChildren (juce::Graphics& g) override;
+    void resized() override;
     void mouseDown (const juce::MouseEvent& event) override;
     void mouseDrag (const juce::MouseEvent& event) override;
     void mouseUp (const juce::MouseEvent& event) override;
@@ -268,6 +284,16 @@ private:
     bool swipeActive = false;                // Ebene-4-Geste läuft
     juce::Point<double> swipeDelta;          // akkumuliert (Peek-Versatz)
     double wheelSwipeAccum = 0.0;            // Alt+Scroll-Seitenwechsel
+
+    // Birdeye (M4)
+    bool birdeyeActive = false;
+    void startBirdeye();
+    void endBirdeye();
+    [[nodiscard]] double workZoomLevel() const;
+    [[nodiscard]] double birdeyeZoomLevel() const;
+
+    // Seiten-Übersicht (M4) — als Overlay-Kind, lazy erzeugt
+    std::unique_ptr<juce::Component> pageOverview;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (NodeCanvas)
 };

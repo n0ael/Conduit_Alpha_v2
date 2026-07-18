@@ -1490,6 +1490,11 @@ bool EngineEditor::keyPressed (const juce::KeyPress& key)
         if (key.getKeyCode() == juce::KeyPress::rightKey) { canvas.navigatePages (1, 0);  return true; }
         if (key.getKeyCode() == juce::KeyPress::upKey)    { canvas.navigatePages (0, -1); return true; }
         if (key.getKeyCode() == juce::KeyPress::downKey)  { canvas.navigatePages (0, 1);  return true; }
+
+        // M4: Birdeye-Toggle (B) + Seiten-Übersicht (O) — Tastatur-Parität
+        // der Ebenen 3/5 (Trackpad: OS konsumiert 3/4/5-Finger, ADR 008)
+        if (key.getKeyCode() == 'B') { canvas.toggleBirdeye();      return true; }
+        if (key.getKeyCode() == 'O') { canvas.togglePageOverview(); return true; }
     }
 
     if (key == juce::KeyPress ('z', modifier, 0))

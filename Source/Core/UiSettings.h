@@ -120,6 +120,16 @@ public:
     [[nodiscard]] float getZoomCurve() const noexcept { return zoomCurve; }
     void setZoomCurve (float exponent);
 
+    // Gesten-Glättung (ADR 008 M3a, Release-Smoke 18.07.2026): EMA-Tiefpass
+    // auf die 2-Finger-Geste gegen Sensor-Rauschen des Touchscreens
+    // (Zittern beim Pannen). 0 = aus; höher = ruhiger, aber mehr Latenz.
+    static constexpr float minGestureSmoothing     = 0.0f;
+    static constexpr float maxGestureSmoothing     = 0.9f;
+    static constexpr float defaultGestureSmoothing = 0.5f;
+
+    [[nodiscard]] float getGestureSmoothing() const noexcept { return gestureSmoothing; }
+    void setGestureSmoothing (float amount);
+
 private:
     void loadFromFile();
 
@@ -134,6 +144,7 @@ private:
     float pinchDeadZone = defaultPinchDeadZone;
     float zoomStrength = defaultZoomStrength;
     float zoomCurve = defaultZoomCurve;
+    float gestureSmoothing = defaultGestureSmoothing;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (UiSettings)
 };

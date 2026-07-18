@@ -15,6 +15,7 @@ namespace
     constexpr const char* pinchDeadZoneKey      = "pinchDeadZone";
     constexpr const char* zoomStrengthKey       = "zoomStrength";
     constexpr const char* zoomCurveKey          = "zoomCurve";
+    constexpr const char* gestureSmoothingKey   = "gestureSmoothing";
 
     /** Erlaubte Modi: 120 (Nativ, max) | 60 | 30 — alles andere wird auf
         den nächsten Modus geklemmt (handeditierte Datei, alte Versionen). */
@@ -77,6 +78,9 @@ void UiSettings::loadFromFile()
                                                       defaultZoomStrength)));
         zoomCurve = juce::jlimit (minZoomCurve, maxZoomCurve,
             static_cast<float> (file->getDoubleValue (zoomCurveKey, defaultZoomCurve)));
+        gestureSmoothing = juce::jlimit (minGestureSmoothing, maxGestureSmoothing,
+            static_cast<float> (file->getDoubleValue (gestureSmoothingKey,
+                                                      defaultGestureSmoothing)));
     }
 }
 
@@ -165,6 +169,24 @@ void UiSettings::setZoomCurve (float exponent)
     if (auto* file = applicationProperties.getUserSettings())
     {
         file->setValue (zoomCurveKey, static_cast<double> (clamped));
+        file->saveIfNeeded();
+    }
+
+    sendChangeMessage();
+}
+
+void UiSettings::setGestureSmoothing (float amount)
+{
+    const auto clamped = juce::jlimit (minGestureSmoothing, maxGestureSmoothing, amount);
+
+    if (juce::exactlyEqual (clamped, gestureSmoothing))
+        return;
+
+    gestureSmoothing = clamped;
+
+    if (auto* file = applicationProperties.getUserSettings())
+    {
+        file->setValue (gestureSmoothingKey, static_cast<double> (clamped));
         file->saveIfNeeded();
     }
 

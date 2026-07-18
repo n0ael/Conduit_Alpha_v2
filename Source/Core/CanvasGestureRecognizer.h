@@ -86,6 +86,16 @@ public:
         zoomExponent = juce::jmax (1.0, exponent);
     }
 
+    /** Gesten-Glättung (User-Feedback 18.07.2026, Release-Smoke): EMA-
+        Tiefpass auf Zentroid + Spread gegen Touch-Sensor-Rauschen —
+        verrauschte Fingerpositionen ließen die Karte beim Pannen zittern.
+        0 = aus (roh, Default — die App speist UiSettings::gestureSmoothing);
+        0.9 = sehr träge (~ mehr Latenz). */
+    void setSmoothing (double amount) noexcept
+    {
+        smoothing = juce::jlimit (0.0, 0.95, amount);
+    }
+
     [[nodiscard]] int getActiveFingerCount() const noexcept
     {
         return static_cast<int> (fingers.size());
@@ -114,6 +124,8 @@ private:
     double zoomDeadZone = 0.06;   // Log-Einheiten, siehe setZoomDeadZone
     double zoomGain = 1.0;        // siehe setZoomResponse (neutral)
     double zoomExponent = 1.0;
+    double smoothing = 0.0;       // siehe setSmoothing (0 = aus)
+    PinchReference smoothedRef;   // EMA-Zustand der laufenden Ebene-2-Geste
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (CanvasGestureRecognizer)
 };

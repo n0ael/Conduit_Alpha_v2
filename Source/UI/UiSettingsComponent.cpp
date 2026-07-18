@@ -88,6 +88,16 @@ UiSettingsComponent::UiSettingsComponent (UiSettings& settingsToUse)
     { settings.setZoomCurve (static_cast<float> (zoomCurveSlider.getValue())); };
     addAndMakeVisible (zoomCurveSlider);
 
+    // Gesten-Glättung (ADR 008 M3a, Release-Smoke 18.07.2026): Tiefpass
+    // gegen Sensor-Rauschen — Zittern beim 2-Finger-Pan; 0 % = roh
+    addAndMakeVisible (smoothingLabel);
+    smoothingSlider.setRange (static_cast<double> (UiSettings::minGestureSmoothing) * 100.0,
+                              static_cast<double> (UiSettings::maxGestureSmoothing) * 100.0, 1.0);
+    smoothingSlider.setTextValueSuffix (" %");
+    smoothingSlider.onValueChange = [this]
+    { settings.setGestureSmoothing (static_cast<float> (smoothingSlider.getValue() / 100.0)); };
+    addAndMakeVisible (smoothingSlider);
+
     devModeToggle.setButtonText (juce::String::fromUTF8 (
         "Development-Modus (DEV-Buttons in den Modul-Köpfen)"));
     devModeToggle.onClick = [this] { settings.setDevModeEnabled (devModeToggle.getToggleState()); };
@@ -144,6 +154,8 @@ void UiSettingsComponent::syncControls()
                                  juce::dontSendNotification);
     zoomCurveSlider.setValue (static_cast<double> (settings.getZoomCurve()),
                               juce::dontSendNotification);
+    smoothingSlider.setValue (static_cast<double> (settings.getGestureSmoothing()) * 100.0,
+                              juce::dontSendNotification);
     devModeToggle.setToggleState (settings.isDevModeEnabled(), juce::dontSendNotification);
     dspMeterToggle.setToggleState (settings.isDspMeterEnabled(), juce::dontSendNotification);
     softKeyboardToggle.setToggleState (settings.isSoftKeyboardEnabled(),
@@ -174,6 +186,7 @@ void UiSettingsComponent::resized()
     layoutRow (area, pinchDeadZoneLabel, pinchDeadZoneSlider);
     layoutRow (area, zoomStrengthLabel, zoomStrengthSlider);
     layoutRow (area, zoomCurveLabel, zoomCurveSlider);
+    layoutRow (area, smoothingLabel, smoothingSlider);
 
     devModeToggle.setBounds (area.removeFromTop (30));
     area.removeFromTop (6);

@@ -301,6 +301,35 @@ TEST_CASE ("CanvasGestureRecognizer: Zoom-Antwort (Stärke/Kurve) ist einstellba
     CHECK (log.lastScale < 1.5);   // deutlich träger als linear
 }
 
+TEST_CASE ("CanvasGestureRecognizer: Glättung dämpft Sensor-Rauschen (EMA)", "[canvas][gesture]")
+{
+    conduit::CanvasGestureRecognizer recognizer;
+    RecognizerLog log { recognizer };
+
+    recognizer.setSmoothing (0.5);
+    recognizer.touchDown (0, { 100.0f, 200.0f });
+    recognizer.touchDown (1, { 200.0f, 200.0f });
+
+    // Roher Zentroid-Sprung +10 px → EMA (0.5) liefert nur die Hälfte
+    recognizer.touchMove (0, { 110.0f, 200.0f });
+    recognizer.touchMove (1, { 210.0f, 200.0f });
+
+    // Move 1: roh +5 (ein Finger) → gemeldet 2.5; Move 2: roh 155−152.5 …
+    // entscheidend: die SUMME der gemeldeten Deltas bleibt hinter dem
+    // rohen Gesamtweg (10 px) zurück und jedes Einzeldelta ist gedämpft
+    CHECK (log.lastPan.x > 0.0);
+    CHECK (log.lastPan.x < 5.0);
+
+    // Glättung 0 = rohe Durchreichung (Bestandsverhalten)
+    conduit::CanvasGestureRecognizer rawRecognizer;
+    RecognizerLog rawLog { rawRecognizer };
+    rawRecognizer.setSmoothing (0.0);
+    rawRecognizer.touchDown (0, { 100.0f, 200.0f });
+    rawRecognizer.touchDown (1, { 200.0f, 200.0f });
+    rawRecognizer.touchMove (0, { 110.0f, 200.0f });
+    CHECK (rawLog.lastPan.x == Approx (5.0));
+}
+
 TEST_CASE ("CanvasGestureRecognizer: 4/5-Finger-Ebenen werden erkannt", "[canvas][gesture]")
 {
     conduit::CanvasGestureRecognizer recognizer;

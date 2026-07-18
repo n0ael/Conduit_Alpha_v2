@@ -53,6 +53,7 @@ void CanvasGestureRecognizer::levelChanged (int previousCount)
     // Zoom-Bezug für die weiche Dead-Zone: der Spread am GESTENSTART
     gestureStartSpread = reference.spread;
     appliedLogZoom = 0.0;
+    smoothedRef = reference;   // EMA-Zustand frisch aufsetzen (kein Nachziehen)
 
     if (activeLevel >= 3 && onLevelBegin)
         onLevelBegin (activeLevel);
@@ -78,7 +79,16 @@ void CanvasGestureRecognizer::touchMove (int sourceIndex, juce::Point<float> pos
     if (activeLevel != 2)
         return;   // Ebenen 3..5: M3a trackt nur, Aktion folgt in M3b/M4
 
-    const auto current = currentReference();
+    const auto raw = currentReference();
+
+    // Gesten-Glättung (Release-Smoke 18.07.2026): EMA-Tiefpass gegen
+    // Sensor-Rauschen des Touchscreens — sonst zittert die Karte beim
+    // Pannen um den verrauschten Zentroid. smoothing 0 = Durchreichung.
+    smoothedRef.centroid = raw.centroid * (1.0 - smoothing)
+                         + smoothedRef.centroid * smoothing;
+    smoothedRef.spread = raw.spread * (1.0 - smoothing)
+                       + smoothedRef.spread * smoothing;
+    const auto current = smoothedRef;
 
     // Weiche Zoom-Dead-Zone (User-Feedback 18.07.2026): die AKKUMULIERTE
     // Spread-Änderung seit Gestenbeginn läuft durch softZoomResponse —

@@ -805,6 +805,11 @@ void NodeCanvas::applyRecognizerTuning()
     const auto curve = uiSettings != nullptr ? uiSettings->getZoomCurve()
                                              : UiSettings::defaultZoomCurve;
     recognizer.setZoomResponse ((double) gain, (double) curve);
+
+    // Gesten-Glättung gegen Touch-Sensor-Rauschen (Dev-Tuning)
+    const auto smoothing = uiSettings != nullptr ? uiSettings->getGestureSmoothing()
+                                                 : UiSettings::defaultGestureSmoothing;
+    recognizer.setSmoothing ((double) smoothing);
 }
 
 //==============================================================================

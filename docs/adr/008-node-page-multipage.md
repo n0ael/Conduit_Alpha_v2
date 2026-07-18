@@ -113,6 +113,12 @@ Seite. Der Audio-Thread kennt keine Seiten.
   Zoom langsam beginnen und kontinuierlich stärker werden — linear
   zoomte zu schnell zu stark. Beides Dev-Tuning, nach Erprobung
   fixieren.
+- **Gesten-Glättung (Release-Smoke 18.07.2026):** EMA-Tiefpass auf
+  Zentroid + Spread der 2-Finger-Geste
+  (`UiSettings::gestureSmoothing`, Dev-Menü „Glättung" 0–90 %,
+  Default 50 %) — das Sensor-Rauschen des Touchscreens ließ die Karte
+  beim Pannen zittern (Pixel-Rundung der Translation allein reichte
+  nicht). 0 % = rohe Durchreichung.
 - Zoom-Clamps 0.1–2.0 (Entscheidung 18.07.2026): Untergrenze lässt
   die M4-Birdeye-Pegel zu, Obergrenze 200 % für Detailarbeit.
 - Ebenen 3/4/5 auf Trackpad: gehaltene Modifier-Taste schaltet die

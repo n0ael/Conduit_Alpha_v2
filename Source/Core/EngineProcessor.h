@@ -308,10 +308,18 @@ public:
     [[nodiscard]] TouchLiveClient& getTouchLiveClient() noexcept { return touchLiveClient; }
     [[nodiscard]] LiveSpectrumTap& getLiveSpectrumTap() noexcept { return liveSpectrumTap; }
 
+public:
+    /** Root-Version, ab der I/O-Nodes reguläre Browser-Module sind
+        (ADR 009): keine Reserved-Behandlung mehr, Default-Patch enthält
+        Stereo-I/O — löschbar, KEIN Auto-Repair beim Laden. */
+    static constexpr int ioRootVersion = 3;
+
 private:
-    /** Legt die reservierten I/O-Tree-Nodes (audio_input/audio_output) an,
-        falls sie fehlen — frischer Patch oder Preset ohne I/O. Idempotent. */
-    void ensureIONodeStates();
+    /** ADR-009-Migration (eigener rootStateVersion-Bump auf ioRootVersion):
+        legt bei Patches vor Version 3 die Default-I/O-Nodes an, falls sie
+        fehlen (Bestands-Subtrees sind strukturgleich und bleiben). Ab
+        Version 3 ein No-op — gelöschte I/O-Module bleiben gelöscht. */
+    void migrateReservedIO();
 
     /** Schritt C: entfernt Kabel, die einen jetzt verschwundenen I/O-Kanal
         referenzieren (Kanal >= validChannels), wenn ein kleineres Interface
@@ -325,8 +333,10 @@ private:
     void ensureSessionScaleDefaults();
     void refreshScaleAtomics();
 
-    // juce::ValueTree::Listener [Message Thread] — nur die Skalen-Properties
+    // juce::ValueTree::Listener [Message Thread] — Skalen-Properties;
+    // childAdded: neue I/O-Endpunkt-Module bekommen die Hardware-Kanalzahl
     void valueTreePropertyChanged (juce::ValueTree& tree, const juce::Identifier& property) override;
+    void valueTreeChildAdded (juce::ValueTree& parent, juce::ValueTree& child) override;
 
     // juce::ChangeListener [Message Thread] — MeterSettings → LevelMeter,
     // ChannelNames → Input-Link-Sends (Enable/Pairing/Labels)
@@ -352,6 +362,12 @@ private:
     // Seiten-Verwaltung (ADR 008 M1) — Message-Thread-only, arbeitet nur
     // auf dem ValueTree; nach rootState/undoManager deklariert
     PageManager pageManager { rootState, undoManager };
+
+    // Zuletzt gemeldete Hardware-Kanalzahlen (syncHardwareIOChannels) —
+    // neue I/O-Endpunkt-Module aus dem Browser bekommen sie sofort
+    // (valueTreeChildAdded); -1 = noch kein Gerät gestartet. Message Thread.
+    int lastDeviceInputs  = -1;
+    int lastDeviceOutputs = -1;
 
     // Globale Skala + Session-Swing: Message Thread schreibt, Audio Thread
     // liest (→ ClockBus)

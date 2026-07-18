@@ -5,6 +5,7 @@
 
 #include "Interfaces/ICaptureTapClient.h"
 #include "Interfaces/IClockSlave.h"
+#include "Interfaces/IExternalAudioEndpoint.h"
 #include "Interfaces/ILinkAudioClient.h"
 #include "Interfaces/ISendConfigClient.h"
 #include "Interfaces/IStochastic.h"
@@ -584,8 +585,9 @@ bool GraphManager::requestNodeDelete (const juce::String& nodeUuid)
     auto nodeTree = rootState.getChildWithName (id::nodes)
                         .getChildWithProperty (id::nodeId, nodeUuid);
 
-    if (! nodeTree.isValid()
-        || isExternalEndpoint (factoryKeyOf (nodeTree)))
+    // Auch I/O-Endpunkte sind löschbar (ADR 009 — keine Reserved-Sperre;
+    // Patch ohne Output = bewusste Stille)
+    if (! nodeTree.isValid())
         return false;
 
     // Phase 1: UI entkoppelt sich über ihren nodeState-Listener.
@@ -881,6 +883,24 @@ void GraphManager::valueTreePropertyChanged (juce::ValueTree& tree, const juce::
 
         pendingDeletes[nodeUuid] = tree.getProperty (id::moduleId).toString();
         triggerAsyncUpdate();
+        return;
+    }
+
+    // Hardware-I/O-Kanalzahl geändert (Gerätewechsel, ADR 009): das
+    // Pass-Through-Modul braucht neue Busse → re-materialisieren. Hartes
+    // removeNode ohne Fade — der Gerätewechsel startet Audio ohnehin neu.
+    if ((property == id::numInputChannels || property == id::numOutputChannels)
+        && tree.hasType (id::node) && isExternalEndpoint (factoryKeyOf (tree)))
+    {
+        const auto nodeUuid = tree.getProperty (id::nodeId).toString();
+
+        if (const auto it = treeToGraphNode.find (nodeUuid); it != treeToGraphNode.end())
+        {
+            graph.removeNode (it->second);   // entfernt auch die Anker-Kabel
+            treeToGraphNode.erase (nodeUuid);
+        }
+
+        markTopologyDirty();   // nächster Swap materialisiert mit neuen Bussen
         return;
     }
 
@@ -1258,7 +1278,6 @@ void GraphManager::prepareNewModules()
         if (nodeUuid.isEmpty()
             || treeToGraphNode.contains (nodeUuid)
             || preparedModules.contains (nodeUuid)
-            || isExternalEndpoint (factoryKeyOf (nodeTree))
             || nodeTree.getProperty (id::nodeError).toString().isNotEmpty())
             continue;
 
@@ -1314,6 +1333,14 @@ std::unique_ptr<ConduitModule> GraphManager::materializeModule (juce::ValueTree 
     // die Sinks baut.
     if (auto* sendClient = dynamic_cast<ISendConfigClient*> (module.get()))
         sendClient->applySendConfig (LinkAudioSendModule::readInputConfig (nodeTree));
+
+    // Hardware-I/O-Endpunkt (ADR 009): Kanalzahl aus dem Tree VOR
+    // prepareForGraph — bestimmt die Pass-Through-Busse. Port-Sicht 6.2:
+    // input-Endpunkte tragen die Kanäle als AUSGANGS-Ports, output als
+    // Eingangs-Ports.
+    if (auto* endpoint = dynamic_cast<IExternalAudioEndpoint*> (module.get()))
+        endpoint->setEndpointChannels ((int) nodeTree.getProperty (
+            endpoint->isInputEndpoint() ? id::numOutputChannels : id::numInputChannels, 2));
 
     // Receive-Kanal-Wunsch (7.2): persistierte Namen ans Modul spiegeln —
     // rebind() matcht sie gegen die Session (Preset-Load-Pfad).
@@ -1411,15 +1438,6 @@ void GraphManager::addNewNodes()
             || nodeTree.getProperty (id::nodeError).toString().isNotEmpty())
             continue;
 
-        // Externer Endpunkt: nur das Mapping setzen — kein Factory-Modul
-        if (const auto factoryKey = factoryKeyOf (nodeTree);
-            isExternalEndpoint (factoryKey))
-        {
-            treeToGraphNode[nodeUuid] = externalEndpoints[factoryKey];
-            nodeTree.setProperty (id::nodeState, toString (NodeState::active), nullptr);
-            continue;
-        }
-
         std::unique_ptr<ConduitModule> module;
 
         if (const auto it = preparedModules.find (nodeUuid); it != preparedModules.end())
@@ -1439,6 +1457,12 @@ void GraphManager::addNewNodes()
         if (const auto graphNode = graph.addNode (std::move (module)))
         {
             treeToGraphNode[nodeUuid] = graphNode->nodeID;
+
+            // Hardware-Anker-Kabel (ADR 009): I/O-Endpunkt-Module implizit
+            // mit dem AudioGraphIOProcessor verbinden — kein Patch-Zustand,
+            // syncConnections rührt sie nicht an (eine Seite unmanaged)
+            if (auto* endpoint = dynamic_cast<IExternalAudioEndpoint*> (graphNode->getProcessor()))
+                connectEndpointAnchor (graphNode->nodeID, *endpoint);
 
             // Lifecycle-Status zurücksetzen — relevant nach Undo eines
             // Deletes: der Subtree wurde mit nodeState == Deleting restauriert
@@ -1495,6 +1519,31 @@ bool GraphManager::isManagedGraphNode (juce::AudioProcessorGraph::NodeID nodeId)
 {
     return std::any_of (treeToGraphNode.begin(), treeToGraphNode.end(),
                         [nodeId] (const auto& entry) { return entry.second == nodeId; });
+}
+
+void GraphManager::connectEndpointAnchor (juce::AudioProcessorGraph::NodeID proxyNodeId,
+                                          IExternalAudioEndpoint& endpoint)
+{
+    // Hardware-Anker (die AudioGraphIOProcessor des EngineProcessor) —
+    // ohne Registrierung (Tests) bleibt der Proxy einfach unverbunden
+    const auto anchorIt = externalEndpoints.find (
+        endpoint.isInputEndpoint() ? audioInputModuleId : audioOutputModuleId);
+
+    if (anchorIt == externalEndpoints.end())
+        return;
+
+    for (int channel = 0; channel < endpoint.getEndpointChannels(); ++channel)
+    {
+        const auto connection = endpoint.isInputEndpoint()
+            ? juce::AudioProcessorGraph::Connection { { anchorIt->second, channel },
+                                                      { proxyNodeId,      channel } }
+            : juce::AudioProcessorGraph::Connection { { proxyNodeId,      channel },
+                                                      { anchorIt->second, channel } };
+
+        // Kanäle jenseits der Anker-Busse lehnt der Graph ab — kein Fehler
+        // (Hardware mit weniger Kanälen als der Tree behauptet)
+        graph.addConnection (connection);
+    }
 }
 
 } // namespace conduit

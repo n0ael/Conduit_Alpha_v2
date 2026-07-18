@@ -260,6 +260,7 @@ set(CONDUIT_CPP_SOURCES
     Source/Modules/AirwindowsKCathedral5Module.cpp
     Source/Modules/AirwindowsKWoodRoomModule.cpp
     Source/Modules/AttenuatorModule.cpp
+    Source/Modules/AudioEndpointModule.cpp
     Source/Modules/CaptureTapModule.cpp
     Source/Modules/LfoModule.cpp
     Source/Modules/LinkAudioReceiveModule.cpp
@@ -405,6 +406,7 @@ target_sources(Conduit PRIVATE
     Source/UI/TouchLivePage/TouchLivePage.h
     Source/Interfaces/ICaptureTapClient.h
     Source/Interfaces/IClockSlave.h
+    Source/Interfaces/IExternalAudioEndpoint.h
     Source/Interfaces/IClockSource.h
     Source/Interfaces/ILinkAudioClient.h
     Source/Interfaces/IMidiOutputTarget.h
@@ -479,6 +481,7 @@ target_sources(Conduit PRIVATE
     Source/Modules/AirwindowsKCathedral5Module.h
     Source/Modules/AirwindowsKWoodRoomModule.h
     Source/Modules/AttenuatorModule.h
+    Source/Modules/AudioEndpointModule.h
     Source/Modules/CaptureTapModule.h
     Source/Modules/LfoModule.h
     Source/Modules/LinkAudioSendModule.h
@@ -620,6 +623,7 @@ if(CONDUIT_BUILD_TESTS)
         Tests/Core/Browser/BrowserFileScannerTests.cpp
         Tests/Core/Browser/BrowserSearchIndexTests.cpp
         Tests/Core/CallbackTimingMonitorTests.cpp
+        Tests/Core/AudioEndpointTests.cpp
         Tests/Core/CanvasViewportTests.cpp
         Tests/Core/CaptureBufferTests.cpp
         Tests/Core/CaptureGateTests.cpp
@@ -887,6 +891,7 @@ if(CONDUIT_BUILD_TESTS)
         Source/Modules/AirwindowsKCathedral5Module.cpp
         Source/Modules/AirwindowsKWoodRoomModule.cpp
         Source/Modules/AttenuatorModule.cpp
+        Source/Modules/AudioEndpointModule.cpp
         Source/Modules/CaptureTapModule.cpp
         Source/Modules/LfoModule.cpp
         Source/Modules/LinkAudioReceiveModule.cpp

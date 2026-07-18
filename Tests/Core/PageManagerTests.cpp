@@ -110,7 +110,8 @@ TEST_CASE ("Pages-Migration: Legacy-Patch erhält genau eine Seite (0,0) (ADR 00
     for (int i = 0; i < nodes.getNumChildren(); ++i)
         CHECK (nodes.getChild (i).getProperty (id::pageUuid).toString() == defaultUuid);
 
-    CHECK ((int) root.getProperty (id::rootStateVersion) == PageManager::pagesRootVersion);
+    // >= statt ==: die ADR-009-I/O-Migration bumpt anschließend weiter
+    CHECK ((int) root.getProperty (id::rootStateVersion) >= PageManager::pagesRootVersion);
 }
 
 TEST_CASE ("Pages-Round-Trip: migrierter Patch lädt ohne erneute Migration (Idempotenz)", "[pages]")
@@ -146,7 +147,8 @@ TEST_CASE ("Pages-Round-Trip: migrierter Patch lädt ohne erneute Migration (Ide
     for (int i = 0; i < nodes.getNumChildren(); ++i)
         CHECK (nodes.getChild (i).getProperty (id::pageUuid).toString() == savedPageUuid);
 
-    CHECK ((int) root.getProperty (id::rootStateVersion) == PageManager::pagesRootVersion);
+    // >= statt ==: die ADR-009-I/O-Migration bumpt anschließend weiter
+    CHECK ((int) root.getProperty (id::rootStateVersion) >= PageManager::pagesRootVersion);
 }
 
 TEST_CASE ("Regel a: nur leere Seiten sind löschbar", "[pages]")

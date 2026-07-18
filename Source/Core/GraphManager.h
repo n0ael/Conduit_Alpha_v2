@@ -19,6 +19,7 @@ class CaptureService;
 class ChannelNames;
 class LinkClock;
 class ModuleFactory;
+class IExternalAudioEndpoint;
 class ModuleUiDefaults;
 class NodeUiRegistry;
 class PageManager;
@@ -240,13 +241,17 @@ public:
                                int sourceChannelB, int destChannelB);
 
     //==========================================================================
-    /** Mappt eine reservierte moduleId (audio_input/audio_output) auf einen
-        extern verwalteten Graph-Node des EngineProcessor. Tree-Nodes mit
-        dieser moduleId werden nicht factory-materialisiert, nicht gelöscht
-        und ihr Graph-Node beim Verschwinden nicht entfernt. */
+    /** Registriert einen Hardware-ANKER (die AudioGraphIOProcessor des
+        EngineProcessor) für eine Endpunkt-factoryId (audio_input/
+        audio_output). Seit ADR 009 sind I/O-Nodes reguläre Module
+        (AudioEndpointModule) — der Anker ist nur noch das Ziel der
+        impliziten Anker-Kabel, die der Manager bei der Materialisierung
+        eines IExternalAudioEndpoint zieht. Ohne Registrierung (Tests)
+        bleiben die Proxys unverbunden. */
     void registerExternalEndpoint (const juce::String& moduleId,
                                    juce::AudioProcessorGraph::NodeID graphNodeId);
 
+    /** true, wenn die factoryId ein Hardware-Anker-Typ ist (registriert). */
     [[nodiscard]] bool isExternalEndpoint (const juce::String& moduleId) const noexcept;
 
     /** Factory-Schlüssel mit Migrations-Fallback: alte Bestände (vor der
@@ -375,6 +380,11 @@ private:
 
     [[nodiscard]] bool isManagedGraphNode (juce::AudioProcessorGraph::NodeID nodeId) const;
     [[nodiscard]] bool isExternalGraphNode (juce::AudioProcessorGraph::NodeID nodeId) const;
+
+    /** Anker-Kabel eines I/O-Endpunkt-Moduls ziehen (ADR 009): Hardware-
+        Anker ↔ Proxy, kanalweise; kein Patch-Zustand (nicht im Tree). */
+    void connectEndpointAnchor (juce::AudioProcessorGraph::NodeID proxyNodeId,
+                                IExternalAudioEndpoint& endpoint);
 
     [[nodiscard]] juce::ValueTree findConnectionTree (const juce::String& sourceUuid, int sourceChannel,
                                                       const juce::String& destUuid, int destChannel) const;

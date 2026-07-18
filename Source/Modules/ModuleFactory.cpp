@@ -60,6 +60,7 @@
 #include "AirwindowsKCathedral5Module.h"
 #include "AirwindowsKWoodRoomModule.h"
 #include "AttenuatorModule.h"
+#include "AudioEndpointModule.h"
 #include "CaptureTapModule.h"
 #include "LfoModule.h"
 #include "LinkAudioReceiveModule.h"
@@ -175,6 +176,17 @@ namespace
 //==============================================================================
 void registerDefaultModules (ModuleFactory& factory)
 {
+    // Hardware-I/O als reguläre Browser-Module (ADR 009) — Mehrfach-
+    // Instanzen erlaubt, der Graph summiert auf denselben Pin nativ
+    factory.registerModule (
+        cvDescriptor (audioInputModuleId, "Audio-Eingang", "I/O",
+                      "audio input eingang hardware interface kanal"),
+        [] { return std::make_unique<AudioEndpointModule> (AudioEndpointModule::Direction::input); });
+    factory.registerModule (
+        cvDescriptor (audioOutputModuleId, "Audio-Ausgang", "I/O",
+                      "audio output ausgang hardware interface kanal master"),
+        [] { return std::make_unique<AudioEndpointModule> (AudioEndpointModule::Direction::output); });
+
     factory.registerModule (
         cvDescriptor (AttenuatorModule::staticModuleId, "Attenuator", "Utility",
                       "attenuator gain level cv abschwaecher"),

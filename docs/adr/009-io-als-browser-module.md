@@ -36,3 +36,29 @@ GraphManager.
   M2 entstehenden Modul-Typen voraus).
 - Die Graph-I/O-Prozessoren des EngineProcessor existieren
   unverändert weiter; nur die sichtbare Modul-Schicht ändert sich.
+
+## Umsetzungsnotizen (M2, 18.07.2026)
+- `AudioEndpointModule` (Pass-Through, leerer processBlock) mit den
+  BISHERIGEN factoryIds `audio_input`/`audio_output` — dadurch bleiben
+  Bestandspatches und alle UI-Sonderausstattungen (Meter,
+  ChannelNames-Labels, Pairing, Send-Toggles, Kabel-Quellfarben,
+  Looper-Quellen) unverändert funktional.
+- Anker-Kabel: `IExternalAudioEndpoint`-Mixin; der GraphManager
+  verbindet Proxys bei der Materialisierung implizit mit den
+  registrierten AudioGraphIOProcessor-Ankern (kein Patch-Zustand,
+  nicht im Tree; syncConnections gleicht nur Kabel zwischen
+  tree-verwalteten Nodes ab und rührt sie deshalb nicht an).
+- Tree-Schema unverändert: Port-Sicht 0/N bzw. N/0; die Graph-Busse
+  des Proxys sind N/N. Kanalzahl-Änderung (Gerätewechsel)
+  re-materialisiert das Modul (hartes removeNode — der Gerätewechsel
+  startet Audio ohnehin neu).
+- `ensureIONodeStates` wurde zu `migrateReservedIO`
+  (rootStateVersion 3): Default-I/O nur noch bei Patches < V3 —
+  ab V3 kein Auto-Repair, gelöschte I/O-Module bleiben gelöscht.
+- Kanalzahl folgt der Hardware für ALLE Instanzen
+  (syncHardwareIOChannels-Schleife); neue Browser-Instanzen bekommen
+  sie sofort (childAdded-Hook, lastDevice-Merker). Die
+  I/O-Konsolidierung („startet stereo, + fügt Kanäle hinzu") bleibt
+  ein späteres, separates Feature.
+- Delete: der reguläre zweiphasige Pfad löscht Modul + Kabel bereits
+  als EINE Transaktion (processPendingDeletes) — Auflage erfüllt.

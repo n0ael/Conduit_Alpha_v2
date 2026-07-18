@@ -58,11 +58,12 @@ EngineProcessor::EngineProcessor (const juce::File& settingsFolder)
     audioInputNode  = graph.addNode (std::make_unique<IOProcessor> (IOProcessor::audioInputNode));
     audioOutputNode = graph.addNode (std::make_unique<IOProcessor> (IOProcessor::audioOutputNode));
 
-    // Als externe Endpunkte verfügbar machen: Tree-Nodes mit diesen
-    // moduleIds mappen auf die I/O-Prozessoren statt auf Factory-Module
+    // Hardware-Anker registrieren (ADR 009): I/O-Nodes sind reguläre
+    // Module (AudioEndpointModule), der GraphManager zieht implizite
+    // Anker-Kabel zu diesen Prozessoren
     graphManager.registerExternalEndpoint (audioInputModuleId,  audioInputNode->nodeID);
     graphManager.registerExternalEndpoint (audioOutputModuleId, audioOutputNode->nodeID);
-    ensureIONodeStates();
+    migrateReservedIO();
 
     // Takt-Verteiler — IClockSlaves bekommen den Bus bei der Materialisierung
     graphManager.setClockBus (&clockBus);
@@ -523,14 +524,21 @@ void EngineProcessor::valueTreePropertyChanged (juce::ValueTree& tree, const juc
 }
 
 //==============================================================================
-void EngineProcessor::ensureIONodeStates()
+void EngineProcessor::migrateReservedIO()
 {
+    // ADR 009: ab Version 3 sind I/O-Nodes reguläre Module — gelöschte
+    // bleiben gelöscht (Patch ohne Output = bewusste Stille), KEIN Repair.
+    if ((int) rootState.getProperty (id::rootStateVersion, 1) >= ioRootVersion)
+        return;
+
     auto nodesTree = rootState.getChildWithName (id::nodes);
 
     const auto ensure = [&nodesTree] (const char* factoryKey, const char* defaultName,
                                       int numInputs, int numOutputs, int x, int y)
     {
-        // Vorhanden? factoryId-Match; Alt-Bestände tragen den Schlüssel in moduleId
+        // Vorhanden? factoryId-Match; Alt-Bestände tragen den Schlüssel in
+        // moduleId — deren Subtrees sind strukturgleich und bleiben (die
+        // Wandlung Reserved → regulär ist rein verhaltensseitig)
         if (nodesTree.getChildWithProperty (id::factoryId, juce::String (factoryKey)).isValid()
             || nodesTree.getChildWithProperty (id::moduleId, juce::String (factoryKey)).isValid())
             return;
@@ -549,13 +557,15 @@ void EngineProcessor::ensureIONodeStates()
         node.setProperty (id::numOutputChannels, numOutputs,                       nullptr);
         node.appendChild (juce::ValueTree (id::parameters), nullptr);
 
-        nodesTree.appendChild (node, nullptr);  // Grundausstattung — kein Undo
+        nodesTree.appendChild (node, nullptr);  // Migration — kein Undo
     };
 
     // Aus Graph-Sicht: der Input-Prozessor LIEFERT Kanäle (Outputs),
     // der Output-Prozessor NIMMT Kanäle entgegen (Inputs)
     ensure (audioInputModuleId,  "audio_in",  0, 2, 40,  260);
     ensure (audioOutputModuleId, "audio_out", 2, 0, 700, 260);
+
+    rootState.setProperty (id::rootStateVersion, ioRootVersion, nullptr);
 }
 
 void EngineProcessor::syncHardwareIOChannels (int deviceInputs, int deviceOutputs)
@@ -565,40 +575,61 @@ void EngineProcessor::syncHardwareIOChannels (int deviceInputs, int deviceOutput
     const auto ins  = juce::jmax (0, deviceInputs);
     const auto outs = juce::jmax (0, deviceOutputs);
 
+    // Für neue Browser-Instanzen merken (valueTreeChildAdded, ADR 009)
+    lastDeviceInputs  = ins;
+    lastDeviceOutputs = outs;
+
     auto nodesTree = rootState.getChildWithName (id::nodes);
 
-    const auto ioNodeFor = [&nodesTree] (const char* factoryKey)
+    // ALLE I/O-Endpunkt-Instanzen (ADR 009: Mehrfach-Instanzen) — Kanalzahl
+    // idempotent setzen (nur bei Abweichung, sonst unnötige UI-Rebuilds).
+    // Input-Prozessor LIEFERT Kanäle → Ausgangs-Ports am audio_in-Node;
+    // Output-Prozessor NIMMT Kanäle → Eingangs-Ports am audio_out-Node.
+    // Geräte-getrieben → kein Undo. Schritt C: Kabel auf verschwundene
+    // Kanäle kappen, damit keine Phantom-Connections zurückbleiben.
+    for (int i = 0; i < nodesTree.getNumChildren(); ++i)
     {
-        auto node = nodesTree.getChildWithProperty (id::factoryId, juce::String (factoryKey));
-        if (! node.isValid())
-            node = nodesTree.getChildWithProperty (id::moduleId, juce::String (factoryKey));
-        return node;
-    };
+        auto node = nodesTree.getChild (i);
+        const auto factoryKey = GraphManager::factoryKeyOf (node);
 
-    auto inNode  = ioNodeFor (audioInputModuleId);
-    auto outNode = ioNodeFor (audioOutputModuleId);
+        if (factoryKey == audioInputModuleId)
+        {
+            if ((int) node.getProperty (id::numOutputChannels, -1) != ins)
+                node.setProperty (id::numOutputChannels, ins, nullptr);
 
-    // Kanalzahl setzen — idempotent (nur bei Abweichung, sonst unnötige
-    // UI-Rebuilds pro Gerätewechsel). Input-Prozessor LIEFERT Kanäle →
-    // Ausgangs-Ports am audio_in-Node; Output-Prozessor NIMMT Kanäle →
-    // Eingangs-Ports am audio_out-Node. Geräte-getrieben → kein Undo.
-    if (inNode.isValid() && (int) inNode.getProperty (id::numOutputChannels, -1) != ins)
-        inNode.setProperty (id::numOutputChannels, ins, nullptr);
+            pruneEndpointConnections (node.getProperty (id::nodeId).toString(), true, ins);
+        }
+        else if (factoryKey == audioOutputModuleId)
+        {
+            if ((int) node.getProperty (id::numInputChannels, -1) != outs)
+                node.setProperty (id::numInputChannels, outs, nullptr);
 
-    if (outNode.isValid() && (int) outNode.getProperty (id::numInputChannels, -1) != outs)
-        outNode.setProperty (id::numInputChannels, outs, nullptr);
-
-    // Schritt C: Kabel auf verschwundene I/O-Kanäle kappen (kleineres
-    // Interface / Ausstecken), damit keine Phantom-Connections zurückbleiben
-    if (inNode.isValid())
-        pruneEndpointConnections (inNode.getProperty (id::nodeId).toString(),  true,  ins);
-
-    if (outNode.isValid())
-        pruneEndpointConnections (outNode.getProperty (id::nodeId).toString(), false, outs);
+            pruneEndpointConnections (node.getProperty (id::nodeId).toString(), false, outs);
+        }
+    }
 
     // Input-Link-Sends an die neue Kanalzahl anpassen (Schrumpfen retired
     // die betroffenen Kanäle; buildSpecs sieht nur noch gültige Anker)
     rebuildInputSends();
+}
+
+void EngineProcessor::valueTreeChildAdded (juce::ValueTree& parent, juce::ValueTree& child)
+{
+    // Neue I/O-Endpunkt-Instanz aus dem Browser (ADR 009): sofort auf die
+    // Hardware-Kanalzahl bringen (auch nach Preset-Load — die Hardware ist
+    // für Kanalzahlen die Wahrheit). Kein Undo (Umgebungs-Zustand).
+    if (! parent.hasType (id::nodes) || ! child.hasType (id::node)
+        || lastDeviceInputs < 0)
+        return;
+
+    const auto factoryKey = GraphManager::factoryKeyOf (child);
+
+    if (factoryKey == audioInputModuleId
+        && (int) child.getProperty (id::numOutputChannels, -1) != lastDeviceInputs)
+        child.setProperty (id::numOutputChannels, lastDeviceInputs, nullptr);
+    else if (factoryKey == audioOutputModuleId
+             && (int) child.getProperty (id::numInputChannels, -1) != lastDeviceOutputs)
+        child.setProperty (id::numInputChannels, lastDeviceOutputs, nullptr);
 }
 
 void EngineProcessor::pruneEndpointConnections (const juce::String& nodeId, bool asSource, int validChannels)
@@ -884,8 +915,8 @@ void EngineProcessor::setStateInformation (const void* data, int sizeInBytes)
         if (loaded.hasType (id::root))
         {
             rootState.copyPropertiesAndChildrenFrom (loaded, nullptr);
-            ensureIONodeStates();          // Presets ohne I/O-Nodes reparieren
-            ensureSessionScaleDefaults();  // ... und ohne Skalen-Properties
+            migrateReservedIO();           // ADR 009: nur Alt-Patches (< V3)
+            ensureSessionScaleDefaults();  // Presets ohne Skalen-Properties
             pageManager.migrateAndRepair();  // ... und ohne Pages-Zweig (ADR 008 M1)
         }
     }
@@ -931,8 +962,8 @@ juce::Result EngineProcessor::loadPreset (const juce::File& file)
     // einen einzigen Graph-Swap)
     undoManager.beginNewTransaction ("Preset laden");
     rootState.copyPropertiesAndChildrenFrom (loaded, &undoManager);
-    ensureIONodeStates();          // Presets ohne I/O-Nodes reparieren
-    ensureSessionScaleDefaults();  // ... und ohne Skalen-Properties
+    migrateReservedIO();           // ADR 009: nur Alt-Patches (< V3), undo-frei
+    ensureSessionScaleDefaults();  // Presets ohne Skalen-Properties
     pageManager.migrateAndRepair();  // ... und ohne Pages-Zweig (ADR 008 M1, undo-frei)
 
     return juce::Result::ok();

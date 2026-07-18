@@ -54,8 +54,9 @@ NodeComponent::NodeComponent (juce::ValueTree nodeTreeToBind,
     endpointIsInput    = (factoryKey == audioInputModuleId);
     isChassisNode      = nodeTree.getProperty (id::type).toString()
                              == toString (ModuleType::processor);
-    const auto isExternal = isExternalEndpoint;
 
+    // ADR 009: auch I/O-Endpunkte sind reguläre Module — löschbar und
+    // umbenennbar (die frühere Reserved-Ausnahme entfällt)
     deleteButton.setButtonText (juce::String::fromUTF8 ("\xc3\x97"));  // ×
     deleteButton.onClick = [this]
     {
@@ -64,15 +65,12 @@ NodeComponent::NodeComponent (juce::ValueTree nodeTreeToBind,
     };
     addAndMakeVisible (deleteButton);
 
-    // Externe I/O-Endpunkte sind Grundausstattung — nicht löschbar
-    deleteButton.setVisible (! isExternal);
-
     // named_id im Header — Doppelklick benennt um (OSC-Pfad folgt, 7)
     titleLabel.setText (nodeTree.getProperty (id::moduleId).toString(),
                         juce::dontSendNotification);
     titleLabel.setFont (juce::Font (juce::FontOptions (15.0f)));
     titleLabel.setColour (juce::Label::textColourId, juce::Colours::white.withAlpha (0.9f));
-    titleLabel.setEditable (false, ! isExternal, false);
+    titleLabel.setEditable (false, true, false);
     titleLabel.onTextChange = [this]
     {
         if (! graphManager.renameNode (nodeUuid, titleLabel.getText()))

@@ -3,7 +3,35 @@
 > Letzte Aktualisierung: 2026-07-18 | wird nach jedem Meilenstein gepflegt
 > Architektur-Referenz: [CLAUDE.md](CLAUDE.md) | Repo: n0ael/Conduit
 
-## Aktueller Meilenstein (18.07.2026) — Node-Page Multipage M3a (ADR 008): Canvas-Viewport-Neubau
+## Aktueller Meilenstein (18.07.2026) — Multipage M2 (ADR 009): I/O als reguläre Browser-Module
+
+Die reservierten moduleIds sind Geschichte — Audio-I/O sind normale
+Module (CLAUDE.md v5.5, §6.2 neu gefasst).
+
+- `Modules/AudioEndpointModule` (Pass-Through, factoryIds BLEIBEN
+  `audio_input`/`audio_output` → Bestandspatches + UI-Ausstattung
+  unverändert) + `Interfaces/IExternalAudioEndpoint`.
+- GraphManager: Reserved-Zweig entfernt (Materialisierung,
+  Delete-Sperre); implizite ANKER-KABEL Proxy ↔ AudioGraphIOProcessor
+  bei der Materialisierung (kein Patch-Zustand — syncConnections
+  gleicht nur tree-verwaltete Kabel ab); Kanalzahl-Änderung
+  re-materialisiert (Gerätewechsel).
+- EngineProcessor: `ensureIONodeStates` → `migrateReservedIO`
+  (rootStateVersion 3, EIGENER Bump nach ADR-008-Sequenzkorrektur):
+  Default-Stereo-I/O nur für Alt-Patches — ab V3 KEIN Auto-Repair,
+  gelöschte I/O bleiben gelöscht (Stille = gewollt).
+  syncHardwareIOChannels über ALLE Instanzen; neue Browser-Instanzen
+  bekommen die Hardware-Kanalzahl via childAdded-Hook.
+- Browser: „Audio-Eingang"/„Audio-Ausgang" unter I/O,
+  Mehrfach-Instanzen (Graph summiert nativ — lokale Outs pro Seite,
+  reduziert den M5-Portal-Badge-Bedarf).
+- NodeComponent: Delete-Button + Rename auch an I/O-Kacheln.
+- Tests: 6 neue Cases (Descriptors/Schema, Anker-Kabel,
+  Mehrfach-Out-Summierung, Delete+Undo EINE Transaktion,
+  Migrations-Fixture, Kein-Repair-Beweis); 3 Alt-Verhalten-Tests auf
+  ADR-009-Semantik umgeschrieben. 983 Cases / 32748 Assertions grün.
+
+## Davor (18.07.2026) — Node-Page Multipage M3a (ADR 008): Canvas-Viewport-Neubau
 
 Zoom + Pan für den Node-Patch-Editor, komplett neu (M0-Befund: es
 existierte keinerlei Viewport). Feldgetestet am Touchscreen (18.07.,

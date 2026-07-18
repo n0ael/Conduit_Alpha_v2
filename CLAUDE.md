@@ -207,11 +207,13 @@ Connections[], CalibrationProfiles[], Session-Skala/`followAbleton`):
 
 - Jeder Node-Subtree trägt `stateVersion` (Migration) und `nodeState`
   (Active | FadingOut | FadingIn | Deleting).
-- Reservierte moduleIds `audio_input` / `audio_output`: der GraphManager
-  mappt sie auf die Audio-I/O-Prozessoren des EngineProcessor — keine
-  Factory-Materialisierung, nicht löschbar. **Auslauf-Regel:** entfällt
-  mit Umsetzung von ADR 009 (I/O als reguläre Browser-Module,
-  Meilenstein M2); bis dahin gültig.
+- Audio-I/O sind reguläre Browser-Module (`AudioEndpointModule`,
+  factoryIds `audio_input`/`audio_output`, ADR 009 — umgesetzt
+  18.07.2026): voller Delete-Pfad, Mehrfach-Instanzen (Graph summiert
+  nativ); der GraphManager zieht implizite Anker-Kabel zu den
+  AudioGraphIOProcessor-Ankern. Default-Patch enthält Stereo-I/O
+  (Migration rootStateVersion 3, kein Auto-Repair — Patch ohne
+  Output = bewusste Stille).
 - `remoteId` = dokumentierte Ausnahme zur Laufzeit-ID-Regel oben (7.4).
 - Session-Skala (`scaleRoot`/`scaleType`, 25 Ableton-Presets als 12-Bit-Maske,
   Index-Mapping statt Nearest-Note) und `globalSwing` reisen pro Block im
@@ -452,4 +454,4 @@ Index:
 
 ---
 
-*Conduit Alpha v3 — Claude Code Instructions v5.4  |  Juli 2026*
+*Conduit Alpha v3 — Claude Code Instructions v5.5  |  Juli 2026*

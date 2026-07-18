@@ -215,7 +215,7 @@ TEST_CASE ("named_id ist persistent: Rename überlebt Preset-Roundtrip (Spec 7)"
 }
 
 //==============================================================================
-TEST_CASE ("Externe I/O-Endpunkte: lesbare Namen, weiterhin geschützt", "[namedid]")
+TEST_CASE ("I/O-Endpunkte: lesbare Namen, seit ADR 009 regulär löschbar", "[namedid]")
 {
     juce::ScopedJuceInitialiser_GUI juceRuntime;
     conduit::test::ScopedSettingsFolder settingsFolder;
@@ -227,5 +227,7 @@ TEST_CASE ("Externe I/O-Endpunkte: lesbare Namen, weiterhin geschützt", "[named
 
     REQUIRE (ioIn.isValid());
     REQUIRE (ioIn.getProperty (conduit::id::moduleId).toString() == "audio_in");
-    REQUIRE_FALSE (engine.getGraphManager().requestNodeDelete (uuidOf (ioIn)));
+
+    // ADR 009: keine Reserved-Sperre mehr — I/O ist ein reguläres Modul
+    REQUIRE (engine.getGraphManager().requestNodeDelete (uuidOf (ioIn)));
 }

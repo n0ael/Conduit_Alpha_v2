@@ -74,7 +74,7 @@ struct PatchRig
 } // namespace
 
 //==============================================================================
-TEST_CASE ("Externe Endpunkte: Mapping statt Factory, Graph-Node bleibt erhalten", "[patching]")
+TEST_CASE ("I/O-Endpunkte (ADR 009): Proxy-Materialisierung + implizite Anker-Kabel", "[patching]")
 {
     PatchRig rig;
     rig.manager.registerExternalEndpoint (conduit::audioInputModuleId,  rig.addExternalGraphNode());
@@ -86,29 +86,33 @@ TEST_CASE ("Externe Endpunkte: Mapping statt Factory, Graph-Node bleibt erhalten
 
     rig.manager.flushPendingTopologyUpdate();
 
-    // Kein Factory-Fehler für die reservierten Nodes, kein zusätzlicher Graph-Node
+    // Reguläre Factory-Materialisierung: 2 Anker + 2 Proxys + 1 Attenuator;
+    // Anker-Kabel implizit (2 Kanäle je Endpunkt)
     REQUIRE (ioIn.getProperty (conduit::id::nodeError).toString().isEmpty());
     REQUIRE (ioOut.getProperty (conduit::id::nodeError).toString().isEmpty());
-    REQUIRE (rig.graph.getNumNodes() == 3);  // 2 externe + 1 Attenuator
+    REQUIRE (rig.graph.getNumNodes() == 5);
+    REQUIRE (rig.graph.getConnections().size() == 4);
 
-    // Kabelzug In → Attenuator → Out landet im Graph
+    // Kabelzug In → Attenuator → Out landet zusätzlich im Graph
     REQUIRE (rig.manager.addConnection (uuidOf (ioIn), 0, uuidOf (att), 0));
     REQUIRE (rig.manager.addConnection (uuidOf (att), 0, uuidOf (ioOut), 0));
     rig.manager.flushPendingTopologyUpdate();
-    REQUIRE (rig.graph.getConnections().size() == 2);
+    REQUIRE (rig.graph.getConnections().size() == 6);
 
-    // Externe Endpunkte sind nicht löschbar
-    REQUIRE_FALSE (rig.manager.requestNodeDelete (uuidOf (ioIn)));
-
-    // Modul-Delete entfernt nur das Modul — die externen Graph-Nodes bleiben
+    // Modul-Delete entfernt nur das Modul — Proxys und Anker bleiben
     REQUIRE (rig.manager.requestNodeDelete (uuidOf (att)));
     rig.manager.flushPendingTopologyUpdate();
-    REQUIRE (rig.graph.getNumNodes() == 2);  // Attenuator weg, beide externen bleiben
+    REQUIRE (rig.graph.getNumNodes() == 4);
 
-    // Tree-Node eines Endpunkts verschwindet (Preset) → Mapping weg, Graph-Node bleibt
+    // I/O ist regulär löschbar (ADR 009) — der ANKER bleibt im Graph
+    REQUIRE (rig.manager.requestNodeDelete (uuidOf (ioIn)));
+    rig.manager.flushPendingTopologyUpdate();
+    REQUIRE (rig.graph.getNumNodes() == 3);   // in-Proxy weg, beide Anker + out-Proxy
+
+    // Tree-Node verschwindet ohne Delete-Phase (Preset) → Proxy weg, Anker bleibt
     rig.nodes().removeChild (ioOut, nullptr);
     rig.manager.flushPendingTopologyUpdate();
-    REQUIRE (rig.graph.getNumNodes() == 2);
+    REQUIRE (rig.graph.getNumNodes() == 2);   // nur noch die beiden Anker
 }
 
 //==============================================================================

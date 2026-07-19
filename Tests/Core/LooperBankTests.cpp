@@ -367,7 +367,7 @@ TEST_CASE ("LooperBank: Looper-I/O-Busse — AudioView, sendToMaster, Kein Maste
         }
 
         // Andere Looper bleiben Stille
-        REQUIRE (rms (view.post[1][0], blockSize) == 0.0);
+        REQUIRE (juce::exactlyEqual (rms (view.post[1][0], blockSize), 0.0));
     }
 
     SECTION ("sendToMaster aus: Post-Bus läuft weiter, Master/Ausgabe still")
@@ -377,8 +377,8 @@ TEST_CASE ("LooperBank: Looper-I/O-Busse — AudioView, sendToMaster, Kein Maste
 
         const auto view = rig.bank.getAudioView();
         REQUIRE (rms (view.post[0][0], blockSize) > 0.01);
-        REQUIRE (rms (view.master[0],  blockSize) == 0.0);
-        REQUIRE (rms (rig.output.getReadPointer (0), blockSize) == 0.0);
+        REQUIRE (juce::exactlyEqual (rms (view.master[0],  blockSize), 0.0));
+        REQUIRE (juce::exactlyEqual (rms (rig.output.getReadPointer (0), blockSize), 0.0));
     }
 
     SECTION ("Anker −1 (Kein Master-Out): Master-Bus voll, Ausgabe still")
@@ -388,8 +388,8 @@ TEST_CASE ("LooperBank: Looper-I/O-Busse — AudioView, sendToMaster, Kein Maste
 
         const auto view = rig.bank.getAudioView();
         REQUIRE (rms (view.master[0], blockSize) > 0.01);
-        REQUIRE (rms (rig.output.getReadPointer (0), blockSize) == 0.0);
-        REQUIRE (rms (rig.output.getReadPointer (1), blockSize) == 0.0);
+        REQUIRE (juce::exactlyEqual (rms (rig.output.getReadPointer (0), blockSize), 0.0));
+        REQUIRE (juce::exactlyEqual (rms (rig.output.getReadPointer (1), blockSize), 0.0));
 
         // Rückkehr auf Paar 0 spielt weiter
         rig.bank.setAnchor (0);
@@ -434,7 +434,7 @@ TEST_CASE ("LooperBank: Looper-I/O-Busse — AudioView, sendToMaster, Kein Maste
         for (int ch = 0; ch < 2; ++ch)
             juce::FloatVectorOperations::fill (quiet.getWritePointer (ch), 1.0f, blockSize);
         silent.processBlock (quiet, midi);
-        REQUIRE (rms (quiet.getReadPointer (0), blockSize) == 0.0);
+        REQUIRE (juce::exactlyEqual (rms (quiet.getReadPointer (0), blockSize), 0.0));
     }
 }
 

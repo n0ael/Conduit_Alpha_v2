@@ -58,8 +58,9 @@ TEST_CASE ("LooperSettings: Defaults ohne gespeicherten Zustand", "[looper]")
     REQUIRE (settings.isAutoAdvanceEnabled());
     REQUIRE (settings.getNumLoopers() == 1);
 
-    // Looper 0 default "master", andere leer; Track-Defaults
-    REQUIRE (settings.getSourceKey (0) == "master");
+    // Werks-Default OHNE Quelle (19.07.2026: "master" ist seit ADR 010
+    // nicht mehr wählbar und blockierte gearmt die Puffersatz-Erweiterung)
+    REQUIRE (settings.getSourceKey (0).isEmpty());
     REQUIRE (settings.getSourceKey (1).isEmpty());
     REQUIRE (settings.getTrackGain (0, 0) == Approx (1.0f));
     REQUIRE (settings.getTrackPan (0, 0) == Approx (0.0f));

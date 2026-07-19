@@ -24,17 +24,18 @@ constexpr double testSampleRate = 48000.0;
 /** Clip mit bekanntem Content (Rampe pro Kanal) direkt bauen — der
     Exporter braucht keinen Bank-Commit, nur Buffer + Konstanten. */
 std::unique_ptr<LooperClip> makeTestClip (int contentSamples, int leadIn,
-                                          std::uint64_t commitStart)
+                                          std::uint64_t commitStart,
+                                          int numChannels = 2)
 {
     auto clip = std::make_unique<LooperClip>();
-    clip->buffer.setSize (2, contentSamples + leadIn);
+    clip->buffer.setSize (numChannels, contentSamples + leadIn);
     clip->buffer.clear();
     clip->numContentSamples = contentSamples;
     clip->crossfadeSamples = leadIn;
     clip->commitStartSample = commitStart;
     clip->clipId = 7;
 
-    for (int channel = 0; channel < 2; ++channel)
+    for (int channel = 0; channel < numChannels; ++channel)
     {
         auto* data = clip->buffer.getWritePointer (channel);
         for (int i = 0; i < contentSamples; ++i)
@@ -80,6 +81,28 @@ TEST_CASE ("LooperClipExporter: makeJob — Tasks, Pins, sample-exakte Reads", "
     REQUIRE_FALSE (job.tasks[0].source.read (95'000, chunk.data(), 16));
 
     // releaseResources löst den Pin (läuft sonst auf dem Writer-Thread)
+    job.releaseResources();
+    REQUIRE (clip->exportPins.load() == 0);
+}
+
+TEST_CASE ("LooperClipExporter: Mono-Clip exportiert EINE Datei ohne Suffix", "[looper]")
+{
+    // Looper-I/O 07/2026: Mono-Quellen erzeugen 1-Kanal-Clips — die
+    // Save-Geste schreibt dann eine echte Mono-Datei (kein _l/_r-Paar)
+    juce::ScopedJuceInitialiser_GUI juceRuntime;
+
+    const auto clip = makeTestClip (2048, 240, 96'000, 1);
+    auto job = LooperClipExporter::makeJob (*clip, "looper1_mono", testSampleRate);
+
+    REQUIRE (job.tasks.size() == 1);
+    REQUIRE (job.tasks[0].trackName == "looper1_mono");
+    REQUIRE (job.tasks[0].startPosition == 96'000);
+    REQUIRE (job.tasks[0].endPosition == 96'000 + 2048);
+
+    std::vector<float> chunk (64, 0.0f);
+    REQUIRE (job.tasks[0].source.read (96'000 + 100, chunk.data(), 64));
+    REQUIRE (juce::exactlyEqual (chunk[0], 100.0f / 2048.0f));
+
     job.releaseResources();
     REQUIRE (clip->exportPins.load() == 0);
 }

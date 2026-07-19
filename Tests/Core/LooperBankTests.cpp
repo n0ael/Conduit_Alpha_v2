@@ -8,6 +8,7 @@
 
 #include "Core/Looper/BarSampleAnchors.h"
 #include "Core/Looper/LooperBank.h"
+#include "Modules/LooperOutModule.h"
 #include "Util/RtAllocationGuard.h"
 
 using conduit::BarSampleAnchors;
@@ -329,6 +330,148 @@ TEST_CASE ("LooperBank: Re-Commit gibt den alten Clip frei (Retire-Protokoll)", 
     rig.bank.serviceMessageThread();
     REQUIRE (rig.bank.getRamBytesUsed() == oneClip);
     REQUIRE (rig.bank.isPlaying());
+}
+
+TEST_CASE ("LooperBank: Looper-I/O-Busse — AudioView, sendToMaster, Kein Master-Out", "[looper]")
+{
+    BankRig rig;
+    rig.signal = [] (std::uint64_t position)
+    {
+        return 0.3f + 0.4f * static_cast<float> (position % 61) / 61.0f;
+    };
+    rig.feedBars (2.5);
+    REQUIRE (rig.commit (1).wasOk());
+    rig.feedBlocks (4);
+
+    const auto rms = [] (const float* data, int numSamples)
+    {
+        double sum = 0.0;
+        for (int i = 0; i < numSamples; ++i)
+            sum += data[i] * data[i];
+        return std::sqrt (sum / numSamples);
+    };
+
+    SECTION ("AudioView: Pre-/Post-/Master-Busse tragen den gerenderten Block")
+    {
+        const auto view = rig.bank.getAudioView();
+        REQUIRE (view.numSamples == blockSize);
+        REQUIRE (rms (view.pre[0][0],  blockSize) > 0.01);
+        REQUIRE (rms (view.post[0][0], blockSize) > 0.01);
+        REQUIRE (rms (view.master[0],  blockSize) > 0.01);
+
+        // Ein Looper, Unity-Fader: Master == Post, Ausgabe == Master
+        for (int i = 0; i < blockSize; ++i)
+        {
+            REQUIRE (juce::exactlyEqual (view.master[0][i], view.post[0][0][i]));
+            REQUIRE (juce::exactlyEqual (rig.output.getSample (0, i), view.master[0][i]));
+        }
+
+        // Andere Looper bleiben Stille
+        REQUIRE (rms (view.post[1][0], blockSize) == 0.0);
+    }
+
+    SECTION ("sendToMaster aus: Post-Bus läuft weiter, Master/Ausgabe still")
+    {
+        rig.bank.setLooperToMaster (0, false);
+        rig.feedBlocks (2);
+
+        const auto view = rig.bank.getAudioView();
+        REQUIRE (rms (view.post[0][0], blockSize) > 0.01);
+        REQUIRE (rms (view.master[0],  blockSize) == 0.0);
+        REQUIRE (rms (rig.output.getReadPointer (0), blockSize) == 0.0);
+    }
+
+    SECTION ("Anker −1 (Kein Master-Out): Master-Bus voll, Ausgabe still")
+    {
+        rig.bank.setAnchor (-1);
+        rig.feedBlocks (2);
+
+        const auto view = rig.bank.getAudioView();
+        REQUIRE (rms (view.master[0], blockSize) > 0.01);
+        REQUIRE (rms (rig.output.getReadPointer (0), blockSize) == 0.0);
+        REQUIRE (rms (rig.output.getReadPointer (1), blockSize) == 0.0);
+
+        // Rückkehr auf Paar 0 spielt weiter
+        rig.bank.setAnchor (0);
+        rig.feedBlocks (2);
+        REQUIRE (rms (rig.output.getReadPointer (0), blockSize) > 0.01);
+    }
+
+    SECTION ("LooperOutModule kopiert die Busse (stereo/sum/left, pre/post)")
+    {
+        using Out = conduit::LooperOutModule;
+        Out module;
+        module.setLooperAudioSource (&rig.bank);
+        module.applyOutputSpecs ({ { 0, Out::Mode::stereo, false },     // Master L/R
+                                   { 1, Out::Mode::sum,    false },     // Looper 1 Summe
+                                   { 1, Out::Mode::left,   true   } }); // Looper 1 Pre-L
+        REQUIRE (module.getTotalNumOutputChannels() == 4);
+        module.setPlayConfigDetails (0, 4, testSampleRate, blockSize);
+        module.prepareToPlay (testSampleRate, blockSize);
+
+        rig.feedBlocks (1);
+        const auto view = rig.bank.getAudioView();
+
+        juce::AudioBuffer<float> out { 4, blockSize };
+        juce::MidiBuffer midi;
+        out.clear();
+        module.processBlock (out, midi);
+
+        for (int i = 0; i < blockSize; ++i)
+        {
+            REQUIRE (juce::exactlyEqual (out.getSample (0, i), view.master[0][i]));
+            REQUIRE (juce::exactlyEqual (out.getSample (1, i), view.master[1][i]));
+            REQUIRE (juce::exactlyEqual (out.getSample (2, i),
+                                         0.5f * (view.post[0][0][i] + view.post[0][1][i])));
+            REQUIRE (juce::exactlyEqual (out.getSample (3, i), view.pre[0][0][i]));
+        }
+
+        // Ohne Bank: definierte Stille
+        Out silent;
+        silent.applyOutputSpecs ({ { 0, Out::Mode::stereo, false } });
+        silent.setPlayConfigDetails (0, 2, testSampleRate, blockSize);
+        juce::AudioBuffer<float> quiet { 2, blockSize };
+        for (int ch = 0; ch < 2; ++ch)
+            juce::FloatVectorOperations::fill (quiet.getWritePointer (ch), 1.0f, blockSize);
+        silent.processBlock (quiet, midi);
+        REQUIRE (rms (quiet.getReadPointer (0), blockSize) == 0.0);
+    }
+}
+
+TEST_CASE ("LooperBank: Mono-Quelle erzeugt 1-Kanal-Clip, Playback speist beide Seiten", "[looper]")
+{
+    BankRig rig;
+
+    // Deterministisches Mono-Material auf Kanal 0 (Kanal 1 bleibt der
+    // 0.5f-Default — darf im Loop NICHT auftauchen)
+    rig.signal = [] (std::uint64_t position)
+    {
+        return 0.25f + 0.5f * static_cast<float> (position % 97) / 97.0f;
+    };
+    rig.feedBars (2.5);
+
+    // rightIndex = -1 → Mono-Commit (hwm:/Mono-Tap-Pfad der Auflösung)
+    conduit::LooperClip* clip = nullptr;
+    REQUIRE (rig.bank.commitClip (0, 0, 1, rig.service, 0, -1, rig.anchors, &clip).wasOk());
+    REQUIRE (clip != nullptr);
+    REQUIRE (clip->buffer.getNumChannels() == 1);
+
+    // RAM-Konto: Mono-Clip kostet die Hälfte eines Stereo-Clips (+ Header)
+    const auto monoBytes = clip->allocatedBytes();
+    REQUIRE (monoBytes < static_cast<std::int64_t> (clip->buffer.getNumSamples())
+                             * 2 * static_cast<std::int64_t> (sizeof (float)));
+
+    // Playback: beide Ausgabekanäle tragen identisches Signal (L=R)
+    rig.feedBlocks (8);
+    const auto* left  = rig.output.getReadPointer (0);
+    const auto* right = rig.output.getReadPointer (1);
+    bool anyAudible = false;
+    for (int i = 0; i < 480; ++i)
+    {
+        REQUIRE (juce::exactlyEqual (left[i], right[i]));
+        anyAudible = anyAudible || std::abs (left[i]) > 0.01f;
+    }
+    REQUIRE (anyAudible);
 }
 
 TEST_CASE ("LooperBank: RAM-Budget begrenzt Commits sauber", "[looper]")

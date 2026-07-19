@@ -11,6 +11,7 @@
 #include "Core/CanvasGestureRecognizer.h"
 #include "Core/CanvasViewport.h"
 #include "Core/GraphManager.h"
+#include "Core/SignalFlowColours.h"
 #include "Core/NodeUiRegistry.h"
 #include "UI/NodeCanvasContent.h"
 #include "UI/NodeComponent.h"
@@ -167,35 +168,18 @@ private:
                                                int sourceChannel) const;
 
     //==========================================================================
-    // Signal-Flow-Farbvererbung (Anzeige): Module OHNE eigene Farbe erben die
-    // (gemischte) Farbe ihrer Eingänge und geben sie weiter — explizite Farbe
-    // gewinnt IMMER, Feedback-Schleifen per visiting-Set abgefangen. Rein
-    // abgeleitet, kein Patch-Zustand.
+    // Signal-Flow-Farbvererbung (Anzeige): Kern-Logik lebt in
+    // Core/SignalFlowColours (flow_colours, 19.07.2026 herausgelöst —
+    // die Looper-Quellauswahl nutzt dieselbe Vererbung); der Canvas hält
+    // nur den Frame-Cache und verteilt die Farben in die UI.
 
     /** Baut flowColours neu (effektive Farbe pro Node) und schiebt sie in die
         Header-Punkte; danach repaint der Kabel. Bei Topologie-/Farb-Änderung. */
     void refreshFlowColours();
 
-    /** Effektive Node-Farbe (explizit → sonst gemischte Eingänge), memoisiert
-        in flowColours; visiting bricht Zyklen. audio_in → 0 (Quelle pro Kanal). */
-    juce::uint32 computeEffectiveRgb (const juce::String& nodeUuid,
-                                      std::set<juce::String>& visiting);
-
-    /** Quellfarbe eines Kanals für die Vererbung: audio_in → ChannelNames pro
-        Kanal, sonst computeEffectiveRgb des Quellmoduls. */
-    juce::uint32 sourceChannelRgb (const juce::String& sourceUuid, int channel,
-                                   std::set<juce::String>& visiting);
-
     /** Cache-Lookup (const, nach refreshFlowColours) für die Kabel-/Punktfarbe. */
     [[nodiscard]] juce::uint32 lookupSourceRgb (const juce::String& sourceUuid,
                                                 int channel) const;
-
-    /** audio_in-Kanalfarbe (ChannelNames), aufgelöst auf den Stereo-Paar-Anker:
-        beide Kanäle eines Paars liefern die Farbe des ERSTEN Kanals. */
-    [[nodiscard]] juce::uint32 inputChannelRgb (int channel) const;
-
-    /** Mittelt die Farben (0x00RRGGBB) komponentenweise; {} → 0. */
-    [[nodiscard]] static juce::uint32 blendRgb (const std::vector<juce::uint32>& colours);
 
     void rebuildAll();
     void addComponentFor (juce::ValueTree nodeTree);
@@ -260,7 +244,7 @@ private:
     std::vector<std::unique_ptr<NodeComponent>> nodeComponents;
 
     // Effektive (ggf. geerbte) Farbe pro Node — abgeleitet, kein Patch-Zustand
-    std::map<juce::String, juce::uint32> flowColours;
+    flow_colours::ColourMap flowColours;
 
     struct CableDrag
     {

@@ -4,30 +4,72 @@
 
 - **Retro-Looper** (`Source/Core/Looper` + `Source/UI/LooperPage`, Stand
   07/2026 — Endlesss-Muster auf Capture-Audio-Basis, MVP = ein Loop):
-  - Immer aufnehmend: Quelle = Capture-Kanal („master" = Master-Output-Tap
-    master_l/_r nach dem GraphFader | „hw:{paar}" = Eingangs-Paar |
-    „out:{paar}" = Ausgangs-Paar hinter dem Master (Kanäle 2p/2p+1, Taps
-    out{p}_l/_r, in prepareToPlay an die Device-Kanalzahl angeglichen —
-    seit 08.07.2026, damit z. B. Link-Receive-Routings loopbar sind) |
-    „tap:{name}" — Link-Receive-Module registrieren ihre Ausgabe seit
-    08.07.2026 selbst als Capture-Kanäle {moduleId}_l/_r und sind damit
-    direkt wählbar), Arming (`CaptureService::setChannelArmed`) hält das
-    Gate zwangsweise offen. Wellenform/Spektrum tragen die Farbe der
-    Quelle (Kanal-Farbe aus ChannelNames bzw. nodeColour;
+  - Immer aufnehmend: Quelle = Capture-Kanal. Schlüssel seit Looper-I/O
+    (ADR 010, 18.07.2026): „master" = Master-Output-Tap master_l/_r nach
+    dem GraphFader (resolvet weiter, steht aber nicht mehr in der Combo) |
+    „hw:{paar}" = gepaartes Eingangs-Paar | „hwm:{kanal}" = ungepaarter
+    Mono-Eingang (∥-Pairing der ChannelNames entscheidet) | „tap:{name}"
+    = virtueller Capture-Kanal eines Moduls (Looper-In-Slots
+    „{moduleId}/{slotName}", Mono ohne Suffix ⇒ right = −1 ⇒
+    1-Kanal-Clip; Stereo _l/_r). Der frühere out:{paar}-Zweig ist
+    Legacy (resolvet zu −1). Arming (`CaptureService::setChannelArmed`)
+    hält das Gate zwangsweise offen. **Auflösung folgt der Registry
+    SYNCHRON** (`CaptureService::onRegistryChanged` →
+    `applyLooperSourceArming`, Feldtest-Fix 19.07.2026): eine
+    Re-Materialisierung des Looper-In-Moduls registriert seine Kanäle
+    auf NEUEN Slots, weil die gearmten alten ihr Material als held
+    binden — ohne den Hook zeigten die gespeicherten Looper-Indizes
+    dauerhaft auf den toten Kanal (Stille bei unverändertem
+    Combo-Eintrag). Der Hook feuert bei register/unregister/rename,
+    prepare und der nachgeholten Puffersatz-Erweiterung (Guard-Tick). Wellenform/Spektrum tragen die
+    Farbe der Quelle (Kanal-Farbe aus ChannelNames bzw. nodeColour;
     `LooperWaveformStrip::setSourceColour` tönt auch die Spektrum-LUT).
-    Quelle + Ausgabe-Paar persistiert in TransportSettings
-    (looperSource/looperAnchor).
-  - **Quellen-Combo (09.07.2026):** Link-Receive-Taps zeigen
-    „{targetPeer} / {targetChannel}" (Format des Receive-Panels; ohne
-    Kanal-Wunsch „Link: {moduleId}") und bilden eine per Separator
-    getrennte Gruppe HINTER den lokalen Quellen — ein Abschnitt pro Peer
-    (App/Programm), Doppel-Label disambiguiert der Modulname. Alle
-    Einträge und der Combo-Text der Auswahl tragen die Quellfarbe
-    (PopupMenu-Item-Farbe via `getRootMenu()`; Auswahl über Item-IDs =
-    Quell-Index + 1, NIE über Item-Indizes — Separatoren verschieben sie).
-    Live-Refresh: zusätzlich zu CaptureService/ChannelNames-Broadcasts
-    lauscht der EngineEditor als Root-Tree-Listener auf targetPeer/
-    targetChannel/nodeColour/numInput-/numOutputChannels.
+    Quellen persistieren in LooperSettings (sourceKey pro Looper),
+    der Anker in TransportSettings (looperAnchor, −1 = Kein Master-Out).
+  - **Quellen-Combo (Looper-I/O 18.07.2026, ersetzt die Fassung vom
+    09.07.):** Liste = Looper-In-Slots ZUOBERST (gruppiert pro
+    Modul-Instanz) + Interface-Eingänge (Mono/Stereo nach ∥-Pairing,
+    Labels/Farben aus ChannelNames). Master/Out-Paare/fremde Taps sind
+    bewusst raus — solche Signale loopt man per Kabel ins
+    Looper-In-Modul. Auswahl über Item-IDs = Quell-Index + 1, NIE über
+    Item-Indizes (Separatoren verschieben sie). Live-Refresh:
+    CaptureService/ChannelNames-Broadcasts + Root-Tree-Listener
+    (nodeColour, numInput-/numOutputChannels, Input-Namen,
+    Connection-Kinder).
+  - **Slot-Namen & Farben (User-Regel 19.07.2026, „Quellname zuerst"):**
+    Slot-Label = `{name} · {moduleId} · mono|stereo`. Der Slot-autoName
+    FOLGT der verkabelten Quelle bei jedem Stecken und zeigt die ganze
+    SIGNALKETTE — Klangquelle zuerst, dann die FX-Stationen
+    („mopho · galactic_1", `resolveSourceChainLabel`; Multi-Input-
+    Stationen folgen ihrem ersten verbundenen Eingang, Zyklen kappen).
+    `GraphManager::snapshotAutoName` mit followSource +
+    `refreshLooperInAutoNames` bei JEDER Kabel-Änderung (auch Upstream);
+    Kollisionen bekommen „ 2"-Suffixe; expliziter userName gewinnt —
+    anders als der Link-Send-Einmal-Snapshot. In der Clip-Zelle friert
+    der Combo-Text ein ⇒ das Instrument steht dort zuerst. Der Rename wandert zur Registry
+    (inputNameChanged → setVirtualChannelName); gespeicherte tap:-Keys
+    MIGRIEREN dabei mit (`CaptureService::onChannelRenamed` →
+    EngineProcessor mappt alt→neu in den LooperSettings). Slot-Farbe =
+    Farbe der an den Slot verkabelten Quelle über die
+    Signal-Flow-Vererbung (`Core/SignalFlowColours` — aus dem
+    NodeCanvas herausgelöst, beide teilen dieselbe Logik), Fallback
+    nodeColour des Moduls. Die Kette Eingang → FX → Slot → Waveform
+    (`setSourceColour`) → Clip-Thumbnail (Zellfläche) ist damit
+    durchgängig quellfarbig.
+  - **Looper-I/O-Module (ADR 010):** `LooperInModule` (looper_in,
+    dynamische Mono/Stereo-Slots → Capture-Taps, Pass-Through;
+    Slot-Umbau re-materialisiert gefadet; Default-Bestückung 4× stereo
+    + 4× mono = 12 Kanäle, 19.07.2026 — die CaptureService-Reserve (12)
+    deckt genau EIN Default-Modul; Slots jenseits der Reserve werden
+    erst auflösbar, wenn kein Capture-Kanal aktiv ist [Guard-Tick].
+    Deshalb starten die Looper ab Werk OHNE Quelle: der alte
+    „master"-Default hielt die Master-Kanäle dauerhaft gearmt und
+    blockierte die Erweiterung für immer) und `LooperOutModule`
+    (looper_out, Abgriffe Master|Looper 1–4 × stereo|sum|left|right ×
+    Pre/Post; Default Master + 4 Looper stereo post). Engine-Seite:
+    `LooperBank::renderBlock` VOR dem Graph, `getAudioView()` im selben
+    Callback, `mixToOutput` (Master-Mix, additiv) NACH dem Graph;
+    „sendMaster" pro Looper (LooperSettings) filtert NUR den Master-Mix.
   - `BarSampleAnchors` [Audio]: Taktgrenzen sample-genau als gepackte
     64-bit-Atomics (16 Bit bar-Tag + 48 Bit Sample-Position — Paar in EINEM
     Wort, sonst Slot-Reuse-Race); Grenze 0 wird nie überquert → Commit

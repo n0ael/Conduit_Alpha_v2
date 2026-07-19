@@ -185,7 +185,9 @@ void TransportSettings::setLooperSource (const juce::String& sourceKey)
 
 void TransportSettings::setLooperAnchor (int pairIndex)
 {
-    const auto clamped = juce::jlimit (0, 31, pairIndex);
+    // −1 = „Kein Master-Out" (Looper-I/O 07/2026) — Looper laufen weiter,
+    // nur die additive Anker-Ausgabe entfällt (LooperBank::mixToOutput)
+    const auto clamped = juce::jlimit (-1, 31, pairIndex);
 
     if (looperAnchor == clamped)
         return;

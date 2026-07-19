@@ -3,9 +3,11 @@
 #include <algorithm>
 
 #include "Browser/BrowserPaths.h"
+#include "Core/SignalFlowColours.h"
 #include "EngineProcessor.h"
 #include "Modules/LinkAudioReceiveModule.h"
 #include "Modules/LinkAudioSendModule.h"
+#include "Modules/LooperInModule.h"
 #include "UI/LinkSendCreateDialog.h"
 #include "Core/Looper/LooperClipExporter.h"
 #include "UI/LooperSettingsMenu.h"
@@ -440,12 +442,32 @@ void EngineEditor::valueTreePropertyChanged (juce::ValueTree& tree,
 {
     juce::ignoreUnused (tree);
 
-    // Link-Kanal-Wahl (Receive-Panel), Node-Farben und I/O-Kanalzahlen
-    // ändern Labels/Farben der Looper-Quellauswahl — Tap-Registrierung
-    // und Rename decken die CaptureService-Broadcasts bereits ab
+    // Node-Farben, I/O-Kanalzahlen (auch Looper-In-Slot-Umbau) und
+    // Slot-Namen ändern Labels/Farben der Looper-Quellauswahl —
+    // Tap-Registrierung und Rename decken die CaptureService-Broadcasts
+    // bereits ab
     if (property == id::targetPeer || property == id::targetChannel
         || property == id::nodeColour
-        || property == id::numOutputChannels || property == id::numInputChannels)
+        || property == id::numOutputChannels || property == id::numInputChannels
+        || property == id::inputUserName || property == id::inputAutoName)
+        rebuildLooperSources();
+}
+
+void EngineEditor::valueTreeChildAdded (juce::ValueTree& parent, juce::ValueTree& child)
+{
+    juce::ignoreUnused (parent);
+
+    // Neues/entferntes Kabel ändert die geerbte Quellfarbe der
+    // Looper-In-Slots (und ggf. deren Auto-Namen via GraphManager)
+    if (child.hasType (id::connection))
+        rebuildLooperSources();
+}
+
+void EngineEditor::valueTreeChildRemoved (juce::ValueTree& parent, juce::ValueTree& child, int)
+{
+    juce::ignoreUnused (parent);
+
+    if (child.hasType (id::connection))
         rebuildLooperSources();
 }
 
@@ -547,16 +569,52 @@ void EngineEditor::closeDevPanelAsync()
 //==============================================================================
 std::vector<LooperPanel::Source> EngineEditor::buildLooperSources()
 {
+    // Looper-I/O (ADR 010, User-Entscheidung 18.07.2026): die Liste ist
+    // KOMPLETT ersetzt — Looper-In-Slots zuoberst, dann die Interface-
+    // Eingänge (Mono/Stereo folgt dem ∥-Pairing der ChannelNames).
+    // Master/Out-Paare/fremde Taps sind bewusst raus: solche Signale
+    // loopt man per Kabel ins Looper-In-Modul.
     std::vector<LooperPanel::Source> sources;
-
-    // Master zuerst — die Session-Summe (Master-Output-Tap, B2) ist die
-    // naheliegendste Looper-Quelle und der Fallback unbekannter Schlüssel
-    sources.push_back ({ "master", "Master", juce::Colour(), false });
-
-    // Hardware-Eingangs-Paare: Kanalzahl aus dem audio_in-Tree-Node
-    // (folgt der Hardware), Labels aus den ChannelNames — Muster
-    // metronomeTargetNames
     auto nodesTree = rootState.getChildWithName (id::nodes);
+
+    // 1) Looper-In-Slots, gruppiert pro Modul-Instanz (Separator zwischen
+    //    Instanzen); der Modulname im Label disambiguiert
+    bool firstModule = true;
+    for (int n = 0; n < nodesTree.getNumChildren(); ++n)
+    {
+        auto node = nodesTree.getChild (n);
+        if (GraphManager::factoryKeyOf (node) != LooperInModule::staticModuleId)
+            continue;
+
+        const auto moduleId = node.getProperty (id::moduleId).toString();
+        const auto inputsTree = node.getChildWithName (id::inputs);
+
+        for (int i = 0; i < inputsTree.getNumChildren(); ++i)
+        {
+            const auto inputTree = inputsTree.getChild (i);
+            const auto name = LooperInModule::effectiveInputName (inputTree, i);
+            const auto key = "tap:" + LooperInModule::tapBaseName (moduleId, name);
+
+            // Quellname ZUERST (Auto-Naming folgt der verkabelten Quelle,
+            // User-Regel 19.07.2026), dahinter Modul (disambiguiert gegen
+            // die Hardware-Labels) und Aufnahmeart
+            const auto mono = inputTree.getProperty (id::inputMode).toString()
+                                  == LooperInModule::modeMono;
+            const auto label = name + juce::String::fromUTF8 (" · ") + moduleId
+                             + juce::String::fromUTF8 (mono ? " · mono" : " · stereo");
+
+            sources.push_back ({ key, label, looperSourceColour (key),
+                                 ! firstModule && i == 0 });
+        }
+
+        firstModule = false;
+    }
+
+    // 2) Interface-Eingänge: Kanalzahl aus dem audio_in-Tree-Node (folgt
+    //    der Hardware), Mono/Stereo nach ∥-Pairing, Labels/Farben aus den
+    //    ChannelNames. Gerade verankerte Paare behalten den Legacy-Key
+    //    "hw:{paar}" (gespeicherte Auswahlen bleiben gültig), ungerade
+    //    Anker bekommen "hws:{kanal}", ungepaarte Kanäle "hwm:{kanal}".
     auto inNode = nodesTree.getChildWithProperty (id::factoryId, juce::String (audioInputModuleId));
     if (! inNode.isValid())
         inNode = nodesTree.getChildWithProperty (id::moduleId, juce::String (audioInputModuleId));
@@ -564,119 +622,32 @@ std::vector<LooperPanel::Source> EngineEditor::buildLooperSources()
     const auto channels = inNode.isValid()
                         ? (int) inNode.getProperty (id::numOutputChannels, 2) : 2;
     auto& labels = engine.getChannelNames();
+    using Direction = ChannelNames::Direction;
 
-    for (int channel = 0; channel + 1 < channels; channel += 2)
+    bool firstHardware = true;
+    for (int channel = 0; channel < channels; )
     {
-        const auto key = "hw:" + juce::String (channel / 2);
-        sources.push_back ({ key,
-                             labels.getLabel (ChannelNames::Direction::input, channel)
-                                 + " / "
-                                 + labels.getLabel (ChannelNames::Direction::input, channel + 1),
-                             looperSourceColour (key), false });
-    }
+        const auto paired = channel + 1 < channels
+                         && labels.isPortPairStart (Direction::input, channel);
 
-    // Ausgangs-Paare hinter dem Master (Kanäle 2p/2p+1, "out:{p}"):
-    // damit sind auch Signale loopbar, die nur auf einem Ausgangspaar
-    // liegen — z. B. ein Link-Receive-Routing (User-Wunsch 08.07.2026)
-    auto outNode = nodesTree.getChildWithProperty (id::factoryId, juce::String (audioOutputModuleId));
-    if (! outNode.isValid())
-        outNode = nodesTree.getChildWithProperty (id::moduleId, juce::String (audioOutputModuleId));
-
-    const auto outChannels = outNode.isValid()
-                           ? (int) outNode.getProperty (id::numInputChannels, 2) : 2;
-
-    for (int channel = 2; channel + 1 < outChannels; channel += 2)
-    {
-        const auto key = "out:" + juce::String (channel / 2);
-        sources.push_back ({ key,
-                             "Out: " + labels.getLabel (ChannelNames::Direction::output, channel)
-                                 + " / "
-                                 + labels.getLabel (ChannelNames::Direction::output, channel + 1),
-                             looperSourceColour (key), false });
-    }
-
-    // Capture-Taps der Module (virtuelle Slots hinter master_l/_r):
-    // _l/_r-Stereo-Paare auf den Basisnamen reduziert, Mono-Taps einzeln.
-    // Link-Receive-Taps wandern in eine eigene Gruppe hinter den lokalen
-    // Quellen — Label "{peer} / {kanal}" wie im Receive-Panel, getrennt
-    // per Separator, ein Abschnitt pro Peer/App (User-Wunsch 09.07.2026)
-    struct LinkEntry
-    {
-        juce::String peer;
-        LooperPanel::Source source;
-    };
-    std::vector<LinkEntry> linkEntries;
-
-    juce::StringArray seenBaseNames, seenLinkLabels;
-    const auto& capture = engine.getCaptureService();
-
-    for (int slot = 2; slot < CaptureService::MAX_VIRTUAL_CHANNELS; ++slot)
-    {
-        const auto info = capture.getVirtualChannelUiInfo (slot);
-        if (! info.inUse || info.name.isEmpty())
-            continue;
-
-        auto baseName = info.name;
-        if (baseName.endsWith ("_l") || baseName.endsWith ("_r"))
-            baseName = baseName.dropLastCharacters (2);
-
-        // Ausgangs-Taps (out{p}_l/_r) sind oben schon als "Out:"-Paare drin
-        if (baseName.length() > 3 && baseName.startsWith ("out")
-            && baseName.substring (3).containsOnly ("0123456789"))
-            continue;
-
-        if (seenBaseNames.contains (baseName))
-            continue;
-
-        seenBaseNames.add (baseName);
-        const auto key = "tap:" + baseName;
-
-        const auto node = nodesTree.getChildWithProperty (id::moduleId, baseName);
-        const auto isLinkReceive = node.isValid()
-            && node.getProperty (id::factoryId).toString()
-                   == LinkAudioReceiveModule::staticModuleId;
-
-        if (! isLinkReceive)
+        juce::String key, label;
+        if (paired)
         {
-            sources.push_back ({ key, "Tap: " + baseName,
-                                 looperSourceColour (key), false });
-            continue;
+            key = channel % 2 == 0 ? "hw:" + juce::String (channel / 2)
+                                   : "hws:" + juce::String (channel);
+            label = labels.getLabel (Direction::input, channel)
+                  + " / " + labels.getLabel (Direction::input, channel + 1);
+        }
+        else
+        {
+            key = "hwm:" + juce::String (channel);
+            label = labels.getLabel (Direction::input, channel);
         }
 
-        const auto peer    = node.getProperty (id::targetPeer).toString();
-        const auto channel = node.getProperty (id::targetChannel).toString();
-
-        // Ohne Kanal-Wunsch bleibt der Modulname ("Link:"-Präfix statt
-        // "Tap:" — der Eintrag gehört sichtbar zur Link-Gruppe)
-        auto label = channel.isNotEmpty()
-                   ? (peer.isNotEmpty() ? peer + " / " + channel : channel)
-                   : "Link: " + baseName;
-
-        // Zwei Module auf demselben Peer-Kanal: Modulname disambiguiert
-        if (seenLinkLabels.contains (label))
-            label << " (" << baseName << ")";
-        seenLinkLabels.add (label);
-
-        linkEntries.push_back ({ peer, { key, label, looperSourceColour (key), false } });
-    }
-
-    // Link-Gruppe: nach Peer sortiert (ungebundene ans Ende), Separator
-    // vor dem Block und an jedem Peer-Wechsel
-    std::stable_sort (linkEntries.begin(), linkEntries.end(),
-                      [] (const LinkEntry& a, const LinkEntry& b)
-    {
-        if (a.peer.isEmpty() != b.peer.isEmpty())
-            return b.peer.isEmpty();
-        return a.peer.compareIgnoreCase (b.peer) < 0;
-    });
-
-    juce::String previousPeer;
-    for (std::size_t i = 0; i < linkEntries.size(); ++i)
-    {
-        auto& entry = linkEntries[i];
-        entry.source.separatorBefore = i == 0 || entry.peer != previousPeer;
-        previousPeer = entry.peer;
-        sources.push_back (std::move (entry.source));
+        sources.push_back ({ key, label, looperSourceColour (key),
+                             firstHardware && ! sources.empty() });
+        firstHardware = false;
+        channel += paired ? 2 : 1;
     }
 
     return sources;
@@ -704,15 +675,56 @@ juce::Colour EngineEditor::looperSourceColour (const juce::String& sourceKey) co
     if (sourceKey.startsWith ("hw:"))
         return pairColour (Direction::input, sourceKey.substring (3).getIntValue() * 2);
 
-    if (sourceKey.startsWith ("out:"))
-        return pairColour (Direction::output, sourceKey.substring (4).getIntValue() * 2);
+    if (sourceKey.startsWith ("hws:"))
+        return pairColour (Direction::input, sourceKey.substring (4).getIntValue());
+
+    if (sourceKey.startsWith ("hwm:"))
+        return fromRgb (labels.getColour (Direction::input,
+                                          sourceKey.substring (4).getIntValue()));
 
     if (sourceKey.startsWith ("tap:"))
     {
+        // Looper-In-Slots heißen "{moduleId}/{slotName}": Farbe der an den
+        // Slot VERKABELTEN Quelle (Signal-Flow-Vererbung — die Kette
+        // Eingang → FX → Slot → Waveform → Clip bleibt durchgängig,
+        // User-Regel 19.07.2026); Fallback Modul-Farbe. Klassische Taps
+        // tragen die moduleId direkt.
+        const auto base = sourceKey.substring (4);
+        const auto moduleId = base.contains ("/")
+                                  ? base.upToFirstOccurrenceOf ("/", false, false)
+                                  : base;
+
         const auto node = rootState.getChildWithName (id::nodes)
-                              .getChildWithProperty (id::moduleId, sourceKey.substring (4));
-        if (node.isValid())
-            return fromRgb ((juce::uint32) (int) node.getProperty (id::nodeColour, 0));
+                              .getChildWithProperty (id::moduleId, moduleId);
+        if (! node.isValid())
+            return {};
+
+        if (base.contains ("/"))
+        {
+            // Slot per effektivem Namen finden → Kanal-Offset → Kabelquelle
+            const auto slotName = base.fromFirstOccurrenceOf ("/", false, false);
+            const auto inputsTree = node.getChildWithName (id::inputs);
+
+            int offset = 0;
+            for (int i = 0; i < inputsTree.getNumChildren(); ++i)
+            {
+                const auto inputTree = inputsTree.getChild (i);
+                if (LooperInModule::effectiveInputName (inputTree, i) == slotName)
+                {
+                    const auto rgb = flow_colours::resolveDestSourceRgb (
+                        rootState, &engine.getChannelNames(),
+                        node.getProperty (id::nodeId).toString(), offset);
+                    if (rgb != 0)
+                        return fromRgb (rgb);
+                    break;
+                }
+
+                offset += inputTree.getProperty (id::inputMode).toString()
+                              == LooperInModule::modeStereo ? 2 : 1;
+            }
+        }
+
+        return fromRgb ((juce::uint32) (int) node.getProperty (id::nodeColour, 0));
     }
 
     return {};   // master / unbekannt → Strip-Default
@@ -794,6 +806,14 @@ void EngineEditor::wireLooperPanels()
         {
             engine.setLooperSource (l, key);
             looperPage.getPanel (l).getStrip().setSourceColour (looperSourceColour (key));
+        };
+
+        // „An Master senden" pro Looper (Looper-I/O, ADR 010): Settings
+        // broadcasten → applyLooperSettings spiegelt in die Bank
+        panel.setSendMaster (engine.getLooperSettings().isSendToMaster (l));
+        panel.onSendMasterToggled = [this, l] (bool enabled)
+        {
+            engine.getLooperSettings().setSendToMaster (l, enabled);
         };
 
         // Segment-Klick = Commit in den Target-Slot dieses Loopers;

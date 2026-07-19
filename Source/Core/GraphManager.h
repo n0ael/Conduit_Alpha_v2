@@ -18,6 +18,7 @@ namespace conduit
 class CaptureService;
 class ChannelNames;
 class LinkClock;
+class LooperBank;
 class ModuleFactory;
 class IExternalAudioEndpoint;
 class ModuleUiDefaults;
@@ -116,6 +117,32 @@ public:
         weiter (create/retire ohne Rebuild). false bei unbekanntem Node.
         Message Thread. */
     bool setLinkSendEnabled (const juce::String& nodeUuid, bool enabled);
+
+    //==========================================================================
+    // Patch-Aktionen Looper-I/O (ADR 010) — alle undo-fähig in EINER
+    // Transaktion; Kanalzahl-Änderungen re-materialisieren den Node im
+    // nächsten gefadeten Swap. Message Thread.
+
+    /** Looper-In-Slot anhängen (stereo = 2 Kanäle). false bei unbekanntem
+        oder fremdem Node. */
+    bool addLooperInSlot (const juce::String& nodeUuid, bool stereo);
+
+    /** Looper-In-Slot entfernen; Kabel auf den Slot-Kanälen werden mit
+        entfernt, dahinterliegende Kanäle rücken nach (Kabel-Remap). Der
+        letzte Slot bleibt stehen. */
+    bool removeLooperInSlot (const juce::String& nodeUuid, int slotIndex);
+
+    /** Looper-Out-Abgriff anhängen: target 0 = Master, 1..4 = Looper n;
+        mode "stereo"|"sum"|"left"|"right"; pre = Pre-Fader. */
+    bool addLooperOutSlot (const juce::String& nodeUuid, int target,
+                           const juce::String& mode, bool pre);
+
+    /** Looper-Out-Abgriff entfernen (Kabel-Remap wie beim Looper-In). */
+    bool removeLooperOutSlot (const juce::String& nodeUuid, int slotIndex);
+
+    /** Pre/Post eines Looper-Out-Abgriffs — re-materialisiert (das Modul
+        liest die Slots nur bei der Materialisierung). */
+    bool setLooperOutSlotPre (const juce::String& nodeUuid, int slotIndex, bool pre);
 
     /** Patch-Aktion (Dev-Modus 4.6): User-Regelbereich eines Parameters —
         Fader nutzt [userMin, userMax], der DSP clamped weiter auf die
@@ -281,6 +308,12 @@ public:
         Message Thread. */
     void setCaptureService (CaptureService* service) noexcept;
 
+    /** Looper-Busse für ILooperAudioClient-Module (Looper Out) — bei der
+        Materialisierung VOR prepareForGraph injiziert. Die Bank muss jedes
+        Modul überdauern (Owner: EngineProcessor, VOR dem Graph deklariert).
+        nullptr → Module geben Stille aus (Tests). Message Thread. */
+    void setLooperBank (LooperBank* bank) noexcept;
+
     /** Kanal-Namen (App-Zustand) für das Auto-Naming der Send-Kanäle: die
         Quelle eines Eingangs, die am audio_input-Endpunkt hängt, liefert ihr
         ChannelNames-Label. nullptr → Fallback "In N" (Tests). Message Thread. */
@@ -400,9 +433,16 @@ private:
                                 const juce::String& destUuid, int destChannel);
 
     /** Auto-Naming-Snapshot: setzt für den Eingang, der destChannel enthält,
-        autoName aus der Quelle — nur wenn userName UND autoName leer sind
-        (Snapshot, kein Live-Follow). Non-undoable (abgeleiteter Zustand). */
-    void snapshotAutoName (juce::ValueTree sendNodeTree, int destChannel);
+        autoName aus der Quelle. followSource=false (Link-Send): nur wenn
+        userName UND autoName leer sind (Einmal-Snapshot); followSource=true
+        (Looper-In): autoName folgt der Quelle bei jedem Stecken, userName
+        gewinnt, Kollisionen bekommen " 2"-Suffixe. Non-undoable. */
+    void snapshotAutoName (juce::ValueTree sendNodeTree, int destChannel,
+                           bool followSource);
+
+    /** Ketten-Namen ALLER Looper-In-Slots nachziehen (jede Kabel-Änderung —
+        auch Upstream-Umstecken ändert "{quelle} · {fx}"-Ketten). */
+    void refreshLooperInAutoNames();
 
     /** true für die Container Nodes[] und Connections[] (Schema 6.2). */
     [[nodiscard]] static bool isTopologyContainer (const juce::ValueTree& tree) noexcept;
@@ -445,6 +485,12 @@ private:
     // Deleting-Nodes (Phase 1 abgeschlossen): nodeId → gecachte moduleId
     std::map<juce::String, juce::String> pendingDeletes;
 
+    // Looper-I/O-Nodes mit geänderter Slot-Konfiguration (Kanalzahl-
+    // Property): im NÄCHSTEN gefadeten Swap re-materialisieren — anders
+    // als der harte Endpunkt-Pfad (Gerätewechsel) läuft das am spielenden
+    // System und gehört deshalb HINTER den Fade-Out (5.2).
+    std::vector<juce::String> pendingRematerialize;
+
     // M5c: aktive Macro-Modulationen (Offset [-1..+1] pro Parameter),
     // Uuid-keyed — kein Modul-Pointer (5.3). Nur Message Thread.
     std::map<ParamModKey, float> paramModulations;
@@ -460,6 +506,9 @@ private:
 
     // Capture-Kontext für ICaptureTapClients (Owner: EngineProcessor)
     CaptureService* captureService = nullptr;
+
+    // Looper-Busse für ILooperAudioClients (Owner: EngineProcessor)
+    LooperBank* looperBank = nullptr;
 
     // Kanal-Namen für Send-Auto-Naming (Owner: EngineProcessor)
     ChannelNames* channelNames = nullptr;

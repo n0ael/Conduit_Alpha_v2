@@ -17,6 +17,8 @@
 #include "UI/LevelMeterBar.h"
 #include "UI/LinkAudioReceivePanel.h"
 #include "UI/LinkAudioSendPanel.h"
+#include "UI/LooperInPanel.h"
+#include "UI/LooperOutPanel.h"
 #include "UI/NodeColourDot.h"
 #include "UI/ParameterPanel.h"
 #include "UI/PortComponent.h"
@@ -289,6 +291,22 @@ private:
     // Nur bei Link-Audio-Receive-Nodes (factoryId == "link_audio_receive") —
     // Kanal-Wahl + Latenz-Slider + Status-LED (7.2)
     std::unique_ptr<LinkAudioReceivePanel> receivePanel;
+
+    // Looper-I/O (ADR 010): Slot-Zeilen + „+"-Buttons — Slot-Umbauten
+    // re-materialisieren den Node gefadet (GraphManager-Patch-Aktionen)
+    std::unique_ptr<LooperInPanel> looperInPanel;
+    std::unique_ptr<LooperOutPanel> looperOutPanel;
+    bool isLooperInNode = false;
+    bool isLooperOutNode = false;
+
+    /** true, wenn an diesem Looper-I/O-Node ein Stereo-Slot beim Kanal
+        channel BEGINNT (span-2-Port) — liest die Slot-Breiten aus dem
+        <Inputs>-/<Outputs>-Subtree. */
+    [[nodiscard]] bool looperSlotPairStart (int channel) const;
+
+    /** Slot-Zeilenindex zum Kanal eines Looper-I/O-Nodes (Slot-Breiten aus
+        dem Tree) — Ports fluchten horizontal mit den Panel-Zeilen. */
+    [[nodiscard]] int looperSlotRowFor (int channel) const;
 
     // Alle anderen Module mit >= 1 Parameter (nicht Scope/Sequencer/Send/
     // Processor, die eigene Bedienoberflächen haben) — eine Zeile pro

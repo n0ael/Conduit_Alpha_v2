@@ -69,6 +69,16 @@ namespace id
     inline const juce::Identifier inputAutoName     { "autoName" };      // Snapshot aus der Quelle
     inline const juce::Identifier inputGainParamId  { "gainParamId" };   // "in{n}_gain"
 
+    // Outputs (Looper Out, Looper-I/O 07/2026) — pro Abgriff ein Slot.
+    // target 0 = Master-Mix, 1..4 = Looper n; mode "stereo" (2 Kanäle) |
+    // "sum" (LR-Summe) | "left" | "right" (je 1 Kanal); pre = Pre-Fader.
+    inline const juce::Identifier outputs      { "Outputs" };
+    inline const juce::Identifier output       { "Output" };
+    inline const juce::Identifier outputId     { "outputId" };
+    inline const juce::Identifier outputTarget { "target" };
+    inline const juce::Identifier outputMode   { "mode" };
+    inline const juce::Identifier outputPre    { "pre" };
+
     // Parameters
     inline const juce::Identifier parameters    { "Parameters" };
     inline const juce::Identifier parameter     { "Parameter" };

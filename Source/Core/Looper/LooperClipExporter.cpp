@@ -21,11 +21,15 @@ CaptureWriter::Job LooperClipExporter::makeJob (LooperClip& clip,
     const auto contentSamples = clip.numContentSamples;
     const auto leadIn = clip.crossfadeSamples;
 
+    // Mono-Clip (1 Kanal, Looper-I/O 07/2026): EINE Datei ohne Suffix —
+    // Stereo-Clips bleiben beim _l/_r-Paar
+    const auto clipChannels = clip.buffer.getNumChannels();
+
     const char* suffixes[] = { "_l", "_r" };
-    for (int channel = 0; channel < 2; ++channel)
+    for (int channel = 0; channel < clipChannels; ++channel)
     {
         CaptureWriter::Task task;
-        task.trackName = baseName + suffixes[channel];
+        task.trackName = clipChannels > 1 ? baseName + suffixes[channel] : baseName;
         task.startPosition = contentStart;
         task.endPosition = contentStart + static_cast<std::uint64_t> (contentSamples);
         task.channelIndex = -1;   // keine Kanal-Folgeaktionen

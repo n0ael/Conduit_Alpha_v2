@@ -89,7 +89,16 @@ void CaptureService::prepare (double sampleRate, int samplesPerBlock, int numInp
     audioSet = fresh;
 
     // Device-Wechsel kann die Kanalzahl ändern — die UI (CapturePanel) baut
-    // ihre Kanal-Zeilen auf diesen Broadcast hin neu auf (async, MT)
+    // ihre Kanal-Zeilen auf diesen Broadcast hin neu auf (async, MT);
+    // Namensauflösungen (Looper-Quellen) folgen synchron
+    notifyRegistryChanged();
+}
+
+void CaptureService::notifyRegistryChanged()
+{
+    if (onRegistryChanged)
+        onRegistryChanged();
+
     sendChangeMessage();
 }
 
@@ -172,8 +181,14 @@ CaptureService::BufferSet* CaptureService::buildSet()
 
     // Virtuelle Slots nur für tatsächlich registrierte Taps bauen — ohne
     // Taps bleibt der Satz (und damit das RAM-Budget pro Kanal) identisch
-    // zum reinen Hardware-Betrieb
-    const auto virtualSlotCount = clampedVirtualSlots (channels, registeredVirtualSlotCount());
+    // zum reinen Hardware-Betrieb. SOBALD Taps existieren, kommt eine
+    // Slot-Reserve dazu (Looper-I/O 07/2026): gearmte Looper-Quellen halten
+    // ihre Kanäle dauerhaft aktiv, die aufgeschobene Erweiterung käme also
+    // nie zum Zug — neue Looper-In-Slots wären ohne Reserve erst nach einem
+    // Audio-Neustart auflösbar. Kosten: virtualSlotReserve × Pre-Roll.
+    const auto registered = registeredVirtualSlotCount();
+    const auto virtualSlotCount = clampedVirtualSlots (
+        channels, registered > 0 ? registered + virtualSlotReserve : 0);
     const auto totalEntries = channels + virtualSlotCount;
 
     const auto ringCapacity = computeRingCapacitySamples (settings.getBufferMinutes(),
@@ -486,7 +501,7 @@ CaptureService::VirtualChannelHandle CaptureService::registerVirtualChannel (con
         if (needsVirtualExpansion() && ! isAnyChannelActive())
             reallocateBuffers();
 
-        sendChangeMessage();  // CapturePanel baut die Tap-Zeilen neu
+        notifyRegistryChanged();  // CapturePanel-Zeilen + Looper-Auflösung
         return { s };
     }
 
@@ -514,7 +529,7 @@ void CaptureService::unregisterVirtualChannel (VirtualChannelHandle& handle)
     slot.detachRequested.store (true, std::memory_order_release);
     slot.occupied = false;
 
-    sendChangeMessage();
+    notifyRegistryChanged();
 }
 
 void CaptureService::setVirtualChannelName (VirtualChannelHandle handle, const juce::String& name)
@@ -526,8 +541,15 @@ void CaptureService::setVirtualChannelName (VirtualChannelHandle handle, const j
     if (! slot.occupied || slot.name == name)
         return;
 
+    const auto oldName = slot.name;
     slot.name = name;
-    sendChangeMessage();
+
+    // Erst Key-Migration (alt → neu), DANN der Registry-Broadcast — die
+    // Quellauflösung im Broadcast findet den migrierten Key sofort
+    if (onChannelRenamed)
+        onChannelRenamed (oldName, name);
+
+    notifyRegistryChanged();
 }
 
 void CaptureService::writeVirtualChannel (VirtualChannelHandle handle,
@@ -871,9 +893,13 @@ void CaptureService::runRamGuard()
         return;
 
     // Aufgeschobene Tap-Slot-Erweiterung nachholen, sobald kein Kanal mehr
-    // aktiv ist — laufende Aufnahmen werden NIE für einen Tap verworfen
+    // aktiv ist — laufende Aufnahmen werden NIE für einen Tap verworfen.
+    // Der neue Satz vergibt captureIndex −1 → gültig: Auflösungen folgen
     if (needsVirtualExpansion() && ! isAnyChannelActive())
+    {
         reallocateBuffers();
+        notifyRegistryChanged();
+    }
 
     auto& pool = currentSet->pool;
     pool.service();

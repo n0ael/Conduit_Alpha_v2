@@ -4,6 +4,8 @@
 
 #include "Modules/ConduitModule.h"
 #include "Modules/LinkAudioSendModule.h"
+#include "Modules/LooperInModule.h"
+#include "Modules/LooperOutModule.h"
 #include "Modules/ScopeModule.h"
 #include "Modules/StepSequencerModule.h"
 #include "UI/ChannelAttributePanel.h"
@@ -54,6 +56,8 @@ NodeComponent::NodeComponent (juce::ValueTree nodeTreeToBind,
     endpointIsInput    = (factoryKey == audioInputModuleId);
     isChassisNode      = nodeTree.getProperty (id::type).toString()
                              == toString (ModuleType::processor);
+    isLooperInNode     = (factoryKey == LooperInModule::staticModuleId);
+    isLooperOutNode    = (factoryKey == LooperOutModule::staticModuleId);
 
     // ADR 009: auch I/O-Endpunkte sind reguläre Module — löschbar und
     // umbenennbar (die frühere Reserved-Ausnahme entfällt)
@@ -181,6 +185,22 @@ NodeComponent::NodeComponent (juce::ValueTree nodeTreeToBind,
         addAndMakeVisible (*receivePanel);
         setSize (280, touchTarget + LinkAudioReceivePanel::panelHeight());
     }
+    else if (isLooperInNode)
+    {
+        looperInPanel = std::make_unique<LooperInPanel> (nodeTree, graphManager);
+        addAndMakeVisible (*looperInPanel);
+
+        const auto numSlots = juce::jmax (1, nodeTree.getChildWithName (id::inputs).getNumChildren());
+        setSize (280, touchTarget + LooperInPanel::heightForInputs (numSlots));
+    }
+    else if (isLooperOutNode)
+    {
+        looperOutPanel = std::make_unique<LooperOutPanel> (nodeTree, graphManager);
+        addAndMakeVisible (*looperOutPanel);
+
+        const auto numSlots = juce::jmax (1, nodeTree.getChildWithName (id::outputs).getNumChildren());
+        setSize (280, touchTarget + LooperOutPanel::heightForOutputs (numSlots));
+    }
     else if (isExternalEndpoint)
     {
         updateEndpointSize();  // Höhe folgt der Hardware-Kanalzahl (Schritt B)
@@ -259,6 +279,12 @@ void NodeComponent::beginTeardown()
     if (receivePanel != nullptr)
         receivePanel->stopUpdates();
 
+    if (looperInPanel != nullptr)
+        looperInPanel->stopUpdates();
+
+    if (looperOutPanel != nullptr)
+        looperOutPanel->stopUpdates();
+
     if (parameterPanel != nullptr)
         parameterPanel->stopUpdates();
 
@@ -332,13 +358,20 @@ void NodeComponent::valueTreePropertyChanged (juce::ValueTree& tree, const juce:
                                 juce::dontSendNotification);
         else if (property == id::numInputChannels || property == id::numOutputChannels)
         {
-            // I/O-Endpunkt hat die Hardware-Kanalzahl geändert (Schritt B):
-            // Ports + Meter neu bauen, Kachel anpassen, Kabel folgen
+            // I/O-Endpunkt hat die Hardware-Kanalzahl geändert (Schritt B)
+            // bzw. Looper-I/O-Slot-Umbau (ADR 010): Ports + Meter neu
+            // bauen, Kachel anpassen, Kabel folgen
             rebuildPorts();
             rebuildMeters();
 
             if (isExternalEndpoint)
                 updateEndpointSize();
+            else if (isLooperInNode)
+                setSize (280, touchTarget + LooperInPanel::heightForInputs (
+                    juce::jmax (1, nodeTree.getChildWithName (id::inputs).getNumChildren())));
+            else if (isLooperOutNode)
+                setSize (280, touchTarget + LooperOutPanel::heightForOutputs (
+                    juce::jmax (1, nodeTree.getChildWithName (id::outputs).getNumChildren())));
 
             resized();   // neue Ports positionieren (auch bei gleicher Größe)
             repaint();
@@ -425,6 +458,41 @@ std::vector<NodeComponent::PortRow> NodeComponent::buildPortRows (
     return rows;
 }
 
+bool NodeComponent::looperSlotPairStart (int channel) const
+{
+    // Slot-Breiten aus dem Tree: Looper In trägt <Inputs> (mono|stereo,
+    // Pass-Through — beide Bänke identisch), Looper Out <Outputs>
+    // (stereo = 2 Kanäle, sum/left/right = 1)
+    int offset = 0;
+
+    if (isLooperInNode)
+    {
+        const auto inputs = nodeTree.getChildWithName (id::inputs);
+        for (int i = 0; i < inputs.getNumChildren(); ++i)
+        {
+            const auto stereo = inputs.getChild (i).getProperty (id::inputMode).toString()
+                                    == LooperInModule::modeStereo;
+            if (offset == channel)
+                return stereo;
+            offset += stereo ? 2 : 1;
+        }
+    }
+    else if (isLooperOutNode)
+    {
+        const auto outputs = nodeTree.getChildWithName (id::outputs);
+        for (int i = 0; i < outputs.getNumChildren(); ++i)
+        {
+            const auto width = LooperOutModule::widthOf (LooperOutModule::modeFromString (
+                outputs.getChild (i).getProperty (id::outputMode).toString()));
+            if (offset == channel)
+                return width == 2;
+            offset += width;
+        }
+    }
+
+    return false;
+}
+
 bool NodeComponent::hasPairingUi() const noexcept
 {
     // Pairing-Scope: der Audio-EINGANG (audio_in trägt Output-Ports = Hardware-
@@ -452,7 +520,8 @@ void NodeComponent::rebuildPorts()
 
     // Stereo-Paare verschmelzen zu span-2-Zeilen: am audio_in-Endpunkt nach
     // ChannelNames-Pairing, an FX-Chassis-Nodes fest die Audio-Kanäle 0/1
-    // (inhärentes Stereo — Default-Stereo-Verbindung, User 05.07.).
+    // (inhärentes Stereo — Default-Stereo-Verbindung, User 05.07.), an
+    // Looper-I/O-Nodes nach den Slot-Breiten des Trees (ADR 010).
     const auto pairStartForBank = [this] (bool isInputBank) -> std::function<bool (int)>
     {
         if (! isInputBank && hasPairingUi())
@@ -461,6 +530,9 @@ void NodeComponent::rebuildPorts()
 
         if (isChassisNode)
             return [] (int channel) { return channel == 0; };
+
+        if (isLooperInNode || (isLooperOutNode && ! isInputBank))
+            return [this] (int channel) { return looperSlotPairStart (channel); };
 
         return {};
     };
@@ -658,8 +730,42 @@ int NodeComponent::getNumOutputPorts() const noexcept { return static_cast<int> 
 int NodeComponent::getNumMeterBars() const noexcept   { return static_cast<int> (meterBars.size()); }
 int NodeComponent::getNumSendButtons() const noexcept { return static_cast<int> (sendButtons.size()); }
 
+int NodeComponent::looperSlotRowFor (int channel) const
+{
+    // Kanal → Slot-Zeilenindex über die Slot-Breiten des Trees (ADR 010) —
+    // dieselbe Quelle wie looperSlotPairStart
+    const auto items = nodeTree.getChildWithName (isLooperInNode ? id::inputs
+                                                                 : id::outputs);
+    int offset = 0;
+    for (int i = 0; i < items.getNumChildren(); ++i)
+    {
+        const auto item = items.getChild (i);
+        const int width = isLooperInNode
+            ? (item.getProperty (id::inputMode).toString() == LooperInModule::modeStereo ? 2 : 1)
+            : LooperOutModule::widthOf (LooperOutModule::modeFromString (
+                  item.getProperty (id::outputMode).toString()));
+
+        if (channel < offset + width)
+            return i;
+
+        offset += width;
+    }
+
+    return juce::jmax (0, items.getNumChildren() - 1);
+}
+
 int NodeComponent::channelRowY (bool isInputBank, int channel) const
 {
+    // Looper-I/O-Kacheln (ADR 010): Ports fluchten horizontal mit ihren
+    // Panel-Zeilen (User-Regel 19.07.2026) — beide Kanäle eines
+    // Stereo-Slots liefern dieselbe Zeilen-Mitte, der Paar-Port sitzt
+    // damit exakt auf der Zeile
+    if (isLooperInNode && looperInPanel != nullptr)
+        return looperInPanel->getY() + LooperInPanel::rowCentreY (looperSlotRowFor (channel));
+
+    if (isLooperOutNode && ! isInputBank && looperOutPanel != nullptr)
+        return looperOutPanel->getY() + LooperOutPanel::rowCentreY (looperSlotRowFor (channel));
+
     const auto count = juce::jmax (1, isInputBank ? inputChannelCount : outputChannelCount);
 
     // Unterhalb des Headers, oberhalb der Parameter-Zeilen (falls vorhanden) —
@@ -902,6 +1008,12 @@ void NodeComponent::resized()
 
     if (receivePanel != nullptr)
         receivePanel->setBounds (getLocalBounds().withTrimmedTop (touchTarget).reduced (22, 4));
+
+    if (looperInPanel != nullptr)
+        looperInPanel->setBounds (getLocalBounds().withTrimmedTop (touchTarget).reduced (22, 4));
+
+    if (looperOutPanel != nullptr)
+        looperOutPanel->setBounds (getLocalBounds().withTrimmedTop (touchTarget).reduced (22, 4));
 
     if (fxPanel != nullptr)
         fxPanel->setBounds (getLocalBounds().withTrimmedTop (touchTarget).reduced (28, 4));

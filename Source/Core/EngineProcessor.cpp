@@ -76,6 +76,10 @@ EngineProcessor::EngineProcessor (const juce::File& settingsFolder)
     // moduleId bei der Materialisierung (Spurname == moduleId)
     graphManager.setCaptureService (&captureService);
 
+    // Looper-Busse — ILooperAudioClients (Looper Out) lesen die vor dem
+    // Graph gerenderten Busse der Bank (Looper-I/O 07/2026)
+    graphManager.setLooperBank (&looperBank);
+
     // Master-Output-Tap (Looper B2): die Session-Summe nach dem GraphFader
     // als zwei virtuelle Capture-Kanäle — Quelle des Retro-Loopers, und
     // Capture All exportiert die Summe automatisch sample-aligned mit.
@@ -83,6 +87,42 @@ EngineProcessor::EngineProcessor (const juce::File& settingsFolder)
     // deshalb schlichte Member statt der rtSlot-Atomics des CaptureTapModule.
     masterTapLeft  = captureService.registerVirtualChannel ("master_l");
     masterTapRight = captureService.registerVirtualChannel ("master_r");
+
+    // Slot-Reserve (Looper-I/O 07/2026): Looper-In-Slots und Modul-Taps,
+    // die NACH prepare registriert werden, sind bis in die Reserve sofort
+    // auflösbar — gearmte Looper-Quellen halten die Kanäle sonst dauerhaft
+    // aktiv und blockieren die aufgeschobene Puffersatz-Erweiterung.
+    // 12 = Default-Bestückung EINES Looper-In (4× stereo + 4× mono).
+    captureService.setVirtualSlotReserve (12);
+
+    // Looper-Quellauflösung folgt der Registry SYNCHRON (Looper-I/O
+    // 07/2026): Re-Materialisierung eines Looper-In-Moduls registriert
+    // seine Kanäle auf neuen Slots (gearmte alte binden ihr Material als
+    // held) — ohne Refresh läse der Looper dauerhaft den toten Index
+    captureService.onRegistryChanged = [this] { applyLooperSourceArming(); };
+
+    // Slot-/Modul-Rename ändert den Registry-Namen — gespeicherte
+    // tap:-Quell-Keys wandern mit (Auto-Naming der Looper-In-Slots folgt
+    // der verkabelten Quelle, 19.07.2026)
+    captureService.onChannelRenamed = [this] (const juce::String& oldName,
+                                              const juce::String& newName)
+    {
+        const auto baseOf = [] (const juce::String& channelName)
+        {
+            return channelName.endsWith ("_l") || channelName.endsWith ("_r")
+                     ? channelName.dropLastCharacters (2)
+                     : channelName;
+        };
+
+        const auto oldKey = "tap:" + baseOf (oldName);
+        const auto newKey = "tap:" + baseOf (newName);
+        if (oldKey == newKey)
+            return;
+
+        for (int l = 0; l < LooperBank::maxLoopers; ++l)
+            if (looperSettings.getSourceKey (l) == oldKey)
+                looperSettings.setSourceKey (l, newKey);
+    };
 
     // Kanal-Namen — Auto-Naming der Send-Kanäle (7.2): Quelle am audio_input
     // liefert ihr ChannelNames-Label
@@ -231,6 +271,11 @@ EngineProcessor::EngineProcessor (const juce::File& settingsFolder)
 
 EngineProcessor::~EngineProcessor()
 {
+    // Modul-Destruktoren deregistrieren ihre Capture-Kanäle noch — die
+    // Registry-Hooks dürfen dabei nicht mehr feuern
+    captureService.onRegistryChanged = nullptr;
+    captureService.onChannelRenamed = nullptr;
+
     channelNames.removeChangeListener (this);
     meterSettings.removeChangeListener (this);
     transportSettings.removeChangeListener (this);
@@ -280,6 +325,10 @@ void EngineProcessor::applyLooperSettings()
                                    == LooperSettings::SoloScope::globalScope);
 
     for (int l = 0; l < LooperBank::maxLoopers; ++l)
+    {
+        // „an Master senden" pro Looper (Looper-I/O 07/2026)
+        looperBank.setLooperToMaster (l, looperSettings.isSendToMaster (l));
+
         for (int t = 0; t < LooperBank::maxTracks; ++t)
         {
             looperBank.setTrackGain (l, t, looperSettings.getTrackGain (l, t));
@@ -287,6 +336,7 @@ void EngineProcessor::applyLooperSettings()
             looperBank.setTrackMute (l, t, looperSettings.isTrackMuted (l, t));
             looperBank.setTrackSolo (l, t, looperSettings.isTrackSolo (l, t));
         }
+    }
 
     applyLooperSourceArming();
 }
@@ -339,8 +389,13 @@ void EngineProcessor::setLooperSource (int looperIndex, const juce::String& sour
 
 namespace
 {
-    /** Quell-Schlüssel ("master" | "hw:{paar}" | "out:{paar}" | "tap:{name}")
-        in Capture-Indizes auflösen (B3-Logik, nur herausgelöst). */
+    /** Quell-Schlüssel ("master" | "hw:{paar}" | "hwm:{kanal}" | "tap:{name}")
+        in Capture-Indizes auflösen (B3-Logik, nur herausgelöst).
+
+        Mono-Quellen (hwm:, Mono-Taps) lassen right = -1 — der Commit erzeugt
+        dann 1-Kanal-Clips (Looper-I/O 07/2026). Der frühere "out:{paar}"-
+        Zweig entfiel mit den Ausgangs-Paar-Taps: Ausgangs-Signale loopt man
+        jetzt per Kabel ins Looper-In-Modul (tap:-Pfad). */
     void resolveLooperSourceKey (const conduit::CaptureService& capture,
                                  const juce::String& key, int& left, int& right)
     {
@@ -367,23 +422,26 @@ namespace
             if (leftChannel + 1 < channels)
                 right = leftChannel + 1;
         }
-        else if (key.startsWith ("out:"))
+        else if (key.startsWith ("hwm:"))
         {
-            // Ausgangs-Paar p (Kanäle 2p/2p+1, p >= 1; Paar 0 = "master"):
-            // Registry-Namen out{p}_l/_r — Auflösung wie der tap:-Zweig
-            const auto base = "out" + key.substring (4);
+            // Einzelner Hardware-Kanal (Mono-Eintrag — ungepaarte Kanäle
+            // nach ∥-Pairing der ChannelNames)
+            const auto channel = key.substring (4).getIntValue();
 
-            for (int slot = 0; slot < conduit::CaptureService::MAX_VIRTUAL_CHANNELS; ++slot)
-            {
-                const auto info = capture.getVirtualChannelUiInfo (slot);
-                if (! info.inUse || info.captureIndex < 0)
-                    continue;
+            if (channel >= 0 && channel < capture.getRingNumChannels())
+                left = channel;
+        }
+        else if (key.startsWith ("hws:"))
+        {
+            // Stereo-Paar mit beliebigem Anker-Kanal (∥-Pairing kann auch
+            // ungerade Kanäle koppeln — "hw:{paar}" deckt nur 2n/2n+1)
+            const auto channel = key.substring (4).getIntValue();
+            const auto channels = capture.getRingNumChannels();
 
-                if (info.name == base + "_l")
-                    left = info.captureIndex;
-                else if (info.name == base + "_r")
-                    right = info.captureIndex;
-            }
+            if (channel >= 0 && channel < channels)
+                left = channel;
+            if (channel >= 0 && channel + 1 < channels)
+                right = channel + 1;
         }
         else if (key.startsWith ("tap:"))
         {
@@ -403,10 +461,6 @@ namespace
                     right = info.captureIndex;
             }
         }
-
-        // Mono-Quelle: rechts folgt links (Commit/Waveform lesen beide Seiten)
-        if (right < 0)
-            right = left;
     }
 } // namespace
 
@@ -442,8 +496,10 @@ void EngineProcessor::applyLooperSourceArming()
                 nowArmed.push_back (index);
 
         // Waveform-Binner folgt seiner Quelle (Reset + Backfill im Audio
-        // Thread, B4) — ein Tap pro Looper
-        looperWaveformTaps[static_cast<std::size_t> (l)].setSource (left, right);
+        // Thread, B4) — ein Tap pro Looper. Mono-Quelle (right < 0): die
+        // Anzeige liest links auf beiden Seiten, der Commit bleibt mono.
+        looperWaveformTaps[static_cast<std::size_t> (l)].setSource (
+            left, right >= 0 ? right : left);
     }
 
     // Diff: Verlassene entwaffnen (die normale Gate-Detektion übernimmt,
@@ -670,32 +726,6 @@ void EngineProcessor::prepareToPlay (double sampleRate, int samplesPerBlock)
     captureService.prepare (sampleRate, samplesPerBlock, getTotalNumInputChannels());
     barAnchors.reset();  // SampleClock-Reset invalidiert alle Anker-Positionen
 
-    // Ausgangs-Paar-Taps (Looper-Quellen "out:{paar}") an die aktuelle
-    // Output-Kanalzahl angleichen — Audio steht, die Handles sind danach
-    // bis zum nächsten prepare konstant (Header-Doku). Nur bei geänderter
-    // Paar-Zahl neu registrieren (Registry-Slots überleben den Puffersatz).
-    {
-        const auto wantedPairs = juce::jlimit (0, maxOutputTapPairs,
-                                               getTotalNumOutputChannels() / 2 - 1);
-        if (wantedPairs != numOutputTapPairs)
-        {
-            for (auto& handle : outputTapHandles)
-                if (handle.isValid())
-                    captureService.unregisterVirtualChannel (handle);
-
-            for (int pair = 0; pair < wantedPairs; ++pair)
-            {
-                const auto base = "out" + juce::String (pair + 1);
-                outputTapHandles[static_cast<std::size_t> (pair) * 2] =
-                    captureService.registerVirtualChannel (base + "_l");
-                outputTapHandles[static_cast<std::size_t> (pair) * 2 + 1] =
-                    captureService.registerVirtualChannel (base + "_r");
-            }
-
-            numOutputTapPairs = wantedPairs;
-        }
-    }
-
     // Looper-Quelle neu auflösen: der frische Puffersatz vergibt die
     // Capture-Indizes der virtuellen Slots neu (B3); Waveform-Binner und
     // Loop-Playback verwerfen ihren Stand (SampleClock-Reset, B4/B5)
@@ -793,6 +823,21 @@ void EngineProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::Midi
         inputLinkSend.processBlock (buffer, getTotalNumInputChannels(), clockBus.current);
     }
 
+    // Looper-Rendering VOR dem Graph (Looper-I/O 07/2026): das Playback
+    // liest nur committete Clips und braucht den Graph-Block nicht — das
+    // Looper-Out-Modul liest die Busse damit sample-aligned im SELBEN
+    // Callback (keine Block-Latenz). Der Master-Mix wird erst NACH dem
+    // Graph additiv ausgegeben (mixToOutput unten) — die Feedback-Freiheit
+    // des Master-Taps bleibt: der Tap sieht das Looper-Signal nie.
+    {
+        const rt::ScopedRealtimeSection rtAudit;
+        const auto clockNow = captureService.getSampleClock().now();
+        const auto blockSamples = static_cast<std::uint64_t> (buffer.getNumSamples());
+        looperBank.renderBlock (clockBus.current,
+                                clockNow >= blockSamples ? clockNow - blockSamples : 0,
+                                barAnchors, buffer.getNumSamples());
+    }
+
     graph.processBlock (buffer, midiMessages);
     graphFader.process (buffer);  // Master-Fade hinter dem Graph (5.2)
 
@@ -814,22 +859,6 @@ void EngineProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::Midi
                                                 buffer.getReadPointer (1),
                                                 buffer.getNumSamples());
 
-        // Ausgangs-Paare 1..N (Looper-Quellen "out:{paar}") — dasselbe
-        // Rohmaterial-Prinzip wie der Master-Tap, VOR Metronom/Looper
-        for (int pair = 0; pair < numOutputTapPairs; ++pair)
-        {
-            const int leftChannel = (pair + 1) * 2;
-
-            if (leftChannel < usable)
-                captureService.writeVirtualChannel (
-                    outputTapHandles[static_cast<std::size_t> (pair) * 2],
-                    buffer.getReadPointer (leftChannel), buffer.getNumSamples());
-            if (leftChannel + 1 < usable)
-                captureService.writeVirtualChannel (
-                    outputTapHandles[static_cast<std::size_t> (pair) * 2 + 1],
-                    buffer.getReadPointer (leftChannel + 1), buffer.getNumSamples());
-        }
-
         // Waveform-Binner der Looper-Page (B4): NACH dem Master-Tap-Write
         // sind alle Quelltypen (Hardware/Modul-Taps/Master) für diesen
         // Block vollständig im Ring
@@ -840,12 +869,11 @@ void EngineProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::Midi
                 tap.process (clockBus.current, captureService,
                              clockNow - blockSamples, buffer.getNumSamples());
 
-        // Loop-Playback (B5): NACH dem Master-Tap (der Looper kann seine
+        // Loop-Playback-Ausgabe (B5): Master-Mix des VOR dem Graph
+        // gerenderten Blocks — NACH dem Master-Tap (der Looper kann seine
         // eigene Ausgabe nie wieder einfangen) und VOR dem Metronom.
-        // Block-Start + Anker speisen den jitter-freien Beat-Playhead.
-        looperBank.process (buffer, getTotalNumOutputChannels(), clockBus.current,
-                            clockNow >= blockSamples ? clockNow - blockSamples : 0,
-                            barAnchors);
+        // Anker −1 = „Kein Master-Out" (mixToOutput schreibt nichts).
+        looperBank.mixToOutput (buffer, getTotalNumOutputChannels());
     }
 
     // Metronom NACH dem Fader (Click faded bei Graph-Swaps nicht mit) und

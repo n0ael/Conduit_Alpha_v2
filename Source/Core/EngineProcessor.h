@@ -214,7 +214,7 @@ public:
 
     //==========================================================================
     /** Looper-Quelle (B3/M4) [Message Thread]: Quell-Schlüssel
-        ("master" | "hw:{paar}" | "out:{paar}" | "tap:{name}") PRO LOOPER auflösen und
+        ("master" | "hw:{paar}" | "hwm:{kanal}" | "tap:{name}") PRO LOOPER auflösen und
         armen. Das Arming ist refcount-artig über die VEREINIGUNG aller
         Looper-Quellen: teilen sich zwei Looper eine Quelle, bleibt das
         Gate offen, bis der letzte sie verlässt. Looper 0 persistiert
@@ -223,8 +223,9 @@ public:
     void setLooperSource (int looperIndex, const juce::String& sourceKey);
     void setLooperSource (const juce::String& sourceKey) { setLooperSource (0, sourceKey); }
 
-    /** Aufgelöste Capture-Indizes der Looper-Quellen (links/rechts; Mono =
-        beide gleich, −1 = nicht auflösbar). Message Thread. */
+    /** Aufgelöste Capture-Indizes der Looper-Quellen (links/rechts; Mono-
+        Quelle: rechts = −1 → 1-Kanal-Clip; links −1 = nicht auflösbar).
+        Message Thread. */
     [[nodiscard]] int getLooperLeftIndex (int looperIndex = 0) const noexcept
     {
         return looperIndex >= 0 && looperIndex < LooperBank::maxLoopers
@@ -418,17 +419,6 @@ private:
     // unveränderlich — der Audio Thread liest sie deshalb direkt
     CaptureService::VirtualChannelHandle masterTapLeft;
     CaptureService::VirtualChannelHandle masterTapRight;
-
-    // Ausgangs-Paar-Taps (Looper-Quellen "out:{paar}", 08.07.2026): Paare
-    // 1..N hinter dem Master (Kanäle 2p/2p+1), Namen "out{p}_l/_r" — in
-    // prepareToPlay an die Device-Kanalzahl angeglichen (Audio steht,
-    // danach bis zum nächsten prepare unveränderlich → Audio Thread liest
-    // direkt, Muster masterTap). Damit sind auch Signale loopbar, die nur
-    // auf einem Ausgangspaar liegen (z. B. Link-Receive-Routings).
-    static constexpr int maxOutputTapPairs = 7;
-    std::array<CaptureService::VirtualChannelHandle,
-               static_cast<std::size_t> (maxOutputTapPairs) * 2> outputTapHandles;
-    int numOutputTapPairs = 0;
 
     // Looper-Quelle (B3): aufgelöste Capture-Indizes der gearmten Kanäle
     // (nur Message Thread; −1 = nicht auflösbar, z. B. vor prepare)

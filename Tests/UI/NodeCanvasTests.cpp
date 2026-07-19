@@ -501,6 +501,37 @@ struct PairingRig
 } // namespace
 
 //==============================================================================
+TEST_CASE ("Looper-In-Kachel: Ports fluchten mit den Slot-Zeilen", "[ui][looper]")
+{
+    PairingRig rig;
+    const auto node = rig.manager.addModuleNode ("looper_in", { 200, 100 });
+    REQUIRE (node.isValid());
+
+    auto* component = rig.canvas.findNodeComponent (PairingRig::uuidOf (node));
+    REQUIRE (component != nullptr);
+
+    // Default 4× stereo + 4× mono = 8 Zeilen; ein Stereo-Paar teilt seinen
+    // Port (∓5px-Kabel-Anker) auf der Zeilen-Mitte
+    const auto slot0a = component->getPortCentre (true, 0);
+    const auto slot0b = component->getPortCentre (true, 1);
+    REQUIRE (slot0a.x == slot0b.x);
+    REQUIRE (slot0b.y - slot0a.y == 10);
+    const auto row0 = (slot0a.y + slot0b.y) / 2;
+
+    // Zeilenraster 30px (LooperInPanel::rowHeight) statt Gleichverteilung
+    // über die Kachel-Höhe — Ports und Panel-Zeilen fluchten horizontal
+    const auto row1 = (component->getPortCentre (true, 2).y
+                       + component->getPortCentre (true, 3).y) / 2;
+    REQUIRE (row1 - row0 == 30);
+    REQUIRE (component->getPortCentre (true, 8).y  - row0 == 4 * 30);   // "In 5" (mono)
+    REQUIRE (component->getPortCentre (true, 11).y - row0 == 7 * 30);   // "In 8" (mono)
+
+    // Pass-Through: Ein- und Ausgangs-Bank fluchten identisch
+    REQUIRE (component->getPortCentre (false, 8).y
+             == component->getPortCentre (true, 8).y);
+}
+
+//==============================================================================
 TEST_CASE ("NodeComponent::buildPortRows: Paare verschmelzen zu span-2-Zeilen", "[ui][pairing]")
 {
     using Rows = std::vector<conduit::NodeComponent::PortRow>;

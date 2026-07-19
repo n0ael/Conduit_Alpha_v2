@@ -157,9 +157,13 @@ TEST_CASE ("Virtuelle Kanäle: Registrierung, Grenzen, Slot-Reuse", "[capturetap
 
     REQUIRE_FALSE (service.registerVirtualChannel ("ueberzaehlig").isValid());
 
-    // Satz trägt alle Slots: Hardware [0,2), Taps [2, 10)
-    REQUIRE (service.getChannel (2 + CaptureService::MAX_VIRTUAL_CHANNELS - 1) != nullptr);
-    REQUIRE (service.getChannel (2 + CaptureService::MAX_VIRTUAL_CHANNELS) == nullptr);
+    // Satz clampt auf die GETEILTE Obergrenze MAX_CAPTURE_CHANNELS (64):
+    // Hardware [0,2) + Taps [2,64) — die letzten beiden Registry-Slots
+    // bleiben ohne captureIndex (seit MAX_VIRTUAL_CHANNELS 64, Looper-I/O)
+    REQUIRE (service.getChannel (conduit::MAX_CAPTURE_CHANNELS - 1) != nullptr);
+    REQUIRE (service.getChannel (conduit::MAX_CAPTURE_CHANNELS) == nullptr);
+    REQUIRE (service.getVirtualChannelUiInfo (conduit::MAX_CAPTURE_CHANNELS - 3).captureIndex >= 0);
+    REQUIRE (service.getVirtualChannelUiInfo (conduit::MAX_CAPTURE_CHANNELS - 2).captureIndex == -1);
 
     const auto info = service.getVirtualChannelUiInfo (3);
     REQUIRE (info.inUse);

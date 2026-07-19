@@ -32,8 +32,10 @@ LooperPage::LooperPage()
     outputCombo.setName ("looperOutput");
     outputCombo.onChange = [this]
     {
+        // Item-ID 1 = „Kein Master-Out" (pairIndex −1, ADR 010), Paare
+        // folgen ab ID 2 — Mapping pairIndex = ID − 2
         if (onOutputPairSelected != nullptr && outputCombo.getSelectedId() > 0)
-            onOutputPairSelected (outputCombo.getSelectedId() - 1);
+            onOutputPairSelected (outputCombo.getSelectedId() - 2);
     };
 
     statusLabel.setColour (juce::Label::textColourId, push::colours::textDim);
@@ -86,12 +88,15 @@ LooperPanel& LooperPage::getPanel (int looperIndex)
 void LooperPage::setOutputPairs (const juce::StringArray& pairLabels, int selectedPair)
 {
     outputCombo.clear (juce::dontSendNotification);
-    for (int i = 0; i < pairLabels.size(); ++i)
-        outputCombo.addItem (pairLabels[i], i + 1);
 
-    if (pairLabels.size() > 0)
-        outputCombo.setSelectedId (juce::jlimit (0, pairLabels.size() - 1, selectedPair) + 1,
-                                   juce::dontSendNotification);
+    // „Kein Master-Out" (pairIndex −1, ADR 010) immer zuoberst — die
+    // Looper laufen weiter, nur die Anker-Ausgabe entfällt
+    outputCombo.addItem ("Kein Master-Out", 1);
+    for (int i = 0; i < pairLabels.size(); ++i)
+        outputCombo.addItem (pairLabels[i], i + 2);
+
+    outputCombo.setSelectedId (juce::jlimit (-1, pairLabels.size() - 1, selectedPair) + 2,
+                               juce::dontSendNotification);
 }
 
 void LooperPage::setSpectrumView (bool spectrum)

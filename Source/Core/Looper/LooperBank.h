@@ -104,8 +104,10 @@ public:
 
     /** Die letzten `bars` kompletten Takte in den Track committen und
         sofort phasenstarr abspielen — ersetzt dessen laufenden Clip
-        glitch-frei (Voice-Crossfade). Fehlerfälle: keine Quelle, zu wenig
-        Historie, Anker-Fenster, > maxLoopSeconds, RAM-Budget, Queue voll. */
+        glitch-frei (Voice-Crossfade). rightIndex < 0 = Mono-Quelle →
+        1-Kanal-Clip (halber RAM, Mono-Export; Playback speist beide
+        Seiten). Fehlerfälle: keine Quelle, zu wenig Historie,
+        Anker-Fenster, > maxLoopSeconds, RAM-Budget, Queue voll. */
     [[nodiscard]] juce::Result commitAndPlay (int looperIndex, int trackIndex,
                                               int bars, const CaptureService& capture,
                                               int leftIndex, int rightIndex,
@@ -208,15 +210,51 @@ public:
         Commit gerufen. */
     void serviceMessageThread();
 
-    /** Stereo-Anker: Loops auf Kanäle pairIndex*2 / +1 (global, M2). */
+    /** Stereo-Anker: Loops auf Kanäle pairIndex*2 / +1 (global, M2).
+        −1 = „Kein Master-Out" (Looper-I/O 07/2026): renderBlock läuft
+        weiter (Meter, Looper-Out-Busse), mixToOutput schreibt nichts. */
     void setAnchor (int pairIndex) noexcept
     {
-        anchor.store (juce::jmax (0, pairIndex), std::memory_order_relaxed);
+        anchor.store (juce::jmax (-1, pairIndex), std::memory_order_relaxed);
     }
 
-    /** [Audio Thread] Alle Loops auf die Anker-Kanäle addieren — Kontrakt
-        identisch zur LooperEngine (blockStartSample = SampleClock-Position
-        des Block-Anfangs, anchors = die Commit-Instanz). */
+    /** [Message Thread schreibt, Audio liest] Looper in die Master-Summe
+        aufnehmen (Default true) — „an Master senden" pro Looper. */
+    void setLooperToMaster (int looperIndex, bool toMaster) noexcept
+    {
+        if (looperIndex >= 0 && looperIndex < maxLoopers)
+            looperToMaster[static_cast<std::size_t> (looperIndex)]
+                .store (toMaster, std::memory_order_relaxed);
+    }
+
+    /** [Audio Thread, VOR graph.processBlock] Alle Voices rendern —
+        Playback liest nur committete Clips und braucht den Graph-Block
+        nicht. Füllt die internen Busse (pro Looper Pre-/Post-Fader-Stereo
+        + Master-Mix), die das Looper-Out-Modul im selben Callback über
+        getAudioView() liest — sample-aligned, ohne Block-Latenz.
+        blockStartSample = SampleClock-Position des Block-Anfangs. */
+    void renderBlock (const ClockState& clock, std::uint64_t blockStartSample,
+                      const BarSampleAnchors& anchors, int numSamples) noexcept;
+
+    /** [Audio Thread, NACH graph.processBlock] Master-Mix des zuletzt
+        gerenderten Blocks additiv aufs Anker-Paar — No-op bei Anker −1
+        („Kein Master-Out") oder OOB-Anker. */
+    void mixToOutput (juce::AudioBuffer<float>& buffer, int numOutputChannels) noexcept;
+
+    /** [NUR Audio Thread, im selben Callback NACH renderBlock] Sicht auf
+        die gerenderten Busse fürs Looper-Out-Modul. numSamples = 0, wenn
+        (noch) nichts gerendert wurde — Konsument gibt dann Stille aus. */
+    struct AudioView
+    {
+        const float* master[2] { nullptr, nullptr };
+        const float* pre [maxLoopers][2] {};    // vor Gain/Pan/Mute
+        const float* post[maxLoopers][2] {};    // wie gehört (post-fader)
+        int numSamples = 0;
+    };
+    [[nodiscard]] AudioView getAudioView() const noexcept;
+
+    /** [Audio Thread] Kompatibilitäts-Wrapper (Tests/Alt-Kontrakt):
+        renderBlock + mixToOutput in einem Aufruf. */
     void process (juce::AudioBuffer<float>& buffer, int numOutputChannels,
                   const ClockState& clock, std::uint64_t blockStartSample,
                   const BarSampleAnchors& anchors) noexcept;
@@ -385,11 +423,23 @@ private:
     // Track-Render-Scratch (prealloziert in prepare, Audio-only)
     std::vector<float> scratchLeft, scratchRight;
 
+    // Looper-I/O-Busse (prealloziert in prepare, Audio-only): pro Looper
+    // Pre-/Post-Fader-Stereo + Master-Mix des Blocks — renderBlock füllt,
+    // getAudioView()/mixToOutput lesen im selben Callback
+    std::array<std::array<std::vector<float>, 2>,
+               static_cast<std::size_t> (maxLoopers)> preBus, postBus;
+    std::array<std::vector<float>, 2> masterBus;
+    int renderedSamples = 0;   // 0 = noch nichts gerendert (View liefert Stille)
+
     // MT → Audio / Audio → MT
     SpscQueue<ClipCommand> commands { 1024 };
     SpscQueue<LooperClip*> retired  { 1024 };
 
     std::atomic<int>  anchor { 0 };
+
+    // „an Master senden" pro Looper (Default true) — MT schreibt, Audio liest
+    std::array<std::atomic<bool>, static_cast<std::size_t> (maxLoopers)> looperToMaster;
+
     std::atomic<bool> stopAllRequested { false };
     std::atomic<bool> playingFlag { false };
     std::atomic<int>  committedBars { 0 };

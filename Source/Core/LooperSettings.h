@@ -23,7 +23,7 @@ namespace conduit
     nicht über 4 Looper × 4 Tracks):
 
         LooperState (globale Menü-Optionen als Attribute)
-          └── Looper[i]: sourceKey, spectrum, numTracks
+          └── Looper[i]: sourceKey, spectrum, sendMaster, numTracks
                 └── Track[t]: gain, pan, mute, solo, variQuantized
 
     Globale Menü-Optionen (LooperSettingsMenu, M6):
@@ -127,6 +127,12 @@ public:
     [[nodiscard]] bool isSpectrumView (int looperIndex) const noexcept;
     void setSpectrumView (int looperIndex, bool spectrum);
 
+    /** „An Master senden" (Looper-I/O 07/2026, Default true): Looper in der
+        Master-Summe des Anker-Paars — unabhängig von Looper-Out-Abgriffen
+        (die laufen parallel). Der EngineProcessor spiegelt in die Bank. */
+    [[nodiscard]] bool isSendToMaster (int looperIndex) const noexcept;
+    void setSendToMaster (int looperIndex, bool enabled);
+
     [[nodiscard]] int getNumTracks (int looperIndex) const noexcept;
     void setNumTracks (int looperIndex, int count);
 
@@ -164,6 +170,7 @@ private:
     {
         juce::String sourceKey;       // leer = keine Quelle
         bool spectrum = false;
+        bool sendMaster = true;       // „an Master senden" (Looper-I/O)
         int numTracks = 1;
         std::array<TrackState, static_cast<std::size_t> (maxTracks)> tracks;
     };

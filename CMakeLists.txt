@@ -154,6 +154,7 @@ set(CONDUIT_CPP_SOURCES
     Source/Core/RemoteModuleBinder.cpp
     Source/Core/ResponseCurve.cpp
     Source/Core/RingTouchModel.cpp
+    Source/Core/SignalFlowColours.cpp
     Source/Core/SourceNameResolver.cpp
     Source/Core/TransportSettings.cpp
     Source/Core/UiSettings.cpp
@@ -168,6 +169,8 @@ set(CONDUIT_CPP_SOURCES
     Source/Core/Capture/CaptureService.cpp
     Source/Core/LooperSettings.cpp
     Source/UI/LooperClipControlsRow.cpp
+    Source/UI/LooperInPanel.cpp
+    Source/UI/LooperOutPanel.cpp
     Source/UI/LooperPanel.cpp
     Source/UI/LooperSettingsMenu.cpp
     Source/UI/LooperTrackStrip.cpp
@@ -265,6 +268,8 @@ set(CONDUIT_CPP_SOURCES
     Source/Modules/LfoModule.cpp
     Source/Modules/LinkAudioReceiveModule.cpp
     Source/Modules/LinkAudioSendModule.cpp
+    Source/Modules/LooperInModule.cpp
+    Source/Modules/LooperOutModule.cpp
     Source/Modules/ScopeModule.cpp
     Source/Modules/StepSequencerModule.cpp
     Source/UI/AudioSettingsComponent.cpp
@@ -668,6 +673,8 @@ if(CONDUIT_BUILD_TESTS)
         Tests/Core/LooperSourceTests.cpp
         Tests/Core/LooperWaveformTapTests.cpp
         Tests/Core/LooperBankTests.cpp
+        Tests/Core/LooperIoModuleTests.cpp
+        Tests/Core/SignalFlowColoursTests.cpp
         Tests/Core/LooperClipExporterTests.cpp
         Tests/Core/LooperSessionModelTests.cpp
         Tests/Core/LooperSettingsTests.cpp
@@ -789,6 +796,7 @@ if(CONDUIT_BUILD_TESTS)
         Source/Core/RemoteModuleBinder.cpp
         Source/Core/ResponseCurve.cpp
         Source/Core/RingTouchModel.cpp
+        Source/Core/SignalFlowColours.cpp
         Source/Core/SourceNameResolver.cpp
         Source/Core/TransportSettings.cpp
         Source/Core/UiSettings.cpp
@@ -803,6 +811,8 @@ if(CONDUIT_BUILD_TESTS)
         Source/Core/Capture/CaptureService.cpp
         Source/Core/LooperSettings.cpp
         Source/UI/LooperClipControlsRow.cpp
+        Source/UI/LooperInPanel.cpp
+        Source/UI/LooperOutPanel.cpp
         Source/UI/LooperPanel.cpp
         Source/UI/LooperSettingsMenu.cpp
         Source/UI/LooperTrackStrip.cpp
@@ -900,6 +910,8 @@ if(CONDUIT_BUILD_TESTS)
         Source/Modules/LfoModule.cpp
         Source/Modules/LinkAudioReceiveModule.cpp
         Source/Modules/LinkAudioSendModule.cpp
+        Source/Modules/LooperInModule.cpp
+        Source/Modules/LooperOutModule.cpp
         Source/Modules/ScopeModule.cpp
         Source/Modules/StepSequencerModule.cpp
         Source/UI/AudioSettingsComponent.cpp

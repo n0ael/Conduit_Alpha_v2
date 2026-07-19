@@ -79,6 +79,12 @@ private:
     void valueTreePropertyChanged (juce::ValueTree& tree,
                                    const juce::Identifier& property) override;
 
+    // Kabel-Änderungen ändern die geerbte Quellfarbe der Looper-In-Slots
+    // (Signal-Flow-Vererbung) — Namen decken die Property-Trigger ab
+    void valueTreeChildAdded (juce::ValueTree& parent, juce::ValueTree& child) override;
+    void valueTreeChildRemoved (juce::ValueTree& parent, juce::ValueTree& child,
+                                int formerIndex) override;
+
     void launchPresetChooser (bool saving);
     void handleExportReport (const CaptureWriter::Report& report);
     void toggleDevPanel();

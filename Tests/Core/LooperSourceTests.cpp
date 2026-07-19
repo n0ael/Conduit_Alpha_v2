@@ -16,10 +16,20 @@ TEST_CASE ("Looper-Quelle (B3): Schlüssel-Auflösung, Arming und Persistenz", "
     engine.setPlayConfigDetails (2, 2, 48000.0, 480);
     engine.prepareToPlay (48000.0, 480);
 
-    SECTION ("Default 'master': prepareToPlay armt die Master-Tap-Kanäle")
+    SECTION ("Werks-Default: KEINE Quelle, nichts gearmt (19.07.2026)")
     {
-        // M5: Quelle lebt in den LooperSettings (Migration vom Transport-Default)
-        REQUIRE (engine.getLooperSettings().getSourceKey (0) == "master");
+        // "master" ist seit ADR 010 nicht mehr wählbar; ein ab Werk
+        // gearmter Master-Tap blockierte die Puffersatz-Erweiterung
+        REQUIRE (engine.getLooperSettings().getSourceKey (0).isEmpty());
+        REQUIRE (engine.getLooperLeftIndex() == -1);
+        REQUIRE (engine.getLooperRightIndex() == -1);
+        REQUIRE_FALSE (capture.isChannelArmed (2));
+        REQUIRE_FALSE (capture.isChannelArmed (3));
+    }
+
+    SECTION ("Legacy-Key 'master' resolvet weiter (Alt-Session)")
+    {
+        engine.setLooperSource ("master");
         REQUIRE (engine.getLooperLeftIndex() == 2);   // hinter 2 Hardware-Kanälen
         REQUIRE (engine.getLooperRightIndex() == 3);
         REQUIRE (capture.isChannelArmed (2));
@@ -73,7 +83,7 @@ TEST_CASE ("Looper-Quelle (B3): Schlüssel-Auflösung, Arming und Persistenz", "
         capture.unregisterVirtualChannel (right);
     }
 
-    SECTION ("Mono-Tap: rechts folgt links")
+    SECTION ("Mono-Tap: rechts bleibt -1 (1-Kanal-Clip, Looper-I/O)")
     {
         auto mono = capture.registerVirtualChannel ("cv_solo");
         REQUIRE (mono.isValid());
@@ -83,10 +93,28 @@ TEST_CASE ("Looper-Quelle (B3): Schlüssel-Auflösung, Arming und Persistenz", "
         const auto expected = capture.getVirtualChannelUiInfo (mono.slot).captureIndex;
         REQUIRE (expected >= 0);
         REQUIRE (engine.getLooperLeftIndex() == expected);
-        REQUIRE (engine.getLooperRightIndex() == expected);
+        REQUIRE (engine.getLooperRightIndex() == -1);
         REQUIRE (capture.isChannelArmed (expected));
 
         capture.unregisterVirtualChannel (mono);
+    }
+
+    SECTION ("Mono-Hardware-Kanal hwm:{n}: links aufgelöst, rechts -1")
+    {
+        engine.setLooperSource ("hwm:1");
+
+        REQUIRE (engine.getLooperLeftIndex() == 1);
+        REQUIRE (engine.getLooperRightIndex() == -1);
+        REQUIRE (capture.isChannelArmed (1));
+        REQUIRE_FALSE (capture.isChannelArmed (0));
+    }
+
+    SECTION ("hwm: außerhalb der Kanalzahl bleibt unaufgelöst")
+    {
+        engine.setLooperSource ("hwm:5");   // Interface hat 2 Eingänge
+
+        REQUIRE (engine.getLooperLeftIndex() == -1);
+        REQUIRE (engine.getLooperRightIndex() == -1);
     }
 
     SECTION ("Unbekannter Tap-Name: nichts gearmt, Indizes -1")
@@ -97,69 +125,25 @@ TEST_CASE ("Looper-Quelle (B3): Schlüssel-Auflösung, Arming und Persistenz", "
         REQUIRE (engine.getLooperRightIndex() == -1);
     }
 
-    SECTION ("Ausgangspaar out:1 existiert bei 2 Output-Kanälen nicht")
+    SECTION ("Legacy-Schlüssel out:{paar} bleibt unaufgelöst (Taps entfallen)")
     {
-        // 2 Outs = nur der Master (Paar 0) — kein out1-Tap registriert
+        // Looper-I/O 07/2026: Ausgangs-Signale loopt man per Kabel ins
+        // Looper-In-Modul — der out:-Zweig resolvet zu nichts, kein Crash
         engine.setLooperSource ("out:1");
 
         REQUIRE (engine.getLooperLeftIndex() == -1);
         REQUIRE (engine.getLooperRightIndex() == -1);
     }
-}
 
-//==============================================================================
-TEST_CASE ("Looper-Quellen: Ausgangs-Paar-Taps out:{paar} (alle aktiven Outs)", "[looper]")
-{
-    juce::ScopedJuceInitialiser_GUI juceRuntime;
-    conduit::test::ScopedSettingsFolder settingsFolder;
-    conduit::EngineProcessor engine { settingsFolder.folder };
-    auto& capture = engine.getCaptureService();
-
-    // 6 Outputs = Master (0/1) + Paare out:1 (2/3) und out:2 (4/5)
-    engine.setPlayConfigDetails (2, 6, 48000.0, 480);
-    engine.prepareToPlay (48000.0, 480);
-
-    // prepareToPlay registriert die Paar-Taps hinter master_l/_r
-    int out1Left = -1, out1Right = -1, out2Left = -1;
-    for (int slot = 0; slot < conduit::CaptureService::MAX_VIRTUAL_CHANNELS; ++slot)
+    SECTION ("Keine out{p}-Taps mehr in der Registry (nur master_l/_r)")
     {
-        const auto info = capture.getVirtualChannelUiInfo (slot);
-        if (! info.inUse)
-            continue;
-        if (info.name == "out1_l") out1Left  = info.captureIndex;
-        if (info.name == "out1_r") out1Right = info.captureIndex;
-        if (info.name == "out2_l") out2Left  = info.captureIndex;
+        for (int slot = 0; slot < conduit::CaptureService::MAX_VIRTUAL_CHANNELS; ++slot)
+        {
+            const auto info = capture.getVirtualChannelUiInfo (slot);
+            if (info.inUse)
+                REQUIRE_FALSE (info.name.startsWith ("out"));
+        }
     }
-    REQUIRE (out1Left >= 0);
-    REQUIRE (out1Right >= 0);
-    REQUIRE (out2Left >= 0);
-
-    // Auflösung + Arming wie bei hw:/tap:-Quellen
-    engine.setLooperSource ("out:1");
-    REQUIRE (engine.getLooperLeftIndex() == out1Left);
-    REQUIRE (engine.getLooperRightIndex() == out1Right);
-    REQUIRE (capture.isChannelArmed (out1Left));
-    REQUIRE (capture.isChannelArmed (out1Right));
-
-    // Quellwechsel entwaffnet das verlassene Paar
-    engine.setLooperSource ("out:2");
-    REQUIRE (engine.getLooperLeftIndex() == out2Left);
-    REQUIRE_FALSE (capture.isChannelArmed (out1Left));
-    REQUIRE (capture.isChannelArmed (out2Left));
-
-    // Re-Prepare mit weniger Outputs baut die Paar-Taps zurück:
-    // out:2 (Kanäle 4/5) gibt es mit 4 Outputs nicht mehr
-    engine.setPlayConfigDetails (2, 4, 48000.0, 480);
-    engine.prepareToPlay (48000.0, 480);
-
-    bool sawOut2 = false;
-    for (int slot = 0; slot < conduit::CaptureService::MAX_VIRTUAL_CHANNELS; ++slot)
-    {
-        const auto info = capture.getVirtualChannelUiInfo (slot);
-        if (info.inUse && info.name == "out2_l")
-            sawOut2 = true;
-    }
-    REQUIRE_FALSE (sawOut2);
 }
 
 //==============================================================================
@@ -254,11 +238,12 @@ TEST_CASE ("Looper-Quellen (M4): Arming-Refcount über mehrere Looper", "[looper
         REQUIRE (engine.getLooperLeftIndex (1) == -1);
         REQUIRE (engine.getLooperLeftIndex (3) == -1);
 
+        engine.setLooperSource (0, "master");   // Alt-Session-Key auf Looper 0
         engine.setLooperSource (2, "hw:0");
         REQUIRE (engine.getLooperLeftIndex (2) == 0);
         REQUIRE (engine.getLooperRightIndex (2) == 1);
 
-        // Looper 0 (Default master) blieb unberührt
+        // Looper 0 (master) blieb unberührt
         REQUIRE (engine.getLooperLeftIndex (0) == 2);
         REQUIRE (capture.isChannelArmed (2));
 

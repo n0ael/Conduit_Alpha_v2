@@ -22,6 +22,33 @@ CallbackTimingMonitor, Spektrum-View, Snap-Declick, Duck, Lead-in).
 - Launch-Quantisierung über das app-weite Enum
   (`Source/Core/LaunchQuantization.h`), Grid-Übertritte sample-genau
   (`LooperClipMath::gridCrossingOffset`, FP-Epsilon-Lektion).
-- Quell-Schlüssel: "master" | "hw:{paar}" | "out:{paar}" | "tap:{name}" —
-  Auflösung zentral in `resolveLooperSourceKey` (EngineProcessor.cpp);
-  Ausgangs-Paar-Taps (out{p}_l/_r) werden in prepareToPlay registriert.
+- Quell-Schlüssel: "master" | "hw:{paar}" | "hwm:{kanal}" | "tap:{name}" —
+  Auflösung zentral in `resolveLooperSourceKey` (EngineProcessor.cpp).
+  Die Auflösung folgt der Capture-Registry SYNCHRON über
+  `CaptureService::onRegistryChanged` → `applyLooperSourceArming` —
+  Re-Materialisierung eines Looper-In-Moduls registriert seine Kanäle
+  auf NEUEN Slots (gearmte alte binden Material als held); ohne den
+  Hook läse der Looper dauerhaft stale Indizes (= Stille,
+  Feldtest-Fund 19.07.2026).
+  Mono-Quellen (hwm:, Mono-Taps) lassen right = −1 ⇒ 1-Kanal-Clip
+  (Mono-Export ohne Suffix). "out:{paar}" ist Legacy (resolvet zu −1) —
+  Ausgangs-Signale loopt man per Kabel ins Looper-In-Modul (ADR 010).
+- Looper-I/O (ADR 010): `LooperBank::renderBlock` läuft VOR dem Graph
+  (Playback liest nur committete Clips), `mixToOutput` NACH dem Graph;
+  das Looper-Out-Modul liest `getAudioView()` im SELBEN Callback —
+  View-Pointer NIE über den Callback hinaus halten. Anker −1 = „Kein
+  Master-Out"; `sendMaster` pro Looper (LooperSettings) wirkt NUR auf
+  den Master-Mix, nie auf die Pre-/Post-Busse.
+- Quellen-Combo listet NUR Looper-In-Slots (zuoberst) + Interface-
+  Eingänge (Mono/Stereo folgt dem ∥-Pairing der ChannelNames).
+- Slot-Namen/-Farben (19.07.2026): autoName = SIGNALKETTE „Quelle ·
+  FX…" (resolveSourceChainLabel; refreshLooperInAutoNames bei jeder
+  Kabel-Änderung; userName gewinnt, „ 2"-Suffix bei Kollision); Renames
+  migrieren gespeicherte tap:-Keys (`CaptureService::onChannelRenamed`).
+  Slot-/Waveform-/Clip-Farbe = geerbte Quellfarbe
+  (`Core/SignalFlowColours`, geteilt mit dem NodeCanvas), Fallback
+  nodeColour.
+- looper_in-Default = 4× stereo + 4× mono (12 Kanäle) — exakt die
+  CaptureService-Slot-Reserve. Looper starten ab Werk OHNE Quelle:
+  dauerhaft gearmte Kanäle (alter „master"-Default!) blockieren die
+  aufgeschobene Puffersatz-Erweiterung für immer.

@@ -65,6 +65,8 @@
 #include "LfoModule.h"
 #include "LinkAudioReceiveModule.h"
 #include "LinkAudioSendModule.h"
+#include "LooperInModule.h"
+#include "LooperOutModule.h"
 #include "ScopeModule.h"
 #include "StepSequencerModule.h"
 
@@ -215,6 +217,14 @@ void registerDefaultModules (ModuleFactory& factory)
         cvDescriptor (CaptureTapModule::staticModuleId, "Capture Tap", "Utility",
                       "capture tap record aufnahme export"),
         [] { return std::make_unique<CaptureTapModule>(); });
+    factory.registerModule (
+        cvDescriptor (LooperInModule::staticModuleId, "Looper In", "I/O",
+                      "looper in eingang quelle source aufnahme record loop"),
+        [] { return std::make_unique<LooperInModule>(); });
+    factory.registerModule (
+        cvDescriptor (LooperOutModule::staticModuleId, "Looper Out", "I/O",
+                      "looper out ausgang abgriff master playback loop"),
+        [] { return std::make_unique<LooperOutModule>(); });
 
     registerAirwindows<AirwindowsDensityModule> (factory);
     registerAirwindows<AirwindowsSlewModule> (factory);

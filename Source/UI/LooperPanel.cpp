@@ -39,6 +39,14 @@ LooperPanel::LooperPanel (int number)
             onAddTrack();
     };
 
+    // „An Master senden" (Looper-I/O, ADR 010) — LED an = in der Summe
+    sendMasterTile.onClick = [this]
+    {
+        if (onSendMasterToggled != nullptr)
+            onSendMasterToggled (! sendMasterTile.isActive());
+    };
+
+    addAndMakeVisible (sendMasterTile);
     addAndMakeVisible (sourceCombo);
     addAndMakeVisible (strip);
     addAndMakeVisible (controls);
@@ -114,7 +122,10 @@ void LooperPanel::setSources (std::vector<Source> sources, const juce::String& s
     // läuft weiterhin über Item-IDs (Index + 1), Ticks setzt showPopup
     auto* menu = sourceCombo.getRootMenu();
 
-    int selectedId = 1;
+    // Keine Phantom-Vorauswahl (Looper-I/O): ist der gespeicherte Schlüssel
+    // nicht (mehr) in der Liste — Legacy-Key, entfernter Slot —, bleibt die
+    // Combo LEER statt fälschlich den ersten Eintrag anzuzeigen
+    int selectedId = 0;
     for (int i = 0; i < (int) currentSources.size(); ++i)
     {
         const auto& source = currentSources[(size_t) i];
@@ -132,8 +143,7 @@ void LooperPanel::setSources (std::vector<Source> sources, const juce::String& s
             selectedId = i + 1;
     }
 
-    if (! currentSources.empty())
-        sourceCombo.setSelectedId (selectedId, juce::dontSendNotification);
+    sourceCombo.setSelectedId (selectedId, juce::dontSendNotification);
 
     applySelectedSourceColour();
 }
@@ -149,6 +159,11 @@ void LooperPanel::applySelectedSourceColour()
 
     sourceCombo.setColour (juce::ComboBox::textColourId,
                            colour.isTransparent() ? push::colours::text : colour);
+}
+
+void LooperPanel::setSendMaster (bool enabled)
+{
+    sendMasterTile.setActive (enabled);
 }
 
 void LooperPanel::setAudible (bool shouldGlow)
@@ -191,6 +206,7 @@ void LooperPanel::resized()
     auto header = bounds.removeFromTop (headerHeight - 4);
     header.removeFromLeft (76);   // "LOOPER n"
     header.removeFromRight (20);  // LED
+    sendMasterTile.setBounds (header.removeFromRight (44).reduced (2));
     sourceCombo.setBounds (header.reduced (2));
 
     strip.setBounds (bounds.removeFromTop (stripHeight));

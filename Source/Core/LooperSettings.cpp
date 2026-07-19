@@ -25,7 +25,12 @@ juce::PropertiesFile::Options LooperSettings::defaultOptions()
 
 LooperSettings::LooperSettings (const juce::PropertiesFile::Options& options)
 {
-    loopers[0].sourceKey = "master";   // Default vor Migration/Laden
+    // Werks-Default OHNE Quelle (Looper-I/O 19.07.2026): "master" steht
+    // seit ADR 010 nicht mehr in der Combo, und ein ab Werk gearmter
+    // Master-Tap hielte die Capture-Kanäle dauerhaft aktiv — die
+    // aufgeschobene Puffersatz-Erweiterung (Tap-Slots jenseits der
+    // Reserve) käme nie zum Zug. Alt-Sessions behalten ihren Wert
+    // (loadFromFile/Legacy-Migration überschreibt).
     applicationProperties.setStorageParameters (options);
     loadFromFile();
 }
@@ -47,7 +52,11 @@ void LooperSettings::migrateFromLegacy (const juce::String& legacyLooperSource,
     if (storedStateLoaded)
         return;
 
-    loopers[0].sourceKey = legacyLooperSource;
+    // "master" war der alte Zwangs-Default (TransportSettings-Fallback) —
+    // kein expliziter User-Wunsch. Seit ADR 010 nicht mehr wählbar, und
+    // ab Werk gearmter Master blockierte die Puffersatz-Erweiterung.
+    loopers[0].sourceKey = legacyLooperSource == "master" ? juce::String()
+                                                          : legacyLooperSource;
     loopers[0].spectrum  = legacySpectrumView;
 }
 
@@ -92,10 +101,11 @@ void LooperSettings::loadFromFile()
             break;
 
         auto& looper = loopers[static_cast<std::size_t> (looperIndex)];
-        looper.sourceKey = looperXml->getStringAttribute ("source");
-        looper.spectrum  = looperXml->getBoolAttribute ("spectrum", false);
-        looper.numTracks = juce::jlimit (1, maxTracks,
-                                         looperXml->getIntAttribute ("tracks", 1));
+        looper.sourceKey  = looperXml->getStringAttribute ("source");
+        looper.spectrum   = looperXml->getBoolAttribute ("spectrum", false);
+        looper.sendMaster = looperXml->getBoolAttribute ("sendMaster", true);
+        looper.numTracks  = juce::jlimit (1, maxTracks,
+                                          looperXml->getIntAttribute ("tracks", 1));
 
         int trackIndex = 0;
         for (const auto* trackXml : looperXml->getChildWithTagNameIterator (xmlTrack.toString()))
@@ -143,6 +153,7 @@ void LooperSettings::writeAndNotify()
         auto* looperXml = xml.createNewChildElement (xmlLooper.toString());
         looperXml->setAttribute ("source", looper.sourceKey);
         looperXml->setAttribute ("spectrum", looper.spectrum);
+        looperXml->setAttribute ("sendMaster", looper.sendMaster);
         looperXml->setAttribute ("tracks", looper.numTracks);
 
         for (int t = 0; t < maxTracks; ++t)
@@ -284,6 +295,22 @@ void LooperSettings::setSpectrumView (int looperIndex, bool spectrum)
         return;
 
     loopers[static_cast<std::size_t> (looperIndex)].spectrum = spectrum;
+    writeAndNotify();
+}
+
+bool LooperSettings::isSendToMaster (int looperIndex) const noexcept
+{
+    return ! validLooper (looperIndex)
+        || loopers[static_cast<std::size_t> (looperIndex)].sendMaster;
+}
+
+void LooperSettings::setSendToMaster (int looperIndex, bool enabled)
+{
+    if (! validLooper (looperIndex)
+        || loopers[static_cast<std::size_t> (looperIndex)].sendMaster == enabled)
+        return;
+
+    loopers[static_cast<std::size_t> (looperIndex)].sendMaster = enabled;
     writeAndNotify();
 }
 

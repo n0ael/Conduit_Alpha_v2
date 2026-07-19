@@ -21,6 +21,8 @@ LooperBank::LooperBank()
     for (auto& looper : effectiveMute)
         for (auto& mute : looper)
             mute.store (false, std::memory_order_relaxed);
+    for (auto& toMaster : looperToMaster)
+        toMaster.store (true, std::memory_order_relaxed);
 }
 
 //==============================================================================
@@ -33,6 +35,17 @@ void LooperBank::prepare (double sampleRate, int maxBlockSamples)
     const auto scratchSize = static_cast<std::size_t> (juce::jmax (16, maxBlockSamples));
     scratchLeft.assign (scratchSize, 0.0f);
     scratchRight.assign (scratchSize, 0.0f);
+
+    // Looper-I/O-Busse (Looper-Out-Modul + Master-Mix) — Audio steht
+    for (auto& looper : preBus)
+        for (auto& channel : looper)
+            channel.assign (scratchSize, 0.0f);
+    for (auto& looper : postBus)
+        for (auto& channel : looper)
+            channel.assign (scratchSize, 0.0f);
+    for (auto& channel : masterBus)
+        channel.assign (scratchSize, 0.0f);
+    renderedSamples = 0;
 
     // Audio steht (prepareToPlay) — die SPSC-Rollen dürfen hier einmalig
     // vom MT übernommen werden: Queues leeren, Voices direkt zurücksetzen
@@ -158,8 +171,12 @@ juce::Result LooperBank::commitClip (int looperIndex, int trackIndex, int bars,
         return juce::Result::fail ("Loop länger als "
                                    + juce::String ((int) maxLoopSeconds) + " s");
 
+    // Mono-Quelle (rightIndex < 0) → 1-Kanal-Clip: halber RAM, und der
+    // Export schreibt eine echte Mono-Datei (Looper-I/O 07/2026)
+    const auto clipChannels = rightIndex >= 0 ? 2 : 1;
+
     const auto totalSamples = static_cast<int> (numLoopSamples) + crossfadeSamples;
-    const auto newBytes = static_cast<std::int64_t> (totalSamples) * 2
+    const auto newBytes = static_cast<std::int64_t> (totalSamples) * clipChannels
                             * static_cast<std::int64_t> (sizeof (float))
                         + static_cast<std::int64_t> (sizeof (LooperClip));
     if (ramBytesUsed.load (std::memory_order_relaxed) + newBytes > ramBudgetBytes)
@@ -172,7 +189,7 @@ juce::Result LooperBank::commitClip (int looperIndex, int trackIndex, int bars,
         return juce::Result::fail ("Looper-Kommando-Queue voll");
 
     auto clip = std::make_unique<LooperClip>();
-    clip->buffer.setSize (2, totalSamples);
+    clip->buffer.setSize (clipChannels, totalSamples);
     clip->buffer.clear();
 
     // Lead-in beginnt crossfadeSamples VOR dem Loop-Start; am Session-
@@ -181,8 +198,8 @@ juce::Result LooperBank::commitClip (int looperIndex, int trackIndex, int bars,
     const auto readStart = startSample >= leadIn ? startSample - leadIn : 0;
     const auto padMissing = static_cast<int> (leadIn - (startSample - readStart));
 
-    const int indices[] = { leftIndex, rightIndex < 0 ? leftIndex : rightIndex };
-    for (int channel = 0; channel < 2; ++channel)
+    const int indices[] = { leftIndex, rightIndex };
+    for (int channel = 0; channel < clipChannels; ++channel)
         readChannelChunked (capture.getChannel (indices[channel]), readStart,
                             clip->buffer.getWritePointer (channel) + padMissing,
                             totalSamples - padMissing);
@@ -1014,11 +1031,11 @@ float LooperBank::renderClipSample (const LooperClip& clip, int channel,
          + leadSample * static_cast<float> (std::sin (angle));
 }
 
-void LooperBank::process (juce::AudioBuffer<float>& buffer, int numOutputChannels,
-                          const ClockState& clock, std::uint64_t blockStartSample,
-                          const BarSampleAnchors& anchors) noexcept
+void LooperBank::renderBlock (const ClockState& clock, std::uint64_t blockStartSample,
+                              const BarSampleAnchors& anchors, int numSamples) noexcept
 {
     ++blockCounter;
+    renderedSamples = 0;   // erst nach vollständigem Rendern gültig (AudioView)
 
     // Stop: alle Voices ausblenden (Clips bleiben im Store)
     if (stopAllRequested.exchange (false, std::memory_order_acq_rel))
@@ -1034,7 +1051,6 @@ void LooperBank::process (juce::AudioBuffer<float>& buffer, int numOutputChannel
     drainCommands();
 
     const auto beatsPerSample = clock.beatsPerSample();
-    const auto numSamples = buffer.getNumSamples();
     if (numSamples <= 0 || beatsPerSample <= 0.0
         || numSamples > static_cast<int> (scratchLeft.size()))
         return;
@@ -1087,14 +1103,16 @@ void LooperBank::process (juce::AudioBuffer<float>& buffer, int numOutputChannel
     const auto blockStartBeat = playheadBeat;
     playheadBeat += beatStep * static_cast<double> (numSamples);
 
-    const auto pair = anchor.load (std::memory_order_relaxed);
-    const auto channelA = pair * 2;
-    const auto usableChannels = juce::jmin (numOutputChannels, buffer.getNumChannels());
-    const auto writable = channelA < usableChannels;
-
-    auto* outA = writable ? buffer.getWritePointer (channelA) : nullptr;
-    auto* outB = (writable && channelA + 1 < usableChannels)
-               ? buffer.getWritePointer (channelA + 1) : nullptr;
+    // Looper-I/O-Busse dieses Blocks nullen — Looper ohne Voices bleiben
+    // Stille, das Looper-Out-Modul liest immer definierte Daten
+    for (std::size_t l = 0; l < static_cast<std::size_t> (maxLoopers); ++l)
+        for (std::size_t c = 0; c < 2; ++c)
+        {
+            juce::FloatVectorOperations::clear (preBus[l][c].data(),  numSamples);
+            juce::FloatVectorOperations::clear (postBus[l][c].data(), numSamples);
+        }
+    for (auto& channel : masterBus)
+        juce::FloatVectorOperations::clear (channel.data(), numSamples);
 
     const auto gainStep = 1.0f / static_cast<float> (juce::jmax (1, crossfadeSamples));
     const auto mixStep = preparedSampleRate > 0.0
@@ -1159,6 +1177,7 @@ void LooperBank::process (juce::AudioBuffer<float>& buffer, int numOutputChannel
                 const auto maxPosition = static_cast<double> (clip->numContentSamples) - 1.0e-9;
                 const auto spliceStart = clip->spliceStartGain;
                 const auto spliceStep  = clip->spliceStep;
+                const auto stereoClip  = clip->buffer.getNumChannels() > 1;
 
                 for (int i = voice.startOffset; i < numSamples; ++i)
                 {
@@ -1186,8 +1205,12 @@ void LooperBank::process (juce::AudioBuffer<float>& buffer, int numOutputChannel
                                                       spliceStart + spliceStep * static_cast<float> (i));
                     const auto factor = voice.gain * duck * splice;
 
-                    scratch0[i] += renderClipSample (*clip, 0, position) * factor;
-                    scratch1[i] += renderClipSample (*clip, 1, position) * factor;
+                    // Mono-Clip: Kanal 0 speist beide Seiten (Pan wirkt weiter)
+                    const auto sample0 = renderClipSample (*clip, 0, position);
+                    const auto sample1 = stereoClip ? renderClipSample (*clip, 1, position)
+                                                    : sample0;
+                    scratch0[i] += sample0 * factor;
+                    scratch1[i] += sample1 * factor;
                 }
 
                 voice.startOffset = 0;
@@ -1225,8 +1248,13 @@ void LooperBank::process (juce::AudioBuffer<float>& buffer, int numOutputChannel
             }
 
             //==============================================================
+            // Pre-Fader-Bus des Loopers (Looper-Out-Abgriff „Pre")
+            juce::FloatVectorOperations::add (preBus[l][0].data(), scratch0, numSamples);
+            juce::FloatVectorOperations::add (preBus[l][1].data(), scratch1, numSamples);
+
+            //==============================================================
             // Fader-Zug: Gain (5-ms-Slew) + Equal-Power-Pan + Mute →
-            // Post-Fader-Meter → additiv aufs Anker-Paar
+            // Post-Fader-Meter → additiv auf den Post-Bus des Loopers
             const auto gainTarget = targetGain[l][t].load (std::memory_order_relaxed);
             const auto panTarget  = targetPan[l][t].load (std::memory_order_relaxed);
             const auto muteTarget = effectiveMute[l][t].load (std::memory_order_relaxed)
@@ -1259,14 +1287,66 @@ void LooperBank::process (juce::AudioBuffer<float>& buffer, int numOutputChannel
                 trackMeters[l][t].process (view, 2);
             }
 
-            if (outA != nullptr)
-                for (int i = 0; i < numSamples; ++i)
-                {
-                    outA[i] += scratch0[i];
-                    if (outB != nullptr)
-                        outB[i] += scratch1[i];
-                }
+            juce::FloatVectorOperations::add (postBus[l][0].data(), scratch0, numSamples);
+            juce::FloatVectorOperations::add (postBus[l][1].data(), scratch1, numSamples);
         }
+
+    // Master-Mix = Summe der Post-Fader-Busse aller Looper mit
+    // „an Master senden" (Looper-I/O 07/2026)
+    for (std::size_t l = 0; l < static_cast<std::size_t> (maxLoopers); ++l)
+        if (looperToMaster[l].load (std::memory_order_relaxed))
+            for (std::size_t c = 0; c < 2; ++c)
+                juce::FloatVectorOperations::add (masterBus[c].data(),
+                                                  postBus[l][c].data(), numSamples);
+
+    renderedSamples = numSamples;
+}
+
+void LooperBank::mixToOutput (juce::AudioBuffer<float>& buffer, int numOutputChannels) noexcept
+{
+    const auto pair = anchor.load (std::memory_order_relaxed);
+    if (pair < 0 || renderedSamples <= 0)
+        return;   // „Kein Master-Out" bzw. noch nichts gerendert
+
+    const auto numSamples = juce::jmin (renderedSamples, buffer.getNumSamples());
+    const auto channelA = pair * 2;
+    const auto usableChannels = juce::jmin (numOutputChannels, buffer.getNumChannels());
+
+    if (channelA < usableChannels)
+        juce::FloatVectorOperations::add (buffer.getWritePointer (channelA),
+                                          masterBus[0].data(), numSamples);
+    if (channelA + 1 < usableChannels)
+        juce::FloatVectorOperations::add (buffer.getWritePointer (channelA + 1),
+                                          masterBus[1].data(), numSamples);
+}
+
+LooperBank::AudioView LooperBank::getAudioView() const noexcept
+{
+    AudioView view;
+    view.numSamples = renderedSamples;
+
+    if (renderedSamples <= 0)
+        return view;   // Pointer bleiben null — Konsument gibt Stille aus
+
+    view.master[0] = masterBus[0].data();
+    view.master[1] = masterBus[1].data();
+
+    for (std::size_t l = 0; l < static_cast<std::size_t> (maxLoopers); ++l)
+        for (std::size_t c = 0; c < 2; ++c)
+        {
+            view.pre [l][c] = preBus [l][c].data();
+            view.post[l][c] = postBus[l][c].data();
+        }
+
+    return view;
+}
+
+void LooperBank::process (juce::AudioBuffer<float>& buffer, int numOutputChannels,
+                          const ClockState& clock, std::uint64_t blockStartSample,
+                          const BarSampleAnchors& anchors) noexcept
+{
+    renderBlock (clock, blockStartSample, anchors, buffer.getNumSamples());
+    mixToOutput (buffer, numOutputChannels);
 }
 
 } // namespace conduit

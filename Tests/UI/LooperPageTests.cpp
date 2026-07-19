@@ -56,6 +56,19 @@ TEST_CASE ("LooperPanel: Quellen-Auswahl und Track-Struktur", "[looper][ui]")
     panel.getSourceCombo().setSelectedItemIndex (0, juce::sendNotificationSync);
     REQUIRE (selectedKey == "master");
 
+    // Keine Phantom-Vorauswahl (ADR 010): unbekannter/Legacy-Schlüssel
+    // → Combo bleibt LEER statt fälschlich den ersten Eintrag zu zeigen
+    panel.setSources (sources, "out:1");
+    REQUIRE (panel.getSourceCombo().getSelectedId() == 0);
+
+    // MST-Kachel: Zustand + Hook (Looper-I/O)
+    bool sendMaster = true;
+    panel.onSendMasterToggled = [&] (bool enabled) { sendMaster = enabled; };
+    panel.setSendMaster (true);
+    REQUIRE (panel.getSendMasterTile().isActive());
+    panel.getSendMasterTile().onClick();
+    REQUIRE_FALSE (sendMaster);
+
     // Tracks 1..4, „+"-Kachel verschwindet bei 4
     REQUIRE (panel.getTrackCount() == 1);
     panel.setTrackCount (4);
@@ -408,19 +421,27 @@ TEST_CASE ("LooperPage: Kopfzeile — Output-Paare, Spectrum, Hooks", "[looper][
 
     SECTION ("Output-Paare: Anker vorausgewählt, OOB geclampt, Klick meldet Index")
     {
+        // Item 0 = „Kein Master-Out" (pairIndex −1, ADR 010); Paare dahinter
         const juce::StringArray pairs { "Out 1 / Out 2", "Out 3 / Out 4" };
-        int selectedPair = -1;
+        int selectedPair = -99;
         page.onOutputPairSelected = [&] (int pair) { selectedPair = pair; };
 
         page.setOutputPairs (pairs, 1);
-        REQUIRE (page.getOutputCombo().getSelectedItemIndex() == 1);
-        REQUIRE (selectedPair == -1);
+        REQUIRE (page.getOutputCombo().getSelectedItemIndex() == 2);
+        REQUIRE (selectedPair == -99);
 
         page.setOutputPairs (pairs, 7);   // OOB → geclampt
-        REQUIRE (page.getOutputCombo().getSelectedItemIndex() == 1);
+        REQUIRE (page.getOutputCombo().getSelectedItemIndex() == 2);
 
-        page.getOutputCombo().setSelectedItemIndex (0, juce::sendNotificationSync);
+        page.getOutputCombo().setSelectedItemIndex (1, juce::sendNotificationSync);
         REQUIRE (selectedPair == 0);
+
+        // „Kein Master-Out" meldet −1 und ist vorwählbar
+        page.getOutputCombo().setSelectedItemIndex (0, juce::sendNotificationSync);
+        REQUIRE (selectedPair == -1);
+
+        page.setOutputPairs (pairs, -1);
+        REQUIRE (page.getOutputCombo().getSelectedItemIndex() == 0);
     }
 
     SECTION ("Spectrum-Kachel schaltet alle Panel-Strips")

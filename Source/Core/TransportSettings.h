@@ -75,9 +75,10 @@ public:
     [[nodiscard]] juce::String getLooperSource() const noexcept { return looperSource; }
     void setLooperSource (const juce::String& sourceKey);
 
-    /** Stereo-Anker des Loop-Playbacks (Paar n = Kanäle 2n/2n+1, B5/B6). */
+    /** Stereo-Anker des Loop-Playbacks (Paar n = Kanäle 2n/2n+1, B5/B6);
+        −1 = „Kein Master-Out" (Looper-I/O 07/2026). */
     [[nodiscard]] int getLooperAnchor() const noexcept { return looperAnchor; }
-    void setLooperAnchor (int pairIndex);  // Clamp 0..31
+    void setLooperAnchor (int pairIndex);  // Clamp −1..31
 
     /** Spektrum-View des Looper-Strips (S2): true = Spektrogramm statt
         Wellenform (Spectrum-Kachel auf der Looper-Page). */

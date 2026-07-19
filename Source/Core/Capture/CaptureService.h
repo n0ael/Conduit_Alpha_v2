@@ -131,10 +131,27 @@ class CaptureService : public ICaptureBufferHost,
 {
 public:
     /** Registry-Obergrenze virtueller Kanäle (Capture-Taps). Teilt sich
-        MAX_CAPTURE_CHANNELS mit der Hardware — buildSet() clampt.
-        16 seit den Ausgangs-Paar-Taps (Looper-Quellen "out:{paar}",
-        08.07.2026): master 2 + bis zu 7 Out-Paare + Modul-Taps. */
-    static constexpr int MAX_VIRTUAL_CHANNELS = 16;
+        MAX_CAPTURE_CHANNELS mit der Hardware — buildSet() clampt; Puffer
+        entstehen NUR für registrierte Slots (Registry-Einträge selbst sind
+        billig). 64 seit Looper-I/O (07/2026): master 2 + Modul-Taps +
+        dynamische Looper-In-Slots (Ziel bis 16 Stereo + 32 Mono); die
+        früheren Ausgangs-Paar-Taps out{p} entfielen dabei. Effektiv
+        begrenzt die geteilte 64er-Obergrenze minus Hardware-Kanäle. */
+    static constexpr int MAX_VIRTUAL_CHANNELS = 64;
+
+    /** [Message Thread, vor prepare] Slot-Reserve im Puffersatz, sobald
+        mindestens ein virtueller Kanal registriert ist (Looper-I/O
+        07/2026): Registrierungen bis in die Reserve sind SOFORT auflösbar
+        — auch während gearmte Looper-Quellen ihre Kanäle dauerhaft aktiv
+        halten (die aufgeschobene Erweiterung käme dann nie zum Zug).
+        Jenseits der Reserve gilt weiter: Erweiterung beim nächsten
+        Idle-Moment bzw. Audio-Neustart (buildSet). Kosten: Reserve ×
+        Pre-Roll-Puffer. Default 0 (reine Service-Tests unverändert);
+        der EngineProcessor setzt den App-Wert. */
+    void setVirtualSlotReserve (int slots) noexcept
+    {
+        virtualSlotReserve = juce::jlimit (0, MAX_VIRTUAL_CHANNELS, slots);
+    }
 
     explicit CaptureService (CaptureSettings& settingsToUse);
     ~CaptureService() override;
@@ -208,6 +225,23 @@ public:
         pro Handle und Block. */
     void writeVirtualChannel (VirtualChannelHandle handle,
                               const float* data, int numSamples) noexcept;
+
+    /** [Message Thread] SYNCHRONER Hook bei jeder Registry-/Puffersatz-
+        Änderung, die Namen→captureIndex-Auflösungen invalidieren kann
+        (register/unregister/rename, prepare, nachgeholte Slot-Erweiterung).
+        Der EngineProcessor hängt hier die Looper-Quellauflösung ein
+        (applyLooperSourceArming) — sonst liest der Looper nach einer
+        Re-Materialisierung stale Indizes (tote Kanäle = Stille).
+        Der async ChangeBroadcaster (UI) feuert zusätzlich wie bisher. */
+    std::function<void()> onRegistryChanged;
+
+    /** [Message Thread] SYNCHRONER Hook bei setVirtualChannelName —
+        feuert VOR onRegistryChanged mit altem und neuem Spurnamen. Der
+        EngineProcessor migriert damit gespeicherte "tap:"-Quell-Keys der
+        Looper (Auto-/User-Rename eines Looper-In-Slots ändert den
+        Registry-Namen — ohne Migration bräche die Quellwahl). */
+    std::function<void (const juce::String& oldName,
+                        const juce::String& newName)> onChannelRenamed;
 
     /** UI-Sicht eines Registry-Slots [Message Thread]. */
     struct VirtualChannelUiInfo
@@ -362,6 +396,11 @@ public:
 
 private:
     //==========================================================================
+    /** [Message Thread] onRegistryChanged synchron + ChangeBroadcast async —
+        an jeder Stelle, die Namen→captureIndex-Auflösungen ändern kann. */
+    void notifyRegistryChanged();
+
+    //==========================================================================
     /** Unveränderlicher Audio-Puffersatz — komplett ersetzt statt mutiert. */
     struct BufferSet
     {
@@ -415,6 +454,9 @@ private:
         std::atomic<bool> detachRequested { false };  // Gate im nächsten Block schließen
     };
     std::array<VirtualSlot, MAX_VIRTUAL_CHANNELS> virtualSlots;
+
+    // Slot-Reserve (setVirtualSlotReserve) — nur Message Thread (buildSet)
+    int virtualSlotReserve = 0;
 
     static constexpr int guardIntervalMs = 200;
     static constexpr int guardTicksPerCalibration = 5;     // 5 × 200 ms = 1 Hz

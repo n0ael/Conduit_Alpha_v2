@@ -452,6 +452,8 @@ Index:
 - 008 — Node-Page Multipage: Seiten-View-Schicht, Gesten-Leiter,
   Performance-Modus
 - 009 — I/O als reguläre Browser-Module (§6.2-Regel entfällt)
+- 010 — Looper-I/O: flexible Looper-Ein-/Ausgänge über Graph-Module
+- 011 — Mono/Stereo-Adaptivität der Module (SKIZZE, eigener Meilenstein)
 
 ---
 

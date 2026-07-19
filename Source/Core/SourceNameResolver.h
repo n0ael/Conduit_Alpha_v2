@@ -31,4 +31,17 @@ class ChannelNames;
                                                int destChannel,
                                                const ChannelNames* channelNames);
 
+/** Signalketten-Label für die Looper-In-Slots (User-Regel 19.07.2026):
+    verfolgt die Kette vom Ziel-Eingang RÜCKWÄRTS bis zur Wurzel und
+    listet die Stationen in Signalrichtung — Klangquelle zuerst, dann die
+    FX-Module: "mopho · galactic_1 · verbtiny_1". Wurzel = audio_input
+    (ChannelNames-Label des Kanals) oder ein Modul ohne verkabelten
+    Eingang (moduleId). Multi-Input-Stationen folgen ihrem ersten
+    verbundenen Eingang; Zyklen brechen ab. Leer, wenn am Ziel-Eingang
+    kein Kabel hängt. */
+[[nodiscard]] juce::String resolveSourceChainLabel (const juce::ValueTree& rootTree,
+                                                    const juce::String& destNodeUuid,
+                                                    int destChannel,
+                                                    const ChannelNames* channelNames);
+
 } // namespace conduit

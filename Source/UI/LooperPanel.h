@@ -33,6 +33,7 @@ public:
     //==========================================================================
     // Hooks [Editor]
     std::function<void (const juce::String& sourceKey)> onSourceSelected;
+    std::function<void (bool enabled)> onSendMasterToggled;   // „MST" (ADR 010)
     std::function<void (int bars)> onSegmentClicked;
     std::function<void (int trackIndex, int slotIndex)> onSlotTapped;
     std::function<void (int trackIndex, float gain01)> onTrackGain;
@@ -70,6 +71,10 @@ public:
     /** [Editor-Timer] LED der Kopfzeile (irgendein Track hörbar). */
     void setAudible (bool audible);
 
+    /** „An Master senden" (Looper-I/O, ADR 010): LED-Zustand der
+        MST-Kachel — Zustand kommt aus den LooperSettings (Editor). */
+    void setSendMaster (bool enabled);
+
     /** Gemeinsame Puls-Phase der Target-Zellen. */
     void setPulsePhase (float phase01);
 
@@ -77,6 +82,7 @@ public:
     [[nodiscard]] LooperClipControlsRow& getControls() noexcept { return controls; }
     [[nodiscard]] juce::ComboBox& getSourceCombo() noexcept { return sourceCombo; }
     [[nodiscard]] push::TextTile& getAddTrackTile() noexcept { return addTrackTile; }
+    [[nodiscard]] push::TextTile& getSendMasterTile() noexcept { return sendMasterTile; }
 
     void paint (juce::Graphics& g) override;
     void resized() override;
@@ -89,6 +95,7 @@ private:
     bool audible = false;
 
     juce::ComboBox sourceCombo;
+    push::TextTile sendMasterTile { "MST", push::colours::ledOrange };
     std::vector<Source> currentSources;
 
     LooperWaveformStrip strip;

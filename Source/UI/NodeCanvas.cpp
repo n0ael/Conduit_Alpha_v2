@@ -541,132 +541,16 @@ juce::Colour NodeCanvas::cableColourFor (const juce::String& sourceUuid, int sou
 }
 
 //==============================================================================
-juce::uint32 NodeCanvas::blendRgb (const std::vector<juce::uint32>& colours)
-{
-    if (colours.empty())
-        return 0;
-
-    juce::uint64 r = 0, g = 0, b = 0;
-    for (const auto c : colours)
-    {
-        r += (c >> 16) & 0xffu;
-        g += (c >> 8)  & 0xffu;
-        b += c         & 0xffu;
-    }
-
-    const auto n = (juce::uint64) colours.size();
-    const auto rgb = (juce::uint32) (((r / n) << 16) | ((g / n) << 8) | (b / n));
-    return rgb == 0 ? 0x010101u : rgb;  // 0 ist der „keine"-Sentinel
-}
-
-juce::uint32 NodeCanvas::computeEffectiveRgb (const juce::String& nodeUuid,
-                                              std::set<juce::String>& visiting)
-{
-    if (const auto it = flowColours.find (nodeUuid); it != flowColours.end())
-        return it->second;  // memoisiert
-
-    const auto node = rootState.getChildWithName (id::nodes)
-                          .getChildWithProperty (id::nodeId, nodeUuid);
-    if (! node.isValid())
-        return 0;
-
-    // audio_in ist reine Quelle (Farbe pro Kanal) — kein Einzel-Node-Wert
-    if (GraphManager::factoryKeyOf (node) == audioInputModuleId)
-        return 0;
-
-    // Explizite Node-Farbe gewinnt IMMER (bewusstes Label)
-    if (const auto explicitRgb = (juce::uint32) (int) node.getProperty (id::nodeColour, 0);
-        explicitRgb != 0)
-    {
-        flowColours[nodeUuid] = explicitRgb;
-        return explicitRgb;
-    }
-
-    if (visiting.count (nodeUuid) > 0)
-        return 0;  // Zyklus — Zweig nicht weiter verfolgen (nicht cachen)
-    visiting.insert (nodeUuid);
-
-    // Gemischte Farbe aller eingehenden Kabel (0/keine übersprungen)
-    std::vector<juce::uint32> incoming;
-    const auto connections = rootState.getChildWithName (id::connections);
-    for (int i = 0; i < connections.getNumChildren(); ++i)
-    {
-        const auto conn = connections.getChild (i);
-        if (conn.getProperty (id::destNodeId).toString() != nodeUuid)
-            continue;
-
-        const auto srcUuid = conn.getProperty (id::sourceNodeId).toString();
-        const auto srcCh   = (int) conn.getProperty (id::sourceChannel);
-
-        if (const auto rgb = sourceChannelRgb (srcUuid, srcCh, visiting); rgb != 0)
-            incoming.push_back (rgb);
-    }
-
-    visiting.erase (nodeUuid);
-
-    const auto result = blendRgb (incoming);
-    flowColours[nodeUuid] = result;
-    return result;
-}
-
-juce::uint32 NodeCanvas::sourceChannelRgb (const juce::String& sourceUuid, int channel,
-                                           std::set<juce::String>& visiting)
-{
-    const auto node = rootState.getChildWithName (id::nodes)
-                          .getChildWithProperty (id::nodeId, sourceUuid);
-    if (! node.isValid())
-        return 0;
-
-    if (channelNames != nullptr && GraphManager::factoryKeyOf (node) == audioInputModuleId)
-        return inputChannelRgb (channel);
-
-    return computeEffectiveRgb (sourceUuid, visiting);
-}
-
 juce::uint32 NodeCanvas::lookupSourceRgb (const juce::String& sourceUuid, int channel) const
 {
-    const auto node = rootState.getChildWithName (id::nodes)
-                          .getChildWithProperty (id::nodeId, sourceUuid);
-    if (! node.isValid())
-        return 0;
-
-    // audio_in: Farbe pro Kanal (ChannelNames)
-    if (channelNames != nullptr && GraphManager::factoryKeyOf (node) == audioInputModuleId)
-        return inputChannelRgb (channel);
-
-    if (const auto it = flowColours.find (sourceUuid); it != flowColours.end())
-        return it->second;
-
-    return 0;
-}
-
-juce::uint32 NodeCanvas::inputChannelRgb (int channel) const
-{
-    if (channelNames == nullptr)
-        return 0;
-
-    using D = ChannelNames::Direction;
-
-    // Partner-Kanal eines Paars (Vorgänger ist Pair-Start) → Farbe des Ankers
-    auto anchor = channel;
-    if (channel > 0
-        && ! channelNames->isPortPairStart (D::input, channel)
-        && channelNames->isPortPairStart (D::input, channel - 1))
-        anchor = channel - 1;
-
-    return channelNames->getColour (D::input, anchor);
+    return flow_colours::lookupSource (rootState, flowColours, channelNames,
+                                       sourceUuid, channel);
 }
 
 void NodeCanvas::refreshFlowColours()
 {
-    flowColours.clear();
-
-    const auto nodes = rootState.getChildWithName (id::nodes);
-    for (int i = 0; i < nodes.getNumChildren(); ++i)
-    {
-        std::set<juce::String> visiting;
-        computeEffectiveRgb (nodes.getChild (i).getProperty (id::nodeId).toString(), visiting);
-    }
+    // Kern-Logik in Core/SignalFlowColours (geteilt mit der Looper-Combo)
+    flowColours = flow_colours::computeAll (rootState, channelNames);
 
     // Effektive Farbe in die Header-Punkte schieben (audio_in hat keinen)
     for (auto& comp : nodeComponents)

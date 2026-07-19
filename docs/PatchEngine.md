@@ -99,3 +99,17 @@ Dies gilt für: Undo, Redo, Preset-Load, Bulk-Delete, Copy-Paste.
 - Kein `new`/`malloc` während des gesamten Ablaufs
 - `prepareToPlay()`-Fehler → `nodeError`-Property, nie ignorieren
 - Mehrere gleichzeitige Graph-Änderungen immer zu einem einzigen Swap coalescing
+
+## 5.7 Gefadete Re-Materialisierung (Looper-I/O, ADR 010)
+
+Slot-Umbauten an `looper_in`/`looper_out` (Kanalzahl-Properties bzw.
+`outputPre`/`outputTarget`/`outputMode` an `<Output>`-Kindern) landen in
+`pendingRematerialize` + `markTopologyDirty()`: der NÄCHSTE gefadete Swap
+entfernt den alten Graph-Node (Capture-Kanäle werden EXPLIZIT per
+Phase-1-Hook gelöst — die Node-Destruktion des AudioProcessorGraph läuft
+deferred, der Destruktor käme für die Registry zu spät) und
+`addNewNodes()` materialisiert frisch aus dem Tree. Eine bereits
+vorbereitete Instanz (Schritt 1 eines laufenden Swaps) wird verworfen
+(`preparedModules.erase`) — sie trüge die alte Slot-Konfiguration.
+Anders als der harte Endpunkt-Pfad (Gerätewechsel, ADR 009) läuft dieser
+Umbau am SPIELENDEN System und gehört deshalb hinter den Fade.

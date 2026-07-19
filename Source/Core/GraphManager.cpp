@@ -7,12 +7,15 @@
 #include "Interfaces/IClockSlave.h"
 #include "Interfaces/IExternalAudioEndpoint.h"
 #include "Interfaces/ILinkAudioClient.h"
+#include "Interfaces/ILooperAudioClient.h"
 #include "Interfaces/ISendConfigClient.h"
 #include "Interfaces/IStochastic.h"
 #include "ModuleUiDefaults.h"
 #include "Modules/ChassisSchema.h"
 #include "Modules/LinkAudioReceiveModule.h"
 #include "Modules/LinkAudioSendModule.h"
+#include "Modules/LooperInModule.h"
+#include "Modules/LooperOutModule.h"
 #include "Modules/ModuleFactory.h"
 #include "Modules/ProcessorModule.h"
 #include "NodeUiRegistry.h"
@@ -514,6 +517,171 @@ bool GraphManager::setLinkSendEnabled (const juce::String& nodeUuid, bool enable
 }
 
 //==============================================================================
+// Patch-Aktionen Looper-I/O (ADR 010)
+
+namespace
+{
+    /** Kabel-Remap nach Slot-Entfernung: Kanäle im entfernten Bereich
+        [offset, offset+width) verlieren ihr Kabel, dahinterliegende rücken
+        um width nach vorn. asSource/asDest wählen die betroffene Seite. */
+    void remapLooperConnections (juce::ValueTree connections, const juce::String& nodeUuid,
+                                 int offset, int width, bool asSource, bool asDest,
+                                 juce::UndoManager* undo)
+    {
+        for (int i = connections.getNumChildren(); --i >= 0;)
+        {
+            auto connection = connections.getChild (i);
+
+            const auto remapSide = [&] (const juce::Identifier& nodeProp,
+                                        const juce::Identifier& channelProp) -> bool
+            {
+                if (connection.getProperty (nodeProp).toString() != nodeUuid)
+                    return true;
+
+                const auto channel = (int) connection.getProperty (channelProp, 0);
+                if (channel >= offset && channel < offset + width)
+                    return false;   // Kabel auf dem entfernten Slot → löschen
+
+                if (channel >= offset + width)
+                    connection.setProperty (channelProp, channel - width, undo);
+                return true;
+            };
+
+            bool keep = true;
+            if (asSource)
+                keep = remapSide (id::sourceNodeId, id::sourceChannel) && keep;
+            if (asDest)
+                keep = remapSide (id::destNodeId, id::destChannel) && keep;
+
+            if (! keep)
+                connections.removeChild (i, undo);
+        }
+    }
+}
+
+bool GraphManager::addLooperInSlot (const juce::String& nodeUuid, bool stereo)
+{
+    JUCE_ASSERT_MESSAGE_THREAD
+
+    auto nodeTree = rootState.getChildWithName (id::nodes)
+                        .getChildWithProperty (id::nodeId, nodeUuid);
+    if (! nodeTree.isValid()
+        || factoryKeyOf (nodeTree) != LooperInModule::staticModuleId)
+        return false;
+
+    undoManager.beginNewTransaction ("Looper-In-Eingang hinzufügen");
+    LooperInModule::appendInput (nodeTree,
+                                 stereo ? LooperInModule::InputMode::stereo
+                                        : LooperInModule::InputMode::mono,
+                                 &undoManager);
+    return true;
+}
+
+bool GraphManager::removeLooperInSlot (const juce::String& nodeUuid, int slotIndex)
+{
+    JUCE_ASSERT_MESSAGE_THREAD
+
+    auto nodeTree = rootState.getChildWithName (id::nodes)
+                        .getChildWithProperty (id::nodeId, nodeUuid);
+    if (! nodeTree.isValid()
+        || factoryKeyOf (nodeTree) != LooperInModule::staticModuleId)
+        return false;
+
+    const auto inputsTree = nodeTree.getChildWithName (id::inputs);
+    if (inputsTree.getNumChildren() <= 1
+        || ! juce::isPositiveAndBelow (slotIndex, inputsTree.getNumChildren()))
+        return false;   // letzter Slot bleibt
+
+    // Kanal-Bereich des Slots VOR der Entfernung bestimmen
+    int offset = 0;
+    for (int i = 0; i < slotIndex; ++i)
+        offset += inputsTree.getChild (i).getProperty (id::inputMode).toString()
+                      == LooperInModule::modeStereo ? 2 : 1;
+    const auto width = inputsTree.getChild (slotIndex).getProperty (id::inputMode).toString()
+                           == LooperInModule::modeStereo ? 2 : 1;
+
+    undoManager.beginNewTransaction ("Looper-In-Eingang entfernen");
+    LooperInModule::removeInput (nodeTree, slotIndex, &undoManager);
+
+    // Pass-Through: Ein- und Ausgänge tragen dieselben Kanal-Indizes
+    remapLooperConnections (rootState.getChildWithName (id::connections), nodeUuid,
+                            offset, width, true, true, &undoManager);
+    return true;
+}
+
+bool GraphManager::addLooperOutSlot (const juce::String& nodeUuid, int target,
+                                     const juce::String& mode, bool pre)
+{
+    JUCE_ASSERT_MESSAGE_THREAD
+
+    auto nodeTree = rootState.getChildWithName (id::nodes)
+                        .getChildWithProperty (id::nodeId, nodeUuid);
+    if (! nodeTree.isValid()
+        || factoryKeyOf (nodeTree) != LooperOutModule::staticModuleId)
+        return false;
+
+    undoManager.beginNewTransaction ("Looper-Out-Abgriff hinzufügen");
+    LooperOutModule::appendOutput (nodeTree,
+                                   { target, LooperOutModule::modeFromString (mode), pre },
+                                   &undoManager);
+    return true;
+}
+
+bool GraphManager::removeLooperOutSlot (const juce::String& nodeUuid, int slotIndex)
+{
+    JUCE_ASSERT_MESSAGE_THREAD
+
+    auto nodeTree = rootState.getChildWithName (id::nodes)
+                        .getChildWithProperty (id::nodeId, nodeUuid);
+    if (! nodeTree.isValid()
+        || factoryKeyOf (nodeTree) != LooperOutModule::staticModuleId)
+        return false;
+
+    const auto outputsTree = nodeTree.getChildWithName (id::outputs);
+    if (outputsTree.getNumChildren() <= 1
+        || ! juce::isPositiveAndBelow (slotIndex, outputsTree.getNumChildren()))
+        return false;
+
+    int offset = 0;
+    for (int i = 0; i < slotIndex; ++i)
+        offset += LooperOutModule::widthOf (LooperOutModule::modeFromString (
+            outputsTree.getChild (i).getProperty (id::outputMode).toString()));
+    const auto width = LooperOutModule::widthOf (LooperOutModule::modeFromString (
+        outputsTree.getChild (slotIndex).getProperty (id::outputMode).toString()));
+
+    undoManager.beginNewTransaction ("Looper-Out-Abgriff entfernen");
+    LooperOutModule::removeOutput (nodeTree, slotIndex, &undoManager);
+
+    // Reine Quelle: nur die Source-Seite der Kabel ist betroffen
+    remapLooperConnections (rootState.getChildWithName (id::connections), nodeUuid,
+                            offset, width, true, false, &undoManager);
+    return true;
+}
+
+bool GraphManager::setLooperOutSlotPre (const juce::String& nodeUuid, int slotIndex, bool pre)
+{
+    JUCE_ASSERT_MESSAGE_THREAD
+
+    auto nodeTree = rootState.getChildWithName (id::nodes)
+                        .getChildWithProperty (id::nodeId, nodeUuid);
+    if (! nodeTree.isValid()
+        || factoryKeyOf (nodeTree) != LooperOutModule::staticModuleId)
+        return false;
+
+    auto slot = nodeTree.getChildWithName (id::outputs).getChild (slotIndex);
+    if (! slot.isValid())
+        return false;
+
+    if ((bool) slot.getProperty (id::outputPre, false) == pre)
+        return true;   // No-op
+
+    undoManager.beginNewTransaction (pre ? "Abgriff auf Pre-Fader"
+                                         : "Abgriff auf Post-Fader");
+    slot.setProperty (id::outputPre, pre, &undoManager);
+    return true;   // Property-Listener re-materialisiert (outputPre-Zweig)
+}
+
+//==============================================================================
 juce::String GraphManager::sanitizeModuleName (const juce::String& raw)
 {
     // OSC-pfadtauglich (7): lowercase, [a-z0-9_]; Trenner werden '_'
@@ -719,13 +887,16 @@ juce::ValueTree GraphManager::findConnectionTree (const juce::String& sourceUuid
 }
 
 //==============================================================================
-void GraphManager::snapshotAutoName (juce::ValueTree sendNodeTree, int destChannel)
+void GraphManager::snapshotAutoName (juce::ValueTree sendNodeTree, int destChannel,
+                                     bool followSource)
 {
     JUCE_ASSERT_MESSAGE_THREAD
 
     const auto inputsTree = sendNodeTree.getChildWithName (id::inputs);
 
-    // Eingang finden, der destChannel enthält, und seinen Start-Kanal (offset)
+    // Eingang finden, der destChannel enthält, und seinen Start-Kanal
+    // (offset) — "stereo"-Literal ist schema-weit identisch (Link-Send
+    // und Looper-In teilen das <Inputs>-Schema)
     int offset = 0;
     juce::ValueTree inputTree;
 
@@ -746,18 +917,47 @@ void GraphManager::snapshotAutoName (juce::ValueTree sendNodeTree, int destChann
     if (! inputTree.isValid())
         return;
 
-    // Snapshot nur, wenn weder userName noch autoName gesetzt sind.
+    // Expliziter User-Name gewinnt immer; ohne followSource (Link-Send:
+    // Einmal-Snapshot, Ableton-Routing bleibt stabil) blockt auch ein
+    // bestehender autoName. Looper-In folgt der Quelle bei jedem Stecken —
+    // Slot-Name/Spurname/Clip-Export zeigen die aktuelle Quelle
     if (inputTree.getProperty (id::inputUserName).toString().isNotEmpty()
-        || inputTree.getProperty (id::inputAutoName).toString().isNotEmpty())
+        || (! followSource
+            && inputTree.getProperty (id::inputAutoName).toString().isNotEmpty()))
         return;
 
     // Quell-Label vom repräsentativen (linken) Kanal des Eingangs.
-    const auto label = resolveSourceLabel (rootState,
-                                           sendNodeTree.getProperty (id::nodeId).toString(),
-                                           offset, channelNames);
+    // Looper-In (followSource) zeigt die ganze Signalkette — Klangquelle
+    // zuerst, dann die FX-Stationen (User-Regel 19.07.2026); Link-Send
+    // bleibt beim einstufigen Label (Ableton-Routing-Namen kurz halten)
+    const auto nodeUuid = sendNodeTree.getProperty (id::nodeId).toString();
+    const auto label = followSource
+        ? resolveSourceChainLabel (rootState, nodeUuid, offset, channelNames)
+        : resolveSourceLabel (rootState, nodeUuid, offset, channelNames);
 
-    if (label.isNotEmpty())
-        inputTree.setProperty (id::inputAutoName, label, nullptr);  // abgeleitet, non-undoable
+    if (label.isEmpty())
+        return;
+
+    // Kollisionen innerhalb der Slot-Liste vermeiden (gleiche Quelle an
+    // zwei Slots): doppelte Spurnamen brächen Export und tap:-Auflösung
+    auto unique = label;
+    for (int suffix = 2;; ++suffix)
+    {
+        bool taken = false;
+        for (int i = 0; i < inputsTree.getNumChildren() && ! taken; ++i)
+        {
+            const auto other = inputsTree.getChild (i);
+            taken = other != inputTree
+                 && LinkAudioSendModule::effectiveInputName (other, i) == unique;
+        }
+
+        if (! taken)
+            break;
+
+        unique = label + " " + juce::String (suffix);
+    }
+
+    inputTree.setProperty (id::inputAutoName, unique, nullptr);  // abgeleitet, non-undoable
 }
 
 bool GraphManager::refreshAutoNames (const juce::String& nodeUuid)
@@ -817,6 +1017,11 @@ void GraphManager::setClockBus (const ClockBus* bus) noexcept
 void GraphManager::setLinkClock (LinkClock* clock) noexcept
 {
     linkClock = clock;
+}
+
+void GraphManager::setLooperBank (LooperBank* bank) noexcept
+{
+    looperBank = bank;
 }
 
 void GraphManager::setCaptureService (CaptureService* service) noexcept
@@ -883,6 +1088,55 @@ void GraphManager::valueTreePropertyChanged (juce::ValueTree& tree, const juce::
 
         pendingDeletes[nodeUuid] = tree.getProperty (id::moduleId).toString();
         triggerAsyncUpdate();
+        return;
+    }
+
+    // Looper-I/O-Slots geändert (Looper In „+"/Slot-Umbau, Looper Out
+    // Abgriff-Umbau): neue Busse nötig → im NÄCHSTEN gefadeten Swap
+    // re-materialisieren (5.2) — anders als der harte Endpunkt-Pfad
+    // unten läuft das am spielenden System.
+    if ((property == id::numInputChannels || property == id::numOutputChannels)
+        && tree.hasType (id::node))
+    {
+        if (const auto factoryKey = factoryKeyOf (tree);
+            factoryKey == LooperInModule::staticModuleId
+            || factoryKey == LooperOutModule::staticModuleId)
+        {
+            const auto nodeUuid = tree.getProperty (id::nodeId).toString();
+
+            if (std::find (pendingRematerialize.begin(), pendingRematerialize.end(),
+                           nodeUuid) == pendingRematerialize.end())
+                pendingRematerialize.push_back (nodeUuid);
+
+            // Eine bereits vorbereitete Instanz (Schritt 1 eines noch
+            // laufenden Swaps) trägt die ALTE Slot-Konfiguration — verwerfen,
+            // der nächste Prepare liest frisch aus dem Tree
+            preparedModules.erase (nodeUuid);
+
+            markTopologyDirty();
+            return;
+        }
+    }
+
+    // Looper-Out-Abgriff-Eigenschaften geändert (Pre/Post, Ziel, Modus —
+    // auch via Undo): das Modul liest die Slots nur bei der Materialisierung
+    // → gefadet re-materialisieren (Kanalzahl bleibt bei Pre/Post gleich,
+    // deshalb eigener Trigger neben dem numChannels-Zweig oben).
+    if ((property == id::outputPre || property == id::outputTarget
+         || property == id::outputMode)
+        && tree.hasType (id::output))
+    {
+        if (const auto nodeTree = tree.getParent().getParent(); nodeTree.hasType (id::node))
+        {
+            const auto nodeUuid = nodeTree.getProperty (id::nodeId).toString();
+
+            if (std::find (pendingRematerialize.begin(), pendingRematerialize.end(),
+                           nodeUuid) == pendingRematerialize.end())
+                pendingRematerialize.push_back (nodeUuid);
+
+            preparedModules.erase (nodeUuid);
+            markTopologyDirty();
+        }
         return;
     }
 
@@ -1134,15 +1388,23 @@ void GraphManager::valueTreeChildAdded (juce::ValueTree& parent, juce::ValueTree
     //         als Subtree an den Root — parent ist dann der Root).
     // Auto-Naming-Snapshot (7.2 Schritt 3): frisch gezogenes Kabel an einen
     // Send-Eingang → Quell-Name EINMAL übernehmen (kein Live-Follow, damit
-    // Ableton-Routing stabil bleibt).
+    // Ableton-Routing stabil bleibt). Looper-In-Slots (ADR 010) folgen der
+    // Quelle dagegen bei JEDEM Stecken — Combo/Spurname/Clip zeigen die
+    // aktuell verkabelte Quelle (User-Regel 19.07.2026).
     if (child.hasType (id::connection))
     {
         const auto destUuid = child.getProperty (id::destNodeId).toString();
         const auto destNode = rootState.getChildWithName (id::nodes)
                                   .getChildWithProperty (id::nodeId, destUuid);
 
-        if (destNode.isValid() && factoryKeyOf (destNode) == LinkAudioSendModule::staticModuleId)
-            snapshotAutoName (destNode, static_cast<int> (child.getProperty (id::destChannel)));
+        if (destNode.isValid()
+            && factoryKeyOf (destNode) == LinkAudioSendModule::staticModuleId)
+            snapshotAutoName (destNode, static_cast<int> (child.getProperty (id::destChannel)),
+                              false);
+
+        // Looper-In-Ketten-Namen hängen an JEDER Kabel-Änderung — auch
+        // Upstream (Eingang → FX umgesteckt ändert die Kette)
+        refreshLooperInAutoNames();
     }
 
     if (isTopologyContainer (parent) || isTopologyContainer (child))
@@ -1151,8 +1413,33 @@ void GraphManager::valueTreeChildAdded (juce::ValueTree& parent, juce::ValueTree
 
 void GraphManager::valueTreeChildRemoved (juce::ValueTree& parent, juce::ValueTree& child, int)
 {
+    if (child.hasType (id::connection))
+        refreshLooperInAutoNames();
+
     if (isTopologyContainer (parent) || isTopologyContainer (child))
         markTopologyDirty();
+}
+
+void GraphManager::refreshLooperInAutoNames()
+{
+    const auto nodesTree = rootState.getChildWithName (id::nodes);
+
+    for (int n = 0; n < nodesTree.getNumChildren(); ++n)
+    {
+        auto node = nodesTree.getChild (n);
+        if (factoryKeyOf (node) != LooperInModule::staticModuleId)
+            continue;
+
+        const auto inputsTree = node.getChildWithName (id::inputs);
+        int offset = 0;
+
+        for (int i = 0; i < inputsTree.getNumChildren(); ++i)
+        {
+            snapshotAutoName (node, offset, true);
+            offset += inputsTree.getChild (i).getProperty (id::inputMode).toString()
+                          == LooperInModule::modeStereo ? 2 : 1;
+        }
+    }
 }
 
 void GraphManager::valueTreeRedirected (juce::ValueTree&)
@@ -1348,6 +1635,16 @@ std::unique_ptr<ConduitModule> GraphManager::materializeModule (juce::ValueTree 
         receiveModule->setTargetChannel (nodeTree.getProperty (id::targetPeer).toString(),
                                          nodeTree.getProperty (id::targetChannel).toString());
 
+    // Looper Out (Looper-I/O): Abgriff-Slots aus dem Tree VOR
+    // prepareForGraph — bestimmen das Ausgangs-Bus-Layout.
+    if (auto* looperOut = dynamic_cast<LooperOutModule*> (module.get()))
+        looperOut->applyOutputSpecs (LooperOutModule::readOutputConfig (nodeTree));
+
+    // Looper-Busse VOR prepareForGraph (ILooperAudioClient): die Bank
+    // überlebt den Graph (EngineProcessor-Deklarationsreihenfolge).
+    if (auto* looperClient = dynamic_cast<ILooperAudioClient*> (module.get()))
+        looperClient->setLooperAudioSource (looperBank);
+
     // Capture-Kontext VOR prepareForGraph: die Kanal-Registrierung passiert
     // dort und braucht Service + moduleId (Spurname == moduleId)
     if (auto* tapClient = dynamic_cast<ICaptureTapClient*> (module.get()))
@@ -1387,6 +1684,21 @@ void GraphManager::performTopologySwap()
     topologyDirty = false;
     pendingChangeCount = 0;
     ++rebuildCount;
+
+    // Looper-I/O-Re-Materialisierung (Slot-Umbau): alten Graph-Node hinter
+    // dem Fade entfernen; Capture-Kanäle EXPLIZIT lösen (Phase-1-Muster) —
+    // die Node-Destruktion läuft im AudioProcessorGraph deferred, der
+    // Destruktor käme für die Registry zu spät (doppelte Spurnamen).
+    for (const auto& nodeUuid : pendingRematerialize)
+        if (const auto it = treeToGraphNode.find (nodeUuid); it != treeToGraphNode.end())
+        {
+            if (auto* tapClient = dynamic_cast<ICaptureTapClient*> (getModuleFor (nodeUuid)))
+                tapClient->releaseCaptureResources();
+
+            graph.removeNode (it->second);   // entfernt auch alle Kabel dieses Nodes
+            treeToGraphNode.erase (it);
+        }
+    pendingRematerialize.clear();
 
     removeVanishedNodes();
     addNewNodes();

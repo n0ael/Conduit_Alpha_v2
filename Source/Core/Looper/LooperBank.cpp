@@ -21,6 +21,12 @@ LooperBank::LooperBank()
     for (auto& looper : effectiveMute)
         for (auto& mute : looper)
             mute.store (false, std::memory_order_relaxed);
+    for (auto& looper : targetSendMask)
+        for (auto& mask : looper)
+            mask.store (0, std::memory_order_relaxed);
+    for (auto& looper : sendTapPre)
+        for (auto& pre : looper)
+            pre.store (false, std::memory_order_relaxed);
     for (auto& toMaster : looperToMaster)
         toMaster.store (true, std::memory_order_relaxed);
 }
@@ -33,18 +39,26 @@ void LooperBank::prepare (double sampleRate, int maxBlockSamples)
     maxLoopSamples   = (int) std::lround (maxLoopSeconds * preparedSampleRate);
 
     const auto scratchSize = static_cast<std::size_t> (juce::jmax (16, maxBlockSamples));
-    scratchLeft.assign (scratchSize, 0.0f);
-    scratchRight.assign (scratchSize, 0.0f);
 
-    // Looper-I/O-Busse (Looper-Out-Modul + Master-Mix) — Audio steht
+    // Looper-I/O-Busse (Looper-Out-Module + Master-Mix) — Audio steht.
+    // trackBus ist zugleich das Render-Ziel der Voices (Big Out liest
+    // ihn post-fader), sendBus die globalen Send-Busse 1..4.
+    for (auto& looper : trackBus)
+        for (auto& track : looper)
+            for (auto& channel : track)
+                channel.assign (scratchSize, 0.0f);
     for (auto& looper : preBus)
         for (auto& channel : looper)
             channel.assign (scratchSize, 0.0f);
     for (auto& looper : postBus)
         for (auto& channel : looper)
             channel.assign (scratchSize, 0.0f);
+    for (auto& send : sendBus)
+        for (auto& channel : send)
+            channel.assign (scratchSize, 0.0f);
     for (auto& channel : masterBus)
         channel.assign (scratchSize, 0.0f);
+    busCapacity = static_cast<int> (scratchSize);
     renderedSamples = 0;
 
     // Audio steht (prepareToPlay) — die SPSC-Rollen dürfen hier einmalig
@@ -552,6 +566,26 @@ void LooperBank::setTrackSolo (int looperIndex, int trackIndex, bool solo) noexc
     updateEffectiveMutes();
 }
 
+void LooperBank::setTrackSends (int looperIndex, int trackIndex, std::uint32_t mask) noexcept
+{
+    if (looperIndex < 0 || looperIndex >= maxLoopers
+        || trackIndex < 0 || trackIndex >= maxTracks)
+        return;
+
+    targetSendMask[static_cast<std::size_t> (looperIndex)][static_cast<std::size_t> (trackIndex)]
+        .store (mask & 0xFu, std::memory_order_relaxed);
+}
+
+void LooperBank::setTrackSendPre (int looperIndex, int trackIndex, bool pre) noexcept
+{
+    if (looperIndex < 0 || looperIndex >= maxLoopers
+        || trackIndex < 0 || trackIndex >= maxTracks)
+        return;
+
+    sendTapPre[static_cast<std::size_t> (looperIndex)][static_cast<std::size_t> (trackIndex)]
+        .store (pre, std::memory_order_relaxed);
+}
+
 void LooperBank::setSoloScopeGlobal (bool global) noexcept
 {
     soloScopeGlobal = global;
@@ -1051,8 +1085,7 @@ void LooperBank::renderBlock (const ClockState& clock, std::uint64_t blockStartS
     drainCommands();
 
     const auto beatsPerSample = clock.beatsPerSample();
-    if (numSamples <= 0 || beatsPerSample <= 0.0
-        || numSamples > static_cast<int> (scratchLeft.size()))
+    if (numSamples <= 0 || beatsPerSample <= 0.0 || numSamples > busCapacity)
         return;
 
     // Beat-Messung jitter-frei aus der SampleClock (Herleitung CLAUDE.md
@@ -1103,14 +1136,19 @@ void LooperBank::renderBlock (const ClockState& clock, std::uint64_t blockStartS
     const auto blockStartBeat = playheadBeat;
     playheadBeat += beatStep * static_cast<double> (numSamples);
 
-    // Looper-I/O-Busse dieses Blocks nullen — Looper ohne Voices bleiben
-    // Stille, das Looper-Out-Modul liest immer definierte Daten
+    // Looper-I/O-Busse dieses Blocks nullen — Looper/Tracks ohne Voices
+    // bleiben Stille, die Looper-Out-Module lesen immer definierte Daten
     for (std::size_t l = 0; l < static_cast<std::size_t> (maxLoopers); ++l)
         for (std::size_t c = 0; c < 2; ++c)
         {
+            for (std::size_t t = 0; t < static_cast<std::size_t> (maxTracks); ++t)
+                juce::FloatVectorOperations::clear (trackBus[l][t][c].data(), numSamples);
             juce::FloatVectorOperations::clear (preBus[l][c].data(),  numSamples);
             juce::FloatVectorOperations::clear (postBus[l][c].data(), numSamples);
         }
+    for (auto& send : sendBus)
+        for (auto& channel : send)
+            juce::FloatVectorOperations::clear (channel.data(), numSamples);
     for (auto& channel : masterBus)
         juce::FloatVectorOperations::clear (channel.data(), numSamples);
 
@@ -1125,9 +1163,6 @@ void LooperBank::renderBlock (const ClockState& clock, std::uint64_t blockStartS
     duckGain = juce::jlimit (0.0f, 1.0f,
                              duckGain + duckStep * static_cast<float> (numSamples));
 
-    auto* scratch0 = scratchLeft.data();
-    auto* scratch1 = scratchRight.data();
-
     for (std::size_t l = 0; l < static_cast<std::size_t> (maxLoopers); ++l)
         for (std::size_t t = 0; t < static_cast<std::size_t> (maxTracks); ++t)
         {
@@ -1141,14 +1176,16 @@ void LooperBank::renderBlock (const ClockState& clock, std::uint64_t blockStartS
             if (! anyVoice)
                 continue;
 
-            for (int i = 0; i < numSamples; ++i)
-            {
-                scratch0[i] = 0.0f;
-                scratch1[i] = 0.0f;
-            }
+            // Render-Ziel = trackBus des Tracks (oben genullt); der
+            // In-Place-Fader-Zug hinterlässt ihn post-fader (Big Out)
+            auto* scratch0 = trackBus[l][t][0].data();
+            auto* scratch1 = trackBus[l][t][1].data();
+
+            const auto sendMask = targetSendMask[l][t].load (std::memory_order_relaxed);
+            const auto sendPre  = sendTapPre[l][t].load (std::memory_order_relaxed);
 
             //==============================================================
-            // Voices → Scratch (pre-fader)
+            // Voices → trackBus (pre-fader)
             for (auto& voice : player.voices)
             {
                 auto* clip = voice.clip;
@@ -1248,9 +1285,18 @@ void LooperBank::renderBlock (const ClockState& clock, std::uint64_t blockStartS
             }
 
             //==============================================================
-            // Pre-Fader-Bus des Loopers (Looper-Out-Abgriff „Pre")
+            // Pre-Fader-Bus des Loopers (Looper-Out-Abgriff „Pre") +
+            // Pre-Fader-Sends des Tracks (trackBus ist hier noch pre)
             juce::FloatVectorOperations::add (preBus[l][0].data(), scratch0, numSamples);
             juce::FloatVectorOperations::add (preBus[l][1].data(), scratch1, numSamples);
+
+            if (sendMask != 0 && sendPre)
+                for (std::size_t s = 0; s < static_cast<std::size_t> (maxSends); ++s)
+                    if ((sendMask & (1u << s)) != 0)
+                    {
+                        juce::FloatVectorOperations::add (sendBus[s][0].data(), scratch0, numSamples);
+                        juce::FloatVectorOperations::add (sendBus[s][1].data(), scratch1, numSamples);
+                    }
 
             //==============================================================
             // Fader-Zug: Gain (5-ms-Slew) + Equal-Power-Pan + Mute →
@@ -1289,6 +1335,15 @@ void LooperBank::renderBlock (const ClockState& clock, std::uint64_t blockStartS
 
             juce::FloatVectorOperations::add (postBus[l][0].data(), scratch0, numSamples);
             juce::FloatVectorOperations::add (postBus[l][1].data(), scratch1, numSamples);
+
+            // Post-Fader-Sends des Tracks (nach Gain/Pan/Mute)
+            if (sendMask != 0 && ! sendPre)
+                for (std::size_t s = 0; s < static_cast<std::size_t> (maxSends); ++s)
+                    if ((sendMask & (1u << s)) != 0)
+                    {
+                        juce::FloatVectorOperations::add (sendBus[s][0].data(), scratch0, numSamples);
+                        juce::FloatVectorOperations::add (sendBus[s][1].data(), scratch1, numSamples);
+                    }
         }
 
     // Master-Mix = Summe der Post-Fader-Busse aller Looper mit
@@ -1336,7 +1391,14 @@ LooperBank::AudioView LooperBank::getAudioView() const noexcept
         {
             view.pre [l][c] = preBus [l][c].data();
             view.post[l][c] = postBus[l][c].data();
+
+            for (std::size_t t = 0; t < static_cast<std::size_t> (maxTracks); ++t)
+                view.track[l][t][c] = trackBus[l][t][c].data();
         }
+
+    for (std::size_t s = 0; s < static_cast<std::size_t> (maxSends); ++s)
+        for (std::size_t c = 0; c < 2; ++c)
+            view.send[s][c] = sendBus[s][c].data();
 
     return view;
 }

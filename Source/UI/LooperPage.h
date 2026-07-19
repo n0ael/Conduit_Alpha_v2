@@ -14,6 +14,45 @@ namespace conduit
 
 //==============================================================================
 /**
+    Papierkorb-Kachel der Looper-Kopfzeile (Big Out 07/2026): sichtbar,
+    solange der LooperTrashCan Einträge hält; zeigt ↺ + Rest-Zeit m:ss.
+    Die letzten warnSeconds faden zu Rot; läuft ein Eintrag ab, flackert
+    die Kachel kurz und verschwindet (User-Spezifikation 19.07.2026).
+    Flacker-Ticks via Timer::callAfterDelay + SafePointer (kein
+    Member-Timer — Lektion NodeEditor).
+*/
+class LooperTrashTile final : public juce::Button
+{
+public:
+    static constexpr double warnSeconds = 30.0;
+
+    LooperTrashTile();
+
+    /** [Editor-Timer, 15 Hz] Restzeit + Bestand — Repaint nur bei
+        sichtbarer Änderung (Sekunden-/Farbschritt). */
+    void setTrashState (double secondsRemaining, bool hasEntries);
+
+    /** Ablauf-Flackern: kurzes Blinken, danach folgt die Sichtbarkeit
+        wieder dem Bestand (setTrashState). */
+    void flashEmptied();
+
+    [[nodiscard]] bool isFlashing() const noexcept { return flashTicks > 0; }
+
+private:
+    void paintButton (juce::Graphics& g, bool isHighlighted, bool isDown) override;
+    void scheduleFlashTick();
+
+    double remaining = 0.0;
+    bool entries = false;
+    int shownSeconds = -1;
+    int flashTicks = 0;
+    bool flashOn = false;
+
+    JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (LooperTrashTile)
+};
+
+//==============================================================================
+/**
     Looper-Page — Vollausbau M6 (Design-Mock + Übergabe-Dokument
     05.07.2026): bis zu 4 Looper-Fenster NEBENEINANDER (User-Entscheidung
     „wie im Mock"), Kopfzeile mit − / + (Looper öffnen/schließen),
@@ -48,6 +87,7 @@ public:
 
     std::function<void()> onAddLooper;
     std::function<void()> onRemoveLooper;
+    std::function<void()> onRestoreTrash;      // ↺ Papierkorb-Kachel (Big Out)
     std::function<void()> onOpenSettings;      // ⚙ → LooperSettingsMenu (Editor)
     std::function<void()> onStop;              // Stop = alle Tracks
     std::function<void (bool spectrum)> onViewToggled;
@@ -60,6 +100,12 @@ public:
     /** [Editor-Timer] Gemeinsame Puls-Phase (Target-Zellen). */
     void setPulsePhase (float phase01);
 
+    /** [Editor-Timer] Papierkorb-Zustand (Kachel-Sichtbarkeit + Countdown). */
+    void setTrashState (double secondsRemaining, bool hasEntries);
+
+    /** Ablauf-Flackern der Papierkorb-Kachel (LooperTrashCan::onExpired). */
+    void flashTrashEmptied() { trashTile.flashEmptied(); }
+
     //==========================================================================
     [[nodiscard]] juce::ComboBox& getOutputCombo() noexcept { return outputCombo; }
     [[nodiscard]] push::TextTile& getSpectrumTile() noexcept { return spectrumTile; }
@@ -67,6 +113,7 @@ public:
     [[nodiscard]] push::TextTile& getSettingsTile() noexcept { return settingsTile; }
     [[nodiscard]] push::TextTile& getAddLooperTile() noexcept { return addTile; }
     [[nodiscard]] push::TextTile& getRemoveLooperTile() noexcept { return removeTile; }
+    [[nodiscard]] LooperTrashTile& getTrashTile() noexcept { return trashTile; }
 
     void paint (juce::Graphics& g) override;
     void resized() override;
@@ -78,6 +125,7 @@ private:
     juce::ComboBox outputCombo;
     push::TextTile spectrumTile { "Spectrum", push::colours::ledOrange };
     push::TextTile settingsTile { juce::String::fromUTF8 ("⚙") };
+    LooperTrashTile trashTile;
     push::TextTile stopTile { "Stop", push::colours::ledRed };
     juce::Label statusLabel;
 

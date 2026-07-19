@@ -16,7 +16,7 @@ LooperOutModule::LooperOutModule()
 
 //==============================================================================
 juce::String LooperOutModule::getModuleId() const          { return staticModuleId; }
-juce::String LooperOutModule::getModuleDisplayName() const { return "Looper Out"; }
+juce::String LooperOutModule::getModuleDisplayName() const { return "Looper Out Mini"; }
 int LooperOutModule::getStateVersion() const               { return 1; }
 
 juce::ValueTree LooperOutModule::createState()

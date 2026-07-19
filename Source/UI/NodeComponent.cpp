@@ -58,6 +58,7 @@ NodeComponent::NodeComponent (juce::ValueTree nodeTreeToBind,
                              == toString (ModuleType::processor);
     isLooperInNode     = (factoryKey == LooperInModule::staticModuleId);
     isLooperOutNode    = (factoryKey == LooperOutModule::staticModuleId);
+    isLooperBigOutNode = (factoryKey == LooperBigOutModule::staticModuleId);
 
     // ADR 009: auch I/O-Endpunkte sind reguläre Module — löschbar und
     // umbenennbar (die frühere Reserved-Ausnahme entfällt)
@@ -201,6 +202,14 @@ NodeComponent::NodeComponent (juce::ValueTree nodeTreeToBind,
         const auto numSlots = juce::jmax (1, nodeTree.getChildWithName (id::outputs).getNumChildren());
         setSize (280, touchTarget + LooperOutPanel::heightForOutputs (numSlots));
     }
+    else if (isLooperBigOutNode)
+    {
+        looperBigOutPanel = std::make_unique<LooperBigOutPanel> (nodeTree);
+        addAndMakeVisible (*looperBigOutPanel);
+
+        const auto numSlots = juce::jmax (1, nodeTree.getChildWithName (id::outputs).getNumChildren());
+        setSize (280, touchTarget + LooperBigOutPanel::heightForOutputs (numSlots));
+    }
     else if (isExternalEndpoint)
     {
         updateEndpointSize();  // Höhe folgt der Hardware-Kanalzahl (Schritt B)
@@ -284,6 +293,9 @@ void NodeComponent::beginTeardown()
 
     if (looperOutPanel != nullptr)
         looperOutPanel->stopUpdates();
+
+    if (looperBigOutPanel != nullptr)
+        looperBigOutPanel->stopUpdates();
 
     if (parameterPanel != nullptr)
         parameterPanel->stopUpdates();
@@ -371,6 +383,9 @@ void NodeComponent::valueTreePropertyChanged (juce::ValueTree& tree, const juce:
                     juce::jmax (1, nodeTree.getChildWithName (id::inputs).getNumChildren())));
             else if (isLooperOutNode)
                 setSize (280, touchTarget + LooperOutPanel::heightForOutputs (
+                    juce::jmax (1, nodeTree.getChildWithName (id::outputs).getNumChildren())));
+            else if (isLooperBigOutNode)
+                setSize (280, touchTarget + LooperBigOutPanel::heightForOutputs (
                     juce::jmax (1, nodeTree.getChildWithName (id::outputs).getNumChildren())));
 
             resized();   // neue Ports positionieren (auch bei gleicher Größe)
@@ -489,6 +504,12 @@ bool NodeComponent::looperSlotPairStart (int channel) const
             offset += width;
         }
     }
+    else if (isLooperBigOutNode)
+    {
+        // Big Out: alle Slots fix stereo — Paar-Start auf geraden Kanälen
+        return channel % LooperBigOutModule::slotWidth == 0
+            && channel < (int) nodeTree.getProperty (id::numOutputChannels, 0);
+    }
 
     return false;
 }
@@ -531,7 +552,8 @@ void NodeComponent::rebuildPorts()
         if (isChassisNode)
             return [] (int channel) { return channel == 0; };
 
-        if (isLooperInNode || (isLooperOutNode && ! isInputBank))
+        if (isLooperInNode
+            || ((isLooperOutNode || isLooperBigOutNode) && ! isInputBank))
             return [this] (int channel) { return looperSlotPairStart (channel); };
 
         return {};
@@ -732,6 +754,14 @@ int NodeComponent::getNumSendButtons() const noexcept { return static_cast<int> 
 
 int NodeComponent::looperSlotRowFor (int channel) const
 {
+    // Big Out: alle Slots fix stereo — Zeile = Kanal / 2
+    if (isLooperBigOutNode)
+    {
+        const auto items = nodeTree.getChildWithName (id::outputs);
+        return juce::jlimit (0, juce::jmax (0, items.getNumChildren() - 1),
+                             channel / LooperBigOutModule::slotWidth);
+    }
+
     // Kanal → Slot-Zeilenindex über die Slot-Breiten des Trees (ADR 010) —
     // dieselbe Quelle wie looperSlotPairStart
     const auto items = nodeTree.getChildWithName (isLooperInNode ? id::inputs
@@ -765,6 +795,10 @@ int NodeComponent::channelRowY (bool isInputBank, int channel) const
 
     if (isLooperOutNode && ! isInputBank && looperOutPanel != nullptr)
         return looperOutPanel->getY() + LooperOutPanel::rowCentreY (looperSlotRowFor (channel));
+
+    if (isLooperBigOutNode && ! isInputBank && looperBigOutPanel != nullptr)
+        return looperBigOutPanel->getY()
+             + LooperBigOutPanel::rowCentreY (looperSlotRowFor (channel));
 
     const auto count = juce::jmax (1, isInputBank ? inputChannelCount : outputChannelCount);
 
@@ -1014,6 +1048,9 @@ void NodeComponent::resized()
 
     if (looperOutPanel != nullptr)
         looperOutPanel->setBounds (getLocalBounds().withTrimmedTop (touchTarget).reduced (22, 4));
+
+    if (looperBigOutPanel != nullptr)
+        looperBigOutPanel->setBounds (getLocalBounds().withTrimmedTop (touchTarget).reduced (22, 4));
 
     if (fxPanel != nullptr)
         fxPanel->setBounds (getLocalBounds().withTrimmedTop (touchTarget).reduced (28, 4));

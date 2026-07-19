@@ -307,6 +307,11 @@ LooperTrackStrip::LooperTrackStrip (int number)
         if (onSoloToggled != nullptr)
             onSoloToggled (! solo);
     };
+    sndTile.onClick = [this]
+    {
+        if (onSendTileTapped != nullptr)
+            onSendTileTapped();
+    };
     stopTile.onClick = [this]
     {
         if (onStop != nullptr)
@@ -315,6 +320,7 @@ LooperTrackStrip::LooperTrackStrip (int number)
 
     addAndMakeVisible (muteTile);
     addAndMakeVisible (soloTile);
+    addAndMakeVisible (sndTile);
     addAndMakeVisible (stopTile);
 
     setVisibleSlots (8);
@@ -373,6 +379,12 @@ void LooperTrackStrip::setSolo (bool newSolo)
 {
     solo = newSolo;
     soloTile.setActive (newSolo);
+}
+
+void LooperTrackStrip::setSendState (int sendMask, bool sendPre)
+{
+    sndTile.setActive (sendMask != 0);
+    sndTile.setText (sendMask != 0 && sendPre ? "SND·P" : "SND");
 }
 
 void LooperTrackStrip::setMeter (float rmsLeft, float rmsRight, bool audible)
@@ -442,18 +454,29 @@ void LooperTrackStrip::resized()
     auto bounds = getLocalBounds();
     bounds.removeFromTop (headerHeight + faderHeight + panHeight);
 
-    // M/S nebeneinander; bei sehr schmalen Spalten untereinander
-    // (Layout-Regel aus dem Mock)
-    auto tiles = bounds.removeFromTop (getWidth() < 88 ? tileRow * 2 : tileRow);
-    if (getWidth() < 88)
+    // M/S/SND nebeneinander (Touch-Target 44px pro Kachel); darunter
+    // M/S geteilt + SND in eigener Zeile, sehr schmal alles untereinander
+    if (getWidth() >= 132)
     {
-        muteTile.setBounds (tiles.removeFromTop (tileRow).reduced (2));
-        soloTile.setBounds (tiles.reduced (2));
+        auto tiles = bounds.removeFromTop (tileRow);
+        muteTile.setBounds (tiles.removeFromLeft (tiles.getWidth() / 3).reduced (2));
+        soloTile.setBounds (tiles.removeFromLeft (tiles.getWidth() / 2).reduced (2));
+        sndTile.setBounds (tiles.reduced (2));
+    }
+    else if (getWidth() >= 88)
+    {
+        auto tiles = bounds.removeFromTop (tileRow * 2);
+        auto upper = tiles.removeFromTop (tileRow);
+        muteTile.setBounds (upper.removeFromLeft (upper.getWidth() / 2).reduced (2));
+        soloTile.setBounds (upper.reduced (2));
+        sndTile.setBounds (tiles.reduced (2));
     }
     else
     {
-        muteTile.setBounds (tiles.removeFromLeft (tiles.getWidth() / 2).reduced (2));
-        soloTile.setBounds (tiles.reduced (2));
+        auto tiles = bounds.removeFromTop (tileRow * 3);
+        muteTile.setBounds (tiles.removeFromTop (tileRow).reduced (2));
+        soloTile.setBounds (tiles.removeFromTop (tileRow).reduced (2));
+        sndTile.setBounds (tiles.reduced (2));
     }
 
     auto footer = bounds.removeFromBottom (footerHeight);

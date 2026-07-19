@@ -67,6 +67,8 @@ TEST_CASE ("LooperSettings: Defaults ohne gespeicherten Zustand", "[looper]")
     REQUIRE_FALSE (settings.isTrackMuted (0, 0));
     REQUIRE_FALSE (settings.isTrackSolo (0, 0));
     REQUIRE_FALSE (settings.isTrackVariQuantized (0, 0));   // frei = Default
+    REQUIRE (settings.getTrackSends (0, 0) == 0);            // keine Sends ab Werk
+    REQUIRE_FALSE (settings.isTrackSendPre (0, 0));          // Abgriff post
 }
 
 TEST_CASE ("LooperSettings: Roundtrip über Neuinstanz", "[looper]")
@@ -97,6 +99,8 @@ TEST_CASE ("LooperSettings: Roundtrip über Neuinstanz", "[looper]")
         settings.setTrackMuted (2, 1, true);
         settings.setTrackSolo (0, 0, true);
         settings.setTrackVariQuantized (2, 1, true);
+        settings.setTrackSends (2, 1, 0b1010);
+        settings.setTrackSendPre (2, 1, true);
         settings.flush();
     }
 
@@ -123,6 +127,10 @@ TEST_CASE ("LooperSettings: Roundtrip über Neuinstanz", "[looper]")
     REQUIRE (reloaded.isTrackMuted (2, 1));
     REQUIRE (reloaded.isTrackSolo (0, 0));
     REQUIRE (reloaded.isTrackVariQuantized (2, 1));
+    REQUIRE (reloaded.getTrackSends (2, 1) == 0b1010);
+    REQUIRE (reloaded.isTrackSendPre (2, 1));
+    REQUIRE (reloaded.getTrackSends (0, 0) == 0);   // Alt-Zustand: Defaults
+    REQUIRE_FALSE (reloaded.isTrackSendPre (0, 0));
 }
 
 TEST_CASE ("LooperSettings: Clamps und ungültige Indizes", "[looper]")
@@ -151,6 +159,12 @@ TEST_CASE ("LooperSettings: Clamps und ungültige Indizes", "[looper]")
     REQUIRE (settings.getSourceKey (7).isEmpty());
     settings.setTrackGain (0, 9, 0.1f);
     REQUIRE (settings.getTrackGain (0, 9) == Approx (1.0f));
+
+    // Send-Maske clampt auf Bits 0..3; ungültige Indizes = No-op
+    settings.setTrackSends (0, 0, 0xFF);
+    REQUIRE (settings.getTrackSends (0, 0) == 0xF);
+    settings.setTrackSends (0, 9, 1);
+    REQUIRE (settings.getTrackSends (0, 9) == 0);
 }
 
 TEST_CASE ("LooperSettings: Einmal-Migration der Legacy-Schlüssel", "[looper]")

@@ -65,6 +65,7 @@
 #include "LfoModule.h"
 #include "LinkAudioReceiveModule.h"
 #include "LinkAudioSendModule.h"
+#include "LooperBigOutModule.h"
 #include "LooperInModule.h"
 #include "LooperOutModule.h"
 #include "ScopeModule.h"
@@ -222,8 +223,12 @@ void registerDefaultModules (ModuleFactory& factory)
                       "looper in eingang quelle source aufnahme record loop"),
         [] { return std::make_unique<LooperInModule>(); });
     factory.registerModule (
-        cvDescriptor (LooperOutModule::staticModuleId, "Looper Out", "I/O",
-                      "looper out ausgang abgriff master playback loop"),
+        cvDescriptor (LooperBigOutModule::staticModuleId, "Looper Out", "I/O",
+                      "looper out big ausgang tracks sends bus master playback loop"),
+        [] { return std::make_unique<LooperBigOutModule>(); });
+    factory.registerModule (
+        cvDescriptor (LooperOutModule::staticModuleId, "Looper Out Mini", "I/O",
+                      "looper out mini ausgang abgriff master playback loop"),
         [] { return std::make_unique<LooperOutModule>(); });
 
     registerAirwindows<AirwindowsDensityModule> (factory);

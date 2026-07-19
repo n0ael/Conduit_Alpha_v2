@@ -35,10 +35,23 @@ CallbackTimingMonitor, Spektrum-View, Snap-Declick, Duck, Lead-in).
   Ausgangs-Signale loopt man per Kabel ins Looper-In-Modul (ADR 010).
 - Looper-I/O (ADR 010): `LooperBank::renderBlock` läuft VOR dem Graph
   (Playback liest nur committete Clips), `mixToOutput` NACH dem Graph;
-  das Looper-Out-Modul liest `getAudioView()` im SELBEN Callback —
+  die Looper-Out-Module lesen `getAudioView()` im SELBEN Callback —
   View-Pointer NIE über den Callback hinaus halten. Anker −1 = „Kein
   Master-Out"; `sendMaster` pro Looper (LooperSettings) wirkt NUR auf
-  den Master-Mix, nie auf die Pre-/Post-Busse.
+  den Master-Mix, nie auf die Pre-/Post-/Track-/Send-Busse.
+- Big Looper Out (ADR 012): `looper_big_out` = Standard-Ausgangsmodul,
+  Slots folgen AUTOMATISCH der Struktur (Track-Outs post-fader → Busse
+  → Send 1–4 IMMER alle 4 → Master; alle stereo). trackBus ist zugleich
+  das Render-Ziel (kein geteilter Scratch mehr). Kabel-Remap bei
+  Struktur-Änderung NUR über Spec-Identität (syncLooperBigOutConfigs),
+  Re-Mat EXPLIZIT anstoßen (gleiche Kanalzahl ⇒ kein Property-Trigger).
+  Das alte looper_out heißt „Looper Out Mini" (factoryId unverändert).
+- Delete-Gating (ADR 012): Looper-/Track-Delete direkt nur ohne Clips
+  UND ohne Big-Out-Kabel; sonst X/OK-Dialog → Force-Delete in den
+  `LooperTrashCan` (~180 s, ↺-Kachel): Clips DETACHEN statt deleteClip
+  (Bank bleibt Besitzerin), Kabel spec-relativ sichern. prepareToPlay:
+  `trash.clearWithoutDelete()` VOR `bank.prepare()`. Kein UndoManager
+  für Clips/Struktur.
 - Quellen-Combo listet NUR Looper-In-Slots (zuoberst) + Interface-
   Eingänge (Mono/Stereo folgt dem ∥-Pairing der ChannelNames).
 - Slot-Namen/-Farben (19.07.2026): autoName = SIGNALKETTE „Quelle ·

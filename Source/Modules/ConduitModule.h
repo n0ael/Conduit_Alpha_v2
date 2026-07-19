@@ -79,6 +79,13 @@ namespace id
     inline const juce::Identifier outputMode   { "mode" };
     inline const juce::Identifier outputPre    { "pre" };
 
+    // Big Looper Out (07/2026): Diskriminator im selben <Outputs>-Schema.
+    // kind "track" (target = Looper, track = Track-Nr.) | "bus" (target =
+    // Looper) | "send" (target = Send-Nr.) | "master"; alle Slots stereo.
+    // looper_out-Leser sehen kind nie (eigene readOutputConfig).
+    inline const juce::Identifier outputKind  { "kind" };
+    inline const juce::Identifier outputTrack { "track" };
+
     // Parameters
     inline const juce::Identifier parameters    { "Parameters" };
     inline const juce::Identifier parameter     { "Parameter" };

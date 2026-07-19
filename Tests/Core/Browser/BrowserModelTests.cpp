@@ -288,8 +288,9 @@ TEST_CASE ("Modul-Descriptors: jeder registrierte Key trägt Branch + Kategorie"
     const auto descriptors = factory.getDescriptors();
 
     // 57 Airwindows + 7 CV/Control-Module (inkl. Link Send + Link Receive)
-    // + 2 Hardware-I/O-Endpunkte (ADR 009) + 2 Looper-I/O (ADR 010)
-    REQUIRE (descriptors.size() == 68);
+    // + 2 Hardware-I/O-Endpunkte (ADR 009) + 3 Looper-I/O (ADR 010/012:
+    // looper_in, looper_big_out „Looper Out", looper_out „Looper Out Mini")
+    REQUIRE (descriptors.size() == 69);
 
     for (const auto& descriptor : descriptors)
     {

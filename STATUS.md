@@ -1,9 +1,40 @@
 # Conduit Alpha — Projektstatus
 
-> Letzte Aktualisierung: 2026-07-18 | wird nach jedem Meilenstein gepflegt
+> Letzte Aktualisierung: 2026-07-19 | wird nach jedem Meilenstein gepflegt
 > Architektur-Referenz: [CLAUDE.md](CLAUDE.md) | Repo: n0ael/Conduit
 
-## Aktueller Meilenstein (18.07.2026) — Multipage M4 (ADR 008): Birdeye + Seiten-Selektion
+## Aktueller Meilenstein (19.07.2026) — Big Looper Out (ADR 012): Auto-Follow-Outputs, Sends, Papierkorb
+
+- **LooperBigOutModule** (`looper_big_out`, Browser-Name „Looper Out") =
+  neues Standard-Ausgangsmodul: Stereo-Slots folgen AUTOMATISCH der
+  Looper-Struktur — Track-Outs (post-fader, Mono-Clips kommen über die
+  Panning-Sektion stereo), Bus-Outs je Looper, Send 1–4 (immer alle 4),
+  Master. Das bisherige `looper_out` heißt jetzt „Looper Out Mini"
+  (factoryId unverändert).
+- **Engine:** `trackBus[4][4][2]` ersetzt den geteilten Render-Scratch
+  (Post-Fader-Signal fällt gratis ab), neue `sendBus[4][2]` mit
+  pro-Track-Bitmaske + PRE/POST-Abgriff (LooperSettings
+  `sends`/`sendPre` → Bank-Atomics); AudioView += track/send.
+- **UI:** SND-Kachel im Track-Strip → LooperSendDialog (S1–S4 +
+  PRE/POST, CallOutBox); read-only Big-Out-Kachel mit Sektions-Trennern,
+  Ports fluchten (rowCentreY).
+- **GraphManager:** `setLooperStructure`/`syncLooperBigOutConfigs` —
+  Kabel-Remap über Spec-Identität, explizite gefadete Re-Mat (gleiche
+  Kanalzahl feuert keinen Property-Listener); Call-Sites
+  applyLooperSettings/addModuleNode/Preset-Load/Force-Delete.
+- **Delete-Gating + Papierkorb:** Looper-/Track-Delete direkt nur ohne
+  Clips und ohne Big-Out-Kabel, sonst X/OK-Dialog → Force-Delete in den
+  `LooperTrashCan` (~180 s): Clips detacht (Bank bleibt Besitzerin),
+  Kabel spec-relativ gesichert; ↺-Kachel im Looper-Header restauriert
+  (Rot-Fade letzte 30 s, Flackern bei Ablauf); prepareToPlay leert VOR
+  bank.prepare. Kein UndoManager (Clips engine-seitig).
+- Tests: 1007 Cases / 40 060 Assertions grün (+ LooperBigOutModuleTests,
+  LooperTrashTests, Send-/trackBus-Suiten); ASan-Looper-Lauf grün;
+  Release-Boot-Smoke bestanden (bigout_smoke_boot.png).
+- Offen: Feldtest (Big-Out-Kachel, Sends hörbar, Delete-Popup,
+  Papierkorb-Restore).
+
+## Davor (18.07.2026) — Multipage M4 (ADR 008): Birdeye + Seiten-Selektion
 
 - 3-Finger-HOLD-Birdeye: aktive Seite LIVE rausgezoomt (kein
   Miniatur-Cache nötig — Vektor), Karte bewegt sich unterm fixen

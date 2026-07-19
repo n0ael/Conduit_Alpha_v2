@@ -17,6 +17,7 @@
 #include "UI/LevelMeterBar.h"
 #include "UI/LinkAudioReceivePanel.h"
 #include "UI/LinkAudioSendPanel.h"
+#include "UI/LooperBigOutPanel.h"
 #include "UI/LooperInPanel.h"
 #include "UI/LooperOutPanel.h"
 #include "UI/NodeColourDot.h"
@@ -296,8 +297,10 @@ private:
     // re-materialisieren den Node gefadet (GraphManager-Patch-Aktionen)
     std::unique_ptr<LooperInPanel> looperInPanel;
     std::unique_ptr<LooperOutPanel> looperOutPanel;
+    std::unique_ptr<LooperBigOutPanel> looperBigOutPanel;
     bool isLooperInNode = false;
     bool isLooperOutNode = false;
+    bool isLooperBigOutNode = false;
 
     /** true, wenn an diesem Looper-I/O-Node ein Stereo-Slot beim Kanal
         channel BEGINNT (span-2-Port) — liest die Slot-Breiten aus dem

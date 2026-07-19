@@ -152,6 +152,14 @@ public:
     [[nodiscard]] bool isTrackVariQuantized (int looperIndex, int trackIndex) const noexcept;
     void setTrackVariQuantized (int looperIndex, int trackIndex, bool quantized);
 
+    /** Send-Routing des Tracks (Big Out): Bitmaske Bits 0..3 = Send 1..4. */
+    [[nodiscard]] int getTrackSends (int looperIndex, int trackIndex) const noexcept;
+    void setTrackSends (int looperIndex, int trackIndex, int mask);
+
+    /** Send-Abgriff des Tracks: true = pre (vor Gain/Pan/Mute), Default post. */
+    [[nodiscard]] bool isTrackSendPre (int looperIndex, int trackIndex) const noexcept;
+    void setTrackSendPre (int looperIndex, int trackIndex, bool pre);
+
     //==========================================================================
     /** [Message Thread] Ausstehende Änderungen sofort auf Platte schreiben. */
     void flush();
@@ -164,6 +172,8 @@ private:
         bool mute = false;
         bool solo = false;
         bool variQuantized = false;   // Default frei (Drift ist Feature)
+        int sends = 0;                // Bitmaske Send 1..4 (Big Out)
+        bool sendPre = false;         // Abgriff pre statt post (Default post)
     };
 
     struct LooperState

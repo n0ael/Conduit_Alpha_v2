@@ -40,6 +40,7 @@ public:
     std::function<void (int trackIndex, float pan)> onTrackPan;
     std::function<void (int trackIndex, bool muted)> onTrackMute;
     std::function<void (int trackIndex, bool solo)> onTrackSolo;
+    std::function<void (int trackIndex)> onTrackSendTile;   // öffnet Send-Dialog
     std::function<void (int trackIndex)> onTrackStop;
     std::function<void (int trackIndex)> onTrackHeaderLongPress;
     std::function<void (int trackIndex)> onTrackHeaderTapped;   // M7: Delete-Geste

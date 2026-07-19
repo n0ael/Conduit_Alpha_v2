@@ -10,6 +10,8 @@
 #include "Modules/LooperInModule.h"
 #include "UI/LinkSendCreateDialog.h"
 #include "Core/Looper/LooperClipExporter.h"
+#include "UI/LooperDeleteConfirmDialog.h"
+#include "UI/LooperSendDialog.h"
 #include "UI/LooperSettingsMenu.h"
 #include "UI/SettingsWindow.h"
 #include "UI/TrackSelectorPanel.h"
@@ -299,8 +301,9 @@ EngineEditor::EngineEditor (EngineProcessor& engineProcessor,
         refreshLooperStructure();
     };
 
-    // Looper schließen: enthält er Clips, fragt ein async Dialog nach
-    // (Übergabe §10.7; kein Modal-Loop — JUCE_MODAL_LOOPS_PERMITTED=0)
+    // Looper schließen (Big Out 07/2026): leer UND unverkabelt = direkt;
+    // sonst X/OK-Dialog — OK löscht Clips + Kabel in den Papierkorb
+    // (~3 min rückgängig). Kein Modal-Loop (JUCE_MODAL_LOOPS_PERMITTED=0).
     looperPage.onRemoveLooper = [this]
     {
         auto& session = engine.getLooperSession();
@@ -308,10 +311,12 @@ EngineEditor::EngineEditor (EngineProcessor& engineProcessor,
         if (last < 1)
             return;
 
-        const auto removeIt = [this]
+        const auto hasClips = session.looperHasClips (last);
+        const auto hasCables = engine.getGraphManager().hasLooperBigOutCables (last, -1);
+
+        if (! hasClips && ! hasCables)
         {
-            auto& looperSession = engine.getLooperSession();
-            if (const auto result = looperSession.removeLastLooper(); result.failed())
+            if (const auto result = session.removeLastLooper(); result.failed())
             {
                 captureToast.show (result.getErrorMessage());
                 return;
@@ -320,26 +325,53 @@ EngineEditor::EngineEditor (EngineProcessor& engineProcessor,
             auto& settings = engine.getLooperSettings();
             settings.setNumLoopers (settings.getNumLoopers() - 1);
             refreshLooperStructure();
-        };
-
-        if (! session.looperHasClips (last))
-        {
-            removeIt();
             return;
         }
 
-        juce::AlertWindow::showOkCancelBox (
-            juce::MessageBoxIconType::QuestionIcon,
-            juce::String::fromUTF8 ("Looper schließen"),
-            juce::String::fromUTF8 ("Looper ") + juce::String (last + 1)
-                + juce::String::fromUTF8 (" enthält Clips — schließen und verwerfen?"),
-            juce::String::fromUTF8 ("Schließen"), "Abbrechen", this,
-            juce::ModalCallbackFunction::create ([removeIt] (int result)
-            {
-                if (result != 0)
-                    removeIt();
-            }));
+        auto message = juce::String::fromUTF8 ("Looper ") + juce::String (last + 1)
+                     + juce::String::fromUTF8 (" enthält noch:");
+        if (hasClips)
+            message << juce::String::fromUTF8 ("\n\xe2\x80\xa2 Clips");
+        if (hasCables)
+            message << juce::String::fromUTF8 ("\n\xe2\x80\xa2 Kabel am Looper-Out");
+        message << juce::String::fromUTF8 (
+            "\n\nOK löscht beides (\xe2\x86\xba ~3 min rückgängig).");
+
+        auto dialog = std::make_unique<LooperDeleteConfirmDialog> (
+            juce::String::fromUTF8 ("Looper schließen?"), message);
+        dialog->onConfirm = [this]
+        {
+            if (const auto result = engine.forceRemoveLastLooper(); result.failed())
+                captureToast.show (result.getErrorMessage());
+            refreshLooperStructure();
+        };
+        juce::CallOutBox::launchAsynchronously (
+            std::move (dialog),
+            looperPage.getRemoveLooperTile().getScreenBounds(), nullptr);
     };
+
+    // Papierkorb-Kachel (↺): jüngsten Eintrag wiederherstellen
+    looperPage.onRestoreTrash = [this]
+    {
+        int skipped = 0;
+        if (const auto result = engine.restoreLooperTrash (&skipped); result.failed())
+        {
+            captureToast.show (result.getErrorMessage());
+            return;
+        }
+
+        if (skipped > 0)
+            captureToast.show (juce::String (skipped)
+                               + juce::String::fromUTF8 (" Kabel nicht wiederherstellbar"));
+        refreshLooperStructure();
+    };
+
+    engine.getLooperTrash().onChanged = [this]
+    {
+        auto& trash = engine.getLooperTrash();
+        looperPage.setTrashState (trash.secondsRemaining(), trash.hasEntries());
+    };
+    engine.getLooperTrash().onExpired = [this] { looperPage.flashTrashEmptied(); };
 
     looperPage.onOpenSettings = [this]
     {
@@ -431,6 +463,10 @@ EngineEditor::~EngineEditor()
     // Der Service überlebt den Editor — Callback lösen, sonst zeigte ein
     // späterer Export-Report ins Leere
     engine.getCaptureService().onExportFinished = nullptr;
+
+    // Papierkorb überlebt den Editor ebenfalls — UI-Hooks lösen
+    engine.getLooperTrash().onChanged = nullptr;
+    engine.getLooperTrash().onExpired = nullptr;
 
     // Default-LookAndFeel VOR der Member-Destruktion zurücksetzen
     juce::LookAndFeel::setDefaultLookAndFeel (nullptr);
@@ -776,6 +812,8 @@ void EngineEditor::refreshLooperStructure()
             track.setPan (settings.getTrackPan (l, t));
             track.setMute (settings.isTrackMuted (l, t));
             track.setSolo (settings.isTrackSolo (l, t));
+            track.setSendState (settings.getTrackSends (l, t),
+                                settings.isTrackSendPre (l, t));
         }
 
         // VARI-Rast-Zustand der Controls: Scope-abhängig (Track des
@@ -842,6 +880,31 @@ void EngineEditor::wireLooperPanels()
         { engine.getLooperSettings().setTrackMuted (l, t, muted); };
         panel.onTrackSolo = [this, l] (int t, bool solo)
         { engine.getLooperSettings().setTrackSolo (l, t, solo); };
+
+        // SND-Kachel → Send-Dialog (Big Out): S1–S4 + PRE/POST, Persistenz
+        // in die LooperSettings — die Engine folgt über applyLooperSettings
+        panel.onTrackSendTile = [this, l] (int t)
+        {
+            auto& settings = engine.getLooperSettings();
+            auto dialog = std::make_unique<LooperSendDialog> (
+                "Sends " + juce::String::fromUTF8 ("\xe2\x80\x94") + " Looper "
+                    + juce::String (l + 1) + juce::String::fromUTF8 (" \xc2\xb7 Track ")
+                    + juce::String (t + 1),
+                settings.getTrackSends (l, t), settings.isTrackSendPre (l, t));
+
+            // Maske komplett aus dem Dialog-Zustand übernehmen — der
+            // Settings-Broadcast spiegelt sie zurück in die SND-Kachel
+            auto* raw = dialog.get();
+            raw->onSendToggled = [this, l, t, raw] (int, bool)
+            { engine.getLooperSettings().setTrackSends (l, t, raw->getSendMask()); };
+            raw->onPreToggled = [this, l, t] (bool pre)
+            { engine.getLooperSettings().setTrackSendPre (l, t, pre); };
+
+            juce::CallOutBox::launchAsynchronously (
+                std::move (dialog),
+                looperPage.getPanel (l).getTrack (t).getSendTile().getScreenBounds(),
+                nullptr);
+        };
 
         panel.onTrackStop = [this, l] (int t)
         {
@@ -960,15 +1023,49 @@ void EngineEditor::removeLooperTrack (int looperIndex, int trackIndex)
         return;
     }
 
-    if (const auto result = session.removeLastTrack (looperIndex); result.failed())
+    // Gating (Big Out 07/2026): leer UND unverkabelt = direkt; sonst
+    // X/OK-Dialog — OK löscht Clips + Kabel in den Papierkorb
+    const auto hasClips = session.trackHasClips (looperIndex, trackIndex);
+    const auto hasCables = engine.getGraphManager().hasLooperBigOutCables (looperIndex,
+                                                                           trackIndex);
+
+    if (! hasClips && ! hasCables)
     {
-        captureToast.show (result.getErrorMessage());
+        if (const auto result = session.removeLastTrack (looperIndex); result.failed())
+        {
+            captureToast.show (result.getErrorMessage());
+            return;
+        }
+
+        engine.getLooperSettings().setNumTracks (looperIndex,
+                                                 session.getNumTracks (looperIndex));
+        refreshLooperStructure();
         return;
     }
 
-    engine.getLooperSettings().setNumTracks (looperIndex,
-                                             session.getNumTracks (looperIndex));
-    refreshLooperStructure();
+    auto message = juce::String::fromUTF8 ("Track ") + juce::String (trackIndex + 1)
+                 + juce::String::fromUTF8 (" (Looper ") + juce::String (looperIndex + 1)
+                 + juce::String::fromUTF8 (") enthält noch:");
+    if (hasClips)
+        message << juce::String::fromUTF8 ("\n\xe2\x80\xa2 Clips");
+    if (hasCables)
+        message << juce::String::fromUTF8 ("\n\xe2\x80\xa2 Kabel am Looper-Out");
+    message << juce::String::fromUTF8 (
+        "\n\nOK löscht beides (\xe2\x86\xba ~3 min rückgängig).");
+
+    auto dialog = std::make_unique<LooperDeleteConfirmDialog> (
+        juce::String::fromUTF8 ("Track entfernen?"), message);
+    dialog->onConfirm = [this, looperIndex]
+    {
+        if (const auto result = engine.forceRemoveLooperTrack (looperIndex);
+            result.failed())
+            captureToast.show (result.getErrorMessage());
+        refreshLooperStructure();
+    };
+    juce::CallOutBox::launchAsynchronously (
+        std::move (dialog),
+        looperPage.getPanel (looperIndex).getTrack (trackIndex).getScreenBounds(),
+        nullptr);
 }
 
 void EngineEditor::handleLooperSlotTap (int looperIndex, int trackIndex, int slotIndex)
@@ -1091,6 +1188,10 @@ void EngineEditor::refreshLooperStatus (bool devMode)
     transportBar.setLooperStatus (pageHost.getPage() == TransportBar::pageLooper,
                                   playing);
     looperPage.getStopTile().setEnabled (playing);
+
+    // Papierkorb-Kachel (Big Out): Countdown + Sichtbarkeit
+    auto& trash = engine.getLooperTrash();
+    looperPage.setTrashState (trash.secondsRemaining(), trash.hasEntries());
 
     // Puls-Phase + Abspielposition tickt der VBlank-Pfad monitor-synchron
     // (tickLooperPlayheads) — hier nur Struktur, Labels, Meter

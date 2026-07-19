@@ -3,6 +3,7 @@
 
 #include "Core/LooperSettings.h"
 #include "UI/LooperPage.h"
+#include "UI/LooperSendDialog.h"
 #include "UI/LooperSettingsMenu.h"
 
 using Catch::Approx;
@@ -290,6 +291,63 @@ TEST_CASE ("LooperTrackStrip: Hooks liefern Track-lokale Indizes und Werte", "[l
         REQUIRE (cell.getState().playing);
         REQUIRE (cell.getState().hasClip);
     }
+}
+
+TEST_CASE ("LooperSendDialog: S1–S4-Maske und PRE/POST-Abgriff", "[looper][ui]")
+{
+    juce::ScopedJuceInitialiser_GUI juceRuntime;
+
+    conduit::LooperSendDialog dialog { "Looper 1 · Track 2", 0b0001, false };
+    dialog.setBounds (0, 0, 228, 128);
+
+    int lastSend = -1;
+    bool lastEnabled = false, lastPre = false;
+    int sendEvents = 0, preEvents = 0;
+    dialog.onSendToggled = [&] (int s, bool enabled)
+    { lastSend = s; lastEnabled = enabled; ++sendEvents; };
+    dialog.onPreToggled = [&] (bool pre) { lastPre = pre; ++preEvents; };
+
+    REQUIRE (dialog.getSendMask() == 0b0001);
+    REQUIRE_FALSE (dialog.isPre());
+
+    // S3 dazu, S1 wieder raus — Maske folgt, Hook liefert Einzel-Events
+    dialog.sendTile (2).onClick();
+    REQUIRE (dialog.getSendMask() == 0b0101);
+    REQUIRE (lastSend == 2);
+    REQUIRE (lastEnabled);
+
+    dialog.sendTile (0).onClick();
+    REQUIRE (dialog.getSendMask() == 0b0100);
+    REQUIRE (lastSend == 0);
+    REQUIRE_FALSE (lastEnabled);
+    REQUIRE (sendEvents == 2);
+
+    // PRE-Toggle
+    dialog.preTile.onClick();
+    REQUIRE (dialog.isPre());
+    REQUIRE (lastPre);
+    dialog.preTile.onClick();
+    REQUIRE_FALSE (dialog.isPre());
+    REQUIRE (preEvents == 2);
+}
+
+TEST_CASE ("LooperTrackStrip: SND-Kachel — Hook und Zustands-Spiegel", "[looper][ui]")
+{
+    juce::ScopedJuceInitialiser_GUI juceRuntime;
+
+    conduit::LooperTrackStrip strip { 1 };
+    strip.setBounds (0, 0, 160, 520);
+
+    int taps = 0;
+    strip.onSendTileTapped = [&] { ++taps; };
+    strip.getSendTile().onClick();
+    REQUIRE (taps == 1);
+
+    strip.setSendState (0b0011, false);
+    REQUIRE (strip.getSendTile().isActive());
+
+    strip.setSendState (0, false);
+    REQUIRE_FALSE (strip.getSendTile().isActive());
 }
 
 TEST_CASE ("LooperClipControlsRow: Dispatch nur mit Aktiv-Clip, VARI-Mapping", "[looper][ui]")

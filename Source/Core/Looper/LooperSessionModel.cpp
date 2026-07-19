@@ -52,6 +52,20 @@ bool LooperSessionModel::looperHasClips (int looperIndex) const noexcept
     return false;
 }
 
+bool LooperSessionModel::trackHasClips (int looperIndex, int trackIndex) const noexcept
+{
+    if (! validLooper (looperIndex)
+        || trackIndex < 0 || trackIndex >= LooperBank::maxTracks)
+        return false;
+
+    for (const auto* clip : slots[static_cast<std::size_t> (looperIndex)]
+                                 [static_cast<std::size_t> (trackIndex)])
+        if (clip != nullptr)
+            return true;
+
+    return false;
+}
+
 juce::Result LooperSessionModel::removeLastLooper()
 {
     if (numLoopers <= 1)
@@ -334,6 +348,35 @@ juce::Result LooperSessionModel::deleteSlot (int looperIndex, int trackIndex,
          [static_cast<std::size_t> (slotIndex)] = nullptr;
     clearReferencesTo (looperIndex, { trackIndex, slotIndex });
     return juce::Result::ok();
+}
+
+LooperClip* LooperSessionModel::detachSlot (int looperIndex, int trackIndex,
+                                            int slotIndex) noexcept
+{
+    auto* clip = clipAt (looperIndex, trackIndex, slotIndex);
+    if (clip == nullptr)
+        return nullptr;
+
+    // Wie deleteSlot, aber OHNE bank.deleteClip — der Clip bleibt im
+    // Store der Bank (Papierkorb-Kontrakt)
+    slots[static_cast<std::size_t> (looperIndex)]
+         [static_cast<std::size_t> (trackIndex)]
+         [static_cast<std::size_t> (slotIndex)] = nullptr;
+    clearReferencesTo (looperIndex, { trackIndex, slotIndex });
+    return clip;
+}
+
+bool LooperSessionModel::attachClip (int looperIndex, int trackIndex, int slotIndex,
+                                     LooperClip* clip) noexcept
+{
+    if (clip == nullptr || ! validSlotAddress (looperIndex, trackIndex, slotIndex)
+        || clipAt (looperIndex, trackIndex, slotIndex) != nullptr)
+        return false;
+
+    slots[static_cast<std::size_t> (looperIndex)]
+         [static_cast<std::size_t> (trackIndex)]
+         [static_cast<std::size_t> (slotIndex)] = clip;
+    return true;
 }
 
 void LooperSessionModel::clearAllClips() noexcept

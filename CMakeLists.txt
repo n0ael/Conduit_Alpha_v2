@@ -168,15 +168,19 @@ set(CONDUIT_CPP_SOURCES
     Source/Core/Capture/CaptureChannel.cpp
     Source/Core/Capture/CaptureService.cpp
     Source/Core/LooperSettings.cpp
+    Source/UI/LooperBigOutPanel.cpp
     Source/UI/LooperClipControlsRow.cpp
+    Source/UI/LooperDeleteConfirmDialog.cpp
     Source/UI/LooperInPanel.cpp
     Source/UI/LooperOutPanel.cpp
     Source/UI/LooperPanel.cpp
+    Source/UI/LooperSendDialog.cpp
     Source/UI/LooperSettingsMenu.cpp
     Source/UI/LooperTrackStrip.cpp
     Source/Core/Looper/LooperBank.cpp
     Source/Core/Looper/LooperClipExporter.cpp
     Source/Core/Looper/LooperSessionModel.cpp
+    Source/Core/Looper/LooperTrashCan.cpp
     Source/Core/Looper/LooperWaveformTap.cpp
     Source/Core/Capture/CaptureSettings.cpp
     Source/Core/Capture/CaptureWriter.cpp
@@ -268,6 +272,7 @@ set(CONDUIT_CPP_SOURCES
     Source/Modules/LfoModule.cpp
     Source/Modules/LinkAudioReceiveModule.cpp
     Source/Modules/LinkAudioSendModule.cpp
+    Source/Modules/LooperBigOutModule.cpp
     Source/Modules/LooperInModule.cpp
     Source/Modules/LooperOutModule.cpp
     Source/Modules/ScopeModule.cpp
@@ -673,7 +678,9 @@ if(CONDUIT_BUILD_TESTS)
         Tests/Core/LooperSourceTests.cpp
         Tests/Core/LooperWaveformTapTests.cpp
         Tests/Core/LooperBankTests.cpp
+        Tests/Core/LooperBigOutModuleTests.cpp
         Tests/Core/LooperIoModuleTests.cpp
+        Tests/Core/LooperTrashTests.cpp
         Tests/Core/SignalFlowColoursTests.cpp
         Tests/Core/LooperClipExporterTests.cpp
         Tests/Core/LooperSessionModelTests.cpp
@@ -810,15 +817,19 @@ if(CONDUIT_BUILD_TESTS)
         Source/Core/Capture/CaptureChannel.cpp
         Source/Core/Capture/CaptureService.cpp
         Source/Core/LooperSettings.cpp
+        Source/UI/LooperBigOutPanel.cpp
         Source/UI/LooperClipControlsRow.cpp
+        Source/UI/LooperDeleteConfirmDialog.cpp
         Source/UI/LooperInPanel.cpp
         Source/UI/LooperOutPanel.cpp
         Source/UI/LooperPanel.cpp
+        Source/UI/LooperSendDialog.cpp
         Source/UI/LooperSettingsMenu.cpp
         Source/UI/LooperTrackStrip.cpp
         Source/Core/Looper/LooperBank.cpp
         Source/Core/Looper/LooperClipExporter.cpp
         Source/Core/Looper/LooperSessionModel.cpp
+        Source/Core/Looper/LooperTrashCan.cpp
         Source/Core/Looper/LooperWaveformTap.cpp
         Source/Core/Capture/CaptureSettings.cpp
         Source/Core/Capture/CaptureWriter.cpp
@@ -910,6 +921,7 @@ if(CONDUIT_BUILD_TESTS)
         Source/Modules/LfoModule.cpp
         Source/Modules/LinkAudioReceiveModule.cpp
         Source/Modules/LinkAudioSendModule.cpp
+        Source/Modules/LooperBigOutModule.cpp
         Source/Modules/LooperInModule.cpp
         Source/Modules/LooperOutModule.cpp
         Source/Modules/ScopeModule.cpp

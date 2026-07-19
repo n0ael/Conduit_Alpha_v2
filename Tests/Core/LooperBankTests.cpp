@@ -8,6 +8,7 @@
 
 #include "Core/Looper/BarSampleAnchors.h"
 #include "Core/Looper/LooperBank.h"
+#include "Modules/LooperBigOutModule.h"
 #include "Modules/LooperOutModule.h"
 #include "Util/RtAllocationGuard.h"
 
@@ -432,6 +433,135 @@ TEST_CASE ("LooperBank: Looper-I/O-Busse — AudioView, sendToMaster, Kein Maste
         silent.setPlayConfigDetails (0, 2, testSampleRate, blockSize);
         juce::AudioBuffer<float> quiet { 2, blockSize };
         for (int ch = 0; ch < 2; ++ch)
+            juce::FloatVectorOperations::fill (quiet.getWritePointer (ch), 1.0f, blockSize);
+        silent.processBlock (quiet, midi);
+        REQUIRE (juce::exactlyEqual (rms (quiet.getReadPointer (0), blockSize), 0.0));
+    }
+}
+
+TEST_CASE ("LooperBank: Track-/Send-Busse — trackBus post-fader, Sends pre/post", "[looper]")
+{
+    BankRig rig;
+    rig.signal = [] (std::uint64_t position)
+    {
+        return 0.3f + 0.4f * static_cast<float> (position % 61) / 61.0f;
+    };
+    rig.feedBars (2.5);
+    REQUIRE (rig.commit (1).wasOk());
+    rig.feedBlocks (4);
+
+    const auto rms = [] (const float* data, int numSamples)
+    {
+        double sum = 0.0;
+        for (int i = 0; i < numSamples; ++i)
+            sum += data[i] * data[i];
+        return std::sqrt (sum / numSamples);
+    };
+
+    SECTION ("trackBus trägt das Post-Fader-Signal des Tracks")
+    {
+        const auto view = rig.bank.getAudioView();
+        REQUIRE (view.numSamples == blockSize);
+        REQUIRE (rms (view.track[0][0][0], blockSize) > 0.01);
+
+        // Ein Track, Unity-Fader: trackBus == Post-Bus des Loopers
+        for (int i = 0; i < blockSize; ++i)
+            REQUIRE (juce::exactlyEqual (view.track[0][0][0][i], view.post[0][0][i]));
+
+        // Andere Tracks bleiben definierte Stille
+        REQUIRE (juce::exactlyEqual (rms (view.track[0][1][0], blockSize), 0.0));
+        REQUIRE (juce::exactlyEqual (rms (view.track[1][0][0], blockSize), 0.0));
+    }
+
+    SECTION ("Send-Maske: Bus führt nur bei gesetztem Bit Signal")
+    {
+        // Default: keine Sends
+        auto view = rig.bank.getAudioView();
+        for (int s = 0; s < LooperBank::maxSends; ++s)
+            REQUIRE (juce::exactlyEqual (rms (view.send[s][0], blockSize), 0.0));
+
+        rig.bank.setTrackSends (0, 0, 0b0101);   // Send 1 + 3
+        rig.feedBlocks (2);
+
+        view = rig.bank.getAudioView();
+        REQUIRE (rms (view.send[0][0], blockSize) > 0.01);
+        REQUIRE (rms (view.send[2][0], blockSize) > 0.01);
+        REQUIRE (juce::exactlyEqual (rms (view.send[1][0], blockSize), 0.0));
+        REQUIRE (juce::exactlyEqual (rms (view.send[3][0], blockSize), 0.0));
+
+        // Post-Abgriff bei Unity-Fader == Post-Bus
+        for (int i = 0; i < blockSize; ++i)
+            REQUIRE (juce::exactlyEqual (view.send[0][0][i], view.post[0][0][i]));
+    }
+
+    SECTION ("Gain 0: Post-Send verstummt, Pre-Send bleibt hörbar")
+    {
+        rig.bank.setTrackSends (0, 0, 0b0001);
+        rig.bank.setTrackGain (0, 0, 0.0f);
+        rig.feedBlocks (4);   // Gain-Slew (5 ms) ausklingen lassen
+
+        auto view = rig.bank.getAudioView();
+        REQUIRE (juce::exactlyEqual (rms (view.send[0][0], blockSize), 0.0));
+        REQUIRE (juce::exactlyEqual (rms (view.track[0][0][0], blockSize), 0.0));
+        REQUIRE (rms (view.pre[0][0], blockSize) > 0.01);
+
+        rig.bank.setTrackSendPre (0, 0, true);
+        rig.feedBlocks (2);
+
+        view = rig.bank.getAudioView();
+        REQUIRE (rms (view.send[0][0], blockSize) > 0.01);
+        for (int i = 0; i < blockSize; ++i)
+            REQUIRE (juce::exactlyEqual (view.send[0][0][i], view.pre[0][0][i]));
+    }
+
+    SECTION ("Pan hart rechts: trackBus links fällt equal-power (Stereo-Kontrakt)")
+    {
+        rig.bank.setTrackPan (0, 0, 1.0f);
+        rig.feedBlocks (4);   // Pan-Slew ausklingen lassen
+
+        const auto view = rig.bank.getAudioView();
+        REQUIRE (rms (view.track[0][0][0], blockSize) < 1.0e-6);   // cos(π/2)-Restfehler
+        REQUIRE (rms (view.track[0][0][1], blockSize) > 0.01);
+    }
+
+    SECTION ("LooperBigOutModule kopiert Track-/Bus-/Send-/Master-Slots")
+    {
+        using Big = conduit::LooperBigOutModule;
+        rig.bank.setTrackSends (0, 0, 0b0010);   // Send 2, post
+        rig.feedBlocks (2);
+
+        Big module;
+        module.setLooperAudioSource (&rig.bank);
+        module.applyOutputSpecs (Big::buildSpecs (Big::Structure {}));
+        REQUIRE (module.getTotalNumOutputChannels() == 14);
+        module.setPlayConfigDetails (0, 14, testSampleRate, blockSize);
+        module.prepareToPlay (testSampleRate, blockSize);
+
+        rig.feedBlocks (1);
+        const auto view = rig.bank.getAudioView();
+
+        juce::AudioBuffer<float> out { 14, blockSize };
+        juce::MidiBuffer midi;
+        module.processBlock (out, midi);
+
+        for (int i = 0; i < blockSize; ++i)
+        {
+            REQUIRE (juce::exactlyEqual (out.getSample (0, i), view.track[0][0][0][i]));  // Track 1.1 L
+            REQUIRE (juce::exactlyEqual (out.getSample (2, i), view.post[0][0][i]));      // Bus 1 L
+            REQUIRE (juce::exactlyEqual (out.getSample (6, i), view.send[1][0][i]));      // Send 2 L
+            REQUIRE (juce::exactlyEqual (out.getSample (12, i), view.master[0][i]));      // Master L
+        }
+
+        // Send 1/3/4 unbelegt = Stille; Send 2 == Post (Unity, post-Abgriff)
+        REQUIRE (juce::exactlyEqual (rms (out.getReadPointer (4), blockSize), 0.0));
+        REQUIRE (rms (out.getReadPointer (6), blockSize) > 0.01);
+
+        // Ohne Bank: definierte Stille
+        Big silent;
+        silent.applyOutputSpecs (Big::buildSpecs (Big::Structure {}));
+        silent.setPlayConfigDetails (0, 14, testSampleRate, blockSize);
+        juce::AudioBuffer<float> quiet { 14, blockSize };
+        for (int ch = 0; ch < 14; ++ch)
             juce::FloatVectorOperations::fill (quiet.getWritePointer (ch), 1.0f, blockSize);
         silent.processBlock (quiet, midi);
         REQUIRE (juce::exactlyEqual (rms (quiet.getReadPointer (0), blockSize), 0.0));

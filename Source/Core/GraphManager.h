@@ -10,6 +10,7 @@
 #include "GraphFader.h"
 #include "Interfaces/IClockSource.h"
 #include "Modules/ConduitModule.h"
+#include "Modules/LooperBigOutModule.h"
 #include "ParamModulation.h"
 
 namespace conduit
@@ -143,6 +144,33 @@ public:
     /** Pre/Post eines Looper-Out-Abgriffs — re-materialisiert (das Modul
         liest die Slots nur bei der Materialisierung). */
     bool setLooperOutSlotPre (const juce::String& nodeUuid, int slotIndex, bool pre);
+
+    /** Logische Looper-Struktur cachen (Owner: EngineProcessor,
+        applyLooperSettings) UND alle Big-Out-Nodes darauf syncen. */
+    void setLooperStructure (const LooperBigOutModule::Structure& structure);
+
+    /** Alle looper_big_out-Nodes auf die gecachte Struktur bringen:
+        <Outputs> regenerieren, Kabel über Spec-Identität remappen
+        (verschwundene Slots verlieren ihr Kabel, überlebende Kanäle
+        werden alt→neu umgeschrieben), gefadete Re-Materialisierung.
+        Undo-frei — die Struktur ist App-Zustand außerhalb des Undo-Trees;
+        Reversibilität erzwungener Löschungen übernimmt der Papierkorb. */
+    void syncLooperBigOutConfigs();
+
+    /** true, wenn ein Kabel an einem Big-Out-Slot hängt, den das
+        Entfernen von Track (trackIndex ≥ 0) bzw. Looper (trackIndex −1:
+        alle Tracks + Bus) zerstören würde. Indizes 0-basiert. */
+    [[nodiscard]] bool hasLooperBigOutCables (int looperIndex, int trackIndex) const;
+
+    /** Betroffene Big-Out-Kabel einsammeln UND entfernen (undo-frei —
+        Reversibilität übernimmt der Papierkorb). */
+    std::vector<LooperBigOutModule::BigOutCableRef>
+        collectAndRemoveBigOutCables (int looperIndex, int trackIndex);
+
+    /** Papierkorb-Restore: Kabel spec-relativ neu anlegen (Kanal aus der
+        DANN gültigen Slot-Liste; fehlende Nodes/Slots werden übersprungen).
+        Liefert die Zahl der NICHT wiederherstellbaren Kabel. */
+    int restoreBigOutCables (const std::vector<LooperBigOutModule::BigOutCableRef>& cables);
 
     /** Patch-Aktion (Dev-Modus 4.6): User-Regelbereich eines Parameters —
         Fader nutzt [userMin, userMax], der DSP clamped weiter auf die
@@ -509,6 +537,10 @@ private:
 
     // Looper-Busse für ILooperAudioClients (Owner: EngineProcessor)
     LooperBank* looperBank = nullptr;
+
+    // Logische Looper-Struktur (Cache, setLooperStructure) — Quelle für
+    // die Auto-Follow-Outputs der Big-Out-Nodes
+    LooperBigOutModule::Structure looperStructure;
 
     // Kanal-Namen für Send-Auto-Naming (Owner: EngineProcessor)
     ChannelNames* channelNames = nullptr;

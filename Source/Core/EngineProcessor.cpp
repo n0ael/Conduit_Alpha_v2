@@ -335,10 +335,157 @@ void EngineProcessor::applyLooperSettings()
             looperBank.setTrackPan  (l, t, looperSettings.getTrackPan (l, t));
             looperBank.setTrackMute (l, t, looperSettings.isTrackMuted (l, t));
             looperBank.setTrackSolo (l, t, looperSettings.isTrackSolo (l, t));
+            looperBank.setTrackSends (l, t,
+                (std::uint32_t) looperSettings.getTrackSends (l, t));
+            looperBank.setTrackSendPre (l, t, looperSettings.isTrackSendPre (l, t));
         }
     }
 
+    // Big-Out-Nodes folgen der Struktur (Auto-Follow, gefadete Re-Mat)
+    graphManager.setLooperStructure (currentLooperStructure());
+
     applyLooperSourceArming();
+}
+
+LooperBigOutModule::Structure EngineProcessor::currentLooperStructure() const
+{
+    LooperBigOutModule::Structure structure;
+    structure.numLoopers = looperSettings.getNumLoopers();
+    for (int l = 0; l < LooperBank::maxLoopers; ++l)
+        structure.numTracks[(size_t) l] = looperSettings.getNumTracks (l);
+    return structure;
+}
+
+//==============================================================================
+juce::Result EngineProcessor::forceRemoveLooperTrack (int looperIndex)
+{
+    JUCE_ASSERT_MESSAGE_THREAD
+
+    if (looperIndex < 0 || looperIndex >= looperSession.getNumLoopers())
+        return juce::Result::fail ("Ungültiger Looper");
+
+    const auto trackIndex = looperSession.getNumTracks (looperIndex) - 1;
+    if (trackIndex < 1)
+        return juce::Result::fail ("Der letzte Track bleibt");
+
+    LooperTrashCan::Entry entry;
+    entry.kind = LooperTrashCan::Entry::Kind::track;
+    entry.looperIndex = looperIndex;
+    entry.trackIndex = trackIndex;
+
+    // (1) Stoppen (MT-Intent sofort; der Voice-Fade läuft audio-seitig
+    // weiter — die Clips bleiben am Leben)
+    looperSession.stopTrack (looperIndex, trackIndex, 0.0);
+
+    // (2) Kabel VOR dem Struktur-Sync einsammeln (Spec-Liste noch gültig)
+    entry.cables = graphManager.collectAndRemoveBigOutCables (looperIndex, trackIndex);
+
+    // (3) Clips in den Papierkorb detachen — die Bank bleibt Besitzerin
+    for (int slot = 0; slot < LooperSessionModel::maxSlots; ++slot)
+        if (auto* clip = looperSession.detachSlot (looperIndex, trackIndex, slot))
+            entry.clips.push_back ({ trackIndex, slot, clip, clip->clipId });
+
+    // (4) Struktur schrumpfen (passt jetzt — Track ist leer und gestoppt)
+    if (const auto result = looperSession.removeLastTrack (looperIndex); result.failed())
+        return result;
+    looperSettings.setNumTracks (looperIndex, looperSession.getNumTracks (looperIndex));
+
+    // (5) Big-Out-Nodes SYNCHRON nachziehen (keine Async-Reihenfolge-Falle)
+    graphManager.setLooperStructure (currentLooperStructure());
+
+    looperTrash.push (std::move (entry));
+    return juce::Result::ok();
+}
+
+juce::Result EngineProcessor::forceRemoveLastLooper()
+{
+    JUCE_ASSERT_MESSAGE_THREAD
+
+    const auto looperIndex = looperSession.getNumLoopers() - 1;
+    if (looperIndex < 1)
+        return juce::Result::fail ("Der letzte Looper bleibt offen");
+
+    LooperTrashCan::Entry entry;
+    entry.kind = LooperTrashCan::Entry::Kind::looper;
+    entry.looperIndex = looperIndex;
+    // VOR removeLastLooper snappen — das resettet numTracks auf 1
+    entry.numTracksSnapshot = looperSession.getNumTracks (looperIndex);
+
+    entry.cables = graphManager.collectAndRemoveBigOutCables (looperIndex, -1);
+
+    for (int t = 0; t < entry.numTracksSnapshot; ++t)
+    {
+        looperSession.stopTrack (looperIndex, t, 0.0);
+        for (int slot = 0; slot < LooperSessionModel::maxSlots; ++slot)
+            if (auto* clip = looperSession.detachSlot (looperIndex, t, slot))
+                entry.clips.push_back ({ t, slot, clip, clip->clipId });
+    }
+
+    if (const auto result = looperSession.removeLastLooper(); result.failed())
+        return result;
+    looperSettings.setNumLoopers (looperSession.getNumLoopers());
+    looperSettings.setNumTracks (looperIndex, 1);   // Settings-Reset wie im Modell
+
+    graphManager.setLooperStructure (currentLooperStructure());
+
+    looperTrash.push (std::move (entry));
+    return juce::Result::ok();
+}
+
+juce::Result EngineProcessor::restoreLooperTrash (int* skippedCables)
+{
+    JUCE_ASSERT_MESSAGE_THREAD
+
+    if (skippedCables != nullptr)
+        *skippedCables = 0;
+
+    if (! looperTrash.hasEntries())
+        return juce::Result::fail ("Papierkorb ist leer");
+
+    auto entry = looperTrash.popLatest();
+
+    // Struktur-Position muss frei sein — sonst Eintrag zurücklegen
+    // (push erneuert das Zeitfenster, bewusst großzügig)
+    if (entry.kind == LooperTrashCan::Entry::Kind::track)
+    {
+        if (looperSession.getNumTracks (entry.looperIndex) != entry.trackIndex)
+        {
+            looperTrash.push (std::move (entry));
+            return juce::Result::fail ("Struktur inzwischen belegt");
+        }
+
+        looperSession.addTrack (entry.looperIndex);
+        looperSettings.setNumTracks (entry.looperIndex,
+                                     looperSession.getNumTracks (entry.looperIndex));
+    }
+    else
+    {
+        if (looperSession.getNumLoopers() != entry.looperIndex)
+        {
+            looperTrash.push (std::move (entry));
+            return juce::Result::fail ("Struktur inzwischen belegt");
+        }
+
+        looperSession.addLooper();
+        while (looperSession.getNumTracks (entry.looperIndex) < entry.numTracksSnapshot)
+            if (! looperSession.addTrack (entry.looperIndex))
+                break;
+
+        looperSettings.setNumLoopers (looperSession.getNumLoopers());
+        looperSettings.setNumTracks (entry.looperIndex, entry.numTracksSnapshot);
+    }
+
+    // Clips reattachen (kein Auto-Play) — frische Tracks sind leer
+    for (const auto& ref : entry.clips)
+        looperSession.attachClip (entry.looperIndex, ref.track, ref.slot, ref.clip);
+
+    // Slots nachwachsen lassen, DANN Kabel spec-relativ neu anlegen
+    graphManager.setLooperStructure (currentLooperStructure());
+    const auto failed = graphManager.restoreBigOutCables (entry.cables);
+    if (skippedCables != nullptr)
+        *skippedCables = failed;
+
+    return juce::Result::ok();
 }
 
 void EngineProcessor::applyTransportSettings()
@@ -731,6 +878,9 @@ void EngineProcessor::prepareToPlay (double sampleRate, int samplesPerBlock)
     // Loop-Playback verwerfen ihren Stand (SampleClock-Reset, B4/B5)
     for (auto& tap : looperWaveformTaps)
         tap.prepare (sampleRate);
+    looperTrash.clearWithoutDelete();   // VOR bank.prepare — der Store wird
+                                        // gleich freigegeben, die Papierkorb-
+                                        // Pointer wären sonst dangling
     looperBank.prepare (sampleRate, samplesPerBlock);
     looperSession.clearAllClips();   // Bank hat die Clips freigegeben (M6-Feld-Fund)
     applyLooperSourceArming();
@@ -946,6 +1096,7 @@ void EngineProcessor::setStateInformation (const void* data, int sizeInBytes)
             migrateReservedIO();           // ADR 009: nur Alt-Patches (< V3)
             ensureSessionScaleDefaults();  // Presets ohne Skalen-Properties
             pageManager.migrateAndRepair();  // ... und ohne Pages-Zweig (ADR 008 M1)
+            graphManager.syncLooperBigOutConfigs();  // Big Out folgt der App-Struktur
         }
     }
 }
@@ -993,6 +1144,10 @@ juce::Result EngineProcessor::loadPreset (const juce::File& file)
     migrateReservedIO();           // ADR 009: nur Alt-Patches (< V3), undo-frei
     ensureSessionScaleDefaults();  // Presets ohne Skalen-Properties
     pageManager.migrateAndRepair();  // ... und ohne Pages-Zweig (ADR 008 M1, undo-frei)
+
+    // Big Out folgt der App-Struktur, nicht dem Preset (Reconcile fremd-
+    // strukturierter Patches, undo-frei)
+    graphManager.syncLooperBigOutConfigs();
 
     return juce::Result::ok();
 }

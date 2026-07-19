@@ -62,6 +62,8 @@ public:
 
     [[nodiscard]] bool looperHasClips (int looperIndex) const noexcept;
 
+    [[nodiscard]] bool trackHasClips (int looperIndex, int trackIndex) const noexcept;
+
     bool addTrack (int looperIndex) noexcept;
 
     /** Letzten Track entfernen — nur wenn leer und gestoppt. */
@@ -118,6 +120,16 @@ public:
     /** Delete-Geste: Clip des Slots endgültig löschen. */
     [[nodiscard]] juce::Result deleteSlot (int looperIndex, int trackIndex,
                                            int slotIndex);
+
+    /** Papierkorb (Big Out): Clip aus dem Slot LÖSEN ohne bank.deleteClip —
+        die Bank bleibt Besitzerin, Restore via attachClip. nullptr = leer. */
+    [[nodiscard]] LooperClip* detachSlot (int looperIndex, int trackIndex,
+                                          int slotIndex) noexcept;
+
+    /** Papierkorb-Restore: Clip in einen LEEREN Slot hängen (kein
+        Auto-Play). false bei ungültiger Adresse oder belegtem Slot. */
+    bool attachClip (int looperIndex, int trackIndex, int slotIndex,
+                     LooperClip* clip) noexcept;
 
     /** Spielender Slot des Tracks (−1 = keiner) — Modell-Sicht (Intent). */
     [[nodiscard]] int getPlayingSlot (int looperIndex, int trackIndex) const noexcept;

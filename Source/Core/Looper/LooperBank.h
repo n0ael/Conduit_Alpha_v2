@@ -59,10 +59,12 @@ namespace conduit
         seinem exakten Playhead positions-kontinuierlich an; inhärente
         Lese-Sprünge (÷2 „erste Hälfte" aus der zweiten, Reset-Sync)
         duckt ein 5-ms-Splice-Dip pro Clip.
-      - Track-Mix: Voices rendern in einen preallozierten Stereo-Scratch;
-        danach Gain (5-ms-Slew) + Equal-Power-Pan + effektives Mute
-        (MT-berechnet aus Mute/Solo/Solo-Scope) → Post-Fader-LevelMeter →
-        additiv aufs Anker-Paar. Meter laufen auch bei OOB-Anker weiter.
+      - Track-Mix: Voices rendern in den preallozierten trackBus des
+        Tracks (Big Out liest ihn post-fader); danach Gain (5-ms-Slew) +
+        Equal-Power-Pan + effektives Mute (MT-berechnet aus Mute/Solo/
+        Solo-Scope) → Post-Fader-LevelMeter → additiv aufs Anker-Paar.
+        Meter laufen auch bei OOB-Anker weiter. Send-Busse 1..4 greifen
+        pro Track wahlweise pre (vor dem Fader-Zug) oder post ab.
 
     RAM-Konto: right-sized Clips statt Prealloc; die Summe aller lebenden
     Clips (Store + Graveyard) ist auf ramBudgetBytes begrenzt — ein Commit
@@ -76,6 +78,7 @@ class LooperBank
 public:
     static constexpr int maxLoopers = 4;
     static constexpr int maxTracks  = 4;
+    static constexpr int maxSends   = 4;       // globale Send-Busse (Big Out)
     static constexpr int voicesPerTrack = 3;   // Crossfade + Doppel-Re-Commit
 
     static constexpr double maxLoopSeconds   = 60.0;
@@ -191,6 +194,12 @@ public:
     void setTrackMute (int looperIndex, int trackIndex, bool muted) noexcept;
     void setTrackSolo (int looperIndex, int trackIndex, bool solo) noexcept;
 
+    /** Send-Routing des Tracks: Bits 0..3 = Send 1..4 (Big Out). */
+    void setTrackSends (int looperIndex, int trackIndex, std::uint32_t mask) noexcept;
+
+    /** Send-Abgriff des Tracks: true = pre (vor Gain/Pan/Mute), false = post. */
+    void setTrackSendPre (int looperIndex, int trackIndex, bool pre) noexcept;
+
     /** Solo-Scope (Menü-Option): false = pro Looper (Default), true = global. */
     void setSoloScopeGlobal (bool global) noexcept;
 
@@ -232,7 +241,9 @@ public:
         nicht. Füllt die internen Busse (pro Looper Pre-/Post-Fader-Stereo
         + Master-Mix), die das Looper-Out-Modul im selben Callback über
         getAudioView() liest — sample-aligned, ohne Block-Latenz.
-        blockStartSample = SampleClock-Position des Block-Anfangs. */
+        Zusätzlich pro Track ein Post-Fader-Stereo-Bus und die globalen
+        Send-Busse 1..4 (Big Out). blockStartSample = SampleClock-Position
+        des Block-Anfangs. */
     void renderBlock (const ClockState& clock, std::uint64_t blockStartSample,
                       const BarSampleAnchors& anchors, int numSamples) noexcept;
 
@@ -249,6 +260,8 @@ public:
         const float* master[2] { nullptr, nullptr };
         const float* pre [maxLoopers][2] {};    // vor Gain/Pan/Mute
         const float* post[maxLoopers][2] {};    // wie gehört (post-fader)
+        const float* track[maxLoopers][maxTracks][2] {};   // pro Track, post-fader
+        const float* send[maxSends][2] {};      // Send-Busse 1..4
         int numSamples = 0;
     };
     [[nodiscard]] AudioView getAudioView() const noexcept;
@@ -420,15 +433,20 @@ private:
     float  duckGain = 1.0f;
     std::uint64_t blockCounter = 0;
 
-    // Track-Render-Scratch (prealloziert in prepare, Audio-only)
-    std::vector<float> scratchLeft, scratchRight;
-
-    // Looper-I/O-Busse (prealloziert in prepare, Audio-only): pro Looper
-    // Pre-/Post-Fader-Stereo + Master-Mix des Blocks — renderBlock füllt,
-    // getAudioView()/mixToOutput lesen im selben Callback
+    // Looper-I/O-Busse (prealloziert in prepare, Audio-only): pro Track
+    // Post-Fader-Stereo (zugleich Render-Ziel statt geteiltem Scratch),
+    // pro Looper Pre-/Post-Fader-Stereo, Send-Busse + Master-Mix des
+    // Blocks — renderBlock füllt, getAudioView()/mixToOutput lesen im
+    // selben Callback
+    std::array<std::array<std::array<std::vector<float>, 2>,
+                          static_cast<std::size_t> (maxTracks)>,
+               static_cast<std::size_t> (maxLoopers)> trackBus;
     std::array<std::array<std::vector<float>, 2>,
                static_cast<std::size_t> (maxLoopers)> preBus, postBus;
+    std::array<std::array<std::vector<float>, 2>,
+               static_cast<std::size_t> (maxSends)> sendBus;
     std::array<std::vector<float>, 2> masterBus;
+    int busCapacity = 0;       // Samples pro Bus-Kanal (prepare)
     int renderedSamples = 0;   // 0 = noch nichts gerendert (View liefert Stille)
 
     // MT → Audio / Audio → MT
@@ -453,6 +471,12 @@ private:
                static_cast<std::size_t> (maxLoopers)> targetPan;
     std::array<std::array<std::atomic<bool>, static_cast<std::size_t> (maxTracks)>,
                static_cast<std::size_t> (maxLoopers)> effectiveMute;
+
+    // Send-Routing [MT schreibt, Audio liest]: Maske Bits 0..3 + Abgriff
+    std::array<std::array<std::atomic<std::uint32_t>, static_cast<std::size_t> (maxTracks)>,
+               static_cast<std::size_t> (maxLoopers)> targetSendMask;
+    std::array<std::array<std::atomic<bool>, static_cast<std::size_t> (maxTracks)>,
+               static_cast<std::size_t> (maxLoopers)> sendTapPre;
 
     // Post-Fader-Meter pro Track
     std::array<std::array<LevelMeter, static_cast<std::size_t> (maxTracks)>,

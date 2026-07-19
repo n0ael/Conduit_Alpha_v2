@@ -94,6 +94,12 @@ juce::ValueTree GraphManager::addModuleNode (const juce::String& factoryKey, juc
     if (configure)
         configure (nodeTree);
 
+    // Big Looper Out: frisch angelegte Nodes folgen sofort der aktuellen
+    // Looper-Struktur (createState liefert nur den 1×1-Minimal-Default)
+    if (factoryKey == LooperBigOutModule::staticModuleId)
+        LooperBigOutModule::applyOutputConfig (
+            nodeTree, LooperBigOutModule::buildSpecs (looperStructure));
+
     nodeTree.setProperty (id::positionX, position.x, nullptr);
     nodeTree.setProperty (id::positionY, position.y, nullptr);
 
@@ -681,6 +687,202 @@ bool GraphManager::setLooperOutSlotPre (const juce::String& nodeUuid, int slotIn
     return true;   // Property-Listener re-materialisiert (outputPre-Zweig)
 }
 
+void GraphManager::setLooperStructure (const LooperBigOutModule::Structure& structure)
+{
+    JUCE_ASSERT_MESSAGE_THREAD
+
+    looperStructure = structure;
+    syncLooperBigOutConfigs();
+}
+
+void GraphManager::syncLooperBigOutConfigs()
+{
+    JUCE_ASSERT_MESSAGE_THREAD
+
+    const auto nodes = rootState.getChildWithName (id::nodes);
+    if (! nodes.isValid())
+        return;
+
+    const auto newSpecs = LooperBigOutModule::buildSpecs (looperStructure);
+    auto connections = rootState.getChildWithName (id::connections);
+
+    for (int n = 0; n < nodes.getNumChildren(); ++n)
+    {
+        auto nodeTree = nodes.getChild (n);
+        if (factoryKeyOf (nodeTree) != LooperBigOutModule::staticModuleId)
+            continue;
+
+        const auto oldSpecs = LooperBigOutModule::readOutputConfig (nodeTree);
+        if (oldSpecs == newSpecs)
+            continue;
+
+        const auto nodeUuid = nodeTree.getProperty (id::nodeId).toString();
+
+        // Kabel-Remap über Spec-IDENTITÄT (nicht Kanal-Arithmetik): der
+        // letzte Track von Looper 2 verschiebt die geflatteten Offsets
+        // aller späteren Slots. Undo-frei (Struktur = App-Zustand).
+        for (int i = connections.getNumChildren(); --i >= 0;)
+        {
+            auto connection = connections.getChild (i);
+            if (connection.getProperty (id::sourceNodeId).toString() != nodeUuid)
+                continue;
+
+            const auto channel = (int) connection.getProperty (id::sourceChannel, 0);
+            const auto slot = channel / LooperBigOutModule::slotWidth;
+            const auto lr = channel % LooperBigOutModule::slotWidth;
+
+            int newOffset = -1;
+            if (slot >= 0 && slot < (int) oldSpecs.size())
+                newOffset = LooperBigOutModule::channelOffsetOf (newSpecs,
+                                                                 oldSpecs[(size_t) slot]);
+
+            if (newOffset < 0)
+                connections.removeChild (i, nullptr);
+            else if (newOffset + lr != channel)
+                connection.setProperty (id::sourceChannel, newOffset + lr, nullptr);
+        }
+
+        LooperBigOutModule::applyOutputConfig (nodeTree, newSpecs, nullptr);
+
+        // Explizit re-materialisieren: der Umbau ersetzt das <Outputs>-Kind
+        // komplett — bei gleicher Kanalzahl (Track weg + Track dazu) feuert
+        // KEIN numOutputChannels-Property-Listener.
+        if (std::find (pendingRematerialize.begin(), pendingRematerialize.end(),
+                       nodeUuid) == pendingRematerialize.end())
+            pendingRematerialize.push_back (nodeUuid);
+
+        preparedModules.erase (nodeUuid);
+        markTopologyDirty();
+    }
+}
+
+namespace
+{
+    /** true, wenn der Slot durch das Entfernen von Track (track1 ≥ 1)
+        bzw. Looper (track1 == 0: alle Tracks + Bus) verschwindet.
+        looper1/track1 1-basiert (Spec-Konvention). */
+    bool bigOutSpecAffected (const LooperBigOutModule::OutputSpec& spec,
+                             int looper1, int track1)
+    {
+        using Kind = LooperBigOutModule::Kind;
+
+        if (track1 > 0)
+            return spec.kind == Kind::track
+                && spec.looper == looper1 && spec.track == track1;
+
+        return (spec.kind == Kind::track || spec.kind == Kind::bus)
+            && spec.looper == looper1;
+    }
+}
+
+bool GraphManager::hasLooperBigOutCables (int looperIndex, int trackIndex) const
+{
+    JUCE_ASSERT_MESSAGE_THREAD
+
+    const auto nodes = rootState.getChildWithName (id::nodes);
+    const auto connections = rootState.getChildWithName (id::connections);
+
+    for (int n = 0; n < nodes.getNumChildren(); ++n)
+    {
+        const auto nodeTree = nodes.getChild (n);
+        if (factoryKeyOf (nodeTree) != LooperBigOutModule::staticModuleId)
+            continue;
+
+        const auto nodeUuid = nodeTree.getProperty (id::nodeId).toString();
+        const auto specs = LooperBigOutModule::readOutputConfig (nodeTree);
+
+        for (int i = 0; i < connections.getNumChildren(); ++i)
+        {
+            const auto connection = connections.getChild (i);
+            if (connection.getProperty (id::sourceNodeId).toString() != nodeUuid)
+                continue;
+
+            const auto slot = (int) connection.getProperty (id::sourceChannel, 0)
+                            / LooperBigOutModule::slotWidth;
+            if (slot >= 0 && slot < (int) specs.size()
+                && bigOutSpecAffected (specs[(size_t) slot],
+                                       looperIndex + 1, trackIndex + 1))
+                return true;
+        }
+    }
+
+    return false;
+}
+
+std::vector<LooperBigOutModule::BigOutCableRef>
+GraphManager::collectAndRemoveBigOutCables (int looperIndex, int trackIndex)
+{
+    JUCE_ASSERT_MESSAGE_THREAD
+
+    std::vector<LooperBigOutModule::BigOutCableRef> collected;
+    const auto nodes = rootState.getChildWithName (id::nodes);
+    auto connections = rootState.getChildWithName (id::connections);
+
+    for (int n = 0; n < nodes.getNumChildren(); ++n)
+    {
+        const auto nodeTree = nodes.getChild (n);
+        if (factoryKeyOf (nodeTree) != LooperBigOutModule::staticModuleId)
+            continue;
+
+        const auto nodeUuid = nodeTree.getProperty (id::nodeId).toString();
+        const auto specs = LooperBigOutModule::readOutputConfig (nodeTree);
+
+        for (int i = connections.getNumChildren(); --i >= 0;)
+        {
+            const auto connection = connections.getChild (i);
+            if (connection.getProperty (id::sourceNodeId).toString() != nodeUuid)
+                continue;
+
+            const auto channel = (int) connection.getProperty (id::sourceChannel, 0);
+            const auto slot = channel / LooperBigOutModule::slotWidth;
+            if (slot < 0 || slot >= (int) specs.size()
+                || ! bigOutSpecAffected (specs[(size_t) slot],
+                                         looperIndex + 1, trackIndex + 1))
+                continue;
+
+            collected.push_back (
+                { nodeUuid, specs[(size_t) slot],
+                  channel % LooperBigOutModule::slotWidth,
+                  connection.getProperty (id::destNodeId).toString(),
+                  (int) connection.getProperty (id::destChannel, 0) });
+            connections.removeChild (i, nullptr);
+        }
+    }
+
+    return collected;
+}
+
+int GraphManager::restoreBigOutCables (const std::vector<LooperBigOutModule::BigOutCableRef>& cables)
+{
+    JUCE_ASSERT_MESSAGE_THREAD
+
+    int failed = 0;
+    const auto nodes = rootState.getChildWithName (id::nodes);
+
+    for (const auto& cable : cables)
+    {
+        const auto nodeTree = nodes.getChildWithProperty (id::nodeId, cable.bigOutUuid);
+        if (! nodeTree.isValid()
+            || factoryKeyOf (nodeTree) != LooperBigOutModule::staticModuleId
+            || ! nodes.getChildWithProperty (id::nodeId, cable.destNodeId).isValid())
+        {
+            ++failed;   // Node inzwischen weg (Preset-Wechsel) — überspringen
+            continue;
+        }
+
+        // Kanal aus der JETZT gültigen Slot-Liste (nie der alte Roh-Kanal)
+        const auto specs = LooperBigOutModule::readOutputConfig (nodeTree);
+        const auto offset = LooperBigOutModule::channelOffsetOf (specs, cable.spec);
+
+        if (offset < 0
+            || ! addConnection (cable.bigOutUuid, offset + cable.lr,
+                                cable.destNodeId, cable.destChannel))
+            ++failed;
+    }
+
+    return failed;
+}
+
 //==============================================================================
 juce::String GraphManager::sanitizeModuleName (const juce::String& raw)
 {
@@ -1100,7 +1302,8 @@ void GraphManager::valueTreePropertyChanged (juce::ValueTree& tree, const juce::
     {
         if (const auto factoryKey = factoryKeyOf (tree);
             factoryKey == LooperInModule::staticModuleId
-            || factoryKey == LooperOutModule::staticModuleId)
+            || factoryKey == LooperOutModule::staticModuleId
+            || factoryKey == LooperBigOutModule::staticModuleId)
         {
             const auto nodeUuid = tree.getProperty (id::nodeId).toString();
 
@@ -1639,6 +1842,10 @@ std::unique_ptr<ConduitModule> GraphManager::materializeModule (juce::ValueTree 
     // prepareForGraph — bestimmen das Ausgangs-Bus-Layout.
     if (auto* looperOut = dynamic_cast<LooperOutModule*> (module.get()))
         looperOut->applyOutputSpecs (LooperOutModule::readOutputConfig (nodeTree));
+
+    // Big Looper Out: Auto-Follow-Slots aus dem Tree VOR prepareForGraph
+    if (auto* bigOut = dynamic_cast<LooperBigOutModule*> (module.get()))
+        bigOut->applyOutputSpecs (LooperBigOutModule::readOutputConfig (nodeTree));
 
     // Looper-Busse VOR prepareForGraph (ILooperAudioClient): die Bank
     // überlebt den Graph (EngineProcessor-Deklarationsreihenfolge).

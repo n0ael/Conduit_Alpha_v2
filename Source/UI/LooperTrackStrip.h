@@ -122,6 +122,7 @@ public:
     std::function<void (float pan)> onPanChanged;        // −1..+1
     std::function<void (bool muted)> onMuteToggled;
     std::function<void (bool solo)> onSoloToggled;
+    std::function<void()> onSendTileTapped;              // öffnet den Send-Dialog
     std::function<void()> onStop;
     std::function<void (int slotIndex)> onSlotTapped;
     std::function<void()> onHeaderLongPress;             // Track entfernen
@@ -141,6 +142,10 @@ public:
     void setMute (bool muted);
     void setSolo (bool solo);
 
+    /** Send-Routing-Anzeige (Big Out): Kachel aktiv, sobald ein Send
+        gesetzt ist; Label zeigt PRE-Abgriff mit an. */
+    void setSendState (int sendMask, bool sendPre);
+
     /** [Editor-Timer] Post-Fader-Meter (RMS 0..1 pro Seite) + LED. */
     void setMeter (float rmsLeft, float rmsRight, bool audible);
 
@@ -151,6 +156,7 @@ public:
 
     [[nodiscard]] push::TextTile& getMuteTile() noexcept { return muteTile; }
     [[nodiscard]] push::TextTile& getSoloTile() noexcept { return soloTile; }
+    [[nodiscard]] push::TextTile& getSendTile() noexcept { return sndTile; }
     [[nodiscard]] push::TextTile& getStopTile() noexcept { return stopTile; }
 
     void paint (juce::Graphics& g) override;
@@ -188,6 +194,7 @@ private:
 
     push::TextTile muteTile { "M", push::colours::ledOrange };
     push::TextTile soloTile { "S", push::colours::ledCyan };
+    push::TextTile sndTile  { "SND", push::colours::ledGreen };
     push::TextTile stopTile { juce::String::fromUTF8 ("■"), push::colours::ledWhite };
 
     std::vector<std::unique_ptr<LooperSlotCell>> cells;

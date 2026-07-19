@@ -12,6 +12,7 @@
 #include "Looper/BarSampleAnchors.h"
 #include "Looper/LooperBank.h"
 #include "Looper/LooperSessionModel.h"
+#include "Looper/LooperTrashCan.h"
 #include "Looper/LooperWaveformTap.h"
 #include "Metronome.h"
 #include "GridVoiceEngine.h"
@@ -258,6 +259,25 @@ public:
     /** Session-Modell (Slots/Target/Aktiv-Clip) — UI/OSC binden hier an. */
     [[nodiscard]] LooperSessionModel& getLooperSession() noexcept { return looperSession; }
 
+    /** Papierkorb erzwungener Looper-/Track-Löschungen (Big Out). */
+    [[nodiscard]] LooperTrashCan& getLooperTrash() noexcept { return looperTrash; }
+
+    /** [Message Thread] Erzwungenes Entfernen des LETZTEN Tracks eines
+        Loopers: stoppt den Track, detacht seine Clips in den Papierkorb,
+        entfernt betroffene Big-Out-Kabel, schrumpft Struktur + Settings
+        und synct die Big-Out-Nodes SYNCHRON. */
+    [[nodiscard]] juce::Result forceRemoveLooperTrack (int looperIndex);
+
+    /** [Message Thread] Erzwungenes Schließen des letzten Loopers —
+        analog über alle seine Tracks (ein Papierkorb-Eintrag). */
+    [[nodiscard]] juce::Result forceRemoveLastLooper();
+
+    /** [Message Thread] Jüngsten Papierkorb-Eintrag wiederherstellen:
+        Struktur nachwachsen, Clips reattachen, Kabel spec-relativ neu
+        anlegen (best effort). skippedCables (optional) zählt Kabel, die
+        nicht wiederherstellbar waren (Node/Slot inzwischen weg). */
+    [[nodiscard]] juce::Result restoreLooperTrash (int* skippedCables = nullptr);
+
     /** [Message Thread] Loop-Playback mit 5-ms-Fade beenden. */
     void stopLooper() noexcept { looperBank.stopAll(); }
 
@@ -357,6 +377,9 @@ private:
         Message Thread. */
     void rebuildInputSends();
 
+    /** Logische Looper-Struktur aus den Settings (Big-Out-Auto-Follow). */
+    [[nodiscard]] LooperBigOutModule::Structure currentLooperStructure() const;
+
     juce::ValueTree rootState;
     juce::UndoManager undoManager;
 
@@ -442,6 +465,10 @@ private:
 
     // Slot-/Target-Modell über der Bank (M4) — reiner MT-Zustand
     LooperSessionModel looperSession { looperBank };
+
+    // Papierkorb erzwungener Looper-/Track-Löschungen (Big Out) — NACH
+    // der Bank deklariert (wird zuerst zerstört; Dtor ist No-op)
+    LooperTrashCan looperTrash { looperBank };
 
     // Callback-Timing-Diagnose (Dev-Modus): XRun-/Load-Messung um den
     // gesamten processBlock — begin als erste, end als letzte Operation

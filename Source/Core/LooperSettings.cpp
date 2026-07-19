@@ -121,6 +121,8 @@ void LooperSettings::loadFromFile()
             track.mute = trackXml->getBoolAttribute ("mute", false);
             track.solo = trackXml->getBoolAttribute ("solo", false);
             track.variQuantized = trackXml->getBoolAttribute ("variQuant", false);
+            track.sends = trackXml->getIntAttribute ("sends", 0) & 0xF;
+            track.sendPre = trackXml->getBoolAttribute ("sendPre", false);
             ++trackIndex;
         }
 
@@ -165,6 +167,8 @@ void LooperSettings::writeAndNotify()
             trackXml->setAttribute ("mute", track.mute);
             trackXml->setAttribute ("solo", track.solo);
             trackXml->setAttribute ("variQuant", track.variQuantized);
+            trackXml->setAttribute ("sends", track.sends);
+            trackXml->setAttribute ("sendPre", track.sendPre);
         }
     }
 
@@ -438,6 +442,50 @@ void LooperSettings::setTrackVariQuantized (int looperIndex, int trackIndex, boo
         return;
 
     track.variQuantized = quantized;
+    writeAndNotify();
+}
+
+int LooperSettings::getTrackSends (int looperIndex, int trackIndex) const noexcept
+{
+    return validTrack (looperIndex, trackIndex)
+         ? loopers[static_cast<std::size_t> (looperIndex)]
+               .tracks[static_cast<std::size_t> (trackIndex)].sends
+         : 0;
+}
+
+void LooperSettings::setTrackSends (int looperIndex, int trackIndex, int mask)
+{
+    if (! validTrack (looperIndex, trackIndex))
+        return;
+
+    const auto clamped = mask & 0xF;
+    auto& track = loopers[static_cast<std::size_t> (looperIndex)]
+                      .tracks[static_cast<std::size_t> (trackIndex)];
+    if (track.sends == clamped)
+        return;
+
+    track.sends = clamped;
+    writeAndNotify();
+}
+
+bool LooperSettings::isTrackSendPre (int looperIndex, int trackIndex) const noexcept
+{
+    return validTrack (looperIndex, trackIndex)
+        && loopers[static_cast<std::size_t> (looperIndex)]
+               .tracks[static_cast<std::size_t> (trackIndex)].sendPre;
+}
+
+void LooperSettings::setTrackSendPre (int looperIndex, int trackIndex, bool pre)
+{
+    if (! validTrack (looperIndex, trackIndex))
+        return;
+
+    auto& track = loopers[static_cast<std::size_t> (looperIndex)]
+                      .tracks[static_cast<std::size_t> (trackIndex)];
+    if (track.sendPre == pre)
+        return;
+
+    track.sendPre = pre;
     writeAndNotify();
 }
 

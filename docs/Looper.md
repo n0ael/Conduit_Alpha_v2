@@ -65,11 +65,46 @@
     Deshalb starten die Looper ab Werk OHNE Quelle: der alte
     „master"-Default hielt die Master-Kanäle dauerhaft gearmt und
     blockierte die Erweiterung für immer) und `LooperOutModule`
-    (looper_out, Abgriffe Master|Looper 1–4 × stereo|sum|left|right ×
+    (looper_out — seit ADR 012 „**Looper Out Mini**", factoryId
+    unverändert; Abgriffe Master|Looper 1–4 × stereo|sum|left|right ×
     Pre/Post; Default Master + 4 Looper stereo post). Engine-Seite:
     `LooperBank::renderBlock` VOR dem Graph, `getAudioView()` im selben
     Callback, `mixToOutput` (Master-Mix, additiv) NACH dem Graph;
     „sendMaster" pro Looper (LooperSettings) filtert NUR den Master-Mix.
+  - **Big Looper Out (ADR 012, 19.07.2026):** `LooperBigOutModule`
+    (looper_big_out, Browser-Name „Looper Out") = STANDARD-Ausgangsmodul.
+    Stereo-Slots folgen AUTOMATISCH der Struktur: Track-Outs geflattet
+    Looper-major (post-fader — Mono-Clips kommen über die Panning-Sektion
+    stereo heraus) → Bus-Outs (Post-Bus je Looper) → Send 1–4 (immer
+    alle 4, stabile Kanal-Indizes) → Master. Engine: `trackBus[4][4][2]`
+    ERSETZT den geteilten Render-Scratch (die In-Place-Fader-Kette
+    hinterlässt dort das Post-Fader-Signal), `sendBus[4][2]` mit
+    pro-Track-Bitmaske + PRE/POST-Abgriff (LooperSettings
+    `TrackState.sends`/`sendPre` → Bank-Atomics via applyLooperSettings;
+    UI: SND-Kachel im Track-Strip → LooperSendDialog-CallOut).
+    GraphManager: `setLooperStructure`/`syncLooperBigOutConfigs` —
+    Kabel-Remap über SPEC-IDENTITÄT (nie Kanal-Arithmetik: ein entfernter
+    Track verschiebt die geflatteten Offsets aller späteren Slots),
+    Re-Materialisierung EXPLIZIT anstoßen (bei gleicher Kanalzahl feuert
+    kein numOutputChannels-Listener); Call-Sites applyLooperSettings,
+    addModuleNode, loadPreset/setStateInformation, Force-Delete
+    (synchron). Kachel read-only mit Sektions-Trennern
+    (LooperBigOutPanel), Ports fluchten via rowCentreY.
+  - **Delete-Gating + Papierkorb (ADR 012):** Looper-/Track-Delete nur
+    noch direkt, wenn weder Clips noch Big-Out-Kabel betroffen; sonst
+    X/OK-CallOut (LooperDeleteConfirmDialog). OK = Force-Delete
+    (`EngineProcessor::forceRemoveLooperTrack/-LastLooper`): Clips
+    DETACHEN (`LooperSessionModel::detachSlot`, KEIN bank.deleteClip —
+    Bank bleibt Besitzerin, ramBytesUsed zählt weiter), Kabel
+    spec-relativ in den `LooperTrashCan` (~180 s), Struktur schrumpfen.
+    ↺-Kachel im Looper-Header (`LooperTrashTile`) stellt den jüngsten
+    Eintrag wieder her (`restoreLooperTrash`: Struktur nachwachsen,
+    attachClip, Kabel aus der DANN gültigen Slot-Liste); letzte 30 s
+    Rot-Fade, bei Ablauf kurzes Flackern. prepareToPlay leert den
+    Papierkorb VOR bank.prepare (Store-Freigabe → Pointer wären
+    dangling; kein Double-Free, da kein deleteClip aussteht). Der
+    UndoManager bleibt außen vor (Clips engine-seitig, Struktur =
+    App-Zustand).
   - `BarSampleAnchors` [Audio]: Taktgrenzen sample-genau als gepackte
     64-bit-Atomics (16 Bit bar-Tag + 48 Bit Sample-Position — Paar in EINEM
     Wort, sonst Slot-Reuse-Race); Grenze 0 wird nie überquert → Commit

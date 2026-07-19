@@ -1,5 +1,7 @@
 #include "LooperPage.h"
 
+#include <cmath>
+
 namespace conduit
 {
 
@@ -10,12 +12,90 @@ namespace
     constexpr int panelGap = 6;
 }
 
+//==============================================================================
+LooperTrashTile::LooperTrashTile()
+    : juce::Button ("looperTrashTile")
+{
+    setVisible (false);   // sichtbar erst mit Papierkorb-Bestand
+}
+
+void LooperTrashTile::setTrashState (double secondsRemaining, bool hasEntries)
+{
+    remaining = secondsRemaining;
+    entries = hasEntries;
+
+    setVisible (entries || flashTicks > 0);
+
+    // Repaint nur bei sichtbarem Schritt (Sekunde wechselt — deckt auch
+    // den Rot-Fade ab, der pro Sekunde weiterrückt)
+    const auto seconds = (int) std::ceil (remaining);
+    if (seconds != shownSeconds)
+    {
+        shownSeconds = seconds;
+        repaint();
+    }
+}
+
+void LooperTrashTile::flashEmptied()
+{
+    flashTicks = 6;   // 3× aus/an über ~420 ms
+    flashOn = false;
+    setVisible (true);
+    repaint();
+    scheduleFlashTick();
+}
+
+void LooperTrashTile::scheduleFlashTick()
+{
+    // Member-Timer bleibt frei — Muster NodeEditor-Lektion
+    juce::Timer::callAfterDelay (70,
+        [safe = juce::Component::SafePointer<LooperTrashTile> (this)]
+        {
+            if (safe == nullptr)
+                return;
+
+            safe->flashOn = ! safe->flashOn;
+            if (--safe->flashTicks > 0)
+                safe->scheduleFlashTick();
+            else
+                safe->setVisible (safe->entries);
+
+            safe->repaint();
+        });
+}
+
+void LooperTrashTile::paintButton (juce::Graphics& g, bool isHighlighted, bool)
+{
+    if (flashTicks > 0 && ! flashOn)
+        return;   // Flacker-Aus-Phase
+
+    const auto bounds = getLocalBounds().toFloat().reduced (1.0f);
+    g.setColour (push::colours::tile.brighter (isHighlighted ? 0.15f : 0.0f));
+    g.fillRoundedRectangle (bounds, 4.0f);
+
+    // Letzte warnSeconds: weiß → rot faden (User-Spezifikation 19.07.2026)
+    const auto danger = (float) juce::jlimit (0.0, 1.0, 1.0 - remaining / warnSeconds);
+    const auto accent = push::colours::ledWhite.interpolatedWith (push::colours::ledRed,
+                                                                  danger);
+
+    const auto seconds = juce::jmax (0, (int) std::ceil (remaining));
+    const auto label = juce::String::fromUTF8 ("\xe2\x86\xba ")   // ↺
+                     + juce::String (seconds / 60) + ":"
+                     + juce::String (seconds % 60).paddedLeft ('0', 2);
+
+    g.setColour (accent);
+    g.setFont (push::scaledFont (12.0f, true));
+    g.drawText (label, getLocalBounds(), juce::Justification::centred, false);
+}
+
+//==============================================================================
 LooperPage::LooperPage()
 {
     setName ("looperPage");
 
     removeTile.onClick = [this] { if (onRemoveLooper) onRemoveLooper(); };
     addTile.onClick = [this] { if (onAddLooper) onAddLooper(); };
+    trashTile.onClick = [this] { if (onRestoreTrash) onRestoreTrash(); };
     settingsTile.onClick = [this] { if (onOpenSettings) onOpenSettings(); };
     stopTile.onClick = [this] { if (onStop) onStop(); };
 
@@ -47,6 +127,7 @@ LooperPage::LooperPage()
     addAndMakeVisible (outputCaption);
     addAndMakeVisible (outputCombo);
     addAndMakeVisible (spectrumTile);
+    addChildComponent (trashTile);   // sichtbar erst mit Papierkorb-Bestand
     addAndMakeVisible (settingsTile);
     addAndMakeVisible (stopTile);
     addAndMakeVisible (statusLabel);
@@ -118,6 +199,11 @@ void LooperPage::setPulsePhase (float phase01)
         panel->setPulsePhase (phase01);
 }
 
+void LooperPage::setTrashState (double secondsRemaining, bool hasEntries)
+{
+    trashTile.setTrashState (secondsRemaining, hasEntries);
+}
+
 void LooperPage::paint (juce::Graphics& g)
 {
     g.fillAll (push::colours::background);
@@ -141,6 +227,7 @@ void LooperPage::resized()
     stopTile.setBounds (header.removeFromRight (72).reduced (2));
     spectrumTile.setBounds (header.removeFromRight (92).reduced (2));
     settingsTile.setBounds (header.removeFromRight (44).reduced (2));
+    trashTile.setBounds (header.removeFromRight (72).reduced (2));
     outputCombo.setBounds (header.removeFromRight (190).reduced (2, 6));
     outputCaption.setBounds (header.removeFromRight (60));
 

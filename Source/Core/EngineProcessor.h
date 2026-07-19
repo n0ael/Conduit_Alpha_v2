@@ -378,7 +378,7 @@ private:
     void rebuildInputSends();
 
     /** Logische Looper-Struktur aus den Settings (Big-Out-Auto-Follow). */
-    [[nodiscard]] LooperBigOutModule::Structure currentLooperStructure() const;
+    [[nodiscard]] LooperPatchOutModule::Structure currentLooperStructure() const;
 
     juce::ValueTree rootState;
     juce::UndoManager undoManager;

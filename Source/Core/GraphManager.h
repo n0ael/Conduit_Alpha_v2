@@ -10,7 +10,7 @@
 #include "GraphFader.h"
 #include "Interfaces/IClockSource.h"
 #include "Modules/ConduitModule.h"
-#include "Modules/LooperBigOutModule.h"
+#include "Modules/LooperPatchOutModule.h"
 #include "ParamModulation.h"
 
 namespace conduit
@@ -126,51 +126,46 @@ public:
 
     /** Looper-In-Slot anhängen (stereo = 2 Kanäle). false bei unbekanntem
         oder fremdem Node. */
-    bool addLooperInSlot (const juce::String& nodeUuid, bool stereo);
+    bool addLooperPatchInSlot (const juce::String& nodeUuid, bool stereo);
 
     /** Looper-In-Slot entfernen; Kabel auf den Slot-Kanälen werden mit
         entfernt, dahinterliegende Kanäle rücken nach (Kabel-Remap). Der
         letzte Slot bleibt stehen. */
-    bool removeLooperInSlot (const juce::String& nodeUuid, int slotIndex);
+    bool removeLooperPatchInSlot (const juce::String& nodeUuid, int slotIndex);
 
-    /** Looper-Out-Abgriff anhängen: target 0 = Master, 1..4 = Looper n;
-        mode "stereo"|"sum"|"left"|"right"; pre = Pre-Fader. */
-    bool addLooperOutSlot (const juce::String& nodeUuid, int target,
-                           const juce::String& mode, bool pre);
-
-    /** Looper-Out-Abgriff entfernen (Kabel-Remap wie beim Looper-In). */
-    bool removeLooperOutSlot (const juce::String& nodeUuid, int slotIndex);
-
-    /** Pre/Post eines Looper-Out-Abgriffs — re-materialisiert (das Modul
-        liest die Slots nur bei der Materialisierung). */
-    bool setLooperOutSlotPre (const juce::String& nodeUuid, int slotIndex, bool pre);
+    /** Alle Node-Subtrees normalisieren (factoryId-Aliase, Schema-
+        Migrationen) — im Ladepfad DIREKT nach dem Tree-Copy aufrufen,
+        bevor Struktur-Syncs über factoryKeyOf iterieren (die
+        Materialisierung normalisiert sonst erst später). Idempotent,
+        undo-frei. */
+    void normalizeLoadedNodes();
 
     /** Logische Looper-Struktur cachen (Owner: EngineProcessor,
         applyLooperSettings) UND alle Big-Out-Nodes darauf syncen. */
-    void setLooperStructure (const LooperBigOutModule::Structure& structure);
+    void setLooperStructure (const LooperPatchOutModule::Structure& structure);
 
-    /** Alle looper_big_out-Nodes auf die gecachte Struktur bringen:
+    /** Alle looper_patch_out-Nodes auf die gecachte Struktur bringen:
         <Outputs> regenerieren, Kabel über Spec-Identität remappen
         (verschwundene Slots verlieren ihr Kabel, überlebende Kanäle
         werden alt→neu umgeschrieben), gefadete Re-Materialisierung.
         Undo-frei — die Struktur ist App-Zustand außerhalb des Undo-Trees;
         Reversibilität erzwungener Löschungen übernimmt der Papierkorb. */
-    void syncLooperBigOutConfigs();
+    void syncLooperPatchOutConfigs();
 
     /** true, wenn ein Kabel an einem Big-Out-Slot hängt, den das
         Entfernen von Track (trackIndex ≥ 0) bzw. Looper (trackIndex −1:
         alle Tracks + Bus) zerstören würde. Indizes 0-basiert. */
-    [[nodiscard]] bool hasLooperBigOutCables (int looperIndex, int trackIndex) const;
+    [[nodiscard]] bool hasLooperPatchOutCables (int looperIndex, int trackIndex) const;
 
     /** Betroffene Big-Out-Kabel einsammeln UND entfernen (undo-frei —
         Reversibilität übernimmt der Papierkorb). */
-    std::vector<LooperBigOutModule::BigOutCableRef>
-        collectAndRemoveBigOutCables (int looperIndex, int trackIndex);
+    std::vector<LooperPatchOutModule::PatchOutCableRef>
+        collectAndRemovePatchOutCables (int looperIndex, int trackIndex);
 
     /** Papierkorb-Restore: Kabel spec-relativ neu anlegen (Kanal aus der
         DANN gültigen Slot-Liste; fehlende Nodes/Slots werden übersprungen).
         Liefert die Zahl der NICHT wiederherstellbaren Kabel. */
-    int restoreBigOutCables (const std::vector<LooperBigOutModule::BigOutCableRef>& cables);
+    int restorePatchOutCables (const std::vector<LooperPatchOutModule::PatchOutCableRef>& cables);
 
     /** Patch-Aktion (Dev-Modus 4.6): User-Regelbereich eines Parameters —
         Fader nutzt [userMin, userMax], der DSP clamped weiter auf die
@@ -336,7 +331,7 @@ public:
         Message Thread. */
     void setCaptureService (CaptureService* service) noexcept;
 
-    /** Looper-Busse für ILooperAudioClient-Module (Looper Out) — bei der
+    /** Looper-Busse für ILooperAudioClient-Module (Looper patch OUT) — bei der
         Materialisierung VOR prepareForGraph injiziert. Die Bank muss jedes
         Modul überdauern (Owner: EngineProcessor, VOR dem Graph deklariert).
         nullptr → Module geben Stille aus (Tests). Message Thread. */
@@ -470,7 +465,7 @@ private:
 
     /** Ketten-Namen ALLER Looper-In-Slots nachziehen (jede Kabel-Änderung —
         auch Upstream-Umstecken ändert "{quelle} · {fx}"-Ketten). */
-    void refreshLooperInAutoNames();
+    void refreshLooperPatchInAutoNames();
 
     /** true für die Container Nodes[] und Connections[] (Schema 6.2). */
     [[nodiscard]] static bool isTopologyContainer (const juce::ValueTree& tree) noexcept;
@@ -540,7 +535,7 @@ private:
 
     // Logische Looper-Struktur (Cache, setLooperStructure) — Quelle für
     // die Auto-Follow-Outputs der Big-Out-Nodes
-    LooperBigOutModule::Structure looperStructure;
+    LooperPatchOutModule::Structure looperStructure;
 
     // Kanal-Namen für Send-Auto-Naming (Owner: EngineProcessor)
     ChannelNames* channelNames = nullptr;

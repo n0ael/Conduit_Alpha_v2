@@ -1,59 +1,59 @@
-#include "LooperBigOutPanel.h"
+#include "LooperPatchOutPanel.h"
 
 #include "PushLookAndFeel.h"
 
 namespace conduit
 {
 
-LooperBigOutPanel::LooperBigOutPanel (juce::ValueTree nodeTreeToBind)
+LooperPatchOutPanel::LooperPatchOutPanel (juce::ValueTree nodeTreeToBind)
     : nodeTree (std::move (nodeTreeToBind))
 {
     nodeTree.addListener (this);
     rebuildSpecs();
 }
 
-LooperBigOutPanel::~LooperBigOutPanel()
+LooperPatchOutPanel::~LooperPatchOutPanel()
 {
     nodeTree.removeListener (this);
 }
 
-void LooperBigOutPanel::stopUpdates()
+void LooperPatchOutPanel::stopUpdates()
 {
     frozen = true;
     nodeTree.removeListener (this);
     setInterceptsMouseClicks (false, false);
 }
 
-void LooperBigOutPanel::rebuildSpecs()
+void LooperPatchOutPanel::rebuildSpecs()
 {
-    specs = LooperBigOutModule::readOutputConfig (nodeTree);
+    specs = LooperPatchOutModule::readOutputConfig (nodeTree);
     repaint();
 }
 
 //==============================================================================
-void LooperBigOutPanel::valueTreePropertyChanged (juce::ValueTree& tree,
+void LooperPatchOutPanel::valueTreePropertyChanged (juce::ValueTree& tree,
                                                   const juce::Identifier&)
 {
     if (tree.hasType (id::output))
         rebuildSpecs();
 }
 
-void LooperBigOutPanel::valueTreeChildAdded (juce::ValueTree& parent, juce::ValueTree&)
+void LooperPatchOutPanel::valueTreeChildAdded (juce::ValueTree& parent, juce::ValueTree&)
 {
     if (parent.hasType (id::outputs) || parent == nodeTree)
         rebuildSpecs();
 }
 
-void LooperBigOutPanel::valueTreeChildRemoved (juce::ValueTree& parent, juce::ValueTree&, int)
+void LooperPatchOutPanel::valueTreeChildRemoved (juce::ValueTree& parent, juce::ValueTree&, int)
 {
     if (parent.hasType (id::outputs) || parent == nodeTree)
         rebuildSpecs();
 }
 
 //==============================================================================
-void LooperBigOutPanel::paint (juce::Graphics& g)
+void LooperPatchOutPanel::paint (juce::Graphics& g)
 {
-    using Kind = LooperBigOutModule::Kind;
+    using Kind = LooperPatchOutModule::Kind;
 
     g.setFont (push::scaledFont (12.0f, false));
 
@@ -72,7 +72,7 @@ void LooperBigOutPanel::paint (juce::Graphics& g)
 
         g.setColour (spec.kind == Kind::master ? push::colours::text
                                                : push::colours::textDim);
-        g.drawText (LooperBigOutModule::outputLabel (spec),
+        g.drawText (LooperPatchOutModule::outputLabel (spec),
                     row.reduced (8, 0), juce::Justification::centredLeft, false);
     }
 }

@@ -8,7 +8,7 @@ class LooperBank;
 //==============================================================================
 /**
     Mixin-Interface (CLAUDE.md 4.2-Stil): Module, die die Looper-Busse der
-    LooperBank lesen (LooperOutModule). Der GraphManager injiziert die Bank
+    LooperBank lesen (LooperPatchOutModule). Der GraphManager injiziert die Bank
     bei der Materialisierung VOR prepareForGraph (5.2 Schritt 1).
 
     Thread-Ownership: setLooperAudioSource läuft auf dem Message Thread;

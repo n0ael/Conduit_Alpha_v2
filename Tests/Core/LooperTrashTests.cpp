@@ -8,14 +8,14 @@
 #include "Core/GraphManager.h"
 #include "Core/Looper/LooperSessionModel.h"
 #include "Core/Looper/LooperTrashCan.h"
-#include "Modules/LooperBigOutModule.h"
+#include "Modules/LooperPatchOutModule.h"
 #include "TestSettingsFolder.h"
 
 using conduit::BarSampleAnchors;
 using conduit::CaptureService;
 using conduit::CaptureSettings;
 using conduit::LooperBank;
-using conduit::LooperBigOutModule;
+using conduit::LooperPatchOutModule;
 using conduit::LooperSessionModel;
 using conduit::LooperTrashCan;
 
@@ -226,24 +226,24 @@ TEST_CASE ("Force-Delete + Restore: Big-Out-Kabel wandern durch den Papierkorb",
     settings.setNumTracks (0, 2);
     settings.dispatchPendingMessages();
 
-    auto node = manager.addModuleNode (LooperBigOutModule::staticModuleId, {});
+    auto node = manager.addModuleNode (LooperPatchOutModule::staticModuleId, {});
     REQUIRE (node.isValid());
     settleSwap();
     REQUIRE (node.getChildWithName (conduit::id::outputs).getNumChildren() == 8);
 
-    const auto bigOutUuid = node.getProperty (conduit::id::nodeId).toString();
+    const auto patchOutUuid = node.getProperty (conduit::id::nodeId).toString();
     const auto audioOutUuid = engine.getRootState()
         .getChildWithName (conduit::id::nodes)
         .getChildWithProperty (conduit::id::factoryId, juce::String ("audio_output"))
         .getProperty (conduit::id::nodeId).toString();
 
     // Kabel am Track-Out „Looper 1 · Track 2" (Offset 2)
-    REQUIRE (manager.addConnection (bigOutUuid, 2, audioOutUuid, 0));
+    REQUIRE (manager.addConnection (patchOutUuid, 2, audioOutUuid, 0));
     settleSwap();
 
-    REQUIRE (manager.hasLooperBigOutCables (0, 1));         // Track 2 verkabelt
-    REQUIRE_FALSE (manager.hasLooperBigOutCables (0, 0));   // Track 1 nicht
-    REQUIRE (manager.hasLooperBigOutCables (0, -1));        // Looper gesamt
+    REQUIRE (manager.hasLooperPatchOutCables (0, 1));         // Track 2 verkabelt
+    REQUIRE_FALSE (manager.hasLooperPatchOutCables (0, 0));   // Track 1 nicht
+    REQUIRE (manager.hasLooperPatchOutCables (0, -1));        // Looper gesamt
 
     SECTION ("Force-Delete entfernt Kabel + Track, Restore stellt beides her")
     {
@@ -253,7 +253,7 @@ TEST_CASE ("Force-Delete + Restore: Big-Out-Kabel wandern durch den Papierkorb",
         REQUIRE (session.getNumTracks (0) == 1);
         REQUIRE (settings.getNumTracks (0) == 1);
         REQUIRE (node.getChildWithName (conduit::id::outputs).getNumChildren() == 7);
-        REQUIRE_FALSE (manager.hasLooperBigOutCables (0, 1));
+        REQUIRE_FALSE (manager.hasLooperPatchOutCables (0, 1));
         REQUIRE (engine.getLooperTrash().hasEntries());
 
         int skipped = -1;
@@ -265,14 +265,14 @@ TEST_CASE ("Force-Delete + Restore: Big-Out-Kabel wandern durch den Papierkorb",
         REQUIRE (session.getNumTracks (0) == 2);
         REQUIRE (settings.getNumTracks (0) == 2);
         REQUIRE (node.getChildWithName (conduit::id::outputs).getNumChildren() == 8);
-        REQUIRE (manager.hasLooperBigOutCables (0, 1));   // Kabel ist zurück
+        REQUIRE (manager.hasLooperPatchOutCables (0, 1));   // Kabel ist zurück
 
         // Spec-relativer Kanal: wieder Offset 2 (Track-2-Slot)
         bool found = false;
         const auto connections = engine.getRootState().getChildWithName (conduit::id::connections);
         for (int i = 0; i < connections.getNumChildren(); ++i)
             if (const auto connection = connections.getChild (i);
-                connection.getProperty (conduit::id::sourceNodeId).toString() == bigOutUuid)
+                connection.getProperty (conduit::id::sourceNodeId).toString() == patchOutUuid)
             {
                 REQUIRE ((int) connection.getProperty (conduit::id::sourceChannel) == 2);
                 found = true;
@@ -306,13 +306,13 @@ TEST_CASE ("Force-Delete + Restore: Big-Out-Kabel wandern durch den Papierkorb",
 
         // Slots: t(1,1), t(1,2), t(2,1), t(2,2), bus(1), bus(2), sends, master
         // → bus(2)-Offset = 5 Slots × 2 = 10
-        REQUIRE (manager.addConnection (bigOutUuid, 10, audioOutUuid, 1));
-        REQUIRE (manager.hasLooperBigOutCables (1, -1));
+        REQUIRE (manager.addConnection (patchOutUuid, 10, audioOutUuid, 1));
+        REQUIRE (manager.hasLooperPatchOutCables (1, -1));
 
         REQUIRE (engine.forceRemoveLastLooper().wasOk());
         settleSwap();
         REQUIRE (session.getNumLoopers() == 1);
-        REQUIRE_FALSE (manager.hasLooperBigOutCables (1, -1));
+        REQUIRE_FALSE (manager.hasLooperPatchOutCables (1, -1));
 
         int skipped = -1;
         REQUIRE (engine.restoreLooperTrash (&skipped).wasOk());
@@ -321,6 +321,6 @@ TEST_CASE ("Force-Delete + Restore: Big-Out-Kabel wandern durch den Papierkorb",
         REQUIRE (session.getNumLoopers() == 2);
         REQUIRE (session.getNumTracks (1) == 2);   // Snapshot, nicht Reset-1
         REQUIRE (settings.getNumTracks (1) == 2);
-        REQUIRE (manager.hasLooperBigOutCables (1, -1));
+        REQUIRE (manager.hasLooperPatchOutCables (1, -1));
     }
 }

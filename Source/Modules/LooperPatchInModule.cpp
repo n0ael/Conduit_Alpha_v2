@@ -1,9 +1,9 @@
-#include "LooperInModule.h"
+#include "LooperPatchInModule.h"
 
 namespace conduit
 {
 
-LooperInModule::LooperInModule()
+LooperPatchInModule::LooperPatchInModule()
     : IOModule (BusesProperties()
           .withInput  ("Input",  juce::AudioChannelSet::discreteChannels (2), true)
           .withOutput ("Output", juce::AudioChannelSet::discreteChannels (2), true))
@@ -12,7 +12,7 @@ LooperInModule::LooperInModule()
         slot.store (-1, std::memory_order_relaxed);
 }
 
-LooperInModule::~LooperInModule()
+LooperPatchInModule::~LooperPatchInModule()
 {
     // Preset-Load/Shutdown ohne Phase 1: Kanäle trotzdem deregistrieren —
     // laufendes Material bleibt beim Service als "held" (CaptureTapModule)
@@ -20,11 +20,11 @@ LooperInModule::~LooperInModule()
 }
 
 //==============================================================================
-juce::String LooperInModule::getModuleId() const          { return staticModuleId; }
-juce::String LooperInModule::getModuleDisplayName() const { return "Looper In"; }
-int LooperInModule::getStateVersion() const               { return 1; }
+juce::String LooperPatchInModule::getModuleId() const          { return staticModuleId; }
+juce::String LooperPatchInModule::getModuleDisplayName() const { return "Looper patch IN"; }
+int LooperPatchInModule::getStateVersion() const               { return 1; }
 
-juce::ValueTree LooperInModule::createState()
+juce::ValueTree LooperPatchInModule::createState()
 {
     // Default-Bestückung (User-Entscheidung 19.07.2026): 4× stereo +
     // 4× mono = 12 Kanäle — genug für ein typisches Set ohne Slot-Umbau;
@@ -38,7 +38,7 @@ juce::ValueTree LooperInModule::createState()
 }
 
 //==============================================================================
-void LooperInModule::applyInputConfig (juce::ValueTree nodeTree,
+void LooperPatchInModule::applyInputConfig (juce::ValueTree nodeTree,
                                        const std::vector<InputMode>& modesIn,
                                        juce::UndoManager* undo)
 {
@@ -72,7 +72,7 @@ void LooperInModule::applyInputConfig (juce::ValueTree nodeTree,
     nodeTree.setProperty (id::numOutputChannels, total, undo);
 }
 
-void LooperInModule::appendInput (juce::ValueTree nodeTree, InputMode mode,
+void LooperPatchInModule::appendInput (juce::ValueTree nodeTree, InputMode mode,
                                   juce::UndoManager* undo)
 {
     auto inputsTree = nodeTree.getChildWithName (id::inputs);
@@ -97,7 +97,7 @@ void LooperInModule::appendInput (juce::ValueTree nodeTree, InputMode mode,
     nodeTree.setProperty (id::numOutputChannels, total, undo);
 }
 
-void LooperInModule::removeInput (juce::ValueTree nodeTree, int index,
+void LooperPatchInModule::removeInput (juce::ValueTree nodeTree, int index,
                                   juce::UndoManager* undo)
 {
     auto inputsTree = nodeTree.getChildWithName (id::inputs);
@@ -114,7 +114,7 @@ void LooperInModule::removeInput (juce::ValueTree nodeTree, int index,
     nodeTree.setProperty (id::numOutputChannels, total, undo);
 }
 
-juce::String LooperInModule::effectiveInputName (const juce::ValueTree& inputTree, int index)
+juce::String LooperPatchInModule::effectiveInputName (const juce::ValueTree& inputTree, int index)
 {
     const auto userName = inputTree.getProperty (id::inputUserName).toString();
     if (userName.isNotEmpty())
@@ -127,14 +127,14 @@ juce::String LooperInModule::effectiveInputName (const juce::ValueTree& inputTre
     return "In " + juce::String (index + 1);
 }
 
-juce::String LooperInModule::tapBaseName (const juce::String& moduleId,
+juce::String LooperPatchInModule::tapBaseName (const juce::String& moduleId,
                                           const juce::String& effectiveName)
 {
     return moduleId + "/" + effectiveName;
 }
 
 //==============================================================================
-void LooperInModule::applySendConfig (const std::vector<SendInputConfig>& inputs)
+void LooperPatchInModule::applySendConfig (const std::vector<SendInputConfig>& inputs)
 {
     JUCE_ASSERT_MESSAGE_THREAD
 
@@ -162,7 +162,7 @@ void LooperInModule::applySendConfig (const std::vector<SendInputConfig>& inputs
     setBusesLayout (layout);
 }
 
-void LooperInModule::inputNameChanged (const juce::String& inputId,
+void LooperPatchInModule::inputNameChanged (const juce::String& inputId,
                                        const juce::String& effectiveName)
 {
     JUCE_ASSERT_MESSAGE_THREAD
@@ -177,25 +177,25 @@ void LooperInModule::inputNameChanged (const juce::String& inputId,
 }
 
 //==============================================================================
-void LooperInModule::setCaptureTapContext (CaptureService* serviceToUse,
+void LooperPatchInModule::setCaptureTapContext (CaptureService* serviceToUse,
                                            const juce::String& initialModuleId)
 {
     service = serviceToUse;
     currentModuleId = initialModuleId;
 }
 
-void LooperInModule::captureModuleIdRenamed (const juce::String& newModuleId)
+void LooperPatchInModule::captureModuleIdRenamed (const juce::String& newModuleId)
 {
     currentModuleId = newModuleId;
     refreshChannelNames();
 }
 
-void LooperInModule::releaseCaptureResources()
+void LooperPatchInModule::releaseCaptureResources()
 {
     unregisterChannels();
 }
 
-juce::String LooperInModule::channelNameFor (const Slot& slot, int channelInSlot) const
+juce::String LooperPatchInModule::channelNameFor (const Slot& slot, int channelInSlot) const
 {
     const auto base = tapBaseName (currentModuleId, slot.effectiveName);
     if (slot.width == 1)
@@ -204,7 +204,7 @@ juce::String LooperInModule::channelNameFor (const Slot& slot, int channelInSlot
     return base + (channelInSlot == 0 ? "_l" : "_r");
 }
 
-void LooperInModule::refreshChannelNames()
+void LooperPatchInModule::refreshChannelNames()
 {
     if (service == nullptr)
         return;
@@ -217,7 +217,7 @@ void LooperInModule::refreshChannelNames()
                                                 channelNameFor (slot, ch));
 }
 
-void LooperInModule::unregisterChannels()
+void LooperPatchInModule::unregisterChannels()
 {
     // Audio-Thread zuerst trennen — in-flight Blöcke prallen am
     // writerActive-Atomic des Slots ab (Muster CaptureTapModule)
@@ -234,7 +234,7 @@ void LooperInModule::unregisterChannels()
 }
 
 //==============================================================================
-juce::Result LooperInModule::prepareForGraph (double sampleRate, int maximumBlockSize)
+juce::Result LooperPatchInModule::prepareForGraph (double sampleRate, int maximumBlockSize)
 {
     if (const auto result = IOModule::prepareForGraph (sampleRate, maximumBlockSize);
         result.failed())
@@ -268,24 +268,24 @@ juce::Result LooperInModule::prepareForGraph (double sampleRate, int maximumBloc
     return juce::Result::ok();
 }
 
-bool LooperInModule::isBusesLayoutSupported (const BusesLayout& layouts) const
+bool LooperPatchInModule::isBusesLayoutSupported (const BusesLayout& layouts) const
 {
     // Pass-Through: Ein- und Ausgang tragen dieselbe (diskrete) Kanalzahl
     return layouts.getMainInputChannels() >= 1
         && layouts.getMainInputChannels() == layouts.getMainOutputChannels();
 }
 
-void LooperInModule::prepareToPlay (double, int)
+void LooperPatchInModule::prepareToPlay (double, int)
 {
     // Keine eigenen Puffer — Meter/Gate/Ring leben beim CaptureService
 }
 
-void LooperInModule::releaseResources()
+void LooperPatchInModule::releaseResources()
 {
 }
 
 //==============================================================================
-void LooperInModule::processBlock (juce::AudioBuffer<float>& buffer, juce::MidiBuffer&)
+void LooperPatchInModule::processBlock (juce::AudioBuffer<float>& buffer, juce::MidiBuffer&)
 {
     juce::ScopedNoDenormals noDenormals;
 

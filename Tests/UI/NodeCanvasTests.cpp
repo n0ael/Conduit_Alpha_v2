@@ -504,7 +504,7 @@ struct PairingRig
 TEST_CASE ("Looper-In-Kachel: Ports fluchten mit den Slot-Zeilen", "[ui][looper]")
 {
     PairingRig rig;
-    const auto node = rig.manager.addModuleNode ("looper_in", { 200, 100 });
+    const auto node = rig.manager.addModuleNode ("looper_patch_in", { 200, 100 });
     REQUIRE (node.isValid());
 
     auto* component = rig.canvas.findNodeComponent (PairingRig::uuidOf (node));
@@ -518,7 +518,7 @@ TEST_CASE ("Looper-In-Kachel: Ports fluchten mit den Slot-Zeilen", "[ui][looper]
     REQUIRE (slot0b.y - slot0a.y == 10);
     const auto row0 = (slot0a.y + slot0b.y) / 2;
 
-    // Zeilenraster 30px (LooperInPanel::rowHeight) statt Gleichverteilung
+    // Zeilenraster 30px (LooperPatchInPanel::rowHeight) statt Gleichverteilung
     // über die Kachel-Höhe — Ports und Panel-Zeilen fluchten horizontal
     const auto row1 = (component->getPortCentre (true, 2).y
                        + component->getPortCentre (true, 3).y) / 2;

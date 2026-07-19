@@ -4,27 +4,27 @@
 
 #include <juce_gui_basics/juce_gui_basics.h>
 
-#include "Modules/LooperBigOutModule.h"
+#include "Modules/LooperPatchOutModule.h"
 
 namespace conduit
 {
 
 //==============================================================================
 /**
-    Anzeige-Panel eines LooperBigOutModule — lebt im NodeComponent
-    (Muster LooperOutPanel), aber READ-ONLY: die Slots folgen automatisch
-    der Looper-Struktur (syncLooperBigOutConfigs), es gibt nichts zu
+    Anzeige-Panel eines LooperPatchOutModule — lebt im NodeComponent
+    (Muster LooperPatchInPanel-Zeilenraster), aber READ-ONLY: die Slots folgen automatisch
+    der Looper-Struktur (syncLooperPatchOutConfigs), es gibt nichts zu
     bedienen. Pro Slot eine Label-Zeile; dünne Trenner zwischen den
     Sektionen (Tracks | Busse | Sends | Master).
 
     Bindung NUR an den Subtree (5.3).
 */
-class LooperBigOutPanel final : public juce::Component,
-                                private juce::ValueTree::Listener
+class LooperPatchOutPanel final : public juce::Component,
+                                  private juce::ValueTree::Listener
 {
 public:
-    explicit LooperBigOutPanel (juce::ValueTree nodeTreeToBind);
-    ~LooperBigOutPanel() override;
+    explicit LooperPatchOutPanel (juce::ValueTree nodeTreeToBind);
+    ~LooperPatchOutPanel() override;
 
     /** Teardown-Hook (Phase 1, 5.3). */
     void stopUpdates();
@@ -60,10 +60,10 @@ private:
     static constexpr int bottomPadding = 6;
 
     juce::ValueTree nodeTree;   // NUR der Subtree (5.3)
-    std::vector<LooperBigOutModule::OutputSpec> specs;
+    std::vector<LooperPatchOutModule::OutputSpec> specs;
     bool frozen = false;
 
-    JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (LooperBigOutPanel)
+    JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (LooperPatchOutPanel)
 };
 
 } // namespace conduit

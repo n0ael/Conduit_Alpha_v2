@@ -168,11 +168,10 @@ set(CONDUIT_CPP_SOURCES
     Source/Core/Capture/CaptureChannel.cpp
     Source/Core/Capture/CaptureService.cpp
     Source/Core/LooperSettings.cpp
-    Source/UI/LooperBigOutPanel.cpp
+    Source/UI/LooperPatchOutPanel.cpp
     Source/UI/LooperClipControlsRow.cpp
     Source/UI/LooperDeleteConfirmDialog.cpp
-    Source/UI/LooperInPanel.cpp
-    Source/UI/LooperOutPanel.cpp
+    Source/UI/LooperPatchInPanel.cpp
     Source/UI/LooperPanel.cpp
     Source/UI/LooperSendDialog.cpp
     Source/UI/LooperSettingsMenu.cpp
@@ -272,9 +271,8 @@ set(CONDUIT_CPP_SOURCES
     Source/Modules/LfoModule.cpp
     Source/Modules/LinkAudioReceiveModule.cpp
     Source/Modules/LinkAudioSendModule.cpp
-    Source/Modules/LooperBigOutModule.cpp
-    Source/Modules/LooperInModule.cpp
-    Source/Modules/LooperOutModule.cpp
+    Source/Modules/LooperPatchOutModule.cpp
+    Source/Modules/LooperPatchInModule.cpp
     Source/Modules/ScopeModule.cpp
     Source/Modules/StepSequencerModule.cpp
     Source/UI/AudioSettingsComponent.cpp
@@ -678,8 +676,8 @@ if(CONDUIT_BUILD_TESTS)
         Tests/Core/LooperSourceTests.cpp
         Tests/Core/LooperWaveformTapTests.cpp
         Tests/Core/LooperBankTests.cpp
-        Tests/Core/LooperBigOutModuleTests.cpp
-        Tests/Core/LooperIoModuleTests.cpp
+        Tests/Core/LooperPatchOutModuleTests.cpp
+        Tests/Core/LooperPatchInModuleTests.cpp
         Tests/Core/LooperTrashTests.cpp
         Tests/Core/SignalFlowColoursTests.cpp
         Tests/Core/LooperClipExporterTests.cpp
@@ -817,11 +815,10 @@ if(CONDUIT_BUILD_TESTS)
         Source/Core/Capture/CaptureChannel.cpp
         Source/Core/Capture/CaptureService.cpp
         Source/Core/LooperSettings.cpp
-        Source/UI/LooperBigOutPanel.cpp
+        Source/UI/LooperPatchOutPanel.cpp
         Source/UI/LooperClipControlsRow.cpp
         Source/UI/LooperDeleteConfirmDialog.cpp
-        Source/UI/LooperInPanel.cpp
-        Source/UI/LooperOutPanel.cpp
+        Source/UI/LooperPatchInPanel.cpp
         Source/UI/LooperPanel.cpp
         Source/UI/LooperSendDialog.cpp
         Source/UI/LooperSettingsMenu.cpp
@@ -921,9 +918,8 @@ if(CONDUIT_BUILD_TESTS)
         Source/Modules/LfoModule.cpp
         Source/Modules/LinkAudioReceiveModule.cpp
         Source/Modules/LinkAudioSendModule.cpp
-        Source/Modules/LooperBigOutModule.cpp
-        Source/Modules/LooperInModule.cpp
-        Source/Modules/LooperOutModule.cpp
+        Source/Modules/LooperPatchOutModule.cpp
+        Source/Modules/LooperPatchInModule.cpp
         Source/Modules/ScopeModule.cpp
         Source/Modules/StepSequencerModule.cpp
         Source/UI/AudioSettingsComponent.cpp

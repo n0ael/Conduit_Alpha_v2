@@ -15,7 +15,8 @@ namespace conduit
 
 //==============================================================================
 /**
-    Looper Audio In (Looper-I/O 07/2026): macht beliebige Graph-Signale zu
+    Looper patch IN (Looper-I/O 07/2026, umbenannt ADR 013): macht
+    beliebige Graph-Signale zu
     Looper-Quellen. Dynamische Eingangs-Slots (mono | stereo, benennbar) —
     pro Slot registriert das Modul virtuelle Capture-Kanäle (Mono: ein Kanal
     "{moduleId}/{name}", Stereo: "{moduleId}/{name}_l/_r"); die Looper-
@@ -39,15 +40,15 @@ namespace conduit
     Audio-Pfad [Audio Thread, 3.1]: allocation-/lock-frei — Atomic-Loads
     plus writeVirtualChannel (Meter/Gate/Ring vorallokiert).
 */
-class LooperInModule final : public IOModule,
-                             public ICaptureTapClient,
-                             public ISendConfigClient
+class LooperPatchInModule final : public IOModule,
+                                  public ICaptureTapClient,
+                                  public ISendConfigClient
 {
 public:
-    LooperInModule();
-    ~LooperInModule() override;
+    LooperPatchInModule();
+    ~LooperPatchInModule() override;
 
-    static constexpr const char* staticModuleId = "looper_in";
+    static constexpr const char* staticModuleId = "looper_patch_in";
 
     enum class InputMode { mono, stereo };
     static constexpr const char* modeMono   = "mono";
@@ -152,7 +153,7 @@ private:
     std::atomic<CaptureService*> rtService { nullptr };
     std::array<std::atomic<int>, static_cast<std::size_t> (MAX_CAPTURE_CHANNELS)> rtSlots;
 
-    JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (LooperInModule)
+    JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (LooperPatchInModule)
 };
 
 } // namespace conduit

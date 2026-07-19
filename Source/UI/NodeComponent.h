@@ -17,9 +17,8 @@
 #include "UI/LevelMeterBar.h"
 #include "UI/LinkAudioReceivePanel.h"
 #include "UI/LinkAudioSendPanel.h"
-#include "UI/LooperBigOutPanel.h"
-#include "UI/LooperInPanel.h"
-#include "UI/LooperOutPanel.h"
+#include "UI/LooperPatchInPanel.h"
+#include "UI/LooperPatchOutPanel.h"
 #include "UI/NodeColourDot.h"
 #include "UI/ParameterPanel.h"
 #include "UI/PortComponent.h"
@@ -295,12 +294,10 @@ private:
 
     // Looper-I/O (ADR 010): Slot-Zeilen + „+"-Buttons — Slot-Umbauten
     // re-materialisieren den Node gefadet (GraphManager-Patch-Aktionen)
-    std::unique_ptr<LooperInPanel> looperInPanel;
-    std::unique_ptr<LooperOutPanel> looperOutPanel;
-    std::unique_ptr<LooperBigOutPanel> looperBigOutPanel;
-    bool isLooperInNode = false;
-    bool isLooperOutNode = false;
-    bool isLooperBigOutNode = false;
+    std::unique_ptr<LooperPatchInPanel> looperPatchInPanel;
+    std::unique_ptr<LooperPatchOutPanel> looperPatchOutPanel;
+    bool isLooperPatchInNode = false;
+    bool isLooperPatchOutNode = false;
 
     /** true, wenn an diesem Looper-I/O-Node ein Stereo-Slot beim Kanal
         channel BEGINNT (span-2-Port) — liest die Slot-Breiten aus dem

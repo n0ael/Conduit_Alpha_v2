@@ -100,10 +100,12 @@ Dies gilt für: Undo, Redo, Preset-Load, Bulk-Delete, Copy-Paste.
 - `prepareToPlay()`-Fehler → `nodeError`-Property, nie ignorieren
 - Mehrere gleichzeitige Graph-Änderungen immer zu einem einzigen Swap coalescing
 
-## 5.7 Gefadete Re-Materialisierung (Looper-I/O, ADR 010)
+## 5.7 Gefadete Re-Materialisierung (Looper-I/O, ADR 010/013)
 
-Slot-Umbauten an `looper_in`/`looper_out` (Kanalzahl-Properties bzw.
-`outputPre`/`outputTarget`/`outputMode` an `<Output>`-Kindern) landen in
+Slot-Umbauten an `looper_patch_in`/`looper_patch_out` (Kanalzahl-
+Properties; der Struktur-Sync des Patch-Out stößt die Re-Mat bei
+gleichbleibender Kanalzahl EXPLIZIT an — syncLooperPatchOutConfigs)
+landen in
 `pendingRematerialize` + `markTopologyDirty()`: der NÄCHSTE gefadete Swap
 entfernt den alten Graph-Node (Capture-Kanäle werden EXPLIZIT per
 Phase-1-Hook gelöst — die Node-Destruktion des AudioProcessorGraph läuft

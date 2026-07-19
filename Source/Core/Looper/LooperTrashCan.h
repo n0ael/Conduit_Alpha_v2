@@ -4,7 +4,7 @@
 #include <vector>
 
 #include "LooperBank.h"
-#include "Modules/LooperBigOutModule.h"
+#include "Modules/LooperPatchOutModule.h"
 
 namespace conduit
 {
@@ -56,7 +56,7 @@ public:
         int numTracksSnapshot = 1;   // bei kind == looper (VOR removeLastLooper —
                                      // das resettet numTracks auf 1)
         std::vector<ClipRef> clips;
-        std::vector<LooperBigOutModule::BigOutCableRef> cables;
+        std::vector<LooperPatchOutModule::PatchOutCableRef> cables;
         double expiresAt = 0.0;      // Sekunden (Time::getMillisecondCounterHiRes/1000)
     };
 

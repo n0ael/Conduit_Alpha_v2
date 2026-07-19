@@ -8,8 +8,7 @@
 
 #include "Core/Looper/BarSampleAnchors.h"
 #include "Core/Looper/LooperBank.h"
-#include "Modules/LooperBigOutModule.h"
-#include "Modules/LooperOutModule.h"
+#include "Modules/LooperPatchOutModule.h"
 #include "Util/RtAllocationGuard.h"
 
 using conduit::BarSampleAnchors;
@@ -398,45 +397,6 @@ TEST_CASE ("LooperBank: Looper-I/O-Busse — AudioView, sendToMaster, Kein Maste
         REQUIRE (rms (rig.output.getReadPointer (0), blockSize) > 0.01);
     }
 
-    SECTION ("LooperOutModule kopiert die Busse (stereo/sum/left, pre/post)")
-    {
-        using Out = conduit::LooperOutModule;
-        Out module;
-        module.setLooperAudioSource (&rig.bank);
-        module.applyOutputSpecs ({ { 0, Out::Mode::stereo, false },     // Master L/R
-                                   { 1, Out::Mode::sum,    false },     // Looper 1 Summe
-                                   { 1, Out::Mode::left,   true   } }); // Looper 1 Pre-L
-        REQUIRE (module.getTotalNumOutputChannels() == 4);
-        module.setPlayConfigDetails (0, 4, testSampleRate, blockSize);
-        module.prepareToPlay (testSampleRate, blockSize);
-
-        rig.feedBlocks (1);
-        const auto view = rig.bank.getAudioView();
-
-        juce::AudioBuffer<float> out { 4, blockSize };
-        juce::MidiBuffer midi;
-        out.clear();
-        module.processBlock (out, midi);
-
-        for (int i = 0; i < blockSize; ++i)
-        {
-            REQUIRE (juce::exactlyEqual (out.getSample (0, i), view.master[0][i]));
-            REQUIRE (juce::exactlyEqual (out.getSample (1, i), view.master[1][i]));
-            REQUIRE (juce::exactlyEqual (out.getSample (2, i),
-                                         0.5f * (view.post[0][0][i] + view.post[0][1][i])));
-            REQUIRE (juce::exactlyEqual (out.getSample (3, i), view.pre[0][0][i]));
-        }
-
-        // Ohne Bank: definierte Stille
-        Out silent;
-        silent.applyOutputSpecs ({ { 0, Out::Mode::stereo, false } });
-        silent.setPlayConfigDetails (0, 2, testSampleRate, blockSize);
-        juce::AudioBuffer<float> quiet { 2, blockSize };
-        for (int ch = 0; ch < 2; ++ch)
-            juce::FloatVectorOperations::fill (quiet.getWritePointer (ch), 1.0f, blockSize);
-        silent.processBlock (quiet, midi);
-        REQUIRE (juce::exactlyEqual (rms (quiet.getReadPointer (0), blockSize), 0.0));
-    }
 }
 
 TEST_CASE ("LooperBank: Track-/Send-Busse — trackBus post-fader, Sends pre/post", "[looper]")
@@ -524,9 +484,9 @@ TEST_CASE ("LooperBank: Track-/Send-Busse — trackBus post-fader, Sends pre/pos
         REQUIRE (rms (view.track[0][0][1], blockSize) > 0.01);
     }
 
-    SECTION ("LooperBigOutModule kopiert Track-/Bus-/Send-/Master-Slots")
+    SECTION ("LooperPatchOutModule kopiert Track-/Bus-/Send-/Master-Slots")
     {
-        using Big = conduit::LooperBigOutModule;
+        using Big = conduit::LooperPatchOutModule;
         rig.bank.setTrackSends (0, 0, 0b0010);   // Send 2, post
         rig.feedBlocks (2);
 

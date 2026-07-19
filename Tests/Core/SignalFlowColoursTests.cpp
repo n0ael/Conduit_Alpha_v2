@@ -111,22 +111,22 @@ TEST_CASE ("flow_colours: Vererbung Eingang → FX-Kette → Ziel", "[flowcolour
 
     SECTION ("resolveDestSourceRgb: Ziel-Eingang → geerbte Quellfarbe durch die Kette")
     {
-        const auto looperIn = rig.addNode ("looper_in", "looper_in_1");
-        rig.connect (fx2, 0, looperIn, 0);
+        const auto looperPatchIn = rig.addNode ("looper_patch_in", "looper_patch_in_1");
+        rig.connect (fx2, 0, looperPatchIn, 0);
 
-        REQUIRE (flow_colours::resolveDestSourceRgb (rig.root, &names, looperIn, 0)
+        REQUIRE (flow_colours::resolveDestSourceRgb (rig.root, &names, looperPatchIn, 0)
                  == 0xcc4455u);
 
         // Unverkabelter Kanal → 0 (Aufrufer fällt auf die Modul-Farbe zurück)
-        REQUIRE (flow_colours::resolveDestSourceRgb (rig.root, &names, looperIn, 1) == 0);
+        REQUIRE (flow_colours::resolveDestSourceRgb (rig.root, &names, looperPatchIn, 1) == 0);
     }
 
     SECTION ("resolveDestSourceRgb: direkt am Interface-Kanal")
     {
-        const auto looperIn = rig.addNode ("looper_in", "looper_in_1");
-        rig.connect (audioIn, 0, looperIn, 0);
+        const auto looperPatchIn = rig.addNode ("looper_patch_in", "looper_patch_in_1");
+        rig.connect (audioIn, 0, looperPatchIn, 0);
 
-        REQUIRE (flow_colours::resolveDestSourceRgb (rig.root, &names, looperIn, 0)
+        REQUIRE (flow_colours::resolveDestSourceRgb (rig.root, &names, looperPatchIn, 0)
                  == 0xcc4455u);
     }
 

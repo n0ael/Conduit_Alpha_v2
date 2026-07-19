@@ -76,7 +76,7 @@ EngineProcessor::EngineProcessor (const juce::File& settingsFolder)
     // moduleId bei der Materialisierung (Spurname == moduleId)
     graphManager.setCaptureService (&captureService);
 
-    // Looper-Busse — ILooperAudioClients (Looper Out) lesen die vor dem
+    // Looper-Busse — ILooperAudioClients (Looper patch OUT) lesen die vor dem
     // Graph gerenderten Busse der Bank (Looper-I/O 07/2026)
     graphManager.setLooperBank (&looperBank);
 
@@ -347,9 +347,9 @@ void EngineProcessor::applyLooperSettings()
     applyLooperSourceArming();
 }
 
-LooperBigOutModule::Structure EngineProcessor::currentLooperStructure() const
+LooperPatchOutModule::Structure EngineProcessor::currentLooperStructure() const
 {
-    LooperBigOutModule::Structure structure;
+    LooperPatchOutModule::Structure structure;
     structure.numLoopers = looperSettings.getNumLoopers();
     for (int l = 0; l < LooperBank::maxLoopers; ++l)
         structure.numTracks[(size_t) l] = looperSettings.getNumTracks (l);
@@ -378,7 +378,7 @@ juce::Result EngineProcessor::forceRemoveLooperTrack (int looperIndex)
     looperSession.stopTrack (looperIndex, trackIndex, 0.0);
 
     // (2) Kabel VOR dem Struktur-Sync einsammeln (Spec-Liste noch gültig)
-    entry.cables = graphManager.collectAndRemoveBigOutCables (looperIndex, trackIndex);
+    entry.cables = graphManager.collectAndRemovePatchOutCables (looperIndex, trackIndex);
 
     // (3) Clips in den Papierkorb detachen — die Bank bleibt Besitzerin
     for (int slot = 0; slot < LooperSessionModel::maxSlots; ++slot)
@@ -411,7 +411,7 @@ juce::Result EngineProcessor::forceRemoveLastLooper()
     // VOR removeLastLooper snappen — das resettet numTracks auf 1
     entry.numTracksSnapshot = looperSession.getNumTracks (looperIndex);
 
-    entry.cables = graphManager.collectAndRemoveBigOutCables (looperIndex, -1);
+    entry.cables = graphManager.collectAndRemovePatchOutCables (looperIndex, -1);
 
     for (int t = 0; t < entry.numTracksSnapshot; ++t)
     {
@@ -481,7 +481,7 @@ juce::Result EngineProcessor::restoreLooperTrash (int* skippedCables)
 
     // Slots nachwachsen lassen, DANN Kabel spec-relativ neu anlegen
     graphManager.setLooperStructure (currentLooperStructure());
-    const auto failed = graphManager.restoreBigOutCables (entry.cables);
+    const auto failed = graphManager.restorePatchOutCables (entry.cables);
     if (skippedCables != nullptr)
         *skippedCables = failed;
 
@@ -975,7 +975,7 @@ void EngineProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::Midi
 
     // Looper-Rendering VOR dem Graph (Looper-I/O 07/2026): das Playback
     // liest nur committete Clips und braucht den Graph-Block nicht — das
-    // Looper-Out-Modul liest die Busse damit sample-aligned im SELBEN
+    // Looper-patch-OUT-Modul liest die Busse damit sample-aligned im SELBEN
     // Callback (keine Block-Latenz). Der Master-Mix wird erst NACH dem
     // Graph additiv ausgegeben (mixToOutput unten) — die Feedback-Freiheit
     // des Master-Taps bleibt: der Tap sieht das Looper-Signal nie.
@@ -1093,10 +1093,11 @@ void EngineProcessor::setStateInformation (const void* data, int sizeInBytes)
         if (loaded.hasType (id::root))
         {
             rootState.copyPropertiesAndChildrenFrom (loaded, nullptr);
+            graphManager.normalizeLoadedNodes();  // factoryId-Aliase (ADR 013) VOR den Syncs
             migrateReservedIO();           // ADR 009: nur Alt-Patches (< V3)
             ensureSessionScaleDefaults();  // Presets ohne Skalen-Properties
             pageManager.migrateAndRepair();  // ... und ohne Pages-Zweig (ADR 008 M1)
-            graphManager.syncLooperBigOutConfigs();  // Big Out folgt der App-Struktur
+            graphManager.syncLooperPatchOutConfigs();  // Looper patch OUT folgt der App-Struktur
         }
     }
 }
@@ -1141,13 +1142,14 @@ juce::Result EngineProcessor::loadPreset (const juce::File& file)
     // einen einzigen Graph-Swap)
     undoManager.beginNewTransaction ("Preset laden");
     rootState.copyPropertiesAndChildrenFrom (loaded, &undoManager);
+    graphManager.normalizeLoadedNodes();  // factoryId-Aliase (ADR 013), undo-frei
     migrateReservedIO();           // ADR 009: nur Alt-Patches (< V3), undo-frei
     ensureSessionScaleDefaults();  // Presets ohne Skalen-Properties
     pageManager.migrateAndRepair();  // ... und ohne Pages-Zweig (ADR 008 M1, undo-frei)
 
     // Big Out folgt der App-Struktur, nicht dem Preset (Reconcile fremd-
     // strukturierter Patches, undo-frei)
-    graphManager.syncLooperBigOutConfigs();
+    graphManager.syncLooperPatchOutConfigs();
 
     return juce::Result::ok();
 }

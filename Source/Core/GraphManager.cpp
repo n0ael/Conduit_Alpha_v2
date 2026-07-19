@@ -14,8 +14,7 @@
 #include "Modules/ChassisSchema.h"
 #include "Modules/LinkAudioReceiveModule.h"
 #include "Modules/LinkAudioSendModule.h"
-#include "Modules/LooperInModule.h"
-#include "Modules/LooperOutModule.h"
+#include "Modules/LooperPatchInModule.h"
 #include "Modules/ModuleFactory.h"
 #include "Modules/ProcessorModule.h"
 #include "NodeUiRegistry.h"
@@ -96,9 +95,9 @@ juce::ValueTree GraphManager::addModuleNode (const juce::String& factoryKey, juc
 
     // Big Looper Out: frisch angelegte Nodes folgen sofort der aktuellen
     // Looper-Struktur (createState liefert nur den 1×1-Minimal-Default)
-    if (factoryKey == LooperBigOutModule::staticModuleId)
-        LooperBigOutModule::applyOutputConfig (
-            nodeTree, LooperBigOutModule::buildSpecs (looperStructure));
+    if (factoryKey == LooperPatchOutModule::staticModuleId)
+        LooperPatchOutModule::applyOutputConfig (
+            nodeTree, LooperPatchOutModule::buildSpecs (looperStructure));
 
     nodeTree.setProperty (id::positionX, position.x, nullptr);
     nodeTree.setProperty (id::positionY, position.y, nullptr);
@@ -565,32 +564,32 @@ namespace
     }
 }
 
-bool GraphManager::addLooperInSlot (const juce::String& nodeUuid, bool stereo)
+bool GraphManager::addLooperPatchInSlot (const juce::String& nodeUuid, bool stereo)
 {
     JUCE_ASSERT_MESSAGE_THREAD
 
     auto nodeTree = rootState.getChildWithName (id::nodes)
                         .getChildWithProperty (id::nodeId, nodeUuid);
     if (! nodeTree.isValid()
-        || factoryKeyOf (nodeTree) != LooperInModule::staticModuleId)
+        || factoryKeyOf (nodeTree) != LooperPatchInModule::staticModuleId)
         return false;
 
-    undoManager.beginNewTransaction ("Looper-In-Eingang hinzufügen");
-    LooperInModule::appendInput (nodeTree,
-                                 stereo ? LooperInModule::InputMode::stereo
-                                        : LooperInModule::InputMode::mono,
+    undoManager.beginNewTransaction ("Looper patch IN: Eingang hinzufügen");
+    LooperPatchInModule::appendInput (nodeTree,
+                                 stereo ? LooperPatchInModule::InputMode::stereo
+                                        : LooperPatchInModule::InputMode::mono,
                                  &undoManager);
     return true;
 }
 
-bool GraphManager::removeLooperInSlot (const juce::String& nodeUuid, int slotIndex)
+bool GraphManager::removeLooperPatchInSlot (const juce::String& nodeUuid, int slotIndex)
 {
     JUCE_ASSERT_MESSAGE_THREAD
 
     auto nodeTree = rootState.getChildWithName (id::nodes)
                         .getChildWithProperty (id::nodeId, nodeUuid);
     if (! nodeTree.isValid()
-        || factoryKeyOf (nodeTree) != LooperInModule::staticModuleId)
+        || factoryKeyOf (nodeTree) != LooperPatchInModule::staticModuleId)
         return false;
 
     const auto inputsTree = nodeTree.getChildWithName (id::inputs);
@@ -602,12 +601,12 @@ bool GraphManager::removeLooperInSlot (const juce::String& nodeUuid, int slotInd
     int offset = 0;
     for (int i = 0; i < slotIndex; ++i)
         offset += inputsTree.getChild (i).getProperty (id::inputMode).toString()
-                      == LooperInModule::modeStereo ? 2 : 1;
+                      == LooperPatchInModule::modeStereo ? 2 : 1;
     const auto width = inputsTree.getChild (slotIndex).getProperty (id::inputMode).toString()
-                           == LooperInModule::modeStereo ? 2 : 1;
+                           == LooperPatchInModule::modeStereo ? 2 : 1;
 
-    undoManager.beginNewTransaction ("Looper-In-Eingang entfernen");
-    LooperInModule::removeInput (nodeTree, slotIndex, &undoManager);
+    undoManager.beginNewTransaction ("Looper patch IN: Eingang entfernen");
+    LooperPatchInModule::removeInput (nodeTree, slotIndex, &undoManager);
 
     // Pass-Through: Ein- und Ausgänge tragen dieselben Kanal-Indizes
     remapLooperConnections (rootState.getChildWithName (id::connections), nodeUuid,
@@ -615,87 +614,15 @@ bool GraphManager::removeLooperInSlot (const juce::String& nodeUuid, int slotInd
     return true;
 }
 
-bool GraphManager::addLooperOutSlot (const juce::String& nodeUuid, int target,
-                                     const juce::String& mode, bool pre)
-{
-    JUCE_ASSERT_MESSAGE_THREAD
-
-    auto nodeTree = rootState.getChildWithName (id::nodes)
-                        .getChildWithProperty (id::nodeId, nodeUuid);
-    if (! nodeTree.isValid()
-        || factoryKeyOf (nodeTree) != LooperOutModule::staticModuleId)
-        return false;
-
-    undoManager.beginNewTransaction ("Looper-Out-Abgriff hinzufügen");
-    LooperOutModule::appendOutput (nodeTree,
-                                   { target, LooperOutModule::modeFromString (mode), pre },
-                                   &undoManager);
-    return true;
-}
-
-bool GraphManager::removeLooperOutSlot (const juce::String& nodeUuid, int slotIndex)
-{
-    JUCE_ASSERT_MESSAGE_THREAD
-
-    auto nodeTree = rootState.getChildWithName (id::nodes)
-                        .getChildWithProperty (id::nodeId, nodeUuid);
-    if (! nodeTree.isValid()
-        || factoryKeyOf (nodeTree) != LooperOutModule::staticModuleId)
-        return false;
-
-    const auto outputsTree = nodeTree.getChildWithName (id::outputs);
-    if (outputsTree.getNumChildren() <= 1
-        || ! juce::isPositiveAndBelow (slotIndex, outputsTree.getNumChildren()))
-        return false;
-
-    int offset = 0;
-    for (int i = 0; i < slotIndex; ++i)
-        offset += LooperOutModule::widthOf (LooperOutModule::modeFromString (
-            outputsTree.getChild (i).getProperty (id::outputMode).toString()));
-    const auto width = LooperOutModule::widthOf (LooperOutModule::modeFromString (
-        outputsTree.getChild (slotIndex).getProperty (id::outputMode).toString()));
-
-    undoManager.beginNewTransaction ("Looper-Out-Abgriff entfernen");
-    LooperOutModule::removeOutput (nodeTree, slotIndex, &undoManager);
-
-    // Reine Quelle: nur die Source-Seite der Kabel ist betroffen
-    remapLooperConnections (rootState.getChildWithName (id::connections), nodeUuid,
-                            offset, width, true, false, &undoManager);
-    return true;
-}
-
-bool GraphManager::setLooperOutSlotPre (const juce::String& nodeUuid, int slotIndex, bool pre)
-{
-    JUCE_ASSERT_MESSAGE_THREAD
-
-    auto nodeTree = rootState.getChildWithName (id::nodes)
-                        .getChildWithProperty (id::nodeId, nodeUuid);
-    if (! nodeTree.isValid()
-        || factoryKeyOf (nodeTree) != LooperOutModule::staticModuleId)
-        return false;
-
-    auto slot = nodeTree.getChildWithName (id::outputs).getChild (slotIndex);
-    if (! slot.isValid())
-        return false;
-
-    if ((bool) slot.getProperty (id::outputPre, false) == pre)
-        return true;   // No-op
-
-    undoManager.beginNewTransaction (pre ? "Abgriff auf Pre-Fader"
-                                         : "Abgriff auf Post-Fader");
-    slot.setProperty (id::outputPre, pre, &undoManager);
-    return true;   // Property-Listener re-materialisiert (outputPre-Zweig)
-}
-
-void GraphManager::setLooperStructure (const LooperBigOutModule::Structure& structure)
+void GraphManager::setLooperStructure (const LooperPatchOutModule::Structure& structure)
 {
     JUCE_ASSERT_MESSAGE_THREAD
 
     looperStructure = structure;
-    syncLooperBigOutConfigs();
+    syncLooperPatchOutConfigs();
 }
 
-void GraphManager::syncLooperBigOutConfigs()
+void GraphManager::syncLooperPatchOutConfigs()
 {
     JUCE_ASSERT_MESSAGE_THREAD
 
@@ -703,16 +630,16 @@ void GraphManager::syncLooperBigOutConfigs()
     if (! nodes.isValid())
         return;
 
-    const auto newSpecs = LooperBigOutModule::buildSpecs (looperStructure);
+    const auto newSpecs = LooperPatchOutModule::buildSpecs (looperStructure);
     auto connections = rootState.getChildWithName (id::connections);
 
     for (int n = 0; n < nodes.getNumChildren(); ++n)
     {
         auto nodeTree = nodes.getChild (n);
-        if (factoryKeyOf (nodeTree) != LooperBigOutModule::staticModuleId)
+        if (factoryKeyOf (nodeTree) != LooperPatchOutModule::staticModuleId)
             continue;
 
-        const auto oldSpecs = LooperBigOutModule::readOutputConfig (nodeTree);
+        const auto oldSpecs = LooperPatchOutModule::readOutputConfig (nodeTree);
         if (oldSpecs == newSpecs)
             continue;
 
@@ -728,12 +655,12 @@ void GraphManager::syncLooperBigOutConfigs()
                 continue;
 
             const auto channel = (int) connection.getProperty (id::sourceChannel, 0);
-            const auto slot = channel / LooperBigOutModule::slotWidth;
-            const auto lr = channel % LooperBigOutModule::slotWidth;
+            const auto slot = channel / LooperPatchOutModule::slotWidth;
+            const auto lr = channel % LooperPatchOutModule::slotWidth;
 
             int newOffset = -1;
             if (slot >= 0 && slot < (int) oldSpecs.size())
-                newOffset = LooperBigOutModule::channelOffsetOf (newSpecs,
+                newOffset = LooperPatchOutModule::channelOffsetOf (newSpecs,
                                                                  oldSpecs[(size_t) slot]);
 
             if (newOffset < 0)
@@ -742,7 +669,7 @@ void GraphManager::syncLooperBigOutConfigs()
                 connection.setProperty (id::sourceChannel, newOffset + lr, nullptr);
         }
 
-        LooperBigOutModule::applyOutputConfig (nodeTree, newSpecs, nullptr);
+        LooperPatchOutModule::applyOutputConfig (nodeTree, newSpecs, nullptr);
 
         // Explizit re-materialisieren: der Umbau ersetzt das <Outputs>-Kind
         // komplett — bei gleicher Kanalzahl (Track weg + Track dazu) feuert
@@ -761,10 +688,10 @@ namespace
     /** true, wenn der Slot durch das Entfernen von Track (track1 ≥ 1)
         bzw. Looper (track1 == 0: alle Tracks + Bus) verschwindet.
         looper1/track1 1-basiert (Spec-Konvention). */
-    bool bigOutSpecAffected (const LooperBigOutModule::OutputSpec& spec,
+    bool patchOutSpecAffected (const LooperPatchOutModule::OutputSpec& spec,
                              int looper1, int track1)
     {
-        using Kind = LooperBigOutModule::Kind;
+        using Kind = LooperPatchOutModule::Kind;
 
         if (track1 > 0)
             return spec.kind == Kind::track
@@ -775,7 +702,7 @@ namespace
     }
 }
 
-bool GraphManager::hasLooperBigOutCables (int looperIndex, int trackIndex) const
+bool GraphManager::hasLooperPatchOutCables (int looperIndex, int trackIndex) const
 {
     JUCE_ASSERT_MESSAGE_THREAD
 
@@ -785,11 +712,11 @@ bool GraphManager::hasLooperBigOutCables (int looperIndex, int trackIndex) const
     for (int n = 0; n < nodes.getNumChildren(); ++n)
     {
         const auto nodeTree = nodes.getChild (n);
-        if (factoryKeyOf (nodeTree) != LooperBigOutModule::staticModuleId)
+        if (factoryKeyOf (nodeTree) != LooperPatchOutModule::staticModuleId)
             continue;
 
         const auto nodeUuid = nodeTree.getProperty (id::nodeId).toString();
-        const auto specs = LooperBigOutModule::readOutputConfig (nodeTree);
+        const auto specs = LooperPatchOutModule::readOutputConfig (nodeTree);
 
         for (int i = 0; i < connections.getNumChildren(); ++i)
         {
@@ -798,9 +725,9 @@ bool GraphManager::hasLooperBigOutCables (int looperIndex, int trackIndex) const
                 continue;
 
             const auto slot = (int) connection.getProperty (id::sourceChannel, 0)
-                            / LooperBigOutModule::slotWidth;
+                            / LooperPatchOutModule::slotWidth;
             if (slot >= 0 && slot < (int) specs.size()
-                && bigOutSpecAffected (specs[(size_t) slot],
+                && patchOutSpecAffected (specs[(size_t) slot],
                                        looperIndex + 1, trackIndex + 1))
                 return true;
         }
@@ -809,23 +736,23 @@ bool GraphManager::hasLooperBigOutCables (int looperIndex, int trackIndex) const
     return false;
 }
 
-std::vector<LooperBigOutModule::BigOutCableRef>
-GraphManager::collectAndRemoveBigOutCables (int looperIndex, int trackIndex)
+std::vector<LooperPatchOutModule::PatchOutCableRef>
+GraphManager::collectAndRemovePatchOutCables (int looperIndex, int trackIndex)
 {
     JUCE_ASSERT_MESSAGE_THREAD
 
-    std::vector<LooperBigOutModule::BigOutCableRef> collected;
+    std::vector<LooperPatchOutModule::PatchOutCableRef> collected;
     const auto nodes = rootState.getChildWithName (id::nodes);
     auto connections = rootState.getChildWithName (id::connections);
 
     for (int n = 0; n < nodes.getNumChildren(); ++n)
     {
         const auto nodeTree = nodes.getChild (n);
-        if (factoryKeyOf (nodeTree) != LooperBigOutModule::staticModuleId)
+        if (factoryKeyOf (nodeTree) != LooperPatchOutModule::staticModuleId)
             continue;
 
         const auto nodeUuid = nodeTree.getProperty (id::nodeId).toString();
-        const auto specs = LooperBigOutModule::readOutputConfig (nodeTree);
+        const auto specs = LooperPatchOutModule::readOutputConfig (nodeTree);
 
         for (int i = connections.getNumChildren(); --i >= 0;)
         {
@@ -834,15 +761,15 @@ GraphManager::collectAndRemoveBigOutCables (int looperIndex, int trackIndex)
                 continue;
 
             const auto channel = (int) connection.getProperty (id::sourceChannel, 0);
-            const auto slot = channel / LooperBigOutModule::slotWidth;
+            const auto slot = channel / LooperPatchOutModule::slotWidth;
             if (slot < 0 || slot >= (int) specs.size()
-                || ! bigOutSpecAffected (specs[(size_t) slot],
+                || ! patchOutSpecAffected (specs[(size_t) slot],
                                          looperIndex + 1, trackIndex + 1))
                 continue;
 
             collected.push_back (
                 { nodeUuid, specs[(size_t) slot],
-                  channel % LooperBigOutModule::slotWidth,
+                  channel % LooperPatchOutModule::slotWidth,
                   connection.getProperty (id::destNodeId).toString(),
                   (int) connection.getProperty (id::destChannel, 0) });
             connections.removeChild (i, nullptr);
@@ -852,7 +779,7 @@ GraphManager::collectAndRemoveBigOutCables (int looperIndex, int trackIndex)
     return collected;
 }
 
-int GraphManager::restoreBigOutCables (const std::vector<LooperBigOutModule::BigOutCableRef>& cables)
+int GraphManager::restorePatchOutCables (const std::vector<LooperPatchOutModule::PatchOutCableRef>& cables)
 {
     JUCE_ASSERT_MESSAGE_THREAD
 
@@ -861,9 +788,9 @@ int GraphManager::restoreBigOutCables (const std::vector<LooperBigOutModule::Big
 
     for (const auto& cable : cables)
     {
-        const auto nodeTree = nodes.getChildWithProperty (id::nodeId, cable.bigOutUuid);
+        const auto nodeTree = nodes.getChildWithProperty (id::nodeId, cable.patchOutUuid);
         if (! nodeTree.isValid()
-            || factoryKeyOf (nodeTree) != LooperBigOutModule::staticModuleId
+            || factoryKeyOf (nodeTree) != LooperPatchOutModule::staticModuleId
             || ! nodes.getChildWithProperty (id::nodeId, cable.destNodeId).isValid())
         {
             ++failed;   // Node inzwischen weg (Preset-Wechsel) — überspringen
@@ -871,11 +798,11 @@ int GraphManager::restoreBigOutCables (const std::vector<LooperBigOutModule::Big
         }
 
         // Kanal aus der JETZT gültigen Slot-Liste (nie der alte Roh-Kanal)
-        const auto specs = LooperBigOutModule::readOutputConfig (nodeTree);
-        const auto offset = LooperBigOutModule::channelOffsetOf (specs, cable.spec);
+        const auto specs = LooperPatchOutModule::readOutputConfig (nodeTree);
+        const auto offset = LooperPatchOutModule::channelOffsetOf (specs, cable.spec);
 
         if (offset < 0
-            || ! addConnection (cable.bigOutUuid, offset + cable.lr,
+            || ! addConnection (cable.patchOutUuid, offset + cable.lr,
                                 cable.destNodeId, cable.destChannel))
             ++failed;
     }
@@ -936,6 +863,15 @@ void GraphManager::normalizeNode (juce::ValueTree nodeTree)
         nodeTree.setProperty (id::factoryId,
                               nodeTree.getProperty (id::moduleId).toString(), nullptr);
 
+    // Umbenennung 19.07.2026 (ADR 013): Alt-Schlüssel looper_in/
+    // looper_big_out heißen jetzt looper_patch_in/looper_patch_out.
+    // Das kompakte looper_out ist ersatzlos entfallen — Alt-Nodes laufen
+    // in den nodeError-Pfad („Unbekanntes Modul") und bleiben löschbar.
+    if (const auto legacyKey = factoryKeyOf (nodeTree); legacyKey == "looper_in")
+        nodeTree.setProperty (id::factoryId, LooperPatchInModule::staticModuleId, nullptr);
+    else if (legacyKey == "looper_big_out")
+        nodeTree.setProperty (id::factoryId, LooperPatchOutModule::staticModuleId, nullptr);
+
     // Modul-spezifische Migration: Multi-Input-Send-Schema (stateVersion 1→2)
     if (factoryKeyOf (nodeTree) == LinkAudioSendModule::staticModuleId)
         LinkAudioSendModule::migrate (nodeTree);
@@ -945,6 +881,15 @@ void GraphManager::normalizeNode (juce::ValueTree nodeTree)
     // Idempotent, frisch angelegte Nodes sind bereits chassis-förmig.
     if (nodeTree.getProperty (id::type).toString() == toString (ModuleType::processor))
         ChassisSchema::migrate (nodeTree);
+}
+
+void GraphManager::normalizeLoadedNodes()
+{
+    JUCE_ASSERT_MESSAGE_THREAD
+
+    const auto nodes = rootState.getChildWithName (id::nodes);
+    for (int i = 0; i < nodes.getNumChildren(); ++i)
+        normalizeNode (nodes.getChild (i));
 }
 
 //==============================================================================
@@ -1293,17 +1238,16 @@ void GraphManager::valueTreePropertyChanged (juce::ValueTree& tree, const juce::
         return;
     }
 
-    // Looper-I/O-Slots geändert (Looper In „+"/Slot-Umbau, Looper Out
-    // Abgriff-Umbau): neue Busse nötig → im NÄCHSTEN gefadeten Swap
+    // Looper-I/O-Slots geändert (Looper patch IN „+"/Slot-Umbau, Looper
+    // patch OUT Struktur-Sync): neue Busse nötig → im NÄCHSTEN gefadeten Swap
     // re-materialisieren (5.2) — anders als der harte Endpunkt-Pfad
     // unten läuft das am spielenden System.
     if ((property == id::numInputChannels || property == id::numOutputChannels)
         && tree.hasType (id::node))
     {
         if (const auto factoryKey = factoryKeyOf (tree);
-            factoryKey == LooperInModule::staticModuleId
-            || factoryKey == LooperOutModule::staticModuleId
-            || factoryKey == LooperBigOutModule::staticModuleId)
+            factoryKey == LooperPatchInModule::staticModuleId
+            || factoryKey == LooperPatchOutModule::staticModuleId)
         {
             const auto nodeUuid = tree.getProperty (id::nodeId).toString();
 
@@ -1319,28 +1263,6 @@ void GraphManager::valueTreePropertyChanged (juce::ValueTree& tree, const juce::
             markTopologyDirty();
             return;
         }
-    }
-
-    // Looper-Out-Abgriff-Eigenschaften geändert (Pre/Post, Ziel, Modus —
-    // auch via Undo): das Modul liest die Slots nur bei der Materialisierung
-    // → gefadet re-materialisieren (Kanalzahl bleibt bei Pre/Post gleich,
-    // deshalb eigener Trigger neben dem numChannels-Zweig oben).
-    if ((property == id::outputPre || property == id::outputTarget
-         || property == id::outputMode)
-        && tree.hasType (id::output))
-    {
-        if (const auto nodeTree = tree.getParent().getParent(); nodeTree.hasType (id::node))
-        {
-            const auto nodeUuid = nodeTree.getProperty (id::nodeId).toString();
-
-            if (std::find (pendingRematerialize.begin(), pendingRematerialize.end(),
-                           nodeUuid) == pendingRematerialize.end())
-                pendingRematerialize.push_back (nodeUuid);
-
-            preparedModules.erase (nodeUuid);
-            markTopologyDirty();
-        }
-        return;
     }
 
     // Hardware-I/O-Kanalzahl geändert (Gerätewechsel, ADR 009): das
@@ -1607,7 +1529,7 @@ void GraphManager::valueTreeChildAdded (juce::ValueTree& parent, juce::ValueTree
 
         // Looper-In-Ketten-Namen hängen an JEDER Kabel-Änderung — auch
         // Upstream (Eingang → FX umgesteckt ändert die Kette)
-        refreshLooperInAutoNames();
+        refreshLooperPatchInAutoNames();
     }
 
     if (isTopologyContainer (parent) || isTopologyContainer (child))
@@ -1617,20 +1539,20 @@ void GraphManager::valueTreeChildAdded (juce::ValueTree& parent, juce::ValueTree
 void GraphManager::valueTreeChildRemoved (juce::ValueTree& parent, juce::ValueTree& child, int)
 {
     if (child.hasType (id::connection))
-        refreshLooperInAutoNames();
+        refreshLooperPatchInAutoNames();
 
     if (isTopologyContainer (parent) || isTopologyContainer (child))
         markTopologyDirty();
 }
 
-void GraphManager::refreshLooperInAutoNames()
+void GraphManager::refreshLooperPatchInAutoNames()
 {
     const auto nodesTree = rootState.getChildWithName (id::nodes);
 
     for (int n = 0; n < nodesTree.getNumChildren(); ++n)
     {
         auto node = nodesTree.getChild (n);
-        if (factoryKeyOf (node) != LooperInModule::staticModuleId)
+        if (factoryKeyOf (node) != LooperPatchInModule::staticModuleId)
             continue;
 
         const auto inputsTree = node.getChildWithName (id::inputs);
@@ -1640,7 +1562,7 @@ void GraphManager::refreshLooperInAutoNames()
         {
             snapshotAutoName (node, offset, true);
             offset += inputsTree.getChild (i).getProperty (id::inputMode).toString()
-                          == LooperInModule::modeStereo ? 2 : 1;
+                          == LooperPatchInModule::modeStereo ? 2 : 1;
         }
     }
 }
@@ -1838,14 +1760,10 @@ std::unique_ptr<ConduitModule> GraphManager::materializeModule (juce::ValueTree 
         receiveModule->setTargetChannel (nodeTree.getProperty (id::targetPeer).toString(),
                                          nodeTree.getProperty (id::targetChannel).toString());
 
-    // Looper Out (Looper-I/O): Abgriff-Slots aus dem Tree VOR
-    // prepareForGraph — bestimmen das Ausgangs-Bus-Layout.
-    if (auto* looperOut = dynamic_cast<LooperOutModule*> (module.get()))
-        looperOut->applyOutputSpecs (LooperOutModule::readOutputConfig (nodeTree));
-
-    // Big Looper Out: Auto-Follow-Slots aus dem Tree VOR prepareForGraph
-    if (auto* bigOut = dynamic_cast<LooperBigOutModule*> (module.get()))
-        bigOut->applyOutputSpecs (LooperBigOutModule::readOutputConfig (nodeTree));
+    // Looper patch OUT: Auto-Follow-Slots aus dem Tree VOR prepareForGraph
+    // — bestimmen das Ausgangs-Bus-Layout.
+    if (auto* patchOut = dynamic_cast<LooperPatchOutModule*> (module.get()))
+        patchOut->applyOutputSpecs (LooperPatchOutModule::readOutputConfig (nodeTree));
 
     // Looper-Busse VOR prepareForGraph (ILooperAudioClient): die Bank
     // überlebt den Graph (EngineProcessor-Deklarationsreihenfolge).

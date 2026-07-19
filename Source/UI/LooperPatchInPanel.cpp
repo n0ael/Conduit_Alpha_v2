@@ -1,11 +1,11 @@
-#include "LooperInPanel.h"
+#include "LooperPatchInPanel.h"
 
 #include "PushLookAndFeel.h"
 
 namespace conduit
 {
 
-LooperInPanel::LooperInPanel (juce::ValueTree nodeTreeToBind, GraphManager& graphManagerToUse)
+LooperPatchInPanel::LooperPatchInPanel (juce::ValueTree nodeTreeToBind, GraphManager& graphManagerToUse)
     : nodeTree (std::move (nodeTreeToBind)),
       graphManager (graphManagerToUse),
       nodeUuid (nodeTree.getProperty (id::nodeId).toString())
@@ -15,12 +15,12 @@ LooperInPanel::LooperInPanel (juce::ValueTree nodeTreeToBind, GraphManager& grap
     addMonoButton.onClick = [this]
     {
         if (! frozen)
-            graphManager.addLooperInSlot (nodeUuid, false);
+            graphManager.addLooperPatchInSlot (nodeUuid, false);
     };
     addStereoButton.onClick = [this]
     {
         if (! frozen)
-            graphManager.addLooperInSlot (nodeUuid, true);
+            graphManager.addLooperPatchInSlot (nodeUuid, true);
     };
 
     addAndMakeVisible (addMonoButton);
@@ -29,12 +29,12 @@ LooperInPanel::LooperInPanel (juce::ValueTree nodeTreeToBind, GraphManager& grap
     buildRows();
 }
 
-LooperInPanel::~LooperInPanel()
+LooperPatchInPanel::~LooperPatchInPanel()
 {
     nodeTree.removeListener (this);
 }
 
-void LooperInPanel::stopUpdates()
+void LooperPatchInPanel::stopUpdates()
 {
     frozen = true;
     nodeTree.removeListener (this);
@@ -42,12 +42,12 @@ void LooperInPanel::stopUpdates()
 }
 
 //==============================================================================
-juce::ValueTree LooperInPanel::inputsTree() const
+juce::ValueTree LooperPatchInPanel::inputsTree() const
 {
     return nodeTree.getChildWithName (id::inputs);
 }
 
-void LooperInPanel::buildRows()
+void LooperPatchInPanel::buildRows()
 {
     rows.clear();
 
@@ -62,7 +62,7 @@ void LooperInPanel::buildRows()
         row->inputId = input.getProperty (id::inputId).toString();
         row->index = i;
         row->stereo = input.getProperty (id::inputMode).toString()
-                          == LooperInModule::modeStereo;
+                          == LooperPatchInModule::modeStereo;
 
         row->nameLabel.setEditable (false, true, false);   // Doppelklick
         row->nameLabel.setColour (juce::Label::textColourId, push::colours::text);
@@ -84,7 +84,7 @@ void LooperInPanel::buildRows()
         row->removeButton.onClick = [this, index = i]
         {
             if (! frozen)
-                graphManager.removeLooperInSlot (nodeUuid, index);
+                graphManager.removeLooperPatchInSlot (nodeUuid, index);
         };
         addAndMakeVisible (row->removeButton);
 
@@ -96,19 +96,19 @@ void LooperInPanel::buildRows()
     repaint();
 }
 
-void LooperInPanel::refreshNameLabel (int rowIndex)
+void LooperPatchInPanel::refreshNameLabel (int rowIndex)
 {
     if (! juce::isPositiveAndBelow (rowIndex, (int) rows.size()))
         return;
 
     const auto input = inputsTree().getChild (rowIndex);
     rows[(size_t) rowIndex]->nameLabel.setText (
-        LooperInModule::effectiveInputName (input, rowIndex),
+        LooperPatchInModule::effectiveInputName (input, rowIndex),
         juce::dontSendNotification);
 }
 
 //==============================================================================
-void LooperInPanel::valueTreePropertyChanged (juce::ValueTree& tree,
+void LooperPatchInPanel::valueTreePropertyChanged (juce::ValueTree& tree,
                                               const juce::Identifier& property)
 {
     if ((property == id::inputUserName || property == id::inputAutoName)
@@ -116,25 +116,25 @@ void LooperInPanel::valueTreePropertyChanged (juce::ValueTree& tree,
         refreshNameLabel (inputsTree().indexOf (tree));
 }
 
-void LooperInPanel::valueTreeChildAdded (juce::ValueTree& parent, juce::ValueTree&)
+void LooperPatchInPanel::valueTreeChildAdded (juce::ValueTree& parent, juce::ValueTree&)
 {
     if (parent.hasType (id::inputs))
         buildRows();
 }
 
-void LooperInPanel::valueTreeChildRemoved (juce::ValueTree& parent, juce::ValueTree&, int)
+void LooperPatchInPanel::valueTreeChildRemoved (juce::ValueTree& parent, juce::ValueTree&, int)
 {
     if (parent.hasType (id::inputs))
         buildRows();
 }
 
 //==============================================================================
-juce::Rectangle<int> LooperInPanel::rowBounds (int index) const
+juce::Rectangle<int> LooperPatchInPanel::rowBounds (int index) const
 {
     return { 0, topPadding + index * rowHeight, getWidth(), rowHeight };
 }
 
-void LooperInPanel::resized()
+void LooperPatchInPanel::resized()
 {
     for (int i = 0; i < (int) rows.size(); ++i)
     {
@@ -151,7 +151,7 @@ void LooperInPanel::resized()
     addStereoButton.setBounds (footer.reduced (2, 0));
 }
 
-void LooperInPanel::paint (juce::Graphics& g)
+void LooperPatchInPanel::paint (juce::Graphics& g)
 {
     g.setFont (push::scaledFont (11.0f, false));
 

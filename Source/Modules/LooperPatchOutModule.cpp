@@ -1,11 +1,11 @@
-#include "LooperBigOutModule.h"
+#include "LooperPatchOutModule.h"
 
 #include "Core/Looper/LooperBank.h"
 
 namespace conduit
 {
 
-LooperBigOutModule::LooperBigOutModule()
+LooperPatchOutModule::LooperPatchOutModule()
     : IOModule (BusesProperties()
           .withOutput ("Output", juce::AudioChannelSet::discreteChannels (2), true))
 {
@@ -15,22 +15,22 @@ LooperBigOutModule::LooperBigOutModule()
 }
 
 //==============================================================================
-juce::String LooperBigOutModule::getModuleId() const          { return staticModuleId; }
-juce::String LooperBigOutModule::getModuleDisplayName() const { return "Looper Out"; }
-int LooperBigOutModule::getStateVersion() const               { return 1; }
+juce::String LooperPatchOutModule::getModuleId() const          { return staticModuleId; }
+juce::String LooperPatchOutModule::getModuleDisplayName() const { return "Looper patch OUT"; }
+int LooperPatchOutModule::getStateVersion() const               { return 1; }
 
-juce::ValueTree LooperBigOutModule::createState()
+juce::ValueTree LooperPatchOutModule::createState()
 {
     auto nodeTree = ConduitModule::createState();
 
     // Minimal-Default (1 Looper / 1 Track) — addModuleNode synct sofort
-    // auf die echte Struktur (syncLooperBigOutConfigs)
+    // auf die echte Struktur (syncLooperPatchOutConfigs)
     applyOutputConfig (nodeTree, buildSpecs (Structure {}));
     return nodeTree;
 }
 
 //==============================================================================
-juce::String LooperBigOutModule::toString (Kind kind)
+juce::String LooperPatchOutModule::toString (Kind kind)
 {
     switch (kind)
     {
@@ -42,7 +42,7 @@ juce::String LooperBigOutModule::toString (Kind kind)
     return kindMaster;
 }
 
-LooperBigOutModule::Kind LooperBigOutModule::kindFromString (const juce::String& text) noexcept
+LooperPatchOutModule::Kind LooperPatchOutModule::kindFromString (const juce::String& text) noexcept
 {
     if (text == kindTrack) return Kind::track;
     if (text == kindBus)   return Kind::bus;
@@ -50,7 +50,7 @@ LooperBigOutModule::Kind LooperBigOutModule::kindFromString (const juce::String&
     return Kind::master;
 }
 
-juce::String LooperBigOutModule::outputLabel (const OutputSpec& spec)
+juce::String LooperPatchOutModule::outputLabel (const OutputSpec& spec)
 {
     switch (spec.kind)
     {
@@ -68,7 +68,7 @@ juce::String LooperBigOutModule::outputLabel (const OutputSpec& spec)
     return "Master";
 }
 
-std::vector<LooperBigOutModule::OutputSpec> LooperBigOutModule::buildSpecs (const Structure& structure)
+std::vector<LooperPatchOutModule::OutputSpec> LooperPatchOutModule::buildSpecs (const Structure& structure)
 {
     std::vector<OutputSpec> specs;
 
@@ -95,7 +95,7 @@ std::vector<LooperBigOutModule::OutputSpec> LooperBigOutModule::buildSpecs (cons
     return specs;
 }
 
-void LooperBigOutModule::applyOutputConfig (juce::ValueTree nodeTree,
+void LooperPatchOutModule::applyOutputConfig (juce::ValueTree nodeTree,
                                             const std::vector<OutputSpec>& specsIn,
                                             juce::UndoManager* undo)
 {
@@ -139,7 +139,7 @@ void LooperBigOutModule::applyOutputConfig (juce::ValueTree nodeTree,
                           (int) specs.size() * slotWidth, undo);
 }
 
-std::vector<LooperBigOutModule::OutputSpec> LooperBigOutModule::readOutputConfig (const juce::ValueTree& nodeTree)
+std::vector<LooperPatchOutModule::OutputSpec> LooperPatchOutModule::readOutputConfig (const juce::ValueTree& nodeTree)
 {
     std::vector<OutputSpec> result;
     const auto outputsTree = nodeTree.getChildWithName (id::outputs);
@@ -174,7 +174,7 @@ std::vector<LooperBigOutModule::OutputSpec> LooperBigOutModule::readOutputConfig
     return result;
 }
 
-int LooperBigOutModule::channelOffsetOf (const std::vector<OutputSpec>& specs,
+int LooperPatchOutModule::channelOffsetOf (const std::vector<OutputSpec>& specs,
                                          const OutputSpec& spec) noexcept
 {
     for (std::size_t i = 0; i < specs.size(); ++i)
@@ -185,13 +185,13 @@ int LooperBigOutModule::channelOffsetOf (const std::vector<OutputSpec>& specs,
 }
 
 //==============================================================================
-void LooperBigOutModule::setLooperAudioSource (LooperBank* bank)
+void LooperPatchOutModule::setLooperAudioSource (LooperBank* bank)
 {
     JUCE_ASSERT_MESSAGE_THREAD
     rtBank.store (bank, std::memory_order_release);
 }
 
-void LooperBigOutModule::applyOutputSpecs (const std::vector<OutputSpec>& specsIn)
+void LooperPatchOutModule::applyOutputSpecs (const std::vector<OutputSpec>& specsIn)
 {
     JUCE_ASSERT_MESSAGE_THREAD
 
@@ -203,23 +203,23 @@ void LooperBigOutModule::applyOutputSpecs (const std::vector<OutputSpec>& specsI
     setChannelLayoutOfBus (false, 0, juce::AudioChannelSet::discreteChannels (totalChannels));
 }
 
-bool LooperBigOutModule::isBusesLayoutSupported (const BusesLayout& layouts) const
+bool LooperPatchOutModule::isBusesLayoutSupported (const BusesLayout& layouts) const
 {
     return layouts.getMainInputChannels() == 0
         && layouts.getMainOutputChannels() >= 2;
 }
 
-void LooperBigOutModule::prepareToPlay (double, int)
+void LooperPatchOutModule::prepareToPlay (double, int)
 {
     // Keine eigenen Puffer — die Busse leben bei der LooperBank
 }
 
-void LooperBigOutModule::releaseResources()
+void LooperPatchOutModule::releaseResources()
 {
 }
 
 //==============================================================================
-void LooperBigOutModule::processBlock (juce::AudioBuffer<float>& buffer, juce::MidiBuffer&)
+void LooperPatchOutModule::processBlock (juce::AudioBuffer<float>& buffer, juce::MidiBuffer&)
 {
     juce::ScopedNoDenormals noDenormals;
 

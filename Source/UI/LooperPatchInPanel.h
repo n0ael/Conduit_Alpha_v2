@@ -6,32 +6,32 @@
 #include <juce_gui_basics/juce_gui_basics.h>
 
 #include "Core/GraphManager.h"
-#include "Modules/LooperInModule.h"
+#include "Modules/LooperPatchInModule.h"
 
 namespace conduit
 {
 
 //==============================================================================
 /**
-    Bedien-Panel eines LooperInModule (ADR 010) — lebt im NodeComponent
+    Bedien-Panel eines LooperPatchInModule (ADR 010) — lebt im NodeComponent
     (Muster LinkAudioSendPanel).
 
     Pro Slot eine Zeile: Name (Doppelklick → inputUserName; leer = zurück
     zum Auto-Namen), Mono/Stereo-Badge, ×-Button (GraphManager::
-    removeLooperInSlot, undo-fähig, inkl. Kabel-Remap). Footer: „+ Mono" /
-    „+ Stereo" (addLooperInSlot) — Slot-Änderungen re-materialisieren den
+    removeLooperPatchInSlot, undo-fähig, inkl. Kabel-Remap). Footer: „+ Mono" /
+    „+ Stereo" (addLooperPatchInSlot) — Slot-Änderungen re-materialisieren den
     Node im nächsten gefadeten Swap; die Zeilen folgen dem ValueTree.
 
     Bindung NUR an den Subtree (5.3); Namen schreiben inputUserName ohne
     Undo (Namens-Pflege wie beim Link-Send), Struktur-Änderungen laufen
     durch die GraphManager-Patch-Aktionen.
 */
-class LooperInPanel final : public juce::Component,
-                            private juce::ValueTree::Listener
+class LooperPatchInPanel final : public juce::Component,
+                                 private juce::ValueTree::Listener
 {
 public:
-    LooperInPanel (juce::ValueTree nodeTreeToBind, GraphManager& graphManagerToUse);
-    ~LooperInPanel() override;
+    LooperPatchInPanel (juce::ValueTree nodeTreeToBind, GraphManager& graphManagerToUse);
+    ~LooperPatchInPanel() override;
 
     /** Teardown-Hook (Phase 1, 5.3): Interaktion sofort stoppen. */
     void stopUpdates();
@@ -89,7 +89,7 @@ private:
     const juce::String nodeUuid;
     bool frozen = false;
 
-    JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (LooperInPanel)
+    JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (LooperPatchInPanel)
 };
 
 } // namespace conduit

@@ -69,22 +69,16 @@ namespace id
     inline const juce::Identifier inputAutoName     { "autoName" };      // Snapshot aus der Quelle
     inline const juce::Identifier inputGainParamId  { "gainParamId" };   // "in{n}_gain"
 
-    // Outputs (Looper Out, Looper-I/O 07/2026) — pro Abgriff ein Slot.
-    // target 0 = Master-Mix, 1..4 = Looper n; mode "stereo" (2 Kanäle) |
-    // "sum" (LR-Summe) | "left" | "right" (je 1 Kanal); pre = Pre-Fader.
+    // Outputs (Looper patch OUT, Looper-I/O 07/2026) — pro Auto-Follow-
+    // Slot ein <Output>-Kind. kind "track" (target = Looper, track =
+    // Track-Nr.) | "bus" (target = Looper) | "send" (target = Send-Nr.) |
+    // "master"; alle Slots stereo.
     inline const juce::Identifier outputs      { "Outputs" };
     inline const juce::Identifier output       { "Output" };
     inline const juce::Identifier outputId     { "outputId" };
     inline const juce::Identifier outputTarget { "target" };
-    inline const juce::Identifier outputMode   { "mode" };
-    inline const juce::Identifier outputPre    { "pre" };
-
-    // Big Looper Out (07/2026): Diskriminator im selben <Outputs>-Schema.
-    // kind "track" (target = Looper, track = Track-Nr.) | "bus" (target =
-    // Looper) | "send" (target = Send-Nr.) | "master"; alle Slots stereo.
-    // looper_out-Leser sehen kind nie (eigene readOutputConfig).
-    inline const juce::Identifier outputKind  { "kind" };
-    inline const juce::Identifier outputTrack { "track" };
+    inline const juce::Identifier outputKind   { "kind" };
+    inline const juce::Identifier outputTrack  { "track" };
 
     // Parameters
     inline const juce::Identifier parameters    { "Parameters" };

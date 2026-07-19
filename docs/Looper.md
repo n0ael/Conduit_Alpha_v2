@@ -9,14 +9,14 @@
     dem GraphFader (resolvet weiter, steht aber nicht mehr in der Combo) |
     „hw:{paar}" = gepaartes Eingangs-Paar | „hwm:{kanal}" = ungepaarter
     Mono-Eingang (∥-Pairing der ChannelNames entscheidet) | „tap:{name}"
-    = virtueller Capture-Kanal eines Moduls (Looper-In-Slots
+    = virtueller Capture-Kanal eines Moduls (Looper-patch-IN-Slots
     „{moduleId}/{slotName}", Mono ohne Suffix ⇒ right = −1 ⇒
     1-Kanal-Clip; Stereo _l/_r). Der frühere out:{paar}-Zweig ist
     Legacy (resolvet zu −1). Arming (`CaptureService::setChannelArmed`)
     hält das Gate zwangsweise offen. **Auflösung folgt der Registry
     SYNCHRON** (`CaptureService::onRegistryChanged` →
     `applyLooperSourceArming`, Feldtest-Fix 19.07.2026): eine
-    Re-Materialisierung des Looper-In-Moduls registriert seine Kanäle
+    Re-Materialisierung des Looper-patch-IN-Moduls registriert seine Kanäle
     auf NEUEN Slots, weil die gearmten alten ihr Material als held
     binden — ohne den Hook zeigten die gespeicherten Looper-Indizes
     dauerhaft auf den toten Kanal (Stille bei unverändertem
@@ -27,11 +27,11 @@
     Quellen persistieren in LooperSettings (sourceKey pro Looper),
     der Anker in TransportSettings (looperAnchor, −1 = Kein Master-Out).
   - **Quellen-Combo (Looper-I/O 18.07.2026, ersetzt die Fassung vom
-    09.07.):** Liste = Looper-In-Slots ZUOBERST (gruppiert pro
+    09.07.):** Liste = Looper-patch-IN-Slots ZUOBERST (gruppiert pro
     Modul-Instanz) + Interface-Eingänge (Mono/Stereo nach ∥-Pairing,
     Labels/Farben aus ChannelNames). Master/Out-Paare/fremde Taps sind
     bewusst raus — solche Signale loopt man per Kabel ins
-    Looper-In-Modul. Auswahl über Item-IDs = Quell-Index + 1, NIE über
+    Looper-patch-IN-Modul. Auswahl über Item-IDs = Quell-Index + 1, NIE über
     Item-Indizes (Separatoren verschieben sie). Live-Refresh:
     CaptureService/ChannelNames-Broadcasts + Root-Tree-Listener
     (nodeColour, numInput-/numOutputChannels, Input-Namen,
@@ -43,7 +43,7 @@
     („mopho · galactic_1", `resolveSourceChainLabel`; Multi-Input-
     Stationen folgen ihrem ersten verbundenen Eingang, Zyklen kappen).
     `GraphManager::snapshotAutoName` mit followSource +
-    `refreshLooperInAutoNames` bei JEDER Kabel-Änderung (auch Upstream);
+    `refreshLooperPatchInAutoNames` bei JEDER Kabel-Änderung (auch Upstream);
     Kollisionen bekommen „ 2"-Suffixe; expliziter userName gewinnt —
     anders als der Link-Send-Einmal-Snapshot. In der Clip-Zelle friert
     der Combo-Text ein ⇒ das Instrument steht dort zuerst. Der Rename wandert zur Registry
@@ -56,23 +56,28 @@
     nodeColour des Moduls. Die Kette Eingang → FX → Slot → Waveform
     (`setSourceColour`) → Clip-Thumbnail (Zellfläche) ist damit
     durchgängig quellfarbig.
-  - **Looper-I/O-Module (ADR 010):** `LooperInModule` (looper_in,
-    dynamische Mono/Stereo-Slots → Capture-Taps, Pass-Through;
-    Slot-Umbau re-materialisiert gefadet; Default-Bestückung 4× stereo
+  - **Looper patch IN (ADR 010, umbenannt ADR 013 19.07.2026):**
+    `LooperPatchInModule` (looper_patch_in, vormals looper_in;
+    Browser-/Header-Name „Looper patch IN"): dynamische
+    Mono/Stereo-Slots → Capture-Taps, Pass-Through; Slot-Umbau
+    re-materialisiert gefadet; Default-Bestückung 4× stereo
     + 4× mono = 12 Kanäle, 19.07.2026 — die CaptureService-Reserve (12)
     deckt genau EIN Default-Modul; Slots jenseits der Reserve werden
     erst auflösbar, wenn kein Capture-Kanal aktiv ist [Guard-Tick].
     Deshalb starten die Looper ab Werk OHNE Quelle: der alte
     „master"-Default hielt die Master-Kanäle dauerhaft gearmt und
-    blockierte die Erweiterung für immer) und `LooperOutModule`
-    (looper_out — seit ADR 012 „**Looper Out Mini**", factoryId
-    unverändert; Abgriffe Master|Looper 1–4 × stereo|sum|left|right ×
-    Pre/Post; Default Master + 4 Looper stereo post). Engine-Seite:
+    blockierte die Erweiterung für immer. Das kompakte `LooperOutModule`
+    (looper_out, „Looper Out Mini", Abgriffe Master|Looper × Modus ×
+    Pre/Post) wurde mit ADR 013 ERSATZLOS ENTFERNT — zwei Out-Module
+    waren verwirrend; Pre-Abgriffe/Mono-Modi deckt niemand mehr ab
+    (Sends bieten Pre/Post pro Track). Engine-Seite:
     `LooperBank::renderBlock` VOR dem Graph, `getAudioView()` im selben
     Callback, `mixToOutput` (Master-Mix, additiv) NACH dem Graph;
     „sendMaster" pro Looper (LooperSettings) filtert NUR den Master-Mix.
-  - **Big Looper Out (ADR 012, 19.07.2026):** `LooperBigOutModule`
-    (looper_big_out, Browser-Name „Looper Out") = STANDARD-Ausgangsmodul.
+  - **Looper patch OUT (ADR 012 „Big Looper Out", 19.07.2026; umbenannt
+    ADR 013):** `LooperPatchOutModule` (looper_patch_out, vormals
+    looper_big_out; Browser-/Header-Name „Looper patch OUT") = EINZIGES
+    Looper-Ausgangsmodul.
     Stereo-Slots folgen AUTOMATISCH der Struktur: Track-Outs geflattet
     Looper-major (post-fader — Mono-Clips kommen über die Panning-Sektion
     stereo heraus) → Bus-Outs (Post-Bus je Looper) → Send 1–4 (immer
@@ -82,16 +87,23 @@
     pro-Track-Bitmaske + PRE/POST-Abgriff (LooperSettings
     `TrackState.sends`/`sendPre` → Bank-Atomics via applyLooperSettings;
     UI: SND-Kachel im Track-Strip → LooperSendDialog-CallOut).
-    GraphManager: `setLooperStructure`/`syncLooperBigOutConfigs` —
+    GraphManager: `setLooperStructure`/`syncLooperPatchOutConfigs` —
     Kabel-Remap über SPEC-IDENTITÄT (nie Kanal-Arithmetik: ein entfernter
     Track verschiebt die geflatteten Offsets aller späteren Slots),
     Re-Materialisierung EXPLIZIT anstoßen (bei gleicher Kanalzahl feuert
     kein numOutputChannels-Listener); Call-Sites applyLooperSettings,
     addModuleNode, loadPreset/setStateInformation, Force-Delete
     (synchron). Kachel read-only mit Sektions-Trennern
-    (LooperBigOutPanel), Ports fluchten via rowCentreY.
+    (LooperPatchOutPanel), Ports fluchten via rowCentreY.
+  - **Migration (ADR 013):** Alt-Schlüssel looper_in/looper_big_out
+    werden beim Laden auf die neuen factoryIds umgeschrieben
+    (`GraphManager::normalizeLoadedNodes` — läuft in
+    setStateInformation/loadPreset VOR syncLooperPatchOutConfigs, plus
+    normalizeNode bei jeder Materialisierung); moduleIds/tap:-Keys
+    bleiben unverändert. looper_out-Nodes alter Patches laufen in den
+    definierten nodeError-Pfad („Unbekanntes Modul") und sind löschbar.
   - **Delete-Gating + Papierkorb (ADR 012):** Looper-/Track-Delete nur
-    noch direkt, wenn weder Clips noch Big-Out-Kabel betroffen; sonst
+    noch direkt, wenn weder Clips noch Patch-Out-Kabel betroffen; sonst
     X/OK-CallOut (LooperDeleteConfirmDialog). OK = Force-Delete
     (`EngineProcessor::forceRemoveLooperTrack/-LastLooper`): Clips
     DETACHEN (`LooperSessionModel::detachSlot`, KEIN bank.deleteClip —

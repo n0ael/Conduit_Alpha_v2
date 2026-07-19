@@ -65,9 +65,8 @@
 #include "LfoModule.h"
 #include "LinkAudioReceiveModule.h"
 #include "LinkAudioSendModule.h"
-#include "LooperBigOutModule.h"
-#include "LooperInModule.h"
-#include "LooperOutModule.h"
+#include "LooperPatchOutModule.h"
+#include "LooperPatchInModule.h"
 #include "ScopeModule.h"
 #include "StepSequencerModule.h"
 
@@ -219,17 +218,13 @@ void registerDefaultModules (ModuleFactory& factory)
                       "capture tap record aufnahme export"),
         [] { return std::make_unique<CaptureTapModule>(); });
     factory.registerModule (
-        cvDescriptor (LooperInModule::staticModuleId, "Looper In", "I/O",
-                      "looper in eingang quelle source aufnahme record loop"),
-        [] { return std::make_unique<LooperInModule>(); });
+        cvDescriptor (LooperPatchInModule::staticModuleId, "Looper patch IN", "I/O",
+                      "looper patch in eingang quelle source aufnahme record loop"),
+        [] { return std::make_unique<LooperPatchInModule>(); });
     factory.registerModule (
-        cvDescriptor (LooperBigOutModule::staticModuleId, "Looper Out", "I/O",
-                      "looper out big ausgang tracks sends bus master playback loop"),
-        [] { return std::make_unique<LooperBigOutModule>(); });
-    factory.registerModule (
-        cvDescriptor (LooperOutModule::staticModuleId, "Looper Out Mini", "I/O",
-                      "looper out mini ausgang abgriff master playback loop"),
-        [] { return std::make_unique<LooperOutModule>(); });
+        cvDescriptor (LooperPatchOutModule::staticModuleId, "Looper patch OUT", "I/O",
+                      "looper patch out ausgang tracks sends bus master playback loop"),
+        [] { return std::make_unique<LooperPatchOutModule>(); });
 
     registerAirwindows<AirwindowsDensityModule> (factory);
     registerAirwindows<AirwindowsSlewModule> (factory);

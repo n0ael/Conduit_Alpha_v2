@@ -7,7 +7,7 @@
 #include "EngineProcessor.h"
 #include "Modules/LinkAudioReceiveModule.h"
 #include "Modules/LinkAudioSendModule.h"
-#include "Modules/LooperInModule.h"
+#include "Modules/LooperPatchInModule.h"
 #include "UI/LinkSendCreateDialog.h"
 #include "Core/Looper/LooperClipExporter.h"
 #include "UI/LooperDeleteConfirmDialog.h"
@@ -312,7 +312,7 @@ EngineEditor::EngineEditor (EngineProcessor& engineProcessor,
             return;
 
         const auto hasClips = session.looperHasClips (last);
-        const auto hasCables = engine.getGraphManager().hasLooperBigOutCables (last, -1);
+        const auto hasCables = engine.getGraphManager().hasLooperPatchOutCables (last, -1);
 
         if (! hasClips && ! hasCables)
         {
@@ -333,7 +333,7 @@ EngineEditor::EngineEditor (EngineProcessor& engineProcessor,
         if (hasClips)
             message << juce::String::fromUTF8 ("\n\xe2\x80\xa2 Clips");
         if (hasCables)
-            message << juce::String::fromUTF8 ("\n\xe2\x80\xa2 Kabel am Looper-Out");
+            message << juce::String::fromUTF8 ("\n\xe2\x80\xa2 Kabel am Looper patch OUT");
         message << juce::String::fromUTF8 (
             "\n\nOK löscht beides (\xe2\x86\xba ~3 min rückgängig).");
 
@@ -619,7 +619,7 @@ std::vector<LooperPanel::Source> EngineEditor::buildLooperSources()
     for (int n = 0; n < nodesTree.getNumChildren(); ++n)
     {
         auto node = nodesTree.getChild (n);
-        if (GraphManager::factoryKeyOf (node) != LooperInModule::staticModuleId)
+        if (GraphManager::factoryKeyOf (node) != LooperPatchInModule::staticModuleId)
             continue;
 
         const auto moduleId = node.getProperty (id::moduleId).toString();
@@ -628,14 +628,14 @@ std::vector<LooperPanel::Source> EngineEditor::buildLooperSources()
         for (int i = 0; i < inputsTree.getNumChildren(); ++i)
         {
             const auto inputTree = inputsTree.getChild (i);
-            const auto name = LooperInModule::effectiveInputName (inputTree, i);
-            const auto key = "tap:" + LooperInModule::tapBaseName (moduleId, name);
+            const auto name = LooperPatchInModule::effectiveInputName (inputTree, i);
+            const auto key = "tap:" + LooperPatchInModule::tapBaseName (moduleId, name);
 
             // Quellname ZUERST (Auto-Naming folgt der verkabelten Quelle,
             // User-Regel 19.07.2026), dahinter Modul (disambiguiert gegen
             // die Hardware-Labels) und Aufnahmeart
             const auto mono = inputTree.getProperty (id::inputMode).toString()
-                                  == LooperInModule::modeMono;
+                                  == LooperPatchInModule::modeMono;
             const auto label = name + juce::String::fromUTF8 (" · ") + moduleId
                              + juce::String::fromUTF8 (mono ? " · mono" : " · stereo");
 
@@ -745,7 +745,7 @@ juce::Colour EngineEditor::looperSourceColour (const juce::String& sourceKey) co
             for (int i = 0; i < inputsTree.getNumChildren(); ++i)
             {
                 const auto inputTree = inputsTree.getChild (i);
-                if (LooperInModule::effectiveInputName (inputTree, i) == slotName)
+                if (LooperPatchInModule::effectiveInputName (inputTree, i) == slotName)
                 {
                     const auto rgb = flow_colours::resolveDestSourceRgb (
                         rootState, &engine.getChannelNames(),
@@ -756,7 +756,7 @@ juce::Colour EngineEditor::looperSourceColour (const juce::String& sourceKey) co
                 }
 
                 offset += inputTree.getProperty (id::inputMode).toString()
-                              == LooperInModule::modeStereo ? 2 : 1;
+                              == LooperPatchInModule::modeStereo ? 2 : 1;
             }
         }
 
@@ -1026,7 +1026,7 @@ void EngineEditor::removeLooperTrack (int looperIndex, int trackIndex)
     // Gating (Big Out 07/2026): leer UND unverkabelt = direkt; sonst
     // X/OK-Dialog — OK löscht Clips + Kabel in den Papierkorb
     const auto hasClips = session.trackHasClips (looperIndex, trackIndex);
-    const auto hasCables = engine.getGraphManager().hasLooperBigOutCables (looperIndex,
+    const auto hasCables = engine.getGraphManager().hasLooperPatchOutCables (looperIndex,
                                                                            trackIndex);
 
     if (! hasClips && ! hasCables)
@@ -1049,7 +1049,7 @@ void EngineEditor::removeLooperTrack (int looperIndex, int trackIndex)
     if (hasClips)
         message << juce::String::fromUTF8 ("\n\xe2\x80\xa2 Clips");
     if (hasCables)
-        message << juce::String::fromUTF8 ("\n\xe2\x80\xa2 Kabel am Looper-Out");
+        message << juce::String::fromUTF8 ("\n\xe2\x80\xa2 Kabel am Looper patch OUT");
     message << juce::String::fromUTF8 (
         "\n\nOK löscht beides (\xe2\x86\xba ~3 min rückgängig).");
 

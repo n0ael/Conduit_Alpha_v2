@@ -12,7 +12,8 @@ namespace conduit
 
 //==============================================================================
 /**
-    Big Looper Out (07/2026): das Standard-Ausgangsmodul des Loopers —
+    Looper patch OUT (ADR 012 „Big Looper Out", umbenannt ADR 013):
+    das Standard-Ausgangsmodul des Loopers —
     seine Ausgänge folgen AUTOMATISCH der Looper-Struktur (numLoopers/
     numTracks aus den LooperSettings), keine manuelle Slot-Pflege.
     Reihenfolge der Stereo-Slots (alle fix 2 Kanäle, User-Spezifikation
@@ -24,24 +25,25 @@ namespace conduit
         Master     (Master-Mix, respektiert „an Master senden")
 
     Track-Outs sind POST-Fader (Gain/Pan/Mute) — Mono-Clips kommen dank
-    der Panning-Sektion stereo heraus. Pre-Abgriffe und Mono-Modi bleiben
-    Sache des kompakten LooperOutModule („Looper Out Mini").
+    der Panning-Sektion stereo heraus. Pre-Abgriffe und Mono-Modi des
+    früheren kompakten looper_out sind mit ADR 013 ersatzlos entfallen
+    (Sends bieten Pre/Post pro Track).
 
     Struktur-Änderungen schreibt der GraphManager als frische <Outputs>-
-    Liste (syncLooperBigOutConfigs, undo-frei — Struktur ist App-Zustand);
+    Liste (syncLooperPatchOutConfigs, undo-frei — Struktur ist App-Zustand);
     die numOutputChannels-Änderung re-materialisiert den Node gefadet,
     Kabel auf überlebende Slots werden umgeschrieben (Spec-Identität).
 
     Audio-Pfad [Audio Thread, 3.1]: allocation-/lock-frei — kopiert nur
     die im selben Callback gerenderten Busse (LooperBank::renderBlock).
 */
-class LooperBigOutModule final : public IOModule,
-                                 public ILooperAudioClient
+class LooperPatchOutModule final : public IOModule,
+                                   public ILooperAudioClient
 {
 public:
-    LooperBigOutModule();
+    LooperPatchOutModule();
 
-    static constexpr const char* staticModuleId = "looper_big_out";
+    static constexpr const char* staticModuleId = "looper_patch_out";
     static constexpr int slotWidth = 2;   // alle Slots stereo
 
     enum class Kind : int { track = 0, bus, send, master };
@@ -73,9 +75,9 @@ public:
     /** Papierkorb-Referenz eines entfernten Kabels: SPEC-relativ (nie
         roher Kanal) — beim Restore wird der Kanal aus der dann gültigen
         Slot-Liste neu berechnet (channelOffsetOf + lr). */
-    struct BigOutCableRef
+    struct PatchOutCableRef
     {
-        juce::String bigOutUuid;
+        juce::String patchOutUuid;
         OutputSpec spec;
         int lr = 0;               // 0 = links, 1 = rechts
         juce::String destNodeId;
@@ -146,7 +148,7 @@ private:
     // Die Bank überlebt den Graph (EngineProcessor-Deklarationsreihenfolge).
     std::atomic<LooperBank*> rtBank { nullptr };
 
-    JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (LooperBigOutModule)
+    JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (LooperPatchOutModule)
 };
 
 } // namespace conduit

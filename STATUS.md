@@ -3,7 +3,28 @@
 > Letzte Aktualisierung: 2026-07-19 | wird nach jedem Meilenstein gepflegt
 > Architektur-Referenz: [CLAUDE.md](CLAUDE.md) | Repo: n0ael/Conduit
 
-## Aktueller Meilenstein (19.07.2026) — Big Looper Out (ADR 012): Auto-Follow-Outputs, Sends, Papierkorb
+## Aktueller Meilenstein (19.07.2026) — Looper patch IN/OUT (ADR 013): Umbenennung + Mini-Out entfernt
+
+- **`looper_out` („Looper Out Mini") ersatzlos entfernt** — Modul, Panel,
+  GraphManager-Slot-API und der `outputPre/Target/Mode`-Listener-Zweig;
+  zwei Out-Module waren verwirrend (User-Entscheidung 19.07.2026).
+  Bewusster Funktionsverlust: Pre-Einzelabgriffe/Mono-Modi (Sends
+  decken Pre/Post pro Track).
+- **Umbenennung inkl. Code:** `looper_in`→`looper_patch_in` („Looper
+  patch IN"), `looper_big_out`→`looper_patch_out` („Looper patch OUT");
+  Klassen/Dateien `LooperPatchInModule`/`LooperPatchOutModule` +
+  Panels, GraphManager-API (`syncLooperPatchOutConfigs`,
+  `hasLooperPatchOutCables`, `collectAndRemovePatchOutCables`,
+  `restorePatchOutCables`, `PatchOutCableRef`).
+- **Migration:** `normalizeNode` mappt Alt-Schlüssel;
+  `GraphManager::normalizeLoadedNodes()` läuft in
+  setStateInformation/loadPreset VOR dem Struktur-Sync. moduleIds/
+  tap:-Keys unverändert; looper_out-Nodes alter Patches → nodeError.
+- Descriptor-Test 69 → 68; Mini-Testfälle entfernt
+  (LooperPatchInModuleTests, vormals LooperIoModuleTests).
+- Offen: Feldtest (gemeinsam mit ADR 010/012).
+
+## Davor (19.07.2026) — Big Looper Out (ADR 012): Auto-Follow-Outputs, Sends, Papierkorb
 
 - **LooperBigOutModule** (`looper_big_out`, Browser-Name „Looper Out") =
   neues Standard-Ausgangsmodul: Stereo-Slots folgen AUTOMATISCH der

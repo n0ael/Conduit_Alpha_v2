@@ -5,20 +5,20 @@
 
 #include "Core/EngineProcessor.h"
 #include "Core/GraphManager.h"
-#include "Modules/LooperBigOutModule.h"
+#include "Modules/LooperPatchOutModule.h"
 #include "TestSettingsFolder.h"
 
-using conduit::LooperBigOutModule;
-using Kind = LooperBigOutModule::Kind;
-using Spec = LooperBigOutModule::OutputSpec;
-using Structure = LooperBigOutModule::Structure;
+using conduit::LooperPatchOutModule;
+using Kind = LooperPatchOutModule::Kind;
+using Spec = LooperPatchOutModule::OutputSpec;
+using Structure = LooperPatchOutModule::Structure;
 
 //==============================================================================
-TEST_CASE ("LooperBigOutModule: buildSpecs — Reihenfolge, Labels, Offsets", "[looper]")
+TEST_CASE ("LooperPatchOutModule: buildSpecs — Reihenfolge, Labels, Offsets", "[looper]")
 {
     SECTION ("Minimal-Struktur (1 Looper / 1 Track): 7 Slots")
     {
-        const auto specs = LooperBigOutModule::buildSpecs (Structure {});
+        const auto specs = LooperPatchOutModule::buildSpecs (Structure {});
         REQUIRE (specs.size() == 7);
         REQUIRE (specs[0] == Spec { Kind::track, 1, 1, 0 });
         REQUIRE (specs[1] == Spec { Kind::bus, 1, 0, 0 });
@@ -26,8 +26,8 @@ TEST_CASE ("LooperBigOutModule: buildSpecs — Reihenfolge, Labels, Offsets", "[
         REQUIRE (specs[5] == Spec { Kind::send, 0, 0, 4 });
         REQUIRE (specs[6] == Spec { Kind::master, 0, 0, 0 });
 
-        REQUIRE (LooperBigOutModule::channelOffsetOf (specs, specs[6]) == 12);
-        REQUIRE (LooperBigOutModule::channelOffsetOf (specs, { Kind::track, 2, 1, 0 }) == -1);
+        REQUIRE (LooperPatchOutModule::channelOffsetOf (specs, specs[6]) == 12);
+        REQUIRE (LooperPatchOutModule::channelOffsetOf (specs, { Kind::track, 2, 1, 0 }) == -1);
     }
 
     SECTION ("Vollausbau-Anteile: Tracks geflattet Looper-major, dann Busse")
@@ -36,7 +36,7 @@ TEST_CASE ("LooperBigOutModule: buildSpecs — Reihenfolge, Labels, Offsets", "[
         structure.numLoopers = 2;
         structure.numTracks = { 2, 1, 4, 4 };   // Looper 3/4 inaktiv
 
-        const auto specs = LooperBigOutModule::buildSpecs (structure);
+        const auto specs = LooperPatchOutModule::buildSpecs (structure);
         REQUIRE (specs.size() == 2 + 1 + 2 + 4 + 1);   // Tracks + Busse + Sends + Master
         REQUIRE (specs[0] == Spec { Kind::track, 1, 1, 0 });
         REQUIRE (specs[1] == Spec { Kind::track, 1, 2, 0 });
@@ -49,17 +49,17 @@ TEST_CASE ("LooperBigOutModule: buildSpecs — Reihenfolge, Labels, Offsets", "[
         Structure full;
         full.numLoopers = 4;
         full.numTracks = { 4, 4, 4, 4 };
-        REQUIRE (LooperBigOutModule::buildSpecs (full).size() == 25);
+        REQUIRE (LooperPatchOutModule::buildSpecs (full).size() == 25);
     }
 
     SECTION ("Labels")
     {
-        REQUIRE (LooperBigOutModule::outputLabel ({ Kind::track, 2, 3, 0 })
+        REQUIRE (LooperPatchOutModule::outputLabel ({ Kind::track, 2, 3, 0 })
                  == juce::String::fromUTF8 ("Looper 2 · Track 3"));
-        REQUIRE (LooperBigOutModule::outputLabel ({ Kind::bus, 1, 0, 0 })
+        REQUIRE (LooperPatchOutModule::outputLabel ({ Kind::bus, 1, 0, 0 })
                  == juce::String::fromUTF8 ("Looper 1 · Bus"));
-        REQUIRE (LooperBigOutModule::outputLabel ({ Kind::send, 0, 0, 2 }) == "Send 2");
-        REQUIRE (LooperBigOutModule::outputLabel ({ Kind::master, 0, 0, 0 }) == "Master");
+        REQUIRE (LooperPatchOutModule::outputLabel ({ Kind::send, 0, 0, 2 }) == "Send 2");
+        REQUIRE (LooperPatchOutModule::outputLabel ({ Kind::master, 0, 0, 0 }) == "Master");
     }
 
     SECTION ("Clamps: ungültige Struktur fällt auf 1/1 zurück")
@@ -67,32 +67,32 @@ TEST_CASE ("LooperBigOutModule: buildSpecs — Reihenfolge, Labels, Offsets", "[
         Structure broken;
         broken.numLoopers = 0;
         broken.numTracks = { -3, 9, 1, 1 };
-        const auto specs = LooperBigOutModule::buildSpecs (broken);
+        const auto specs = LooperPatchOutModule::buildSpecs (broken);
         REQUIRE (specs[0] == Spec { Kind::track, 1, 1, 0 });
         REQUIRE (specs.size() == 7);
     }
 }
 
-TEST_CASE ("LooperBigOutModule: <Outputs>-Schema-Roundtrip", "[looper]")
+TEST_CASE ("LooperPatchOutModule: <Outputs>-Schema-Roundtrip", "[looper]")
 {
     juce::ScopedJuceInitialiser_GUI juceRuntime;
 
     Structure structure;
     structure.numLoopers = 2;
     structure.numTracks = { 2, 1, 1, 1 };
-    const auto specs = LooperBigOutModule::buildSpecs (structure);
+    const auto specs = LooperPatchOutModule::buildSpecs (structure);
 
     juce::ValueTree node (conduit::id::node);
-    LooperBigOutModule::applyOutputConfig (node, specs);
+    LooperPatchOutModule::applyOutputConfig (node, specs);
 
     REQUIRE ((int) node.getProperty (conduit::id::numInputChannels) == 0);
     REQUIRE ((int) node.getProperty (conduit::id::numOutputChannels)
-             == (int) specs.size() * LooperBigOutModule::slotWidth);
-    REQUIRE (LooperBigOutModule::readOutputConfig (node) == specs);
+             == (int) specs.size() * LooperPatchOutModule::slotWidth);
+    REQUIRE (LooperPatchOutModule::readOutputConfig (node) == specs);
 
     // Leere Liste → Master-Fallback
-    LooperBigOutModule::applyOutputConfig (node, {});
-    const auto fallback = LooperBigOutModule::readOutputConfig (node);
+    LooperPatchOutModule::applyOutputConfig (node, {});
+    const auto fallback = LooperPatchOutModule::readOutputConfig (node);
     REQUIRE (fallback.size() == 1);
     REQUIRE (fallback[0].kind == Kind::master);
 }
@@ -123,7 +123,7 @@ TEST_CASE ("Big Looper Out: Auto-Follow der Struktur + Kabel-Remap", "[looper]")
     };
 
     // Frisch aus dem Browser: folgt der Werks-Struktur (1 Looper / 1 Track)
-    auto node = manager.addModuleNode (LooperBigOutModule::staticModuleId, {});
+    auto node = manager.addModuleNode (LooperPatchOutModule::staticModuleId, {});
     REQUIRE (node.isValid());
     settleSwap();
     REQUIRE (node.getProperty (conduit::id::nodeError).toString().isEmpty());
@@ -131,7 +131,7 @@ TEST_CASE ("Big Looper Out: Auto-Follow der Struktur + Kabel-Remap", "[looper]")
     REQUIRE (node.getChildWithName (conduit::id::outputs).getNumChildren() == 7);
     REQUIRE ((int) node.getProperty (conduit::id::numOutputChannels) == 14);
 
-    const auto bigOutUuid = node.getProperty (conduit::id::nodeId).toString();
+    const auto patchOutUuid = node.getProperty (conduit::id::nodeId).toString();
     const auto audioOutUuid = engine.getRootState()
         .getChildWithName (conduit::id::nodes)
         .getChildWithProperty (conduit::id::factoryId, juce::String ("audio_output"))
@@ -139,8 +139,8 @@ TEST_CASE ("Big Looper Out: Auto-Follow der Struktur + Kabel-Remap", "[looper]")
     REQUIRE (audioOutUuid.isNotEmpty());
 
     // Master-Slot (Offset 12) an den Hardware-Out verkabeln
-    REQUIRE (manager.addConnection (bigOutUuid, 12, audioOutUuid, 0));
-    REQUIRE (manager.addConnection (bigOutUuid, 13, audioOutUuid, 1));
+    REQUIRE (manager.addConnection (patchOutUuid, 12, audioOutUuid, 0));
+    REQUIRE (manager.addConnection (patchOutUuid, 13, audioOutUuid, 1));
     settleSwap();
 
     const auto masterSourceChannels = [&]
@@ -149,7 +149,7 @@ TEST_CASE ("Big Looper Out: Auto-Follow der Struktur + Kabel-Remap", "[looper]")
         const auto connections = engine.getRootState().getChildWithName (conduit::id::connections);
         for (int i = 0; i < connections.getNumChildren(); ++i)
             if (const auto connection = connections.getChild (i);
-                connection.getProperty (conduit::id::sourceNodeId).toString() == bigOutUuid)
+                connection.getProperty (conduit::id::sourceNodeId).toString() == patchOutUuid)
                 channels.push_back ((int) connection.getProperty (conduit::id::sourceChannel));
         std::sort (channels.begin(), channels.end());
         return channels;
@@ -167,7 +167,7 @@ TEST_CASE ("Big Looper Out: Auto-Follow der Struktur + Kabel-Remap", "[looper]")
         REQUIRE (masterSourceChannels() == std::vector<int> { 14, 15 });
 
         // Kabel auf den neuen Track-Out (Looper 1 · Track 2, Offset 2)
-        REQUIRE (manager.addConnection (bigOutUuid, 2, audioOutUuid, 0));
+        REQUIRE (manager.addConnection (patchOutUuid, 2, audioOutUuid, 0));
 
         // Track wieder weg: Track-Kabel stirbt, Master-Kabel rückt zurück
         manager.setLooperStructure (Structure {});
@@ -202,7 +202,7 @@ TEST_CASE ("Big Looper Out: Auto-Follow der Struktur + Kabel-Remap", "[looper]")
         // Simuliert einen Undo-Rest: Connection jenseits der Kanalzahl —
         // der Topologie-Aufbau muss das aushalten (kein Crash, kein Hänger)
         juce::ValueTree stale (conduit::id::connection);
-        stale.setProperty (conduit::id::sourceNodeId, bigOutUuid, nullptr);
+        stale.setProperty (conduit::id::sourceNodeId, patchOutUuid, nullptr);
         stale.setProperty (conduit::id::sourceChannel, 40, nullptr);
         stale.setProperty (conduit::id::destNodeId, audioOutUuid, nullptr);
         stale.setProperty (conduit::id::destChannel, 1, nullptr);

@@ -455,6 +455,8 @@ Index:
 - 010 — Looper-I/O: flexible Looper-Ein-/Ausgänge über Graph-Module
 - 011 — Mono/Stereo-Adaptivität der Module (SKIZZE, eigener Meilenstein)
 - 012 — Big Looper Out: Auto-Follow-Outputs, Send-Busse, Papierkorb
+- 013 — Looper patch IN/OUT: Umbenennung (inkl. factoryIds) + Entfall
+  des Mini-Out
 
 ---
 

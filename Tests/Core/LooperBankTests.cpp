@@ -1650,3 +1650,70 @@ TEST_CASE ("LooperBank: LEN/POS — Loop-Wrap bleibt klickfrei", "[looper]")
         }
     }
 }
+
+//==============================================================================
+TEST_CASE ("LooperBank: sehr kurze Free-Loops knistern nicht", "[looper]")
+{
+    // User-Fund 20.07.2026: bei Free + sehr kleinem Loop-Bereich knistert
+    // es. Der vorige Klick-Test nutzte einen 0,5-Hz-Sinus — ueber 50 ms
+    // praktisch DC, also blind fuer genau diesen Fall. Hier laeuft ein
+    // HOERBARES Signal (220 Hz): der Wrap liegt mitten in der Schwingung.
+    const auto tone = [] (std::uint64_t position)
+    {
+        return 0.5f * static_cast<float> (
+            std::sin (juce::MathConstants<double>::twoPi * 220.0
+                      * static_cast<double> (position) / testSampleRate));
+    };
+
+    // Natuerliche Kruemmung des Tons pro Sample: A * w^2 ~ 4.1e-4.
+    // Ein Wrap-Artefakt sticht deutlich darueber heraus.
+    // Grenze: die natuerliche Kruemmung (4.1e-4) mal dem Equal-Power-
+    // Ueberschuss der Blende (bis sqrt(2)) plus Reserve. Ein echter
+    // Sprung liegt um ein Vielfaches darueber.
+    constexpr float kinkLimit = 8.0e-4f;
+
+    const auto maxKinkOver = [] (BankRig& r, int blocks)
+    {
+        auto worst = 0.0f;
+        float previous = 0.0f, beforePrevious = 0.0f;
+        auto haveHistory = 0;
+
+        for (int block = 0; block < blocks; ++block)
+        {
+            r.feedBlocks (1);
+            const auto* data = r.output.getReadPointer (0);
+            for (int i = 0; i < blockSize; ++i)
+            {
+                if (haveHistory >= 2)
+                    worst = juce::jmax (worst,
+                                        std::abs (data[i] - 2.0f * previous + beforePrevious));
+                beforePrevious = previous;
+                previous = data[i];
+                haveHistory = juce::jmin (2, haveHistory + 1);
+            }
+        }
+        return worst;
+    };
+
+    // 0.1 Beats = 50 ms (Free-Untergrenze) bis 0.5 Beats
+    for (const auto lengthBeats : { 0.1, 0.15, 0.25, 0.5 })
+    {
+        for (const auto offsetBeats : { 0.0, 0.7, 1.3 })
+        {
+            BankRig rig;
+            rig.signal = tone;
+            rig.feedBars (2.5);
+            REQUIRE (rig.commit (1).wasOk());
+            rig.feedBlocks (4);
+
+            REQUIRE (rig.bank.setClipLengthBeats (
+                         0, 0, lengthBeats,
+                         conduit::looper::HalveMode::firstHalf).wasOk());
+            REQUIRE (rig.bank.setClipWindowOffsetBeats (0, 0, offsetBeats).wasOk());
+            rig.feedBlocks (16);
+
+            INFO ("length=" << lengthBeats << " offset=" << offsetBeats);
+            REQUIRE (maxKinkOver (rig, 60) < kinkLimit);
+        }
+    }
+}

@@ -101,6 +101,11 @@ public:
     // Varispeed überspringt sie das Zonenende um bis zu `rate` Samples
     static constexpr double fadeGuardSamples = 24.0;
 
+    // Unterhalb dieser Fensterlänge (Vielfaches des Crossfades, ~100 ms)
+    // wächst der Wrap-Fade relativ mit — sonst dominiert bei sehr kurzen
+    // Free-Loops die Wrap-Rate den Klang (User 20.07.2026: „knistert")
+    static constexpr double shortLoopFadeFactor = 20.0;
+
     static constexpr double minRate = 0.25, maxRate = 4.0;   // VARI ±2 Oktaven
     static constexpr std::int64_t defaultRamBudgetBytes = 1'500'000'000;
 

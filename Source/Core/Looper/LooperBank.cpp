@@ -1183,10 +1183,52 @@ float LooperBank::renderClipSample (const LooperClip& clip, int channel,
     if (windowStart < 1.0e-6)
         windowStart = 0.0;
 
+    if (clip.numContentSamples <= fade || windowLenSamples <= 0.0)
+        return readLinear (static_cast<double> (fade) + contentPosition);
+
+    // Sehr kurze Fenster brauchen einen RELATIV längeren Fade (User
+    // 20.07.2026 „Free + sehr klein knistert"): bei 50 ms Loop deckt der
+    // 5-ms-Fade nur 10 % der Periode ab — 20 Wraps/s machen die Blende
+    // dann als Rauheit hörbar. Der Fade wächst deshalb stetig, sobald das
+    // Fenster kürzer als shortLoopFactor × fade ist; darüber bleibt alles
+    // exakt wie bisher.
+    const auto shortLoopSamples = shortLoopFadeFactor * static_cast<double> (fade);
+    auto wantedFade = static_cast<double> (fade);
+    if (windowLenSamples < shortLoopSamples)
+        wantedFade = static_cast<double> (fade) * (shortLoopSamples / windowLenSamples);
+
+    // Läuft hinter dem Fenster-Ende noch Material weiter? Dann blenden wir
+    // NACH dem Wrap: das auslaufende Material klingt aus, während der
+    // Fensteranfang einsetzt. Das braucht keinen Lead-in als Vorlauf —
+    // erst dadurch ist der längere Fade bei Fenster-Start 0 überhaupt
+    // möglich (der Lead-in ist nur crossfadeSamples lang).
+    if (const auto tailAvailable = contentLen - windowEnd;
+        tailAvailable >= static_cast<double> (fade))
+    {
+        const auto fadeEff = juce::jmin (juce::jmin (tailAvailable, windowLenSamples * 0.5),
+                                         wantedFade);
+        const auto zonePosition = contentPosition - windowStart;
+
+        if (zonePosition < 0.0 || zonePosition >= fadeEff || fadeEff <= 0.0)
+            return readLinear (static_cast<double> (fade) + contentPosition);
+
+        const auto alpha = juce::jlimit (0.0, 1.0, zonePosition / fadeEff);
+        const auto shaped = alpha * alpha * (3.0 - 2.0 * alpha);
+        const auto angle = shaped * juce::MathConstants<double>::halfPi;
+
+        const auto newSample = readLinear (static_cast<double> (fade) + contentPosition);
+        const auto outgoing = readLinear (static_cast<double> (fade) + windowEnd
+                                          + zonePosition);
+        return outgoing  * static_cast<float> (std::cos (angle))
+             + newSample * static_cast<float> (std::sin (angle));
+    }
+
+    // VOLLFENSTER (kein Material hinter dem Fenster): Blende VOR dem Wrap
+    // auf den Lead-in — unverändertes Bestandsverhalten.
     const auto fadeEff = juce::jmin (static_cast<double> (fade), windowLenSamples * 0.5);
     const auto zoneStart = windowEnd - fadeEff;
 
-    if (contentPosition < zoneStart || fadeEff <= 0.0 || clip.numContentSamples <= fade)
+    if (contentPosition < zoneStart || fadeEff <= 0.0)
         return readLinear (static_cast<double> (fade) + contentPosition);
 
     const auto zonePosition = contentPosition - zoneStart;   // [0, fadeEff)

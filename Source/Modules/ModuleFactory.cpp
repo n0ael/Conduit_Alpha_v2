@@ -68,7 +68,6 @@
 #include "LooperPatchOutModule.h"
 #include "LooperPatchInModule.h"
 #include "ScopeModule.h"
-#include "StepSequencerModule.h"
 
 namespace conduit
 {
@@ -201,10 +200,6 @@ void registerDefaultModules (ModuleFactory& factory)
         cvDescriptor (ScopeModule::staticModuleId, "Scope", "Analyse",
                       "scope oscilloscope analyse waveform visual"),
         [] { return std::make_unique<ScopeModule>(); });
-    factory.registerModule (
-        cvDescriptor (StepSequencerModule::staticModuleId, "Sequencer", "Sequencer",
-                      "sequencer steps cv gate pattern clock"),
-        [] { return std::make_unique<StepSequencerModule>(); });
     factory.registerModule (
         cvDescriptor (LinkAudioSendModule::staticModuleId, "Link Send", "I/O",
                       "link audio send network ableton stream"),

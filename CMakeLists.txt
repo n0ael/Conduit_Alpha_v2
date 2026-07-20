@@ -275,7 +275,6 @@ set(CONDUIT_CPP_SOURCES
     Source/Modules/LooperPatchOutModule.cpp
     Source/Modules/LooperPatchInModule.cpp
     Source/Modules/ScopeModule.cpp
-    Source/Modules/StepSequencerModule.cpp
     Source/UI/AudioSettingsComponent.cpp
     Source/UI/Browser/BrowserListRow.cpp
     Source/UI/Browser/BrowserPanel.cpp
@@ -338,9 +337,7 @@ set(CONDUIT_CPP_SOURCES
     Source/UI/TrackTabsStrip.cpp
     Source/UI/TransportBar.cpp
     Source/UI/DevPanel.cpp
-    Source/UI/SequencerControlPanel.cpp
     Source/UI/SettingsWindow.cpp
-    Source/UI/StepGridDisplay.cpp
     Source/UI/UiSettingsComponent.cpp
     Source/Util/RtAllocationGuard.cpp
 )
@@ -497,7 +494,6 @@ target_sources(Conduit PRIVATE
     Source/Modules/LfoModule.h
     Source/Modules/LinkAudioSendModule.h
     Source/Modules/ScopeModule.h
-    Source/Modules/StepSequencerModule.h
     Source/UI/AnimatedValue.h
     Source/UI/AudioSettingsComponent.h
     Source/UI/Browser/BrowserDragPayload.h
@@ -547,8 +543,6 @@ target_sources(Conduit PRIVATE
     Source/UI/ScopeDisplay.h
     Source/UI/TapMenuPanel.h
     Source/UI/TransportBar.h
-    Source/UI/SequencerControlPanel.h
-    Source/UI/StepGridDisplay.h
     Source/Util/CcNames.h
     Source/Util/RtAllocationGuard.h
     Source/Util/ScaleQuantizer.h
@@ -713,7 +707,6 @@ if(CONDUIT_BUILD_TESTS)
         Tests/Core/ResponseCurveTests.cpp
         Tests/Core/PresetTests.cpp
         Tests/Core/ScopeModuleTests.cpp
-        Tests/Core/SequencerTests.cpp
         Tests/Core/SourceNameResolverTests.cpp
         Tests/Core/ThreadingStressTests.cpp
         Tests/Core/TransportLinkTests.cpp
@@ -743,7 +736,6 @@ if(CONDUIT_BUILD_TESTS)
         Tests/UI/LooperWaveformStripTests.cpp
         Tests/UI/PageHostTests.cpp
         Tests/UI/PushDesignTests.cpp
-        Tests/UI/SequencerControlPanelTests.cpp
         Tests/UI/TrackSelectorPanelTests.cpp
         Tests/UI/TransportBarTests.cpp
         Tests/Util/CcNamesTests.cpp
@@ -923,7 +915,6 @@ if(CONDUIT_BUILD_TESTS)
         Source/Modules/LooperPatchOutModule.cpp
         Source/Modules/LooperPatchInModule.cpp
         Source/Modules/ScopeModule.cpp
-        Source/Modules/StepSequencerModule.cpp
         Source/UI/AudioSettingsComponent.cpp
         Source/UI/Browser/BrowserListRow.cpp
         Source/UI/Browser/BrowserPanel.cpp
@@ -986,9 +977,7 @@ if(CONDUIT_BUILD_TESTS)
         Source/UI/TrackTabsStrip.cpp
         Source/UI/TransportBar.cpp
         Source/UI/DevPanel.cpp
-        Source/UI/SequencerControlPanel.cpp
         Source/UI/SettingsWindow.cpp
-        Source/UI/StepGridDisplay.cpp
         Source/UI/UiSettingsComponent.cpp
         Source/Util/RtAllocationGuard.cpp
     )

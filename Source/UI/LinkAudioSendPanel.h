@@ -14,7 +14,7 @@ namespace conduit
 //==============================================================================
 /**
     Bedien-Panel eines Multi-Input LinkAudioSendModule — lebt im NodeComponent
-    (Muster SequencerControlPanel/StepGridDisplay).
+    (Muster ParameterPanel/ScopeDisplay).
 
     Pro Eingang eine Zeile: Status-LED (offline/announced/streaming), Name-
     Editor (Doppelklick → userName; leer = zurück zum Auto-Namen), Mono/Stereo-

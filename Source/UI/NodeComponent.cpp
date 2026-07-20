@@ -6,7 +6,6 @@
 #include "Modules/LinkAudioSendModule.h"
 #include "Modules/LooperPatchInModule.h"
 #include "Modules/ScopeModule.h"
-#include "Modules/StepSequencerModule.h"
 #include "UI/ChannelAttributePanel.h"
 #include "UI/NodeAttributePanel.h"
 #include "PushLookAndFeel.h"
@@ -113,8 +112,8 @@ NodeComponent::NodeComponent (juce::ValueTree nodeTreeToBind,
         channelNames->addChangeListener (this);
 
     // Processor-Nodes bekommen die Chassis-Oberfläche (FxModulePanel, 4.6);
-    // Sequencer- und Send-Kacheln haben eigene Bedienleisten (Grid bzw.
-    // Attenuator-Zeilen) — der generische ParameterPanel deckt alle anderen
+    // Send-/Receive-Kacheln haben eigene Bedienleisten (Attenuator-
+    // Zeilen) — der generische ParameterPanel deckt alle anderen
     // Module mit >= 1 Parameter ab (eine Zeile pro Parameter, Label = paramId)
     if (isChassisNode)
     {
@@ -146,8 +145,7 @@ NodeComponent::NodeComponent (juce::ValueTree nodeTreeToBind,
         if (uiSettings != nullptr)
             uiSettings->addChangeListener (this);
     }
-    else if (factoryKey != StepSequencerModule::staticModuleId
-             && factoryKey != LinkAudioSendModule::staticModuleId
+    else if (factoryKey != LinkAudioSendModule::staticModuleId
              && factoryKey != LinkAudioReceiveModule::staticModuleId
              && nodeTree.getChildWithName (id::parameters).getNumChildren() > 0)
     {
@@ -161,15 +159,6 @@ NodeComponent::NodeComponent (juce::ValueTree nodeTreeToBind,
         scopeDisplay = std::make_unique<ScopeDisplay> (graphManager, nodeUuid);
         addAndMakeVisible (*scopeDisplay);
         setSize (252, 168);
-    }
-    else if (factoryKey == StepSequencerModule::staticModuleId)
-    {
-        stepGrid = std::make_unique<StepGridDisplay> (nodeTree, graphManager);
-        addAndMakeVisible (*stepGrid);
-
-        sequencerControls = std::make_unique<SequencerControlPanel> (nodeTree);
-        addAndMakeVisible (*sequencerControls);
-        setSize (492, 380);
     }
     else if (factoryKey == LinkAudioSendModule::staticModuleId)
     {
@@ -271,12 +260,6 @@ void NodeComponent::beginTeardown()
 
     if (scopeDisplay != nullptr)
         scopeDisplay->stopUpdates();  // keine Rendering-Updates mehr (5.3 Phase 1)
-
-    if (stepGrid != nullptr)
-        stepGrid->stopUpdates();
-
-    if (sequencerControls != nullptr)
-        sequencerControls->setEnabled (false);
 
     if (sendPanel != nullptr)
         sendPanel->stopUpdates();
@@ -1055,13 +1038,6 @@ void NodeComponent::resized()
     if (scopeDisplay != nullptr)
         scopeDisplay->setBounds (getLocalBounds().withTrimmedTop (touchTarget)
                                      .reduced (24, 8));  // Platz für die Port-Hit-Zonen
-
-    if (stepGrid != nullptr)
-    {
-        auto sequencerArea = getLocalBounds().withTrimmedTop (touchTarget).reduced (24, 4);
-        sequencerControls->setBounds (sequencerArea.removeFromBottom (SequencerControlPanel::preferredHeight));
-        stepGrid->setBounds (sequencerArea.withTrimmedBottom (6));
-    }
 
     if (sendPanel != nullptr)
         sendPanel->setBounds (getLocalBounds().withTrimmedTop (touchTarget).reduced (22, 4));

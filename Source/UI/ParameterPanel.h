@@ -13,7 +13,7 @@ namespace conduit
 //==============================================================================
 /**
     Generisches Bedien-Panel für Module mit mehreren Parametern — lebt im
-    NodeComponent (Muster LinkAudioSendPanel/SequencerControlPanel) für jedes
+    NodeComponent (Muster LinkAudioSendPanel) für jedes
     Modul ohne eigene Bedienoberfläche. Ersetzt den früheren einzelnen
     generischen Slider (der nur den ERSTEN Parameter zeigte) durch eine Zeile
     pro Parameter im Tree, betitelt mit der paramId.

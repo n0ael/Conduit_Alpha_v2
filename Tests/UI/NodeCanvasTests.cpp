@@ -15,6 +15,7 @@ using Catch::Approx;
 #include "Modules/AttenuatorModule.h"
 #include "Modules/LinkAudioSendModule.h"
 #include "Modules/ModuleFactory.h"
+#include "Modules/ScopeModule.h"
 #include "UI/Browser/BrowserDragPayload.h"
 #include "UI/NodeCanvas.h"
 
@@ -182,16 +183,16 @@ TEST_CASE ("NodeCanvas: Preset-Load (Container-Austausch) rebuildet ohne Zombies
 }
 
 //==============================================================================
-TEST_CASE ("NodeCanvas: Sequencer-Node bekommt die Grid-Kachel", "[ui]")
+TEST_CASE ("NodeCanvas: Scope-Node bekommt die Waveform-Kachel", "[ui]")
 {
     UiTestRig rig;
-    const auto node = rig.manager.addModuleNode ("sequencer", { 10, 10 });
+    const auto node = rig.manager.addModuleNode (conduit::ScopeModule::staticModuleId, { 10, 10 });
     REQUIRE (node.isValid());
 
     auto* component = rig.canvas.findNodeComponent (UiTestRig::uuidOf (node));
     REQUIRE (component != nullptr);
-    REQUIRE (component->getWidth() == 492);   // große Kachel mit StepGridDisplay
-    REQUIRE (component->getHeight() == 380);  // inkl. Urzwerg-Kontrollleiste
+    REQUIRE (component->getWidth() == 252);   // Kachel mit ScopeDisplay
+    REQUIRE (component->getHeight() == 168);
     REQUIRE (rig.uiRegistry.getRefCount (UiTestRig::uuidOf (node)) == 1);
 
     // Teardown-Flow unverändert (Timer/Listener sauber gestoppt)

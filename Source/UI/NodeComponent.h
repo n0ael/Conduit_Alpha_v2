@@ -23,8 +23,6 @@
 #include "UI/ParameterPanel.h"
 #include "UI/PortComponent.h"
 #include "UI/ScopeDisplay.h"
-#include "UI/SequencerControlPanel.h"
-#include "UI/StepGridDisplay.h"
 
 namespace conduit
 {
@@ -290,11 +288,6 @@ private:
     // Nur bei Scope-Nodes (factoryId == "scope") — 30-fps-Waveform
     std::unique_ptr<ScopeDisplay> scopeDisplay;
 
-    // Nur bei Sequencer-Nodes (factoryId == "sequencer") — 4×16-Grid
-    // plus Urzwerg-Kontrollleiste (ersetzt den generischen Parameter-Slider)
-    std::unique_ptr<StepGridDisplay> stepGrid;
-    std::unique_ptr<SequencerControlPanel> sequencerControls;
-
     // Nur bei Link-Audio-Send-Nodes (factoryId == "link_audio_send") —
     // Bedien-Panel: pro Eingang Attenuator + Name + Status-LED (7.2)
     std::unique_ptr<LinkAudioSendPanel> sendPanel;
@@ -319,7 +312,7 @@ private:
         dem Tree) — Ports fluchten horizontal mit den Panel-Zeilen. */
     [[nodiscard]] int looperSlotRowFor (int channel) const;
 
-    // Alle anderen Module mit >= 1 Parameter (nicht Scope/Sequencer/Send/
+    // Alle anderen Module mit >= 1 Parameter (nicht Scope/Send/
     // Processor, die eigene Bedienoberflächen haben) — eine Zeile pro
     // Parameter, Label = paramId. nullptr bei 0 Parametern (I/O-Endpunkte).
     std::unique_ptr<ParameterPanel> parameterPanel;

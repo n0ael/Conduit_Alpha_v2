@@ -1,6 +1,10 @@
 #include <catch2/catch_approx.hpp>
 #include <catch2/catch_test_macros.hpp>
 
+// Der Header unter Test ist JUCE-frei; juce_core kommt nur fuer
+// exactlyEqual dazu (Clang-CI: -Wfloat-equal).
+#include <juce_core/juce_core.h>
+
 #include "Core/Looper/LooperDistance.h"
 
 using Catch::Approx;
@@ -62,8 +66,8 @@ TEST_CASE ("LooperDistance: Mappings sind monoton und treffen die Endpunkte", "[
     {
         REQUIRE (ld::volDumpGain (0.7, false, 12.0) == Approx (1.0));
         REQUIRE (ld::volDumpGain (0.0, true, 12.0) == Approx (1.0));
-        REQUIRE (ld::volDumpGain (1.0, true, 12.0) == 0.0);
-        REQUIRE (ld::volDumpGain (1.0, true, 0.0) == 0.0);
+        REQUIRE (juce::exactlyEqual (ld::volDumpGain (1.0, true, 12.0), 0.0));
+        REQUIRE (juce::exactlyEqual (ld::volDumpGain (1.0, true, 0.0), 0.0));
 
         // monoton fallend
         auto previous = 1.0;
@@ -98,7 +102,7 @@ TEST_CASE ("LooperDistance: RBJ-Biquads — DC-/HF-Verhalten", "[looper]")
     {
         ld::BiquadState state;
         const ld::BiquadCoeffs unity;   // b0=1, Rest 0
-        REQUIRE (ld::processBiquad (state, unity, 0.5f) == 0.5f);
-        REQUIRE (ld::processBiquad (state, unity, -0.25f) == -0.25f);
+        REQUIRE (juce::exactlyEqual (ld::processBiquad (state, unity, 0.5f), 0.5f));
+        REQUIRE (juce::exactlyEqual (ld::processBiquad (state, unity, -0.25f), -0.25f));
     }
 }

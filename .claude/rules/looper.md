@@ -1,6 +1,7 @@
 ---
 paths:
   - "Source/Core/Looper/**"
+  - "Source/Core/LooperSettings.*"
   - "Source/UI/Looper*"
   - "Tests/Core/Looper*"
   - "Tests/Core/BarSampleAnchorsTests.cpp"
@@ -83,3 +84,43 @@ CallbackTimingMonitor, Spektrum-View, Snap-Declick, Duck, Lead-in).
   CaptureService-Slot-Reserve. Looper starten ab Werk OHNE Quelle:
   dauerhaft gearmte Kanäle (alter „master"-Default!) blockieren die
   aufgeschobene Puffersatz-Erweiterung für immer.
+- **Track-Mixer + Distanz (ADR 015, 20.07.2026):** Send-LEVEL (0..1,
+  5-ms-Block-Ramp) ersetzen die Bitmaske; `getTrackSends` ist nur noch
+  ABGELEITET (Bit = Level > 0). Distanz-Zug NACH Gain/Pan/Mute, VOR
+  Meter/Post-Bus; Post-Sends greifen NACH Filter+Width, aber VOR der
+  Vol-Kurve ab (Y-Link-Send bleibt bei voller Distanz hörbar).
+  Vol Dump default AN, bei d = 1 EXAKT Stille; `d_eff = y · ySens`.
+  Koeffizienten 1×/Block auf dem Audio-Thread (`LooperDistance.h`, pure),
+  Bypass-Guard bei d ≈ 0.
+- **Wrap-Crossfade (Klick-Lektionen 20.07.2026):** Die Zone gehört ans
+  FENSTER-Ende, nicht ans Content-Ende. Teilfenster blenden auf das
+  hinter dem Fensterende weiterlaufende Material, das Vollfenster auf
+  den Lead-in (bit-identisches Bestandsverhalten). Der Winkel läuft
+  durch ein SMOOTHSTEP (equal-power bleibt exakt, Endpunkte mit
+  Steigung 0) + 24-Sample-Vorlauf — sonst reißt der Restanteil des alten
+  Materials beim Wrap ab (bei Varispeed verstärkt). Sehr kurze Fenster
+  bekommen einen relativ längeren Fade (`wrapFadeSamples`, gemeinsamer
+  Helfer von Renderer UND Apply-Logik).
+- **Parameter NIE mitten in der Wrap-Blende anwenden** (Knack-Fund
+  20.07.2026): dort hängt das ausklingende Material am Fenster-Ende —
+  eine LEN/POS-Änderung reißt die Mischung auseinander (Faktor 1000
+  über der Signalkrümmung). Ausgenommen sind bewusst getimte Wechsel
+  (Reverse „Loop-Grenze"/„Quantized").
+- **Der LooperSettings-Broadcast feuert pro MAUSBEWEGUNG** (Mixer-
+  Gesten). Jeder Konsument in `applyLooperSettings`/
+  `refreshLooperStructure` muss idempotent UND billig sein — sonst
+  reißt er den Audio-Thread mit (Perf-Fund 20.07.2026:
+  `LooperWaveformTap::setSource` bumpte blind die Version und hielt
+  damit 8 Takte Backfill inkl. FFT dauerhaft am Laufen, DSP-Meter 99 %).
+  Entschärft sind zusätzlich `setLooperStructure` (Early-Out),
+  Hook-Verdrahtung/Quellen-Menü (nur bei echter Änderung) und die
+  XML-Serialisierung der Mixer-Setter (250-ms-Bündelung, Broadcast
+  bleibt sofort).
+- **MIDI-Map (ADR 016):** eigene `grid::MidiInBindings`-Instanz
+  (`LooperMidiMap`, Datei `Conduit/LooperMidi.settings`), Ziele als
+  gepackter controlId auf `kLooperLayer = 2` (`LooperMidiTargets.h`,
+  pure). Klassisches Learn; Eingänge von ALLEN Controller-Rolle-Geräten
+  über den 60-Hz-Hub-Drain (Audio-Thread nie beteiligt). Dispatch
+  ausschließlich über die vorhandenen UI-Hooks — keine zweite Wahrheit.
+  Das MAP-Overlay MUSS einen Weg hinaus lassen (Panel fängt nur über
+  Zielen, Transportleiste frei, ESC beendet).

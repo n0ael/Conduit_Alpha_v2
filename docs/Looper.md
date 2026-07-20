@@ -323,3 +323,88 @@
   - **Clip-Export** (Save-Geste): `LooperClipExporter` → CaptureWriter-Job
     (_l/_r, eingefrorene TrackSource, startPosition = commitStartSample →
     bext-align zu Capture-Exports; `CaptureService::enqueueExternalJob`).
+
+- **Track-Mixer, Distanz, LEN/POS (Design-Handoff 20.07.2026, ADR 015 —
+  ersetzt Fader/Pan-Zeile und die SND-Kachel):**
+  - **Kanalzug pro Track:** Mitte-raus-STEREO-Meter (RMS als Fläche,
+    Peak als Linie je Seite; post-fader, also bereits pan-gewichtet) —
+    die Zeile bleibt VERTIKAL ziehbar und ist damit weiterhin der
+    Gain-Regler. Darunter der XY-Panner (X = Pan, Y = Distanz, „FAR"
+    oben; Puck trägt die Send-Farben als Misch-Overlay, Doppelklick =
+    Reset), die Send-Kacheln S1–S4 (Form-Icons ● ■ ▲ ⬡, Füllstand von
+    unten = Level, vertikal ziehen, Doppelklick = 0; Text-Label nur bei
+    genau 1 Track, 2×2-Raster bei schmalen Strips) und M/S.
+    Mute+Solo und XY sind global ausblendbar (DISPLAY-Optionen — der
+    Use-Case ist „erst MIDI-mappen, dann verstecken").
+  - **XY-Geste (User 20.07.2026):** RELATIV, nicht absolut — der Puck
+    springt nicht unter den Finger, der volle Regelweg braucht
+    `dragTravelFactor` (2,5) × Pad-Größe an Wischweg. Feinfühlig ohne
+    größeres UI und ohne Wertsprung beim Aufsetzen.
+  - **Distanz („Monolake Distance", R. Henke):** High-Shelf + Tiefpass +
+    M/S-Width + Vol-Kurve, global parametriert (Hi Dump, Hi Cut, Base
+    Freq, Width, Vol Dump, Smooth, Y Sensitivity). Die Y-Achse ist der
+    PRIMÄRE Pegelweg: Vol Dump ist ab Werk AN und erreicht bei d = 1
+    exakt Stille. Signalordnung und Begründungen: ADR 015.
+  - **LEN/POS statt ×2/÷2:** Sync = Raster (/1 /2 /4 /8 bzw. fensterweise
+    1/n), Free = stufenlos (50 ms–60 s bzw. ms). Der nicht loopende
+    Clip-Teil dunkelt in der Slot-Zelle ab, Badge „/n" bei gerasterter
+    Länge, und der Progress-Schweif läuft NUR im hellen Fensterteil
+    (User 20.07.2026 — er nutzte vorher die ganze Zelle).
+  - **Seitenpanel LOOPER · MIXER · MIDI** im app-weiten EditorDockPanel
+    (Page-Maske Looper-Page, Muster GridPage) ersetzt das ⚙-CallOutBox-
+    Menü; die Kopfzeile der Page entfällt komplett (Output + MST in
+    MIXER · MASTER, Looper-/Track-Anzahl in LAYOUT, Spectrum wird zum
+    FFT/WAVE-Toggle pro Looper-Kopf). Unten: Statuszeile, Papierkorb-
+    Kachel, Stop All (ausblendbar). MST ist EIN globaler Toggle (setzt
+    `sendMaster` aller Looper; das Datenmodell bleibt pro Looper).
+  - **Send-Farben frei wählbar** (`ConduitColorPicker` im MIXER-Tab,
+    `juce::Colour` + Hex-Persistenz wie GridPanelSettings; transparent =
+    Werks-Palette). Sie färben Kachel, Puck UND die Send-Slots am Looper
+    patch OUT — dort ersetzen sie die Mischung der summierten Clips, weil
+    die Farbe so den Bus identifiziert und beim Umstöpseln stabil bleibt.
+  - **MIDI-Map (ADR 016):** MAP-MODE im MIDI-Tab, klassisches Learn
+    (Ziel antippen → Controller bewegen), Mappings-Liste mit Ziel, CC/Ch
+    und Löschen. Globale Track-Nummern in allen Ziel-Namen.
+
+- **Klick-/Knister-Lektionen (20.07.2026, teuer erkauft — Messmethodik
+  MITLESEN, bevor am Wrap-Pfad gearbeitet wird):**
+  - Der Wrap-Crossfade lief mit LINEAREM Winkel und hatte an den
+    Endpunkten Steigung ≠ 0. Der Restanteil des alten Materials hängt
+    damit linear am Abstand zum Endpunkt — da die Leseposition das
+    Zonenende nie exakt trifft (Blockraster; bei Varispeed Sprünge von
+    `rate` Samples), riss er beim Wrap hörbar ab. Fix: SMOOTHSTEP auf den
+    Winkel (equal-power bleibt exakt, Enden mit Steigung 0) plus
+    `fadeGuardSamples` Vorlauf.
+  - Bei sehr kurzen Free-Loops deckte der feste 5-ms-Fade nur 10 % der
+    Periode ab — bei 20 Wraps/s als Rauheit hörbar. Der Fade wächst
+    deshalb relativ mit (`wrapFadeSamples`), und Teilfenster blenden auf
+    das NACH dem Fensterende weiterlaufende Material (der Lead-in ist nur
+    `crossfadeSamples` lang und begrenzte den Fade bei Fenster-Start 0).
+  - **Der laute Rest kam vom Verstellen:** ein Parameterwechsel MITTEN in
+    der Blende reißt deren ausklingende Quelle (sie hängt am Fenster-Ende)
+    hart um — gemessen 0,41 gegen 4,1e-4 natürlicher Signalkrümmung.
+    Seither wird nicht mehr in der Blende angewendet (+1 Block Reserve);
+    ausgenommen sind bewusst getimte Wechsel (Reverse Loop-Grenze/
+    Quantized).
+  - **Verworfen nach Messung:** LEN/POS erst am Loop-Anfang anzuwenden.
+    Das verschlechterte den Anteil gedrückter Zeit von 1,1 % auf 9,4 %,
+    weil der Wechsel dann genau in der Blende landet.
+  - **Messmethodik:** (a) Das Prüfsignal muss zum Fall passen — ein
+    0,5-Hz-Sinus ist über 50 ms praktisch DC und für kurze Loops blind
+    (die erste Klick-Regression blieb deshalb grün, während der User
+    etwas hörte). (b) Die erste Differenz findet Klicks, trennt aber
+    Sprung und legitim steile Fade-Flanke nicht — dafür die ZWEITE
+    Differenz. (c) „Knistern" ist Modulation: dort den ANTEIL gedrückter
+    Zeit messen, nicht das Minimum (ein einzelner Dip ist unvermeidbar).
+    (d) IMMER Gegenprobe — Fix raus, Test muss brechen.
+
+- **Perf-Lektion Mixer-Gesten (20.07.2026, DSP-Meter 99 %):** der
+  LooperSettings-Broadcast feuert bei JEDER Mausbewegung.
+  `LooperWaveformTap::setSource` bumpte seine Version bedingungslos, und
+  jeder Bump meldet 8 Takte Historie zum Backfill an (1024 Bins + 512
+  FFT-Spalten im AUDIO-Thread) — der Backfill lief dadurch dauerhaft.
+  setSource ist jetzt idempotent; ebenfalls entschärft:
+  `setLooperStructure` (Early-Out bei gleicher Struktur), Hook-
+  Verdrahtung und Quellen-Menü-Rebuild (nur bei echter Änderung), und
+  die XML-Serialisierung der Mixer-Setter (250 ms gebündelt, der
+  Broadcast bleibt sofort). Betraf schon den alten Gain-/Pan-Fader.

@@ -3,7 +3,44 @@
 > Letzte Aktualisierung: 2026-07-20 | wird nach jedem Meilenstein gepflegt
 > Architektur-Referenz: [CLAUDE.md](CLAUDE.md) | Repo: n0ael/Conduit
 
-## Aktueller Meilenstein (20.07.2026) — Grid M0 + M0-Fix: PlayTargets-Inventur, Mond-Reakquisition, grabbare Latch-Sonnen
+## Aktueller Meilenstein (20.07.2026) — Looper-Mixer: XY-Distanz, Send-Level, Seitenpanel, MIDI-Map
+
+> Branch `feature/looper-mixer-distanz` (gepusht, 18 Commits) —
+> Design-Handoff „Conduit Looper" + 6 Feedback-Runden. **Achtung: die CI
+> deckt `feature/**` nicht ab** (nur master, `claude/**`, PRs).
+> Entscheidungen: ADR 015 (Mixer/Distanz) · ADR 016 (MIDI-Map).
+
+- **Track-Mixer statt Fader** (ADR 015): Mitte-raus-Stereo-Meter (Zeile
+  bleibt der Gain-Regler), XY-Panner (X = Pan, Y = Distanz, relativ
+  ziehend), Send-Kacheln S1–S4 mit stufenlosem Level (löst die
+  An/Aus-Bitmaske ab; Alt-Dateien migrieren Bit → 1.0), M/S. Mute+Solo
+  und XY global ausblendbar.
+- **Distanz nach „Monolake Distance"**: High-Shelf + Tiefpass + M/S-Width
+  + Vol-Kurve, pure Mathe in `LooperDistance.h`, Koeffizienten 1×/Block
+  im Audio-Thread, Bypass bei d ≈ 0. Die Y-Achse ist der primäre
+  Pegelweg (Vol Dump default AN, bei d = 1 exakt Stille; `ySens`).
+  Post-Sends greifen VOR der Vol-Kurve ab → der Y-verlinkte Send bleibt
+  bei voller Distanz hörbar.
+- **Freies Loop-Fenster (LEN/POS-Potis)** ersetzt ×2/÷2: Sync-Raster
+  oder stufenlos (50 ms–60 s); Slot-Zelle dunkelt den nicht loopenden
+  Teil ab, „/n"-Badge, Schweif läuft im Fenster.
+- **Seitenpanel LOOPER · MIXER · MIDI** im EditorDockPanel ersetzt das
+  ⚙-Menü; Page-Kopfzeile entfällt (Output/MST → MASTER, Anzahl →
+  LAYOUT, FFT/WAVE pro Looper). Send-Farben frei wählbar
+  (ConduitColorPicker) und am Looper patch OUT gespiegelt.
+- **MIDI-Map** (ADR 016): eigene MidiInBindings-Instanz + eigene Datei,
+  klassisches Learn, MAP-Overlay, Mappings-Liste; globale Track-Nummern
+  in allen Ziel-Namen.
+- **Vier Fehler aus dem Feldtest behoben:** DSP-Meter 99 % beim Ziehen
+  (Waveform-Backfill-Sturm — `setSource` bumpte blind), Loop-Klicks
+  (Crossfade erreichte seine Endpunkte nicht), Knistern bei kurzen
+  Free-Loops (Fade zu kurz), Knacken beim Verstellen (Parameterwechsel
+  mitten in der Blende). MAP-Modus sperrte sich selbst ein → drei
+  Auswege. Lektionen + Messmethodik: docs/Looper.md.
+- Tests: 1028 Cases / 42 771 Assertions grün (Debug + Release), ASan grün.
+- Offen: Feldtest-Runde des Users (Liste in Arbeit), CI via PR.
+
+## Davor (20.07.2026) — Grid M0 + M0-Fix: PlayTargets-Inventur, Mond-Reakquisition, grabbare Latch-Sonnen
 
 - **M0-Inventur-Dossier** `docs/GridPlayTargets-M0.md` (PlayTargets-
   Masterplan): Pipeline-Karte Touch→MIDI, B-Readiness-Befund (die

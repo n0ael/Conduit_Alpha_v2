@@ -174,24 +174,92 @@ bool PageManager::deletePage (const juce::String& uuid)
 }
 
 //==============================================================================
+void PageManager::consolidatePagesContainers()
+{
+    auto target = pagesContainer();
+
+    for (int i = rootState.getNumChildren(); --i >= 0;)
+    {
+        auto extra = rootState.getChild (i);
+
+        if (! extra.hasType (id::pages) || extra == target)
+            continue;
+
+        while (extra.getNumChildren() > 0)
+        {
+            auto page = extra.getChild (0);
+            extra.removeChild (page, nullptr);
+
+            // ADR-008-Hinweis: die setProperty-Regel schützt NODE-Subtrees
+            // (Delete-Pfad/OSC) — Page-Subtrees umzuhängen ist unkritisch,
+            // die pageUuid bleibt identisch, Node-Referenzen bleiben gültig.
+            const auto pageEmpty = [this] (const juce::ValueTree& p)
+            {
+                return ! rootState.getChildWithName (id::nodes)
+                            .getChildWithProperty (id::pageUuid,
+                                                   p.getProperty (id::pageUuid).toString())
+                            .isValid();
+            };
+
+            auto gridX = (int) page.getProperty (id::pageGridX);
+            const auto gridY = (int) page.getProperty (id::pageGridY);
+
+            if (auto existing = findPage (gridX, gridY); existing.isValid())
+            {
+                // Grid-Kollision: die LEERE Seite weicht — egal aus welchem
+                // Container sie stammt (die Rogue-Seite eines Load-
+                // Zwischenzustands ist per Konstruktion leer und liegt im
+                // Ziel-Container). Sind beide besetzt: freie Spalte rechts.
+                if (pageEmpty (page))
+                    continue;   // leeres hinzukommendes Duplikat → verwerfen
+
+                if (pageEmpty (existing))
+                {
+                    target.removeChild (existing, nullptr);   // leere Zielseite weicht
+                }
+                else
+                {
+                    while (findPage (gridX, gridY).isValid())
+                        ++gridX;
+
+                    page.setProperty (id::pageGridX, gridX, nullptr);
+                }
+            }
+
+            target.appendChild (page, nullptr);
+        }
+
+        rootState.removeChild (extra, nullptr);
+    }
+}
+
 void PageManager::migrateAndRepair()
 {
     JUCE_ASSERT_MESSAGE_THREAD
 
     // Komplett undo-frei — die Migration erscheint NICHT in der Undo-History.
+    consolidatePagesContainers();
     const auto defaultPage = ensureDefaultPage();
 
     // Nodes ohne pageUuid nachziehen (Bestandspatch bzw. von
-    // ensureIONodeStates nach dem Laden ergänzte I/O-Endpunkte)
+    // ensureIONodeStates nach dem Laden ergänzte I/O-Endpunkte) — und
+    // verwaiste pageUuids auf die Default-Seite heilen: ein Node darf nie
+    // unsichtbar verloren gehen (Sichtbarkeit schlägt Seiten-Zuordnung).
     auto nodesTree = rootState.getChildWithName (id::nodes);
 
     for (int i = 0; i < nodesTree.getNumChildren(); ++i)
     {
         auto nodeTree = nodesTree.getChild (i);
 
-        if (! nodeTree.hasProperty (id::pageUuid))
+        if (! nodeTree.hasProperty (id::pageUuid)
+            || ! findPageByUuid (nodeTree.getProperty (id::pageUuid).toString()).isValid())
             nodeTree.setProperty (id::pageUuid, defaultPage, nullptr);
     }
+
+    // activePage nie auf einer nicht (mehr) existierenden Seite lassen —
+    // der Property-Wechsel triggert den regulären Rebuild-Listener-Pfad
+    if (! findPageByUuid (rootState.getProperty (id::activePage).toString()).isValid())
+        rootState.setProperty (id::activePage, defaultPage, nullptr);
 
     if ((int) rootState.getProperty (id::rootStateVersion, 1) < pagesRootVersion)
         rootState.setProperty (id::rootStateVersion, pagesRootVersion, nullptr);

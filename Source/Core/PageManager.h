@@ -99,11 +99,23 @@ public:
         EngineProcessor): fehlt der Pages-Zweig oder ist rootStateVersion <
         pagesRootVersion → Pages-Zweig + Seite (0,0) anlegen, allen Nodes
         ohne pageUuid die Default-Seite setzen, rootStateVersion heben.
+        Repariert zusätzlich Load-Zwischenzustände (BUG-SESSION 20.07.2026):
+        doppelte Pages-Container werden zu einem konsolidiert, verwaiste
+        Node-pageUuids auf die Default-Seite geheilt (ein Node darf nie
+        unsichtbar verloren gehen), activePage wird validiert.
         Komplett undo-frei (erscheint NICHT in der Undo-History), idempotent. */
     void migrateAndRepair();
 
 private:
     //==========================================================================
+    /** Genau EIN Pages-Container am Root: Seiten weiterer Container werden
+        in den ersten verschoben, leere Grid-Duplikate (Rogue-Seiten eines
+        Load-Zwischenzustands — ein UI-Listener-Rebuild während
+        copyPropertiesAndChildrenFrom ruft ensureDefaultPage, BEVOR der
+        geladene Pages-Child ankommt) verworfen; besetzte Duplikate rücken
+        auf die nächste freie Grid-Spalte. Undo-frei. */
+    void consolidatePagesContainers();
+
     [[nodiscard]] juce::ValueTree pagesContainer() const;
     [[nodiscard]] juce::ValueTree makePage (int gridX, int gridY) const;
 

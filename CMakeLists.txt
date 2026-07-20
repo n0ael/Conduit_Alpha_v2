@@ -705,6 +705,7 @@ if(CONDUIT_BUILD_TESTS)
         Tests/Core/ProcessorChassisTests.cpp
         Tests/Core/RemoteModuleBinderTests.cpp
         Tests/Core/ResponseCurveTests.cpp
+        Tests/Core/PageLoadRoundtripTests.cpp
         Tests/Core/PresetTests.cpp
         Tests/Core/ScopeModuleTests.cpp
         Tests/Core/SourceNameResolverTests.cpp

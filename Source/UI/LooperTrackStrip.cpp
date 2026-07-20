@@ -102,32 +102,31 @@ void LooperXyPad::paint (juce::Graphics& g)
 
 void LooperXyPad::mouseDown (const juce::MouseEvent& event)
 {
-    applyFromPosition (event.position, true);
+    // RELATIVES Ziehen (User 20.07.2026): der Puck springt NICHT unter den
+    // Finger, sondern folgt der Bewegung gedämpft — der volle Regelweg
+    // braucht dragTravelFactor × Pad-Größe an Wischweg. Das macht die
+    // Geste feinfühlig, ohne dass das Pad größer werden muss (und ist
+    // touch-freundlich: kein Wertsprung beim Aufsetzen).
+    dragStartPan = panValue;
+    dragStartDistance = distanceValue;
+    dragStartPosition = event.position;
 }
 
 void LooperXyPad::mouseDrag (const juce::MouseEvent& event)
-{
-    applyFromPosition (event.position, true);
-}
-
-void LooperXyPad::mouseDoubleClick (const juce::MouseEvent&)
-{
-    setValues (0.0f, 0.0f);
-    if (onChanged != nullptr)
-        onChanged (panValue, distanceValue);
-}
-
-void LooperXyPad::applyFromPosition (juce::Point<float> position, bool notify)
 {
     const auto radius = compact ? 8.0f : 12.0f;
     const auto inner = getLocalBounds().toFloat().reduced (1.0f).reduced (radius + 2.0f);
     if (inner.getWidth() <= 0.0f || inner.getHeight() <= 0.0f)
         return;
 
+    const auto delta = event.position - dragStartPosition;
+    const auto panTravel = inner.getWidth() * dragTravelFactor * 0.5f;    // ±1 → halber Weg
+    const auto distanceTravel = inner.getHeight() * dragTravelFactor;
+
     const auto newPan = juce::jlimit (-1.0f, 1.0f,
-        ((position.x - inner.getX()) / inner.getWidth()) * 2.0f - 1.0f);
+                                      dragStartPan + delta.x / panTravel);
     const auto newDistance = juce::jlimit (0.0f, 1.0f,
-        (inner.getBottom() - position.y) / inner.getHeight());
+                                           dragStartDistance - delta.y / distanceTravel);
 
     if (juce::exactlyEqual (panValue, newPan)
         && juce::exactlyEqual (distanceValue, newDistance))
@@ -137,7 +136,14 @@ void LooperXyPad::applyFromPosition (juce::Point<float> position, bool notify)
     distanceValue = newDistance;
     repaint();
 
-    if (notify && onChanged != nullptr)
+    if (onChanged != nullptr)
+        onChanged (panValue, distanceValue);
+}
+
+void LooperXyPad::mouseDoubleClick (const juce::MouseEvent&)
+{
+    setValues (0.0f, 0.0f);
+    if (onChanged != nullptr)
         onChanged (panValue, distanceValue);
 }
 
@@ -432,9 +438,20 @@ void LooperSlotCell::paint (juce::Graphics& g)
         // spiegelt Richtung und Verlauf (Übergabe §2)
         if (state.playing)
         {
-            const auto sweep = bounds.reduced (2.0f);
+            // Der Sweep gehört ins LOOP-FENSTER, nicht auf die ganze Zelle
+            // (User 20.07.2026): verkürzt LEN das Fenster, schrumpft der
+            // Schweif mit — er läuft exakt im hell gebliebenen Teil.
+            const auto full = bounds.reduced (2.0f);
+            const auto sweep = juce::Rectangle<float> (
+                full.getX() + full.getWidth() * juce::jlimit (0.0f, 1.0f, state.loopStart01),
+                full.getY(),
+                full.getWidth() * juce::jlimit (0.02f, 1.0f, state.loopLen01),
+                full.getHeight());
+
             const auto width = sweep.getWidth() * juce::jlimit (0.0f, 1.0f, state.progress01);
             const auto tailLength = sweep.getWidth() * 0.35f;
+            juce::Graphics::ScopedSaveState sweepClip (g);
+            g.reduceClipRegion (sweep.getSmallestIntegerContainer());
             const auto edgeColour = inked ? juce::Colours::black.withAlpha (0.45f)
                                           : push::colours::tileActive;
 

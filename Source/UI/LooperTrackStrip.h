@@ -55,13 +55,20 @@ public:
     void mouseDoubleClick (const juce::MouseEvent& event) override;
 
 private:
-    void applyFromPosition (juce::Point<float> position, bool notify);
+    /** Wischweg für den vollen Regelweg als Vielfaches der Pad-Größe
+        (User 20.07.2026: „2 bis 3 mal so groß" ohne größeres UI). */
+    static constexpr float dragTravelFactor = 2.5f;
 
     float panValue = 0.0f;        // −1..+1
     float distanceValue = 0.0f;   // 0..1, „FAR" = 1
     bool compact = false;
     std::array<float, 4> sendLevels {};
     int sendCount = 4;
+
+    // Relatives Ziehen: Startwerte beim Aufsetzen
+    float dragStartPan = 0.0f;
+    float dragStartDistance = 0.0f;
+    juce::Point<float> dragStartPosition;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (LooperXyPad)
 };

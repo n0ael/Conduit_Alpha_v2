@@ -326,6 +326,15 @@ LooperTrackStrip::LooperTrackStrip (int number)
     setVisibleSlots (8);
 }
 
+void LooperTrackStrip::setDisplayNumber (int number)
+{
+    if (trackNumber == number)
+        return;
+
+    trackNumber = number;
+    repaint();
+}
+
 void LooperTrackStrip::setVisibleSlots (int count)
 {
     count = juce::jlimit (1, 12, count);

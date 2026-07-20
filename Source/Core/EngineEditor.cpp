@@ -888,6 +888,7 @@ void EngineEditor::refreshLooperStructure()
         for (int t = 0; t < panel.getTrackCount(); ++t)
         {
             auto& track = panel.getTrack (t);
+            track.setDisplayNumber (LooperPatchOutModule::globalTrackNumber (l + 1, t + 1));
             track.setGain (settings.getTrackGain (l, t));
             track.setPan (settings.getTrackPan (l, t));
             track.setMute (settings.isTrackMuted (l, t));

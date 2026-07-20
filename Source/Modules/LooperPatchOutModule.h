@@ -126,10 +126,18 @@ public:
     static constexpr int meterChannelCount = 50;
 
     /** Globale Track-Nummer im 4er-Raster (1-basiert): Looper 2 beginnt
-        immer bei Track 5, Looper 4 bei Track 13 — Lücken erlaubt. */
+        immer bei Track 5, Looper 4 bei Track 13 — Lücken erlaubt.
+        Seit 07/2026 nutzen auch Looper-Page-Strips, Statuszeile und
+        MIDI-Ziel-Namen diese Zählung. */
+    [[nodiscard]] static constexpr int globalTrackNumber (int looper1Based,
+                                                          int track1Based) noexcept
+    {
+        return (looper1Based - 1) * 4 + track1Based;
+    }
+
     [[nodiscard]] static int globalTrackNumber (const OutputSpec& spec) noexcept
     {
-        return (spec.looper - 1) * 4 + spec.track;
+        return globalTrackNumber (spec.looper, spec.track);
     }
 
     [[nodiscard]] static Kind kindFromString (const juce::String& text) noexcept;

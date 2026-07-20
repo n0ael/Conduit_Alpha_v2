@@ -124,6 +124,11 @@ class LooperTrackStrip final : public juce::Component
 public:
     explicit LooperTrackStrip (int trackNumber);
 
+    /** Angezeigte Track-Nummer — GLOBAL im 4er-Raster (Looper 2 = Track
+        5–8, `LooperPatchOutModule::globalTrackNumber`); der Editor setzt
+        sie in refreshLooperStructure. */
+    void setDisplayNumber (int number);
+
     //==========================================================================
     // Hooks [Page/Editor]
     std::function<void (float gain01)> onGainChanged;    // 0..1 (Unity = 1)

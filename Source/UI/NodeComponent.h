@@ -74,7 +74,8 @@ public:
                    LevelMeter* inputLevelsToUse = nullptr,
                    LevelMeter* outputLevelsToUse = nullptr,
                    InputLinkSend* inputSendToUse = nullptr,
-                   UiSettings* uiSettingsToUse = nullptr);
+                   UiSettings* uiSettingsToUse = nullptr,
+                   LevelMeter* looperLevelsToUse = nullptr);
     ~NodeComponent() override;
 
     static constexpr int defaultWidth  = 168;
@@ -93,6 +94,15 @@ public:
     /** Färbt jeden Port-Strich in seine Signalfarbe — colourFn liefert die
         Farbe je PortInfo (vom NodeCanvas: verbundenes Kabel bzw. neutral). */
     void applyPortSignalColours (const std::function<juce::Colour (const PortInfo&)>& colourFn);
+
+    /** Slot- + Looper-Header-Farbstreifen der Looper-patch-OUT-Kachel
+        nachziehen (vom NodeCanvas in refreshFlowColours) — no-op an
+        anderen Kacheln. */
+    void applyLooperOutSlotColours (
+        const std::function<juce::uint32 (int channel)>& resolveRgb,
+        const std::function<juce::uint32 (int looperIndex)>& resolveHeaderRgb,
+        const std::function<bool (int channel)>& resolveHasCable);
+
 
     /** Canvas-Callback: Teardown abgeschlossen — Component jetzt zerstören.
         Nach dem Aufruf darf die Component nicht mehr angefasst werden. */
@@ -238,6 +248,7 @@ private:
     ChannelNames* channelNames;  // nullptr außerhalb der App (Tests)
     LevelMeter* inputLevels;     // Sicht-Metering audio_in (nullptr in Tests)
     LevelMeter* outputLevels;    // Sicht-Metering audio_out (nullptr in Tests)
+    LevelMeter* looperLevels;    // Sicht-Metering Looper-patch-OUT (nullptr in Tests)
     InputLinkSend* inputSend;    // Status-Quelle der Send-LEDs (nullptr in Tests)
     UiSettings* uiSettings;      // gatet den DEV-Toggle (nullptr in Tests → sichtbar)
     const juce::String nodeUuid;

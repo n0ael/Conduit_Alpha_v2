@@ -77,7 +77,8 @@ public:
                 LevelMeter* outputLevelsToUse = nullptr,
                 InputLinkSend* inputSendToUse = nullptr,
                 UiSettings* uiSettingsToUse = nullptr,
-                PageManager* pageManagerToUse = nullptr);
+                PageManager* pageManagerToUse = nullptr,
+                LevelMeter* looperLevelsToUse = nullptr);
     ~NodeCanvas() override;
 
     [[nodiscard]] int getNumNodeComponents() const noexcept;
@@ -149,6 +150,23 @@ public:
     void mouseWheelMove (const juce::MouseEvent& event,
                          const juce::MouseWheelDetails& wheel) override;
     void mouseMagnify (const juce::MouseEvent& event, float scaleFactor) override;
+
+    /** [Editor] Kanalweise Quellfarbe der Looper-patch-OUT-Slots
+        (User-Skizze 19.07.2026): Track-Slots = eingefrorene Clip-Farbe,
+        Busse/Sends/Master = Mischung der aktuell summierten Clips. Liefert
+        0x00RRGGBB, 0 = Fallback auf die normale Vererbung. Der Editor
+        installiert den Resolver (Engine-Zustand liegt nicht im Tree) und
+        stößt refreshSignalColours() an, wenn sich Spiel-/Mix-Zustand ändert. */
+    std::function<juce::uint32 (const juce::String& nodeUuid, int channel)>
+        onResolveLooperOutColour;
+
+    /** [Editor] Farbe der GEWÄHLTEN Quelle eines Loopers (0–3) für die
+        Überschrifts-Streifen der Patch-OUT-Kachel; 0 = keine. */
+    std::function<juce::uint32 (int looperIndex)> onResolveLooperHeaderColour;
+
+    /** [Editor] Farb-Refresh von außen (Spiel-/Mix-Zustand der Looper hat
+        sich geändert — kein Tree-Event). */
+    void refreshSignalColours() { refreshFlowColours(); }
 
 private:
     //==========================================================================
@@ -234,6 +252,7 @@ private:
     ChannelNames* channelNames;  // nullptr in Tests
     LevelMeter* inputLevels;     // Sicht-Metering audio_in (nullptr in Tests)
     LevelMeter* outputLevels;    // Sicht-Metering audio_out (nullptr in Tests)
+    LevelMeter* looperLevels;    // Sicht-Metering Looper-patch-OUT-Zeilen (nullptr in Tests)
     InputLinkSend* inputSend;    // Send-LED-Status audio_in (nullptr in Tests)
     UiSettings* uiSettings;      // gatet die DEV-Toggles (nullptr in Tests)
 

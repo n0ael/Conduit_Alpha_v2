@@ -36,13 +36,15 @@ NodeComponent::NodeComponent (juce::ValueTree nodeTreeToBind,
                               LevelMeter* inputLevelsToUse,
                               LevelMeter* outputLevelsToUse,
                               InputLinkSend* inputSendToUse,
-                              UiSettings* uiSettingsToUse)
+                              UiSettings* uiSettingsToUse,
+                              LevelMeter* looperLevelsToUse)
     : nodeTree (std::move (nodeTreeToBind)),
       graphManager (graphManagerToUse),
       uiRegistry (uiRegistryToUse),
       channelNames (channelNamesToUse),
       inputLevels (inputLevelsToUse),
       outputLevels (outputLevelsToUse),
+      looperLevels (looperLevelsToUse),
       inputSend (inputSendToUse),
       uiSettings (uiSettingsToUse),
       nodeUuid (nodeTree.getProperty (id::nodeId).toString())
@@ -194,11 +196,15 @@ NodeComponent::NodeComponent (juce::ValueTree nodeTreeToBind,
     }
     else if (isLooperPatchOutNode)
     {
-        looperPatchOutPanel = std::make_unique<LooperPatchOutPanel> (nodeTree);
+        looperPatchOutPanel = std::make_unique<LooperPatchOutPanel> (nodeTree, looperLevels);
         addAndMakeVisible (*looperPatchOutPanel);
 
-        const auto numSlots = juce::jmax (1, nodeTree.getChildWithName (id::outputs).getNumChildren());
-        setSize (280, touchTarget + LooperPatchOutPanel::heightForOutputs (numSlots));
+        // Kompakte Kachel: schmale Label-Spalte + Stereo-Meter direkt
+        // dahinter; Höhe folgt Überschriften + Collapse-Maske (User 19.07.2026)
+        setSize (264, touchTarget + LooperPatchOutPanel::heightForSpecs (
+                          LooperPatchOutModule::readOutputConfig (nodeTree),
+                          (int) nodeTree.getProperty (id::outCollapsed,
+                                                LooperPatchOutPanel::defaultCollapsedMask)));
     }
     else if (isExternalEndpoint)
     {
@@ -370,14 +376,31 @@ void NodeComponent::valueTreePropertyChanged (juce::ValueTree& tree, const juce:
                 setSize (280, touchTarget + LooperPatchInPanel::heightForInputs (
                     juce::jmax (1, nodeTree.getChildWithName (id::inputs).getNumChildren())));
             else if (isLooperPatchOutNode)
-                setSize (280, touchTarget + LooperPatchOutPanel::heightForOutputs (
-                    juce::jmax (1, nodeTree.getChildWithName (id::outputs).getNumChildren())));
+                setSize (264, touchTarget + LooperPatchOutPanel::heightForSpecs (
+                    LooperPatchOutModule::readOutputConfig (nodeTree),
+                    (int) nodeTree.getProperty (id::outCollapsed,
+                                                LooperPatchOutPanel::defaultCollapsedMask)));
 
             resized();   // neue Ports positionieren (auch bei gleicher Größe)
             repaint();
 
             if (auto* parent = getParentComponent())
                 parent->repaint();  // Kabel-Pfade des Canvas neu zeichnen
+        }
+        else if (property == id::outCollapsed && isLooperPatchOutNode)
+        {
+            // Sektion ein-/ausgeklappt (Panel-Dreieck): Kachel-Höhe folgt,
+            // Ports rutschen auf die Überschrifts-Zeile bzw. zurück
+            setSize (264, touchTarget + LooperPatchOutPanel::heightForSpecs (
+                LooperPatchOutModule::readOutputConfig (nodeTree),
+                (int) nodeTree.getProperty (id::outCollapsed,
+                                                LooperPatchOutPanel::defaultCollapsedMask)));
+
+            resized();
+            repaint();
+
+            if (auto* parent = getParentComponent())
+                parent->repaint();  // Kabel folgen den gewanderten Ankern
         }
 
         return;
@@ -763,7 +786,7 @@ int NodeComponent::channelRowY (bool isInputBank, int channel) const
 
     if (isLooperPatchOutNode && ! isInputBank && looperPatchOutPanel != nullptr)
         return looperPatchOutPanel->getY()
-             + LooperPatchOutPanel::rowCentreY (looperSlotRowFor (channel));
+             + looperPatchOutPanel->slotCentreY (looperSlotRowFor (channel));
 
     const auto count = juce::jmax (1, isInputBank ? inputChannelCount : outputChannelCount);
 
@@ -785,6 +808,18 @@ juce::Point<int> NodeComponent::getPortCentre (bool isInput, int channel) const
         return fxPanel->getPosition() + fxPanel->cvPortCentre (channel);
 
     const int x = isInput ? 12 : getWidth() - 12;
+
+    // Eingeklappte Looper-patch-OUT-Sektion: ALLE Kabel verlassen das
+    // Modul in EINEM Strang exakt auf der Textmitte der Überschrift —
+    // ohne die ∓3px-Paar-Versätze (User 19.07.2026)
+    if (isLooperPatchOutNode && ! isInput && looperPatchOutPanel != nullptr)
+    {
+        const auto slot = looperSlotRowFor (channel);
+        if (looperPatchOutPanel->isSlotCollapsed (slot))
+            return { x, looperPatchOutPanel->getY()
+                        + looperPatchOutPanel->slotCentreY (slot)
+                        + LooperPatchOutPanel::strandYOffset };
+    }
 
     // Stereo-Paar: beide Kanäle ankern am selben Port (Mitte zwischen den
     // Kanal-Zeilen), ∓3px versetzt — zwei Connections liegen als Doppel-Linie
@@ -820,6 +855,11 @@ const PortComponent* NodeComponent::findPortNear (juce::Point<int> localPoint,
     {
         for (const auto& port : ports)
         {
+            // Eingeklappte Looper-patch-OUT-Slots: Port unsichtbar = nicht
+            // patchbar (die Kabel-Anker bleiben an der Überschrifts-Zeile)
+            if (! port->isVisible())
+                continue;
+
             const auto centre = getPortCentre (port->getInfo().isInput, port->getInfo().channel);
             const auto distance = juce::roundToInt (centre.getDistanceFrom (localPoint));
 
@@ -866,6 +906,27 @@ void NodeComponent::paint (juce::Graphics& g)
 
     g.setColour (fill);
     g.fillRoundedRectangle (bounds, 8.0f);
+
+    // Eingeklappte Patch-OUT-Sektionen mit Kabeln: die Strang-Linie des
+    // Panels läuft GERADE (Kabeldicke 3 px) bis zum KABEL-ANKER
+    // (getWidth()−12 — „da, wo hinten die Kabel anfangen", User
+    // 20.07.2026); eckige Segment-Enden, kein Naht-Artefakt
+    if (isLooperPatchOutNode && looperPatchOutPanel != nullptr)
+        for (const auto& strand : looperPatchOutPanel->getCollapsedStrands())
+        {
+            const auto y = (float) (looperPatchOutPanel->getY() + strand.y
+                                    + LooperPatchOutPanel::strandYOffset);
+            const auto x0 = (float) looperPatchOutPanel->getRight();
+
+            // Rechtes Ende rund im Punkt-Radius (1,5 px) am Kabel-Anker,
+            // linkes Ende eckig — bündige Naht zum Panel-Segment
+            juce::Path line;
+            line.addRoundedRectangle (x0, y - 1.5f,
+                                      (float) getWidth() - 12.0f - x0, 3.0f,
+                                      1.5f, 1.5f, false, true, false, true);
+            g.setColour (juce::Colour (0xff000000u | (strand.rgb & 0x00ffffffu)));
+            g.fillPath (line);
+        }
 
     // Kachel-Tint (7.4): Track-Farbe des announce-gebundenen Live-Devices
     // als Streifen an der Unterkante der Kopfzeile — Live liefert
@@ -1011,8 +1072,11 @@ void NodeComponent::resized()
     if (looperPatchInPanel != nullptr)
         looperPatchInPanel->setBounds (getLocalBounds().withTrimmedTop (touchTarget).reduced (22, 4));
 
+    // Patch-OUT bis an den LINKEN Kachel-Rand (Farbstreifen wie am
+    // audio_in, User 19.07.2026); rechts bleibt die Port-Spalte frei
     if (looperPatchOutPanel != nullptr)
-        looperPatchOutPanel->setBounds (getLocalBounds().withTrimmedTop (touchTarget).reduced (22, 4));
+        looperPatchOutPanel->setBounds (getLocalBounds().withTrimmedTop (touchTarget)
+                                            .reduced (0, 4).withTrimmedRight (24));
 
     if (fxPanel != nullptr)
         fxPanel->setBounds (getLocalBounds().withTrimmedTop (touchTarget).reduced (28, 4));
@@ -1036,6 +1100,14 @@ void NodeComponent::resized()
 
     placePorts (inputPorts);
     placePorts (outputPorts);
+
+    // Eingeklappte Looper-patch-OUT-Sektionen: Ports unsichtbar (= nicht
+    // patchbar, findPortNear überspringt sie); die Kabel-Anker liegen
+    // gesammelt auf der Überschrifts-Zeile (slotCentreY)
+    if (isLooperPatchOutNode && looperPatchOutPanel != nullptr)
+        for (auto& port : outputPorts)
+            port->setVisible (! looperPatchOutPanel->isSlotCollapsed (
+                looperSlotRowFor (port->getInfo().channel)));
 
     // Koppel-Toggles: in der Spalte zwischen Send und Port, mittig zwischen
     // den beiden Kanal-Zeilen, die sie koppeln (Toggle i = Kanäle i, i+1)
@@ -1252,6 +1324,19 @@ void NodeComponent::applyPortSignalColours (const std::function<juce::Colour (co
 
     for (auto& port : outputPorts)
         port->setSignalColour (colourFn (port->getInfo()));
+}
+
+void NodeComponent::applyLooperOutSlotColours (
+    const std::function<juce::uint32 (int channel)>& resolveRgb,
+    const std::function<juce::uint32 (int looperIndex)>& resolveHeaderRgb,
+    const std::function<bool (int channel)>& resolveHasCable)
+{
+    if (looperPatchOutPanel != nullptr)
+    {
+        looperPatchOutPanel->refreshSlotColours (resolveRgb, resolveHeaderRgb,
+                                                 resolveHasCable);
+        repaint();   // Strang-Linien der Kachel (paint) folgen den Flags
+    }
 }
 
 juce::Colour NodeComponent::dotColourForNode() const

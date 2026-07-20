@@ -142,6 +142,27 @@ private:
         Kabeln, danach Struktur-Refresh. */
     void restoreLooperTrashFromUi (std::uint32_t entryId);
 
+    //==========================================================================
+    // Patch-OUT-Farb-Resolver (User-Skizze 19.07.2026): Track-Slots =
+    // eingefrorene Clip-Farbe, Busse/Sends/Master = Mischung der aktuell
+    // summierten Clips — installiert als canvas.onResolveLooperOutColour.
+
+    /** Kanalfarbe (0x00RRGGBB, 0 = keine) eines looper_patch_out-Slots. */
+    [[nodiscard]] juce::uint32 looperOutChannelRgb (const juce::String& nodeUuid,
+                                                    int channel);
+
+    /** Farbe eines Looper-Tracks: spielender Clip → erster belegter Slot →
+        aktuelle Quellfarbe des Loopers. */
+    [[nodiscard]] juce::uint32 looperTrackRgb (int looperIndex, int trackIndex);
+
+    /** „Wird aktuell summiert": spielend, nicht gemutet, Solo-Filter
+        (Scope pro Looper/global) — Näherung der Bank-Audibility. */
+    [[nodiscard]] bool looperTrackAudible (int looperIndex, int trackIndex);
+
+    /** [Editor-Timer] Spiel-/Mix-Zustand hashen; bei Änderung die
+        Canvas-Farben auffrischen (kein Tree-Event für Engine-Zustand). */
+    void refreshLooperFlowColoursIfChanged();
+
     /** Looper-Status in die Page spiegeln (Editor-Timer, 15 Hz):
         Struktur, Labels, Meter, Thumbnail-Aufräumen. */
     void refreshLooperStatus (bool devMode);
@@ -221,6 +242,9 @@ private:
         juce::String sourceLabel;
     };
     std::map<juce::uint32, TrashedThumbnail> trashedLooperThumbnails;
+
+    // Letzter Hash des Looper-Spiel-/Mix-Zustands (Patch-OUT-Farben)
+    juce::uint64 looperColourHash = 0;
 
     /** Track entfernen (Delete-Geste auf Header / Long-Press) — nur der
         letzte Track, nur leer & gestoppt (M4-Entscheidung). */

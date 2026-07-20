@@ -47,6 +47,13 @@ public:
     /** [Audio Thread] Misst die ersten numChannels Kanäle des Buffers. */
     void process (const juce::AudioBuffer<float>& buffer, int numChannels) noexcept;
 
+    /** [Audio Thread] Misst aus rohen Kanal-Pointern (Looper-Busse, kein
+        AudioBuffer nötig). channelData[i] == nullptr ⇒ Stille: die
+        Ballistik fällt normal ab, kein neuer Clip-Latch. numChannels über
+        activeChannels hinaus werden ignoriert. */
+    void processPointers (const float* const* channelData, int numChannels,
+                          int numSamples) noexcept;
+
     //==========================================================================
     // [beliebiger Thread] Außerhalb des aktiven Kanalbereichs: 0.0f / false
     [[nodiscard]] float getPeak (int channel) const noexcept;
@@ -128,6 +135,12 @@ private:
     void meterOneChannel (int channel, const float* data, int numSamples,
                           float rmsCoeffBlock, float peakDecay, float holdDecay,
                           double peakHoldSecondsNow, double blockSeconds) noexcept;
+
+    /** Stille-Zweig (nullptr-Kanal in processPointers): Ballistik-Abfall
+        ohne Sample-Schleife. */
+    void meterSilentChannel (int channel, int numSamples, float rmsCoeffBlock,
+                             float peakDecay, float holdDecay,
+                             double blockSeconds) noexcept;
 
     double sampleRate = 48000.0;
     int activeChannels = 0;       // nur in prepare() geschrieben (Audio steht)

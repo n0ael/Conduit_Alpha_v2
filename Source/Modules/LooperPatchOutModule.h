@@ -117,6 +117,21 @@ public:
         "Send 2", "Master". */
     [[nodiscard]] static juce::String outputLabel (const OutputSpec& spec);
 
+    /** Stabile Meter-Kanal-Zuordnung im 4er-Raster — UNABHÄNGIG von der
+        aktiven Struktur (Layout des looperOutLevels-Meters und der
+        globalen Track-Nummerierung, User-Skizze 19.07.2026):
+        Tracks ((l−1)·4 + t−1)·2 → 0..31, Busse 32..39, Sends 40..47,
+        Master 48/49. Liefert den LINKEN Kanal; −1 bei ungültiger Spec. */
+    [[nodiscard]] static int meterChannelOf (const OutputSpec& spec) noexcept;
+    static constexpr int meterChannelCount = 50;
+
+    /** Globale Track-Nummer im 4er-Raster (1-basiert): Looper 2 beginnt
+        immer bei Track 5, Looper 4 bei Track 13 — Lücken erlaubt. */
+    [[nodiscard]] static int globalTrackNumber (const OutputSpec& spec) noexcept
+    {
+        return (spec.looper - 1) * 4 + spec.track;
+    }
+
     [[nodiscard]] static Kind kindFromString (const juce::String& text) noexcept;
     [[nodiscard]] static juce::String toString (Kind kind);
 

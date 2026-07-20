@@ -55,8 +55,11 @@ juce::String LooperPatchOutModule::outputLabel (const OutputSpec& spec)
     switch (spec.kind)
     {
         case Kind::track:
+            // Globale Track-Nummer im 4er-Raster (User-Skizze 19.07.2026):
+            // Looper 2 beginnt immer bei Track 5, Lücken erlaubt
             return "Looper " + juce::String (spec.looper)
-                 + juce::String::fromUTF8 (" · Track ") + juce::String (spec.track);
+                 + juce::String::fromUTF8 (" · Track ")
+                 + juce::String (globalTrackNumber (spec));
         case Kind::bus:
             return "Looper " + juce::String (spec.looper)
                  + juce::String::fromUTF8 (" · Bus");
@@ -66,6 +69,28 @@ juce::String LooperPatchOutModule::outputLabel (const OutputSpec& spec)
             break;
     }
     return "Master";
+}
+
+int LooperPatchOutModule::meterChannelOf (const OutputSpec& spec) noexcept
+{
+    switch (spec.kind)
+    {
+        case Kind::track:
+            if (spec.looper < 1 || spec.looper > 4 || spec.track < 1 || spec.track > 4)
+                return -1;
+            return ((spec.looper - 1) * 4 + (spec.track - 1)) * slotWidth;
+        case Kind::bus:
+            if (spec.looper < 1 || spec.looper > 4)
+                return -1;
+            return (16 + (spec.looper - 1)) * slotWidth;
+        case Kind::send:
+            if (spec.send < 1 || spec.send > 4)
+                return -1;
+            return (20 + (spec.send - 1)) * slotWidth;
+        case Kind::master:
+            return 24 * slotWidth;
+    }
+    return -1;
 }
 
 std::vector<LooperPatchOutModule::OutputSpec> LooperPatchOutModule::buildSpecs (const Structure& structure)

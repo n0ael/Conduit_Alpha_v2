@@ -1,3 +1,5 @@
+#include <vector>
+
 #include <catch2/catch_approx.hpp>
 #include <catch2/catch_test_macros.hpp>
 
@@ -157,6 +159,51 @@ TEST_CASE ("LevelMeter: Clip Auto-Clear via setClipHoldSeconds", "[levelmeter][i
         feedConstant (meter, 1, 1.0f, 1);    // erneuter Clip → Timer reset
         feedConstant (meter, 1, 0.0f, 40);   // wieder nur 0,4 s → noch gesetzt
         REQUIRE (meter.isClipped (0));
+    }
+}
+
+//==============================================================================
+TEST_CASE ("LevelMeter: processPointers — rohe Kanal-Pointer + Stille-Zweig",
+           "[levelmeter][io][looper]")
+{
+    LevelMeter meter;
+    meter.prepare (testSampleRate, 3);
+
+    std::vector<float> loud (testBlockSize, 0.8f);
+    std::vector<float> hot  (testBlockSize, 1.0f);
+
+    SECTION ("misst pro Pointer-Kanal wie process(), nullptr = Stille")
+    {
+        const float* channels[3] = { loud.data(), nullptr, hot.data() };
+        meter.processPointers (channels, 3, testBlockSize);
+
+        REQUIRE (meter.getPeak (0) == Approx (0.8f));
+        REQUIRE (meter.getRms (0) == Approx (0.8f).margin (0.01));
+        REQUIRE (meter.getPeak (1) == Approx (0.0f));
+        REQUIRE (meter.isClipped (2));
+        REQUIRE_FALSE (meter.isClipped (1));
+    }
+
+    SECTION ("nullptr lässt die Ballistik abfallen (Peak-Release wie Stille)")
+    {
+        const float* feed[3] = { loud.data(), loud.data(), nullptr };
+        meter.processPointers (feed, 3, testBlockSize);
+        REQUIRE (meter.getPeak (1) == Approx (0.8f));
+
+        const float* silent[3] = { nullptr, nullptr, nullptr };
+        for (int b = 0; b < 300; ++b)   // 3 s Stille (RMS: sqrt halbiert die dB-Rate)
+            meter.processPointers (silent, 3, testBlockSize);
+
+        REQUIRE (meter.getPeak (1) < 0.1f);
+        REQUIRE (meter.getRms (1) < 0.05f);
+    }
+
+    SECTION ("Kanäle jenseits activeChannels werden ignoriert")
+    {
+        const float* channels[3] = { loud.data(), loud.data(), loud.data() };
+        meter.prepare (testSampleRate, 2);
+        meter.processPointers (channels, 3, testBlockSize);
+        REQUIRE (meter.getPeak (2) == Approx (0.0f));
     }
 }
 

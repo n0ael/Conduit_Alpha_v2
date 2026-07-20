@@ -95,6 +95,74 @@
     addModuleNode, loadPreset/setStateInformation, Force-Delete
     (synchron). Kachel read-only mit Sektions-Trennern
     (LooperPatchOutPanel), Ports fluchten via rowCentreY.
+  - **Patch-OUT-Kachel: Meter, Nummerierung, Farben (User-Skizzen
+    19.07.2026):** (1) Jede Slot-Zeile trägt ein kompaktes STEREO-Meter
+    (LevelMeterBar mit 2 Lanes, gleiche Ableton-Optik/Ballistik wie die
+    I/O-Endpunkte) aus `EngineProcessor::looperOutLevels` — gespeist im
+    Audio-Callback direkt nach `renderBlock` aus der AudioView
+    (`LevelMeter::processPointers`, nullptr = Stille-Abfall). Kanal-Layout
+    STABIL im 4er-Raster (`LooperPatchOutModule::meterChannelOf`,
+    50 Kanäle: Tracks 0..31, Busse 32..39, Sends 40..47, Master 48/49) —
+    unabhängig von der aktiven Struktur; Meter-Breite = 120 px wie die
+    Endpunkte, direkt hinter der schmalen Label-Spalte (kompakte Kachel
+    264 px — Slot-Namen sind nicht editierbar, Leerraum unnötig).
+    (2) Zeilenmodell (`LooperPatchOutPanel::buildRows`):
+    Sektions-ÜBERSCHRIFTEN „Looper 1–4", „Busse", „Returns" mit
+    ▸/▾-Dreieck; darunter linksbündige Slot-Zeilen „Track x" (GLOBAL im
+    4er-Raster, `globalTrackNumber`: Looper 2 beginnt bei Track 5,
+    Lücken erlaubt), „Bus 1–4" (statt „Looper n · Bus"), „Send 1–4";
+    Master immer sichtbar (Trenner nur noch darüber). Tap auf die
+    Überschrift klappt die Sektion ein/aus — VIEW-Zustand
+    `id::outCollapsed`-Bitmask am Node (Bits 0–3 Looper, 4 Busse,
+    5 Sends; ohne UndoManager, Muster activePage). Eingeklappt: die
+    Ports der Sektion sind UNSICHTBAR (findPortNear überspringt sie —
+    nicht patchbar), alle Kabel verlassen das Modul in EINEM Strang
+    EXAKT auf der Textmitte der Überschrift (getPortCentre-Sonderfall
+    ohne ∓3px-Paar-Versatz; `rowCentreYForSlot` mappt verdeckte Slots
+    auf ihren Header). ACHTUNG Listener-Reihenfolge: der
+    NodeComponent-Listener (Port-Layout) feuert VOR dem Panel-Listener —
+    die Instanz-Helfer (`slotCentreY`/`isSlotCollapsed`) lesen die Maske
+    deshalb FRISCH aus dem Tree, nie aus dem Panel-Cache. Das Panel
+    reicht bis an den LINKEN Kachel-Rand: Slot-Zeilen tragen dort einen
+    FARBSTREIFEN (Optik/Position des audio_in-Kanalstreifens) mit der
+    aufgelösten Slot-Farbe; die Looper-Überschriften zeigen die Farbe
+    der GEWÄHLTEN Quelle als kleinen PUNKT direkt hinter dem Text
+    (`onResolveLooperHeaderColour`, GlyphArrangement-Textbreite).
+    Eingeklappte Sektionen MIT Kabeln zeichnen zusätzlich eine
+    STRANG-LINIE exakt auf der Schriftlinie vom Label bis zum Modulrand
+    (Panel-Segment + NodeComponent-Fortsetzung via
+    `getCollapsedStrands`; Farbe = blendRgb der verkabelten
+    Slot-Farben, Kabel-Flags via drittem Resolver aus den Connections) —
+    die Kabel setzen dort an. Die Strang-Linie hat KABELDICKE (3 px =
+    cableStroke) und läuft GERADE bis zum KABEL-ANKER (getWidth()−12 —
+    „wo hinten die Kabel anfangen"; Entscheidung 20.07.2026 nach zwei
+    verworfenen Varianten: Vordergrund-Kabel-Pass wirkte beim
+    Verschieben wie ein Fehler, Trichter wie eine Pfeilspitze). Der
+    Quell-PUNKT hat Linien-Dicke (Ø 3 px) und sitzt DIREKT auf dem
+    runden Linienanfang (kein Abstand); Enden über die
+    addRoundedRectangle-Ecken-Flags NUR außen rund (links Punkt-Radius,
+    rechts am Kabel-Anker) — die Panel↔NodeComponent-Naht bleibt
+    beidseitig eckig (runde Enden dort = Fugen-Artefakt).
+    Punkt/Linie/Kabel-Anker liegen `strandYOffset` (1 px) unter der
+    Zeilenmitte auf der optischen Buchstabenlinie. Die Kabel bleiben
+    normal HINTER den Kacheln. Default OHNE gespeicherte Maske: ALLES eingeklappt
+    (`LooperPatchOutPanel::defaultCollapsedMask` = 0b111111 — gilt für
+    neue Module und Alt-Patches; voll ausgeklappt frisst je nach
+    Bildschirm enorm Platz, User 20.07.2026). `refreshSlotColours` (gespeist aus
+    refreshFlowColours) ERHÄLT Farben + Kabel-Flags beim
+    Sektions-Rebuild — der Collapse-Toggle wischte sie sonst bis zum
+    nächsten Refresh weg (User-Bug 19.07.2026; NodeCanvas refresht
+    zusätzlich auf outCollapsed). (3) Slot-Farben: Track =
+    beim Commit EINGEFRORENE Clip-Quellfarbe (`LooperClip::sourceRgb`,
+    Editor setzt sie in captureLooperClipThumbnail; spielender Clip →
+    erster belegter Slot → aktuelle Looper-Quellfarbe), Busse/Sends/
+    Master = `blendRgb`-Mischung der aktuell summierten Clips (Mute/
+    Solo-Näherung `looperTrackAudible`). Auflösung über
+    `NodeCanvas::onResolveLooperOutColour` (Editor-Resolver — der
+    Spiel-Zustand liegt nicht im Tree); der 15-Hz-Editor-Tick hasht den
+    farbrelevanten Zustand (FNV) und stößt bei Änderung
+    `refreshSignalColours()` an. Kabel + Ports folgen damit der
+    Slot-Farbe wie bei audio_in-Kanälen.
   - **Migration (ADR 013):** Alt-Schlüssel looper_in/looper_big_out
     werden beim Laden auf die neuen factoryIds umgeschrieben
     (`GraphManager::normalizeLoadedNodes` — läuft in

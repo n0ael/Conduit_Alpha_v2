@@ -7,6 +7,7 @@
 #include "Core/GraphManager.h"
 #include "Modules/LooperPatchOutModule.h"
 #include "TestSettingsFolder.h"
+#include "UI/LooperPatchOutPanel.h"
 
 using conduit::LooperPatchOutModule;
 using Kind = LooperPatchOutModule::Kind;
@@ -52,14 +53,38 @@ TEST_CASE ("LooperPatchOutModule: buildSpecs — Reihenfolge, Labels, Offsets", 
         REQUIRE (LooperPatchOutModule::buildSpecs (full).size() == 25);
     }
 
-    SECTION ("Labels")
+    SECTION ("Labels — Tracks global im 4er-Raster nummeriert (Skizze 19.07.2026)")
     {
+        REQUIRE (LooperPatchOutModule::outputLabel ({ Kind::track, 1, 1, 0 })
+                 == juce::String::fromUTF8 ("Looper 1 · Track 1"));
+        REQUIRE (LooperPatchOutModule::outputLabel ({ Kind::track, 2, 1, 0 })
+                 == juce::String::fromUTF8 ("Looper 2 · Track 5"));
         REQUIRE (LooperPatchOutModule::outputLabel ({ Kind::track, 2, 3, 0 })
-                 == juce::String::fromUTF8 ("Looper 2 · Track 3"));
+                 == juce::String::fromUTF8 ("Looper 2 · Track 7"));
+        REQUIRE (LooperPatchOutModule::outputLabel ({ Kind::track, 4, 1, 0 })
+                 == juce::String::fromUTF8 ("Looper 4 · Track 13"));
         REQUIRE (LooperPatchOutModule::outputLabel ({ Kind::bus, 1, 0, 0 })
                  == juce::String::fromUTF8 ("Looper 1 · Bus"));
         REQUIRE (LooperPatchOutModule::outputLabel ({ Kind::send, 0, 0, 2 }) == "Send 2");
         REQUIRE (LooperPatchOutModule::outputLabel ({ Kind::master, 0, 0, 0 }) == "Master");
+    }
+
+    SECTION ("meterChannelOf: stabile 4er-Raster-Kanäle, unabhängig von der Struktur")
+    {
+        REQUIRE (LooperPatchOutModule::meterChannelOf ({ Kind::track, 1, 1, 0 }) == 0);
+        REQUIRE (LooperPatchOutModule::meterChannelOf ({ Kind::track, 1, 2, 0 }) == 2);
+        REQUIRE (LooperPatchOutModule::meterChannelOf ({ Kind::track, 2, 1, 0 }) == 8);
+        REQUIRE (LooperPatchOutModule::meterChannelOf ({ Kind::track, 4, 4, 0 }) == 30);
+        REQUIRE (LooperPatchOutModule::meterChannelOf ({ Kind::bus, 1, 0, 0 }) == 32);
+        REQUIRE (LooperPatchOutModule::meterChannelOf ({ Kind::bus, 4, 0, 0 }) == 38);
+        REQUIRE (LooperPatchOutModule::meterChannelOf ({ Kind::send, 0, 0, 1 }) == 40);
+        REQUIRE (LooperPatchOutModule::meterChannelOf ({ Kind::send, 0, 0, 4 }) == 46);
+        REQUIRE (LooperPatchOutModule::meterChannelOf ({ Kind::master, 0, 0, 0 }) == 48);
+        REQUIRE (LooperPatchOutModule::meterChannelCount == 50);
+
+        // Ungültige Specs fallen sauber raus
+        REQUIRE (LooperPatchOutModule::meterChannelOf ({ Kind::track, 5, 1, 0 }) == -1);
+        REQUIRE (LooperPatchOutModule::meterChannelOf ({ Kind::send, 0, 0, 5 }) == -1);
     }
 
     SECTION ("Clamps: ungültige Struktur fällt auf 1/1 zurück")
@@ -95,6 +120,78 @@ TEST_CASE ("LooperPatchOutModule: <Outputs>-Schema-Roundtrip", "[looper]")
     const auto fallback = LooperPatchOutModule::readOutputConfig (node);
     REQUIRE (fallback.size() == 1);
     REQUIRE (fallback[0].kind == Kind::master);
+}
+
+TEST_CASE ("LooperPatchOutPanel: Zeilenmodell — Sektions-Überschriften, Collapse, Kabel-Sammelpunkt",
+           "[looper]")
+{
+    Structure structure;
+    structure.numLoopers = 2;
+    structure.numTracks = { 2, 2, 1, 1 };
+    const auto specs = LooperPatchOutModule::buildSpecs (structure);
+    // specs: 4 Tracks + 2 Busse + 4 Sends + Master = 11 Slots
+
+    using Panel = conduit::LooperPatchOutPanel;
+
+    SECTION ("Alles ausgeklappt: Überschriften Looper 1/2, Busse, Sends")
+    {
+        const auto rows = Panel::buildRows (specs, 0);
+
+        REQUIRE (rows.size() == specs.size() + 4);   // 2× Looper + Busse + Sends
+        REQUIRE (rows[0].isHeader());
+        REQUIRE (rows[0].label == "Looper 1");
+        REQUIRE_FALSE (rows[0].collapsed);
+        REQUIRE (rows[1].label == "Track 1");
+        REQUIRE (rows[1].slotIndex == 0);
+        REQUIRE (rows[3].label == "Looper 2");
+        REQUIRE (rows[4].label == "Track 5");        // global im 4er-Raster
+        REQUIRE (rows[4].slotIndex == 2);
+        REQUIRE (rows[6].isHeader());
+        REQUIRE (rows[6].label == "Busse");
+        REQUIRE (rows[7].label == "Bus 1");          // statt „Looper 1 · Bus"
+        REQUIRE (rows[7].slotIndex == 4);
+        REQUIRE (rows[9].label == "Returns");   // Überschrift (User 19.07.2026)
+        REQUIRE (rows[10].label == "Send 1");
+        REQUIRE (rows.back().label == "Master");
+
+        // Geometrie: Überschriften verschieben die Slot-Mitten
+        REQUIRE (Panel::rowCentreYForSlot (specs, 0, 0) == 6 + 1 * 30 + 15);
+        REQUIRE (Panel::rowCentreYForSlot (specs, 0, 2)
+                 - Panel::rowCentreYForSlot (specs, 0, 1) == 2 * 30);  // Looper-2-Header
+        REQUIRE (Panel::rowCentreYForSlot (specs, 0, 4)
+                 - Panel::rowCentreYForSlot (specs, 0, 3) == 2 * 30);  // Busse-Header
+
+        REQUIRE (Panel::heightForSpecs (specs, 0) == 6 + (int) rows.size() * 30 + 6);
+    }
+
+    SECTION ("Eingeklappt: Slot-Zeilen entfallen, Kabel-Anker = Überschrift")
+    {
+        const auto mask = (1 << 0) | (1 << Panel::sectionSends);   // Looper 1 + Sends zu
+        const auto rows = Panel::buildRows (specs, mask);
+
+        // 11 Slots − 2 Tracks (Looper 1) − 4 Sends + 4 Überschriften
+        REQUIRE (rows.size() == specs.size() - 6 + 4);
+        REQUIRE (rows[0].label == "Looper 1");
+        REQUIRE (rows[0].collapsed);
+        REQUIRE (rows[1].label == "Looper 2");       // direkt danach, keine Tracks
+
+        // Eingeklappte Slots ankern auf ihrer Überschrifts-Zeile (Zeile 0)
+        REQUIRE (Panel::rowCentreYForSlot (specs, mask, 0) == 6 + 15);
+        REQUIRE (Panel::rowCentreYForSlot (specs, mask, 1) == 6 + 15);
+        // Sichtbarer Slot (Looper 2 · Track 5) hinter „Looper 2"-Header
+        REQUIRE (Panel::rowCentreYForSlot (specs, mask, 2) == 6 + 2 * 30 + 15);
+
+        REQUIRE (Panel::heightForSpecs (specs, mask)
+                 == Panel::heightForSpecs (specs, 0) - 6 * 30);
+    }
+
+    SECTION ("sectionOfSpec: Track → Looper-Bit, Bus/Send → 4/5, Master −1")
+    {
+        REQUIRE (Panel::sectionOfSpec ({ Kind::track, 3, 1, 0 }) == 2);
+        REQUIRE (Panel::sectionOfSpec ({ Kind::bus, 2, 0, 0 }) == Panel::sectionBusses);
+        REQUIRE (Panel::sectionOfSpec ({ Kind::send, 0, 0, 3 }) == Panel::sectionSends);
+        REQUIRE (Panel::sectionOfSpec ({ Kind::master, 0, 0, 0 }) == -1);
+    }
 }
 
 //==============================================================================

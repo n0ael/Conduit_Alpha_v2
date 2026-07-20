@@ -4,6 +4,7 @@
 
 #include "Browser/BrowserPaths.h"
 #include "Core/SignalFlowColours.h"
+#include "Modules/LooperPatchOutModule.h"
 #include "EngineProcessor.h"
 #include "Modules/LinkAudioReceiveModule.h"
 #include "Modules/LinkAudioSendModule.h"
@@ -38,7 +39,8 @@ EngineEditor::EngineEditor (EngineProcessor& engineProcessor,
               &engineProcessor.getChannelNames(),
               &engineProcessor.getInputLevels(), &engineProcessor.getOutputLevels(),
               &engineProcessor.getInputLinkSend(), &engineProcessor.getUiSettings(),
-              &engineProcessor.getPageManager()),
+              &engineProcessor.getPageManager(),
+              &engineProcessor.getLooperOutLevels()),
       gridPage (rootState, engineProcessor.getGridVoiceEngine(),
                engineProcessor.getGridPanelSettings(), engineProcessor.getMpeMidiSink(),
                engineProcessor.getLiveSetModel(), engineProcessor.getTouchLiveClient(),
@@ -432,6 +434,24 @@ EngineEditor::EngineEditor (EngineProcessor& engineProcessor,
         purgeLooperThumbnails();
     };
     engine.getLooperTrash().onExpired = [this] { looperPage.flashTrashEmptied(); };
+
+    // Patch-OUT-Slot-Farben (User-Skizze 19.07.2026): Clip-/Mischfarben aus
+    // dem Spiel-Zustand — der 15-Hz-Tick stößt bei Änderung den Farb-Refresh an
+    canvas.onResolveLooperOutColour = [this] (const juce::String& uuid, int channel)
+    {
+        return looperOutChannelRgb (uuid, channel);
+    };
+
+    // Looper-Überschriften der Patch-OUT-Kachel: Farbe der GEWÄHLTEN Quelle
+    canvas.onResolveLooperHeaderColour = [this] (int looperIndex)
+    {
+        if (looperIndex < 0 || looperIndex >= engine.getLooperSession().getNumLoopers())
+            return (juce::uint32) 0;
+
+        const auto colour = looperSourceColour (
+            engine.getLooperSettings().getSourceKey (looperIndex));
+        return colour.isTransparent() ? 0u : (colour.getARGB() & 0x00ffffffu);
+    };
 
     looperPage.onOpenSettings = [this]
     {
@@ -1216,6 +1236,17 @@ void EngineEditor::captureLooperClipThumbnail (int looperIndex)
         return;
 
     auto& panel = looperPage.getPanel (looperIndex);
+
+    // Quellfarbe am Clip einfrieren (Patch-OUT-Ports/Bus-Mischung) — auch
+    // wenn die Thumbnail-Zelle unten nicht erreichbar ist
+    {
+        const auto source = panel.getStrip().getSourceColour();
+        clip->sourceRgb.store (source.isTransparent()
+                                   ? 0u
+                                   : (source.getARGB() & 0x00ffffffu),
+                               std::memory_order_relaxed);
+    }
+
     if (address.track >= panel.getTrackCount())
         return;
 
@@ -1312,6 +1343,156 @@ void EngineEditor::purgeLooperThumbnails()
             ++it;
         else
             it = trashedLooperThumbnails.erase (it);
+    }
+}
+
+juce::uint32 EngineEditor::looperOutChannelRgb (const juce::String& nodeUuid, int channel)
+{
+    const auto node = rootState.getChildWithName (id::nodes)
+                          .getChildWithProperty (id::nodeId, nodeUuid);
+    if (! node.isValid())
+        return 0;
+
+    const auto specs = LooperPatchOutModule::readOutputConfig (node);
+    const auto slot = channel / LooperPatchOutModule::slotWidth;
+    if (! juce::isPositiveAndBelow (slot, (int) specs.size()))
+        return 0;
+
+    using Kind = LooperPatchOutModule::Kind;
+    const auto& spec = specs[(size_t) slot];
+    auto& session = engine.getLooperSession();
+    auto& settings = engine.getLooperSettings();
+
+    std::vector<juce::uint32> mix;
+    const auto collectLooper = [&] (int l)
+    {
+        for (int t = 0; t < session.getNumTracks (l); ++t)
+            if (looperTrackAudible (l, t))
+                if (const auto rgb = looperTrackRgb (l, t); rgb != 0)
+                    mix.push_back (rgb);
+    };
+
+    switch (spec.kind)
+    {
+        case Kind::track:
+            return looperTrackRgb (spec.looper - 1, spec.track - 1);
+
+        case Kind::bus:
+            collectLooper (spec.looper - 1);
+            break;
+
+        case Kind::send:
+            // „aktuell summiert" = spielende Tracks mit gesetztem Send-Bit
+            for (int l = 0; l < session.getNumLoopers(); ++l)
+                for (int t = 0; t < session.getNumTracks (l); ++t)
+                    if (session.getPlayingSlot (l, t) >= 0
+                        && (settings.getTrackSends (l, t) & (1 << (spec.send - 1))) != 0)
+                        if (const auto rgb = looperTrackRgb (l, t); rgb != 0)
+                            mix.push_back (rgb);
+            break;
+
+        case Kind::master:
+            for (int l = 0; l < session.getNumLoopers(); ++l)
+                if (settings.isSendToMaster (l))
+                    collectLooper (l);
+            break;
+    }
+
+    return flow_colours::blendRgb (mix);
+}
+
+juce::uint32 EngineEditor::looperTrackRgb (int looperIndex, int trackIndex)
+{
+    auto& session = engine.getLooperSession();
+    if (looperIndex < 0 || looperIndex >= session.getNumLoopers()
+        || trackIndex < 0 || trackIndex >= session.getNumTracks (looperIndex))
+        return 0;
+
+    const auto clipRgb = [] (LooperClip* clip) -> juce::uint32
+    {
+        return clip != nullptr ? clip->sourceRgb.load (std::memory_order_relaxed) : 0;
+    };
+
+    // Spielender Clip zuerst (Skizze: L1·T2 ist cyan, weil DESSEN Clip von
+    // attenuator_2 kam), sonst erster belegter Slot, sonst Looper-Quelle
+    if (const auto playing = session.getPlayingSlot (looperIndex, trackIndex); playing >= 0)
+        if (const auto rgb = clipRgb (session.clipAt (looperIndex, trackIndex, playing));
+            rgb != 0)
+            return rgb;
+
+    for (int s = 0; s < LooperSessionModel::maxSlots; ++s)
+        if (const auto rgb = clipRgb (session.clipAt (looperIndex, trackIndex, s)); rgb != 0)
+            return rgb;
+
+    const auto source = looperSourceColour (
+        engine.getLooperSettings().getSourceKey (looperIndex));
+    return source.isTransparent() ? 0u : (source.getARGB() & 0x00ffffffu);
+}
+
+bool EngineEditor::looperTrackAudible (int looperIndex, int trackIndex)
+{
+    auto& session = engine.getLooperSession();
+    auto& settings = engine.getLooperSettings();
+
+    if (session.getPlayingSlot (looperIndex, trackIndex) < 0
+        || settings.isTrackMuted (looperIndex, trackIndex))
+        return false;
+
+    // Solo-Filter — Näherung der Bank-Audibility im jeweiligen Scope
+    const auto globalScope = settings.getSoloScope()
+                          == LooperSettings::SoloScope::globalScope;
+    bool anySolo = false;
+    for (int l = 0; l < session.getNumLoopers() && ! anySolo; ++l)
+    {
+        if (! globalScope && l != looperIndex)
+            continue;
+        for (int t = 0; t < session.getNumTracks (l); ++t)
+            if (settings.isTrackSolo (l, t))
+            {
+                anySolo = true;
+                break;
+            }
+    }
+
+    return ! anySolo || settings.isTrackSolo (looperIndex, trackIndex);
+}
+
+void EngineEditor::refreshLooperFlowColoursIfChanged()
+{
+    auto& session = engine.getLooperSession();
+    auto& settings = engine.getLooperSettings();
+
+    // FNV-1a über den farbrelevanten Zustand — billig (≤ 16 Tracks); der
+    // Spiel-Zustand lebt in der Engine, es gibt kein Tree-Event dafür
+    juce::uint64 hash = 1469598103934665603ULL;
+    const auto mixIn = [&hash] (juce::uint64 value)
+    {
+        hash = (hash ^ value) * 1099511628211ULL;
+    };
+
+    mixIn ((juce::uint64) settings.getSoloScope());
+    for (int l = 0; l < session.getNumLoopers(); ++l)
+    {
+        mixIn ((juce::uint64) settings.isSendToMaster (l));
+
+        // Header-Streifen folgt der gewählten Quelle (Quellwechsel = Refresh)
+        const auto headerColour = looperSourceColour (settings.getSourceKey (l));
+        mixIn (headerColour.isTransparent() ? 0u
+                                            : (headerColour.getARGB() & 0x00ffffffu));
+        for (int t = 0; t < session.getNumTracks (l); ++t)
+        {
+            mixIn ((juce::uint64) (session.getPlayingSlot (l, t) + 1));
+            mixIn (looperTrackRgb (l, t));
+            mixIn ((juce::uint64) settings.isTrackMuted (l, t));
+            mixIn ((juce::uint64) settings.isTrackSolo (l, t));
+            mixIn ((juce::uint64) settings.getTrackSends (l, t));
+        }
+    }
+
+    if (hash != looperColourHash)
+    {
+        looperColourHash = hash;
+        canvas.refreshSignalColours();
     }
 }
 
@@ -1484,6 +1665,9 @@ void EngineEditor::refreshLooperStatus (bool devMode)
                    << juce::String (bank.getRamBytesUsed() / 1'000'000) << " MB";
         looperPage.setStatus (status);
     }
+
+    // Patch-OUT-Slot-Farben folgen dem Spiel-/Mix-Zustand (kein Tree-Event)
+    refreshLooperFlowColoursIfChanged();
 }
 
 void EngineEditor::tickLooperPlayheads()

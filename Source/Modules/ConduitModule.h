@@ -80,6 +80,11 @@ namespace id
     inline const juce::Identifier outputKind   { "kind" };
     inline const juce::Identifier outputTrack  { "track" };
 
+    // Looper patch OUT: eingeklappte Sektionen der Kachel (Bitmask,
+    // Bits 0–3 = Looper 1–4, 4 = Busse, 5 = Sends) — VIEW-Zustand,
+    // ohne UndoManager geschrieben (Muster activePage)
+    inline const juce::Identifier outCollapsed { "outCollapsed" };
+
     // Parameters
     inline const juce::Identifier parameters    { "Parameters" };
     inline const juce::Identifier parameter     { "Parameter" };

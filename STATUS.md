@@ -3,7 +3,53 @@
 > Letzte Aktualisierung: 2026-07-19 | wird nach jedem Meilenstein gepflegt
 > Architektur-Referenz: [CLAUDE.md](CLAUDE.md) | Repo: n0ael/Conduit
 
-## Aktueller Meilenstein (19.07.2026) — Papierkorb-Ausbau: Einzel-Clips, Auswahl-Restore, Thumbnail-Rettung
+## Aktueller Meilenstein (19.07.2026) — Patch-OUT-Kachel: Stereo-Meter, 4er-Raster-Nummerierung, Clip-Farben (User-Skizzen)
+
+- **Stereo-Meter pro Slot-Zeile** (LooperPatchOutPanel): LevelMeterBar
+  um 2-Lane-Modus erweitert (gleiche Ableton-Optik/Ballistik wie die
+  I/O-Endpunkte, gemeinsames Clip-Feld); Quelle = neues
+  `EngineProcessor::looperOutLevels` (LevelMeter, 50 Kanäle), gespeist
+  direkt nach `renderBlock` aus der AudioView via neuem
+  `LevelMeter::processPointers` (nullptr-Kanal = Stille-Abfall).
+  Kanal-Layout STABIL im 4er-Raster (`meterChannelOf`).
+- **Zeilenmodell mit einklappbaren Sektionen** (Feedback-Runden 2+3):
+  Überschriften „Looper 1–4"/„Busse"/„Sends" mit ▸/▾-Dreieck (Tap
+  klappt ein/aus — `id::outCollapsed`-Bitmask am Node, VIEW-Zustand
+  ohne Undo); darunter linksbündige Zeilen „Track 5" (global im
+  4er-Raster), „Bus 1–4", „Send 1–4", Master immer sichtbar.
+  Eingeklappt: Ports unsichtbar (nicht patchbar, findPortNear
+  überspringt), Kabel verlassen das Modul in EINEM Strang exakt auf
+  der Header-Textmitte (Runde 4, ohne ∓3px-Paar-Versatz). Meter fix
+  120 px direkt hinter der schmalen Label-Spalte (Kachel kompakt
+  264 px); Panel reicht an den linken Kachel-Rand — dort pro Slot-Zeile
+  ein Farbstreifen (audio_in-Optik) mit der Slot-Farbe, Looper-Header
+  zeigen die gewählte Quellfarbe (onResolveLooperHeaderColour);
+  „Sends"-Header heißt „Returns". Bugfix Runde 4: Collapse-Rebuild
+  ERHÄLT die Chip-Farben (resize statt assign) + Canvas-Refresh auf
+  outCollapsed. Runde 5 (User-Sketch): Looper-Header-Farbe als PUNKT
+  direkt hinter dem Text (statt Randstreifen); eingeklappte Sektionen
+  mit Kabeln zeichnen eine STRANG-LINIE auf der Schriftlinie bis zum
+  Modulrand (getCollapsedStrands, Farbe = blendRgb der verkabelten
+  Slots, Kabel-Flags aus den Connections). Runden 6–8: Strang in
+  KABELDICKE (3 px), GERADE bis zur Modulkante — Vordergrund-Kabel-Pass
+  (R6) und Trichter (R7) wurden beide verworfen (Verschieben wirkte wie
+  Fehler bzw. Pfeilspitze); Kabel liegen wie überall hinter den
+  Kacheln. Default: ALLE Sektionen eingeklappt
+  (defaultCollapsedMask 0b111111, auch für Alt-Patches ohne Maske).
+  Listener-Reihenfolge-Lektion: NodeComponent-Listener feuert VOR dem
+  Panel-Listener → Instanz-Helfer lesen die Maske frisch aus dem Tree.
+- **Farb-Durchreichung:** Clip-Quellfarbe wird beim Commit am Clip
+  EINGEFROREN (`LooperClip::sourceRgb`); Track-Slots tragen sie
+  (spielend → erster belegter Slot → Looper-Quellfarbe), Busse/Sends/
+  Master mischen die aktuell summierten Clips (`blendRgb`,
+  Mute/Solo-Näherung). Resolver `NodeCanvas::onResolveLooperOutColour`
+  (Editor), 15-Hz-FNV-Hash stößt `refreshSignalColours()` an — Kabel und
+  Ports folgen wie bei audio_in-Kanälen.
+- Tests: meterChannelOf/Label-Raster/rowLabel + processPointers; volle
+  Suite 1010 Cases / 38 220 Assertions grün.
+- Offen: Feldtest (Skizzen-Abgleich durch den User).
+
+## Davor (19.07.2026) — Papierkorb-Ausbau: Einzel-Clips, Auswahl-Restore, Thumbnail-Rettung
 
 - **Einzel-Clip-Delete → Papierkorb** (User-Feedback 19.07.2026): die
   Delete-Geste auf Slot-Zellen ruft `EngineProcessor::trashClipSlot`

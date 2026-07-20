@@ -5,6 +5,7 @@
 
 #include "Core/PageManager.h"
 #include "Modules/AttenuatorModule.h"
+#include "Modules/LooperPatchOutModule.h"
 #include "PushLookAndFeel.h"
 #include "UI/PageOverviewComponent.h"
 #include "UI/Browser/BrowserDragPayload.h"
@@ -20,13 +21,15 @@ NodeCanvas::NodeCanvas (juce::ValueTree rootTree,
                         LevelMeter* outputLevelsToUse,
                         InputLinkSend* inputSendToUse,
                         UiSettings* uiSettingsToUse,
-                        PageManager* pageManagerToUse)
+                        PageManager* pageManagerToUse,
+                        LevelMeter* looperLevelsToUse)
     : rootState (std::move (rootTree)),
       graphManager (graphManagerToUse),
       uiRegistry (uiRegistryToUse),
       channelNames (channelNamesToUse),
       inputLevels (inputLevelsToUse),
       outputLevels (outputLevelsToUse),
+      looperLevels (looperLevelsToUse),
       inputSend (inputSendToUse),
       uiSettings (uiSettingsToUse),
       pageManager (pageManagerToUse)
@@ -168,7 +171,7 @@ void NodeCanvas::addComponentFor (juce::ValueTree nodeTree)
 
     auto component = std::make_unique<NodeComponent> (nodeTree, graphManager, uiRegistry,
                                                       channelNames, inputLevels, outputLevels,
-                                                      inputSend, uiSettings);
+                                                      inputSend, uiSettings, looperLevels);
 
     component->onTeardownFinished = [this] (NodeComponent& finished)
     {
@@ -222,6 +225,14 @@ void NodeCanvas::valueTreePropertyChanged (juce::ValueTree& tree, const juce::Id
 
     // Node-Farbe geändert → effektive Farben (inkl. Downstream-Vererbung) neu
     if (property == id::nodeColour)
+    {
+        refreshFlowColours();
+        return;
+    }
+
+    // Patch-OUT-Sektion ein-/ausgeklappt: Farbstreifen sofort nachziehen
+    // (die Kabel-Anker zieht der NodeComponent-Listener selbst um)
+    if (property == id::outCollapsed)
     {
         refreshFlowColours();
         return;
@@ -543,6 +554,18 @@ juce::Colour NodeCanvas::cableColourFor (const juce::String& sourceUuid, int sou
 //==============================================================================
 juce::uint32 NodeCanvas::lookupSourceRgb (const juce::String& sourceUuid, int channel) const
 {
+    // Looper-patch-OUT-Slots tragen kanalweise Clip-/Mischfarben (Resolver
+    // vom Editor — der Spiel-Zustand liegt nicht im Tree); 0 = Fallback
+    if (onResolveLooperOutColour != nullptr)
+    {
+        const auto node = rootState.getChildWithName (id::nodes)
+                              .getChildWithProperty (id::nodeId, sourceUuid);
+        if (node.isValid()
+            && GraphManager::factoryKeyOf (node) == LooperPatchOutModule::staticModuleId)
+            if (const auto rgb = onResolveLooperOutColour (sourceUuid, channel); rgb != 0)
+                return rgb;
+    }
+
     return flow_colours::lookupSource (rootState, flowColours, channelNames,
                                        sourceUuid, channel);
 }
@@ -594,6 +617,31 @@ void NodeCanvas::refreshFlowColours()
 
     for (auto& comp : nodeComponents)
         comp->applyPortSignalColours (portColour);
+
+    // Slot-/Header-Farben der Looper-patch-OUT-Kacheln (User 19.07.2026):
+    // pro Zeile die aufgelöste Clip-/Mischfarbe (auch unverkabelt), pro
+    // Looper-Überschrift die gewählte Quellfarbe als Punkt; Kabel-Flags
+    // speisen die Strang-Linien eingeklappter Sektionen
+    if (onResolveLooperOutColour != nullptr)
+        for (auto& comp : nodeComponents)
+            comp->applyLooperOutSlotColours (
+                [this, &comp] (int channel)
+                {
+                    return onResolveLooperOutColour (comp->getNodeUuid(), channel);
+                },
+                onResolveLooperHeaderColour,
+                [&connections, &comp] (int channel)
+                {
+                    for (int i = 0; i < connections.getNumChildren(); ++i)
+                    {
+                        const auto c = connections.getChild (i);
+                        if (c.getProperty (id::sourceNodeId).toString() == comp->getNodeUuid())
+                            if (const auto ch = (int) c.getProperty (id::sourceChannel);
+                                ch == channel || ch == channel + 1)
+                                return true;
+                    }
+                    return false;
+                });
 
     repaint();  // Kabel folgen der neuen Farbe
 }

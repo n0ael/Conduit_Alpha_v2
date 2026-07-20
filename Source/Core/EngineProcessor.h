@@ -170,6 +170,10 @@ public:
     [[nodiscard]] LevelMeter& getInputLevels() noexcept;
     [[nodiscard]] LevelMeter& getOutputLevels() noexcept;
 
+    /** Sicht-Metering der Looper-Busse (Looper-patch-OUT-Zeilen, stabiles
+        4er-Raster — LooperPatchOutModule::meterChannelOf). */
+    [[nodiscard]] LevelMeter& getLooperOutLevels() noexcept { return looperOutLevels; }
+
     /** Einstellungen der Pegelanzeigen (Clip-Reset-Modus) — App-Zustand,
         von der Settings-UI editiert; der EngineProcessor speist daraus die
         LevelMeter (Auto-Clear). */
@@ -494,6 +498,11 @@ private:
     // getrennt vom capture-InputMeter; processBlock speist beide.
     LevelMeter inputLevels;
     LevelMeter outputLevels;
+
+    // Sicht-Metering der Looper-Busse (Looper-patch-OUT-Zeilen): stabiles
+    // 4er-Raster-Layout (LooperPatchOutModule::meterChannelOf), gespeist
+    // aus der AudioView direkt nach renderBlock
+    LevelMeter looperOutLevels;
 
     // Clip-Reset-Modus der Pegelanzeigen (App-Zustand); speist die LevelMeter
     MeterSettings meterSettings;

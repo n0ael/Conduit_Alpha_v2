@@ -57,6 +57,11 @@ struct LooperClip
     std::uint32_t clipId = 0;
     int    commitBars = 0;
 
+    // Beim Commit eingefrorene Quellfarbe (0x00RRGGBB, 0 = keine) — der
+    // Editor setzt sie direkt nach dem Commit (Zellfläche/Patch-OUT-Ports,
+    // User-Skizze 19.07.2026); MT schreibt/liest, atomic nur zur Sicherheit
+    std::atomic<std::uint32_t> sourceRgb { 0 };
+
     //==========================================================================
     // STAGED [MT → Audio]: Nutzer-Intention, Anwendung am Blockanfang
     std::atomic<double> stagedRate { 1.0 };

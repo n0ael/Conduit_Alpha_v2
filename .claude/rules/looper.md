@@ -46,6 +46,13 @@ CallbackTimingMonitor, Spektrum-View, Snap-Declick, Duck, Lead-in).
   das Render-Ziel (kein geteilter Scratch mehr). Kabel-Remap bei
   Struktur-Änderung NUR über Spec-Identität (syncLooperPatchOutConfigs),
   Re-Mat EXPLIZIT anstoßen (gleiche Kanalzahl ⇒ kein Property-Trigger).
+  Kachel (19.07.2026): Stereo-Meter pro Zeile aus
+  `EngineProcessor::looperOutLevels` — Kanal-Layout STABIL im 4er-Raster
+  (`meterChannelOf`, 50 Kanäle), NIE aus Spec-Reihenfolge rechnen;
+  Track-Nummern GLOBAL im 4er-Raster (`globalTrackNumber`). Slot-Farben
+  = eingefrorene Clip-Farbe (`LooperClip::sourceRgb`, Commit) bzw.
+  blendRgb der summierten Clips (Busse/Sends/Master) über
+  `NodeCanvas::onResolveLooperOutColour` (Editor-Resolver, 15-Hz-Hash).
   Das kompakte looper_out („Looper Out Mini") ist ENTFERNT (ADR 013);
   Alt-Schlüssel looper_in/looper_big_out migrieren beim Laden
   (`GraphManager::normalizeLoadedNodes`), looper_out-Nodes laufen in

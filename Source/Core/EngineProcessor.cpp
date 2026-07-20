@@ -762,6 +762,7 @@ void EngineProcessor::applyMeterSettings()
     const auto hold = meterSettings.getClipHoldSeconds();
     inputLevels.setClipHoldSeconds (hold);
     outputLevels.setClipHoldSeconds (hold);
+    looperOutLevels.setClipHoldSeconds (hold);
 
     // Ballistik gilt app-weit fuer ALLE LevelMeter-Instanzen (Input/Output,
     // FX-Chassis, Looper) — klassenweite Atomics (User-Feintuning 14.07.2026).
@@ -964,6 +965,7 @@ void EngineProcessor::prepareToPlay (double sampleRate, int samplesPerBlock)
     applyLooperSourceArming();
     inputLevels.prepare  (sampleRate, getTotalNumInputChannels());
     outputLevels.prepare (sampleRate, getTotalNumOutputChannels());
+    looperOutLevels.prepare (sampleRate, LooperPatchOutModule::meterChannelCount);
     inputLinkSend.prepare (samplesPerBlock);
     timingMonitor.prepare (sampleRate);  // frische XRun-/Load-Diagnose
 }
@@ -1064,6 +1066,31 @@ void EngineProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::Midi
         looperBank.renderBlock (clockBus.current,
                                 clockNow >= blockSamples ? clockNow - blockSamples : 0,
                                 barAnchors, buffer.getNumSamples());
+
+        // Sicht-Metering der Looper-Busse (Looper-patch-OUT-Zeilen):
+        // stabiles 4er-Raster-Layout (meterChannelOf) aus der AudioView —
+        // Busse sind pro Block genullt, inaktive Slots zeigen Stille
+        if (const auto view = looperBank.getAudioView(); view.numSamples > 0)
+        {
+            const float* channels[LooperPatchOutModule::meterChannelCount] = {};
+            for (int l = 0; l < LooperBank::maxLoopers; ++l)
+            {
+                for (int t = 0; t < LooperBank::maxTracks; ++t)
+                    for (int c = 0; c < 2; ++c)
+                        channels[(l * 4 + t) * 2 + c] = view.track[l][t][c];
+                for (int c = 0; c < 2; ++c)
+                    channels[(16 + l) * 2 + c] = view.post[l][c];
+            }
+            for (int s = 0; s < LooperBank::maxSends; ++s)
+                for (int c = 0; c < 2; ++c)
+                    channels[(20 + s) * 2 + c] = view.send[s][c];
+            channels[48] = view.master[0];
+            channels[49] = view.master[1];
+
+            looperOutLevels.processPointers (channels,
+                                             LooperPatchOutModule::meterChannelCount,
+                                             view.numSamples);
+        }
     }
 
     graph.processBlock (buffer, midiMessages);

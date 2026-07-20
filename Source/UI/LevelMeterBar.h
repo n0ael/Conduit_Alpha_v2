@@ -1,5 +1,7 @@
 #pragma once
 
+#include <array>
+
 #include <juce_gui_basics/juce_gui_basics.h>
 
 #include "Core/Capture/LevelMeter.h"
@@ -29,7 +31,10 @@ namespace conduit
 class LevelMeterBar final : public juce::Component
 {
 public:
-    LevelMeterBar (LevelMeter* meterToUse, int channelToShow);
+    /** lanesToShow = 2: kompakte STEREO-Variante (Looper-patch-OUT-Zeilen,
+        User-Skizze 19.07.2026) — zwei dünne Lanes übereinander (L = channel,
+        R = channel + 1), gemeinsames Clip-Feld (Klick resettet beide). */
+    LevelMeterBar (LevelMeter* meterToUse, int channelToShow, int lanesToShow = 1);
 
     /** Teardown-Hook (Phase 1, 5.3): Rendering-Updates sofort stoppen. */
     void stopUpdates();
@@ -48,13 +53,17 @@ private:
 
     LevelMeter* meter = nullptr;
     const int channel;
+    const int lanes;   // 1 = mono (Kanal-Zeile), 2 = kompakt stereo
 
-    // Zwischengespeicherte ANZEIGE-Werte (dB-Norm 0..1) für die Change-
-    // Detection — der Vergleich muss im Anzeige-Maßstab passieren, sonst
-    // wird die Schwelle unterhalb ~-36 dB riesig (0,002 linear ≈ 1 dB dort;
-    // User-Feldtest 14.07.2026: Balken ruppelte im Keller).
-    float lastRmsNorm = 0.0f, lastPeakNorm = 0.0f, lastHoldNorm = 0.0f;
-    bool lastClipped = false;
+    /** Eine Lane in ihr Teil-Rechteck malen (Werte-Index 0|1). */
+    void paintLane (juce::Graphics& g, juce::Rectangle<float> usable, int lane);
+
+    // Zwischengespeicherte ANZEIGE-Werte (dB-Norm 0..1) pro Lane für die
+    // Change-Detection — der Vergleich muss im Anzeige-Maßstab passieren,
+    // sonst wird die Schwelle unterhalb ~-36 dB riesig (0,002 linear ≈ 1 dB
+    // dort; User-Feldtest 14.07.2026: Balken ruppelte im Keller).
+    std::array<float, 2> lastRmsNorm {}, lastPeakNorm {}, lastHoldNorm {};
+    bool lastClipped = false;   // Lane-übergreifend (gemeinsames Clip-Feld)
 
     // Letzter Member: tickt erst nach vollständiger Konstruktion.
     UiFramePacer framePacer { this, [this] { refreshTick(); } };

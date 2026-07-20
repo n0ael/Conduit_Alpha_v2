@@ -3,6 +3,7 @@
 #include "Core/LaunchQuantization.h"
 #include "Core/Looper/LooperMidiTargets.h"
 #include "LooperTrackStrip.h"   // looperui::sendColour (Send-Farben S1–S4)
+#include "ConduitColorPicker.h"
 #include "MappingsListComponent.h"
 #include "PushSection.h"
 #include "PushTiles.h"
@@ -466,8 +467,15 @@ private:
             row.caption.setText ("Send " + juce::String (s + 1),
                                  juce::dontSendNotification);
             row.caption.setColour (juce::Label::textColourId,
-                                   looperui::sendColour (s));
+                                   settings.getSendColour (s));
             row.caption.setJustificationType (juce::Justification::centredLeft);
+
+            // Farbfeld: Tap oeffnet den app-weiten ConduitColorPicker
+            // (CallOutBox, live) — die Farbe faerbt Kachel, XY-Puck und
+            // die Send-Slots am Looper patch OUT (User 20.07.2026)
+            row.swatch.setComponentID ("sendColour" + juce::String (s));
+            row.swatch.onClick = [this, s] { openColourPicker (s); };
+            sendsRows.addAndMakeVisible (row.swatch);
 
             row.yTile.setComponentID ("yLink" + juce::String (s));
             row.yTile.onClick = [this, s]
@@ -624,7 +632,11 @@ private:
         for (int s = 0; s < 4; ++s)
         {
             auto& row = sendRows[(std::size_t) s];
+            const auto colour = settings.getSendColour (s);
             row.caption.setVisible (s < count);
+            row.caption.setColour (juce::Label::textColourId, colour);
+            row.swatch.setVisible (s < count);
+            row.swatch.setColour (juce::TextButton::buttonColourId, colour);
             row.yTile.setVisible (s < count);
             row.yTile.setActive (s == yLink);
         }
@@ -633,6 +645,21 @@ private:
 
         sendsSection.setContentHeight (rowPadding + rowHeight * (count + 1) + 26);
         relayout();
+    }
+
+    void openColourPicker (int sendIndex)
+    {
+        auto picker = std::make_unique<ConduitColorPicker>();
+        picker->setColour (settings.getSendColour (sendIndex));
+        picker->onColourChanged = [this, sendIndex] (juce::Colour colour)
+        {
+            settings.setSendColour (sendIndex, colour);
+            refreshSendRows();
+        };
+
+        juce::CallOutBox::launchAsynchronously (
+            std::move (picker),
+            sendRows[(std::size_t) sendIndex].swatch.getScreenBounds(), nullptr);
     }
 
     void relayout()
@@ -668,6 +695,8 @@ private:
                 auto line = rows.removeFromTop (rowHeight);
                 sendRows[(std::size_t) s].yTile.setBounds (
                     line.removeFromRight (44).reduced (2));
+                sendRows[(std::size_t) s].swatch.setBounds (
+                    line.removeFromRight (36).reduced (4));
                 sendRows[(std::size_t) s].caption.setBounds (line);
             }
             auto buttons = rows.removeFromTop (rowHeight);
@@ -711,6 +740,7 @@ private:
     struct SendRow
     {
         juce::Label caption;
+        push::TextTile swatch { {} };   // Farbfeld (Fuellung = Send-Farbe)
         push::TextTile yTile { "Y", push::colours::ledCyan };
     };
 

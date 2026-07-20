@@ -974,6 +974,8 @@ void EngineEditor::refreshLooperStructure()
                 levels[(std::size_t) s] = settings.getTrackSendLevel (l, t, s);
             track.setSendLevels (levels);
             track.setSendCount (settings.getSendCount());
+            track.setSendColours ({ settings.getSendColour (0), settings.getSendColour (1),
+                                    settings.getSendColour (2), settings.getSendColour (3) });
             track.setYLinkSend (settings.getYLinkSend());
             track.setShowMuteSolo (! settings.isHideMuteSolo());
             track.setShowXy (! settings.isHideMixerXy());
@@ -2002,14 +2004,12 @@ juce::uint32 EngineEditor::looperOutChannelRgb (const juce::String& nodeUuid, in
             break;
 
         case Kind::send:
-            // „aktuell summiert" = spielende Tracks mit gesetztem Send-Bit
-            for (int l = 0; l < session.getNumLoopers(); ++l)
-                for (int t = 0; t < session.getNumTracks (l); ++t)
-                    if (session.getPlayingSlot (l, t) >= 0
-                        && (settings.getTrackSends (l, t) & (1 << (spec.send - 1))) != 0)
-                        if (const auto rgb = looperTrackRgb (l, t); rgb != 0)
-                            mix.push_back (rgb);
-            break;
+            // Send-Slots tragen die GEWÄHLTE Send-Farbe (User 20.07.2026):
+            // sie ist im Mixer gesetzt und identifiziert den Bus eindeutig —
+            // Kachel-Markierung und Kabel sprechen damit dieselbe Sprache
+            // wie die Send-Kacheln im Track-Strip. (Die frühere Mischung
+            // der summierten Clip-Farben war beim Umstöpseln nicht stabil.)
+            return settings.getSendColour (spec.send - 1).getARGB() & 0x00ffffffu;
 
         case Kind::master:
             for (int l = 0; l < session.getNumLoopers(); ++l)

@@ -40,6 +40,14 @@ void LooperXyPad::setCompact (bool shouldBeCompact)
     repaint();
 }
 
+void LooperXyPad::setSendColours (const looperui::SendColours& colours)
+{
+    if (sendColours == colours)
+        return;
+    sendColours = colours;
+    repaint();
+}
+
 void LooperXyPad::setSendLevels (const std::array<float, 4>& levels, int visibleSendCount)
 {
     bool changed = sendCount != visibleSendCount;
@@ -92,7 +100,7 @@ void LooperXyPad::paint (juce::Graphics& g)
     for (int s = 0; s < juce::jmin (4, sendCount); ++s)
         if (sendLevels[(std::size_t) s] > 0.001f)
         {
-            g.setColour (looperui::sendColour (s)
+            g.setColour (sendColours[(std::size_t) s]
                              .withAlpha (0.25f + 0.6f * sendLevels[(std::size_t) s]));
             g.fillEllipse (puck.reduced (2.0f));
         }
@@ -163,6 +171,14 @@ void LooperSendTile::setLevel (float level01)
     repaint();
 }
 
+void LooperSendTile::setColour (juce::Colour newColour)
+{
+    if (colour == newColour)
+        return;
+    colour = newColour;
+    repaint();
+}
+
 void LooperSendTile::setShowLabel (bool show)
 {
     if (showLabel == show)
@@ -230,7 +246,6 @@ void LooperSendTile::paint (juce::Graphics& g)
                                  : tile.getCentre());
 
     const auto shape = shapePath (iconBox);
-    const auto colour = looperui::sendColour (sendIndex);
 
     // Füllstand von unten (Referenz-SVGs): Clip auf die untere Teilfläche
     if (level > 0.001f)
@@ -652,6 +667,7 @@ LooperTrackStrip::LooperTrackStrip (int number)
     for (int s = 0; s < 4; ++s)
     {
         auto tile = std::make_unique<LooperSendTile> (s);
+        tile->setColour (looperui::sendColour (s));
         tile->onLevelChanged = [this, s] (float level)
         {
             sendLevels[(std::size_t) s] = level;
@@ -758,6 +774,14 @@ void LooperTrackStrip::setSendCount (int count)
     resized();
 }
 
+void LooperTrackStrip::setSendColours (const looperui::SendColours& colours)
+{
+    if (sendColours == colours)
+        return;
+    sendColours = colours;
+    pushSendStateToChildren();
+}
+
 void LooperTrackStrip::setYLinkSend (int sendIndex)
 {
     if (yLinkSend == sendIndex)
@@ -808,11 +832,13 @@ void LooperTrackStrip::pushSendStateToChildren()
     {
         auto& tile = *sendTiles[(std::size_t) s];
         tile.setLevel (sendLevels[(std::size_t) s]);
+        tile.setColour (sendColours[(std::size_t) s]);
         tile.setShowLabel (sendLabels);
         tile.setYLinked (s == yLinkSend);
         tile.setVisible (s < sendCount);
     }
     xyPad.setSendLevels (sendLevels, sendCount);
+    xyPad.setSendColours (sendColours);
 }
 
 LooperSendTile& LooperTrackStrip::getSendTile (int sendIndex)

@@ -13,7 +13,10 @@ namespace conduit
 
 namespace looperui
 {
-    /** Send-Farben S1–S4 (Handoff 20.07.2026): ● ■ ▲ ⬡. */
+    /** Werks-Palette der Sends S1–S4 (● ■ ▲ ⬡) — die AKTUELLEN Farben
+        sind seit 20.07.2026 frei wählbar und kommen per Setter aus den
+        LooperSettings; diese Tabelle ist nur noch der Anzeige-Fallback,
+        solange nichts gesetzt wurde. */
     [[nodiscard]] inline juce::Colour sendColour (int sendIndex) noexcept
     {
         switch (sendIndex)
@@ -23,6 +26,13 @@ namespace looperui
             case 2:  return juce::Colour (0xff34c759);
             default: return juce::Colour (0xff00c8b3);
         }
+    }
+
+    using SendColours = std::array<juce::Colour, 4>;
+
+    [[nodiscard]] inline SendColours defaultSendColours() noexcept
+    {
+        return { sendColour (0), sendColour (1), sendColour (2), sendColour (3) };
     }
 }
 
@@ -48,6 +58,7 @@ public:
 
     void setCompact (bool shouldBeCompact);
     void setSendLevels (const std::array<float, 4>& levels, int visibleSendCount);
+    void setSendColours (const looperui::SendColours& colours);
 
     void paint (juce::Graphics& g) override;
     void mouseDown (const juce::MouseEvent& event) override;
@@ -63,6 +74,7 @@ private:
     float distanceValue = 0.0f;   // 0..1, „FAR" = 1
     bool compact = false;
     std::array<float, 4> sendLevels {};
+    looperui::SendColours sendColours = looperui::defaultSendColours();
     int sendCount = 4;
 
     // Relatives Ziehen: Startwerte beim Aufsetzen
@@ -89,6 +101,7 @@ public:
 
     void setLevel (float level01);
     [[nodiscard]] float getLevel() const noexcept { return level; }
+    void setColour (juce::Colour newColour);
     void setShowLabel (bool show);
     void setYLinked (bool linked);
 
@@ -101,6 +114,7 @@ private:
     [[nodiscard]] juce::Path shapePath (juce::Rectangle<float> bounds) const;
 
     int sendIndex;
+    juce::Colour colour = looperui::sendColour (0);
     float level = 0.0f;
     bool showLabel = false;
     bool yLinked = false;
@@ -274,6 +288,8 @@ public:
     void setSendCount (int count);
     /** Y-Link-Markierung (−1 = keiner). */
     void setYLinkSend (int sendIndex);
+    /** Send-Farben (frei wählbar, LooperSettings) — Kacheln + Puck. */
+    void setSendColours (const looperui::SendColours& colours);
     /** Text-Labels „S1…" nur bei genau 1 Track pro Looper. */
     void setSendLabelsVisible (bool visible);
 
@@ -324,6 +340,7 @@ private:
     bool ledOn = false;
 
     std::array<float, 4> sendLevels {};
+    looperui::SendColours sendColours = looperui::defaultSendColours();
     int sendCount = 4;
     int yLinkSend = -1;
     bool sendLabels = false;

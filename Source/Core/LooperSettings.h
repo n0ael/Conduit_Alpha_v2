@@ -3,6 +3,7 @@
 #include <array>
 
 #include <juce_data_structures/juce_data_structures.h>
+#include <juce_graphics/juce_graphics.h>
 
 #include "LaunchQuantization.h"
 #include "Looper/LooperClipMath.h"
@@ -228,6 +229,13 @@ public:
     [[nodiscard]] int getYLinkSend() const noexcept { return yLinkSend; }
     void setYLinkSend (int sendIndex);
 
+    /** Farbe eines Sends (Kachel-Form, Puck-Overlay, Patch-OUT-Slots) —
+        frei wählbar über den ConduitColorPicker (User 20.07.2026);
+        Werks-Palette S1 ● orange · S2 ■ blau · S3 ▲ grün · S4 ⬡ türkis. */
+    [[nodiscard]] static juce::Colour defaultSendColour (int sendIndex) noexcept;
+    [[nodiscard]] juce::Colour getSendColour (int sendIndex) const noexcept;
+    void setSendColour (int sendIndex, juce::Colour colour);
+
     //==========================================================================
     /** [Message Thread] Ausstehende Änderungen sofort auf Platte schreiben. */
     void flush();
@@ -302,6 +310,7 @@ private:
     std::array<LooperState, static_cast<std::size_t> (maxLoopers)> loopers;
     DistanceState distanceState;
     int yLinkSend = -1;
+    std::array<juce::Colour, 4> sendColours {};   // transparent = Werks-Palette
 
     bool storedStateLoaded = false;
     bool pendingXmlWrite = false;   // gebündelte Mixer-Änderung wartet aufs Schreiben

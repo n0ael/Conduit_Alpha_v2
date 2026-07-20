@@ -145,6 +145,12 @@ void LooperSettings::loadFromFile()
     distanceState.ySens      = juce::jlimit (0.0f, 1.0f,
         (float) xml->getDoubleAttribute ("distYSens", 1.0));
     yLinkSend = juce::jlimit (-1, 3, xml->getIntAttribute ("yLinkSend", -1));
+    for (int s = 0; s < 4; ++s)
+    {
+        const auto hex = xml->getStringAttribute ("sendColour" + juce::String (s));
+        sendColours[static_cast<std::size_t> (s)] =
+            hex.isNotEmpty() ? juce::Colour::fromString (hex) : juce::Colour();
+    }
 
     int looperIndex = 0;
     for (const auto* looperXml : xml->getChildWithTagNameIterator (xmlLooper.toString()))
@@ -256,6 +262,10 @@ void LooperSettings::storeXml()
     xml.setAttribute ("distSmoothMs", distanceState.smoothMs);
     xml.setAttribute ("distYSens", distanceState.ySens);
     xml.setAttribute ("yLinkSend", yLinkSend);
+    for (int s = 0; s < 4; ++s)
+        if (const auto& colour = sendColours[static_cast<std::size_t> (s)];
+            ! colour.isTransparent())
+            xml.setAttribute ("sendColour" + juce::String (s), colour.toString());
 
     for (int l = 0; l < maxLoopers; ++l)
     {
@@ -720,6 +730,41 @@ void LooperSettings::setDistance (const DistanceState& state)
 
     distanceState = clamped;
     writeAndNotify();
+}
+
+juce::Colour LooperSettings::defaultSendColour (int sendIndex) noexcept
+{
+    switch (sendIndex)
+    {
+        case 0:  return juce::Colour (0xffff8d28);   // ● S1
+        case 1:  return juce::Colour (0xff6155f5);   // ■ S2
+        case 2:  return juce::Colour (0xff34c759);   // ▲ S3
+        default: return juce::Colour (0xff00c8b3);   // ⬡ S4
+    }
+}
+
+juce::Colour LooperSettings::getSendColour (int sendIndex) const noexcept
+{
+    if (sendIndex < 0 || sendIndex >= 4)
+        return defaultSendColour (0);
+
+    const auto stored = sendColours[static_cast<std::size_t> (sendIndex)];
+    return stored.isTransparent() ? defaultSendColour (sendIndex) : stored;
+}
+
+void LooperSettings::setSendColour (int sendIndex, juce::Colour colour)
+{
+    if (sendIndex < 0 || sendIndex >= 4)
+        return;
+
+    // Opak speichern — transparent bedeutet „Werks-Palette"
+    const auto opaque = colour.withAlpha (1.0f);
+    auto& stored = sendColours[static_cast<std::size_t> (sendIndex)];
+    if (stored == opaque)
+        return;
+
+    stored = opaque;
+    writeAndNotifyCoalesced();   // Picker feuert live pro Mausbewegung
 }
 
 void LooperSettings::setYLinkSend (int sendIndex)

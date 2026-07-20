@@ -313,6 +313,37 @@ TEST_CASE ("LooperSettings: Distanz — Defaults, Clamps, Roundtrip, Y-Link", "[
     REQUIRE (reloaded.getTrackDistance (3, 3) == Approx (0.0f));
 }
 
+TEST_CASE ("LooperSettings: Send-Farben — Werks-Palette, Auswahl, Roundtrip", "[looper]")
+{
+    juce::ScopedJuceInitialiser_GUI juceRuntime;
+    TempSettings temp;
+
+    {
+        LooperSettings settings { temp.options() };
+
+        // Ab Werk die Handoff-Palette (● orange · ■ blau · ▲ grün · ⬡ türkis)
+        REQUIRE (settings.getSendColour (0) == juce::Colour (0xffff8d28));
+        REQUIRE (settings.getSendColour (1) == juce::Colour (0xff6155f5));
+        REQUIRE (settings.getSendColour (2) == juce::Colour (0xff34c759));
+        REQUIRE (settings.getSendColour (3) == juce::Colour (0xff00c8b3));
+        REQUIRE (settings.getSendColour (0)
+                 == LooperSettings::defaultSendColour (0));
+
+        // Ungültiger Index fällt sauber zurück (kein UB)
+        REQUIRE (settings.getSendColour (9) == LooperSettings::defaultSendColour (0));
+        settings.setSendColour (9, juce::Colours::red);   // No-op
+
+        // Eigene Farbe wird opak gespeichert (halbtransparent → voll)
+        settings.setSendColour (1, juce::Colour (0x80123456));
+        REQUIRE (settings.getSendColour (1) == juce::Colour (0xff123456));
+        settings.flush();
+    }
+
+    LooperSettings reloaded { temp.options() };
+    REQUIRE (reloaded.getSendColour (1) == juce::Colour (0xff123456));
+    REQUIRE (reloaded.getSendColour (0) == juce::Colour (0xffff8d28));   // unberührt
+}
+
 TEST_CASE ("LooperSettings: Einmal-Migration der Legacy-Schlüssel", "[looper]")
 {
     juce::ScopedJuceInitialiser_GUI juceRuntime;

@@ -170,6 +170,29 @@ public:
     [[nodiscard]] bool isTrackSendPre (int looperIndex, int trackIndex) const noexcept;
     void setTrackSendPre (int looperIndex, int trackIndex, bool pre);
 
+    /** Distanz des Tracks (XY-Panner-Y, 0..1 — „FAR" = 1). */
+    [[nodiscard]] float getTrackDistance (int looperIndex, int trackIndex) const noexcept;
+    void setTrackDistance (int looperIndex, int trackIndex, float distance01);
+
+    //==========================================================================
+    // Distanz-Globals (MIXER-Tab · DISTANCE · GLOBAL — gelten für alle
+    // Looper-Tracks; Semantik siehe Looper/LooperDistance.h)
+
+    struct DistanceState
+    {
+        float hiDumpDb   = 9.0f;      // Shelf-Absenkung bei d=1 (0..18 dB)
+        float hiCutHz    = 8000.0f;   // Tiefpass-Ziel bei d=1 (500..16000 Hz)
+        float baseFreqHz = 2000.0f;   // Shelf-Eckfrequenz (200..4000 Hz)
+        float width01    = 0.5f;      // verbleibende Breite bei d=1 (0..1)
+        bool  volDumpOn  = true;      // Pegel-Kurve aktiv (Default AN, 20.07.2026)
+        float volDumpDb  = 12.0f;     // dB-Neigung der Vol-Kurve (0..24)
+        float smoothMs   = 20.0f;     // Distanz-Slew (0..500 ms)
+        float ySens      = 1.0f;      // Y Sensitivity: Wirkung des Pad-Wegs (0..1)
+    };
+
+    [[nodiscard]] DistanceState getDistance() const noexcept { return distanceState; }
+    void setDistance (const DistanceState& state);
+
     //==========================================================================
     /** [Message Thread] Ausstehende Änderungen sofort auf Platte schreiben. */
     void flush();
@@ -184,6 +207,7 @@ private:
         bool variQuantized = false;   // Default frei (Drift ist Feature)
         std::array<float, 4> sendLevel {};   // Send-Level 1..4 (0..1, Default 0)
         bool sendPre = false;         // Abgriff pre statt post (Default post)
+        float distance = 0.0f;        // XY-Panner-Y (0..1, „FAR" = 1)
     };
 
     struct LooperState
@@ -222,6 +246,7 @@ private:
     int numLoopers = 1;
 
     std::array<LooperState, static_cast<std::size_t> (maxLoopers)> loopers;
+    DistanceState distanceState;
 
     bool storedStateLoaded = false;
 

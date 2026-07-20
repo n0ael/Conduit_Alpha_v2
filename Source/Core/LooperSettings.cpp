@@ -94,6 +94,22 @@ void LooperSettings::loadFromFile()
     autoAdvance = xml->getBoolAttribute ("autoAdvance", true);
     numLoopers = juce::jlimit (1, maxLoopers, xml->getIntAttribute ("numLoopers", 1));
 
+    distanceState.hiDumpDb   = juce::jlimit (0.0f, 18.0f,
+        (float) xml->getDoubleAttribute ("distHiDump", 9.0));
+    distanceState.hiCutHz    = juce::jlimit (500.0f, 16000.0f,
+        (float) xml->getDoubleAttribute ("distHiCut", 8000.0));
+    distanceState.baseFreqHz = juce::jlimit (200.0f, 4000.0f,
+        (float) xml->getDoubleAttribute ("distBaseFreq", 2000.0));
+    distanceState.width01    = juce::jlimit (0.0f, 1.0f,
+        (float) xml->getDoubleAttribute ("distWidth", 0.5));
+    distanceState.volDumpOn  = xml->getBoolAttribute ("distVolDumpOn", true);
+    distanceState.volDumpDb  = juce::jlimit (0.0f, 24.0f,
+        (float) xml->getDoubleAttribute ("distVolDump", 12.0));
+    distanceState.smoothMs   = juce::jlimit (0.0f, 500.0f,
+        (float) xml->getDoubleAttribute ("distSmoothMs", 20.0));
+    distanceState.ySens      = juce::jlimit (0.0f, 1.0f,
+        (float) xml->getDoubleAttribute ("distYSens", 1.0));
+
     int looperIndex = 0;
     for (const auto* looperXml : xml->getChildWithTagNameIterator (xmlLooper.toString()))
     {
@@ -138,6 +154,8 @@ void LooperSettings::loadFromFile()
                         (legacyMask & (1 << s)) != 0 ? 1.0f : 0.0f;
             }
             track.sendPre = trackXml->getBoolAttribute ("sendPre", false);
+            track.distance = juce::jlimit (0.0f, 1.0f,
+                (float) trackXml->getDoubleAttribute ("dist", 0.0));
             ++trackIndex;
         }
 
@@ -164,6 +182,15 @@ void LooperSettings::writeAndNotify()
     xml.setAttribute ("autoAdvance", autoAdvance);
     xml.setAttribute ("numLoopers", numLoopers);
 
+    xml.setAttribute ("distHiDump", distanceState.hiDumpDb);
+    xml.setAttribute ("distHiCut", distanceState.hiCutHz);
+    xml.setAttribute ("distBaseFreq", distanceState.baseFreqHz);
+    xml.setAttribute ("distWidth", distanceState.width01);
+    xml.setAttribute ("distVolDumpOn", distanceState.volDumpOn);
+    xml.setAttribute ("distVolDump", distanceState.volDumpDb);
+    xml.setAttribute ("distSmoothMs", distanceState.smoothMs);
+    xml.setAttribute ("distYSens", distanceState.ySens);
+
     for (int l = 0; l < maxLoopers; ++l)
     {
         const auto& looper = loopers[static_cast<std::size_t> (l)];
@@ -186,6 +213,7 @@ void LooperSettings::writeAndNotify()
                 trackXml->setAttribute ("send" + juce::String (s),
                                         track.sendLevel[static_cast<std::size_t> (s)]);
             trackXml->setAttribute ("sendPre", track.sendPre);
+            trackXml->setAttribute ("dist", track.distance);
         }
     }
 
@@ -527,6 +555,56 @@ void LooperSettings::setTrackSends (int looperIndex, int trackIndex, int mask)
 
     if (changed)
         writeAndNotify();
+}
+
+float LooperSettings::getTrackDistance (int looperIndex, int trackIndex) const noexcept
+{
+    return validTrack (looperIndex, trackIndex)
+         ? loopers[static_cast<std::size_t> (looperIndex)]
+               .tracks[static_cast<std::size_t> (trackIndex)].distance
+         : 0.0f;
+}
+
+void LooperSettings::setTrackDistance (int looperIndex, int trackIndex, float distance01)
+{
+    if (! validTrack (looperIndex, trackIndex))
+        return;
+
+    const auto clamped = juce::jlimit (0.0f, 1.0f, distance01);
+    auto& track = loopers[static_cast<std::size_t> (looperIndex)]
+                      .tracks[static_cast<std::size_t> (trackIndex)];
+    if (juce::exactlyEqual (track.distance, clamped))
+        return;
+
+    track.distance = clamped;
+    writeAndNotify();
+}
+
+void LooperSettings::setDistance (const DistanceState& state)
+{
+    DistanceState clamped;
+    clamped.hiDumpDb   = juce::jlimit (0.0f, 18.0f, state.hiDumpDb);
+    clamped.hiCutHz    = juce::jlimit (500.0f, 16000.0f, state.hiCutHz);
+    clamped.baseFreqHz = juce::jlimit (200.0f, 4000.0f, state.baseFreqHz);
+    clamped.width01    = juce::jlimit (0.0f, 1.0f, state.width01);
+    clamped.volDumpOn  = state.volDumpOn;
+    clamped.volDumpDb  = juce::jlimit (0.0f, 24.0f, state.volDumpDb);
+    clamped.smoothMs   = juce::jlimit (0.0f, 500.0f, state.smoothMs);
+    clamped.ySens      = juce::jlimit (0.0f, 1.0f, state.ySens);
+
+    const auto& d = distanceState;
+    if (juce::exactlyEqual (d.hiDumpDb, clamped.hiDumpDb)
+        && juce::exactlyEqual (d.hiCutHz, clamped.hiCutHz)
+        && juce::exactlyEqual (d.baseFreqHz, clamped.baseFreqHz)
+        && juce::exactlyEqual (d.width01, clamped.width01)
+        && d.volDumpOn == clamped.volDumpOn
+        && juce::exactlyEqual (d.volDumpDb, clamped.volDumpDb)
+        && juce::exactlyEqual (d.smoothMs, clamped.smoothMs)
+        && juce::exactlyEqual (d.ySens, clamped.ySens))
+        return;
+
+    distanceState = clamped;
+    writeAndNotify();
 }
 
 bool LooperSettings::isTrackSendPre (int looperIndex, int trackIndex) const noexcept

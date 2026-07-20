@@ -25,6 +25,9 @@ LooperBank::LooperBank()
         for (auto& track : looper)
             for (auto& level : track)
                 level.store (0.0f, std::memory_order_relaxed);
+    for (auto& looper : targetDistance)
+        for (auto& distance : looper)
+            distance.store (0.0f, std::memory_order_relaxed);
     for (auto& looper : sendTapPre)
         for (auto& pre : looper)
             pre.store (false, std::memory_order_relaxed);
@@ -83,6 +86,9 @@ void LooperBank::prepare (double sampleRate, int maxBlockSamples)
             track.currentPan = 0.0f;
             track.currentMuteGain = 1.0f;
             track.currentSend.fill (0.0f);
+            track.currentDistance = 0.0f;
+            track.distLp.fill ({});
+            track.distShelf.fill ({});
         }
 
     for (std::size_t l = 0; l < static_cast<std::size_t> (maxLoopers); ++l)
@@ -589,6 +595,28 @@ void LooperBank::setTrackSendPre (int looperIndex, int trackIndex, bool pre) noe
 
     sendTapPre[static_cast<std::size_t> (looperIndex)][static_cast<std::size_t> (trackIndex)]
         .store (pre, std::memory_order_relaxed);
+}
+
+void LooperBank::setTrackDistance (int looperIndex, int trackIndex, float distance01) noexcept
+{
+    if (looperIndex < 0 || looperIndex >= maxLoopers
+        || trackIndex < 0 || trackIndex >= maxTracks)
+        return;
+
+    targetDistance[static_cast<std::size_t> (looperIndex)][static_cast<std::size_t> (trackIndex)]
+        .store (juce::jlimit (0.0f, 1.0f, distance01), std::memory_order_relaxed);
+}
+
+void LooperBank::setDistanceGlobals (const looper::DistanceGlobals& globals,
+                                     float smoothSeconds) noexcept
+{
+    distHiDumpDb.store (globals.hiDumpDb, std::memory_order_relaxed);
+    distHiCutHz.store (globals.hiCutHz, std::memory_order_relaxed);
+    distBaseFreqHz.store (globals.baseFreqHz, std::memory_order_relaxed);
+    distWidth01.store (globals.width01, std::memory_order_relaxed);
+    distVolDumpOn.store (globals.volDumpOn, std::memory_order_relaxed);
+    distVolDumpDb.store (globals.volDumpDb, std::memory_order_relaxed);
+    distSmoothSeconds.store (juce::jmax (0.0f, smoothSeconds), std::memory_order_relaxed);
 }
 
 void LooperBank::setSoloScopeGlobal (bool global) noexcept
@@ -1359,6 +1387,70 @@ void LooperBank::renderBlock (const ClockState& clock, std::uint64_t blockStartS
 
                 scratch0[i] *= amp * gainLeft;
                 scratch1[i] *= amp * gainRight;
+            }
+
+            //==============================================================
+            // Distanz-Zug (Monolake Distance, 07/2026): High-Shelf +
+            // Tiefpass + M/S-Width + Vol-Kurve — NACH dem Fader, VOR
+            // Meter/Post-Bus/Post-Sends (Meter, Big Out und Master hören
+            // dasselbe distanzierte Signal; Pre-Sends bleiben unberührt).
+            // Koeffizienten EINMAL pro Block aus der geslewten Distanz
+            // (line~-Muster des Originals); d≈0 = exakter Bypass.
+            const auto dTarget = targetDistance[l][t].load (std::memory_order_relaxed);
+            if (dTarget < 1.0e-4f && player.currentDistance < 1.0e-4f)
+            {
+                player.currentDistance = 0.0f;
+                player.distLp.fill ({});
+                player.distShelf.fill ({});
+            }
+            else
+            {
+                const auto smoothSec = distSmoothSeconds.load (std::memory_order_relaxed);
+                const auto maxD = smoothSec > 1.0e-4f
+                    ? static_cast<float> (numSamples / (smoothSec * preparedSampleRate))
+                    : 1.0f;   // Smooth 0 = roher Sprung (bewusst)
+                const auto dStart = player.currentDistance;
+                const auto dEnd = dStart + juce::jlimit (-maxD, maxD, dTarget - dStart);
+                player.currentDistance = dEnd;
+
+                const auto lpCo = looper::makeLowpass (
+                    looper::lowpassCutoffHz (dEnd,
+                                             distHiCutHz.load (std::memory_order_relaxed),
+                                             preparedSampleRate),
+                    preparedSampleRate);
+                const auto shCo = looper::makeHighShelf (
+                    distBaseFreqHz.load (std::memory_order_relaxed),
+                    looper::shelfGainDb (dEnd, distHiDumpDb.load (std::memory_order_relaxed)),
+                    preparedSampleRate);
+
+                const auto width = distWidth01.load (std::memory_order_relaxed);
+                const auto volOn = distVolDumpOn.load (std::memory_order_relaxed);
+                const auto volDb = distVolDumpDb.load (std::memory_order_relaxed);
+                auto w = static_cast<float> (looper::widthFactor (dStart, width));
+                auto v = static_cast<float> (looper::volDumpGain (dStart, volOn, volDb));
+                const auto wStep = (static_cast<float> (looper::widthFactor (dEnd, width)) - w)
+                                 / static_cast<float> (numSamples);
+                const auto vStep = (static_cast<float> (looper::volDumpGain (dEnd, volOn, volDb)) - v)
+                                 / static_cast<float> (numSamples);
+
+                for (int i = 0; i < numSamples; ++i)
+                {
+                    const auto f0 = looper::processBiquad (player.distShelf[0], shCo,
+                        looper::processBiquad (player.distLp[0], lpCo, scratch0[i]));
+                    const auto f1 = looper::processBiquad (player.distShelf[1], shCo,
+                        looper::processBiquad (player.distLp[1], lpCo, scratch1[i]));
+                    const auto mid  = 0.5f * (f0 + f1);
+                    const auto side = 0.5f * (f0 - f1) * w;
+                    scratch0[i] = (mid + side) * v;
+                    scratch1[i] = (mid - side) * v;
+                    w += wStep;
+                    v += vStep;
+                }
+
+                for (auto& state : player.distLp)
+                    looper::snapStateToZero (state);
+                for (auto& state : player.distShelf)
+                    looper::snapStateToZero (state);
             }
 
             {

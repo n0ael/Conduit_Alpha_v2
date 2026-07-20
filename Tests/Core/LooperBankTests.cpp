@@ -399,6 +399,70 @@ TEST_CASE ("LooperBank: Looper-I/O-Busse — AudioView, sendToMaster, Kein Maste
 
 }
 
+TEST_CASE ("LooperBank: Distanz-Zug — Width-Kollaps und Vol-Stille", "[looper]")
+{
+    BankRig rig;
+    rig.signal = [] (std::uint64_t position)
+    {
+        // bipolar, damit die M/S-Stufe echtes Side-Signal sieht
+        return std::sin (static_cast<float> (position % 97) * 0.13f) * 0.5f;
+    };
+    rig.feedBars (2.5);
+    REQUIRE (rig.commit (1).wasOk());
+    rig.feedBlocks (4);
+
+    const auto rms = [] (const float* data, int numSamples)
+    {
+        double sum = 0.0;
+        for (int i = 0; i < numSamples; ++i)
+            sum += data[i] * data[i];
+        return std::sqrt (sum / numSamples);
+    };
+
+    SECTION ("d=0: Bypass — Playback unangetastet hörbar")
+    {
+        const auto view = rig.bank.getAudioView();
+        REQUIRE (rms (view.track[0][0][0], blockSize) > 0.01);
+        for (int i = 0; i < blockSize; ++i)
+            REQUIRE (juce::exactlyEqual (view.track[0][0][0][i], view.post[0][0][i]));
+    }
+
+    SECTION ("d=1 + Width 0 (VolDump aus): hart gepanntes Signal wird mono")
+    {
+        // Pan hart rechts → deutliches Side-Signal, dann volle Distanz
+        rig.bank.setTrackPan (0, 0, 1.0f);
+        rig.feedBlocks (4);   // Pan-Slew ausklingen lassen
+
+        conduit::looper::DistanceGlobals globals;
+        globals.width01 = 0.0f;
+        globals.volDumpOn = false;
+        rig.bank.setDistanceGlobals (globals, 0.0f);   // Smooth 0 = sofort
+        rig.bank.setTrackDistance (0, 0, 1.0f);
+        rig.feedBlocks (3);
+
+        const auto view = rig.bank.getAudioView();
+        REQUIRE (rms (view.track[0][0][0], blockSize) > 0.001);
+        for (int i = 0; i < blockSize; ++i)
+            REQUIRE (juce::exactlyEqual (view.track[0][0][0][i], view.track[0][0][1][i]));
+    }
+
+    SECTION ("d=1 + VolDump an (Default): komplette Stille — Y ersetzt den Fader")
+    {
+        rig.bank.setDistanceGlobals (conduit::looper::DistanceGlobals {}, 0.0f);
+        rig.bank.setTrackDistance (0, 0, 1.0f);
+        rig.feedBlocks (3);
+
+        const auto view = rig.bank.getAudioView();
+        REQUIRE (juce::exactlyEqual (rms (view.track[0][0][0], blockSize), 0.0));
+        REQUIRE (juce::exactlyEqual (rms (view.master[0], blockSize), 0.0));
+
+        // Zurück auf d=0: Signal kommt wieder
+        rig.bank.setTrackDistance (0, 0, 0.0f);
+        rig.feedBlocks (3);
+        REQUIRE (rms (rig.bank.getAudioView().track[0][0][0], blockSize) > 0.01);
+    }
+}
+
 TEST_CASE ("LooperBank: Track-/Send-Busse — trackBus post-fader, Sends pre/post", "[looper]")
 {
     BankRig rig;

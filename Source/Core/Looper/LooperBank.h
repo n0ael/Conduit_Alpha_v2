@@ -14,6 +14,7 @@
 #include "Interfaces/IClockSource.h"
 #include "LooperClip.h"
 #include "LooperClipMath.h"
+#include "LooperDistance.h"
 #include "LooperMath.h"
 #include "Util/SpscQueue.h"
 
@@ -204,6 +205,14 @@ public:
     /** Send-Abgriff des Tracks: true = pre (vor Gain/Pan/Mute), false = post. */
     void setTrackSendPre (int looperIndex, int trackIndex, bool pre) noexcept;
 
+    /** Distanz-Ziel des Tracks (XY-Y, 0..1) — Audio slewt mit der
+        Smooth-Zeit der Distanz-Globals dorthin (Monolake Distance). */
+    void setTrackDistance (int looperIndex, int trackIndex, float distance01) noexcept;
+
+    /** Distanz-Globals + Smooth-Zeit in Sekunden [MT schreibt, Audio liest]. */
+    void setDistanceGlobals (const looper::DistanceGlobals& globals,
+                             float smoothSeconds) noexcept;
+
     /** Solo-Scope (Menü-Option): false = pro Looper (Default), true = global. */
     void setSoloScopeGlobal (bool global) noexcept;
 
@@ -365,6 +374,10 @@ private:
         float currentPan = 0.0f;
         float currentMuteGain = 1.0f;
         std::array<float, static_cast<std::size_t> (maxSends)> currentSend {};
+
+        // Distanz-Zug (Audio): geslewte Distanz + Filterzustände (2 Kanäle)
+        float currentDistance = 0.0f;
+        std::array<looper::BiquadState, 2> distLp {}, distShelf {};
     };
 
     // MT-only: Graveyard-Eintrag wartet auf die Audio-Quittung + Pins
@@ -481,6 +494,17 @@ private:
     std::array<std::array<std::array<std::atomic<float>, static_cast<std::size_t> (maxSends)>,
                           static_cast<std::size_t> (maxTracks)>,
                static_cast<std::size_t> (maxLoopers)> targetSendLevel;
+
+    // Distanz [MT schreibt, Audio liest]: Ziel pro Track + Globals
+    std::array<std::array<std::atomic<float>, static_cast<std::size_t> (maxTracks)>,
+               static_cast<std::size_t> (maxLoopers)> targetDistance;
+    std::atomic<float> distHiDumpDb { 9.0f };
+    std::atomic<float> distHiCutHz { 8000.0f };
+    std::atomic<float> distBaseFreqHz { 2000.0f };
+    std::atomic<float> distWidth01 { 0.5f };
+    std::atomic<bool>  distVolDumpOn { true };
+    std::atomic<float> distVolDumpDb { 12.0f };
+    std::atomic<float> distSmoothSeconds { 0.02f };
     std::array<std::array<std::atomic<bool>, static_cast<std::size_t> (maxTracks)>,
                static_cast<std::size_t> (maxLoopers)> sendTapPre;
 

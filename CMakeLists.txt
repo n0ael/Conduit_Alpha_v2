@@ -667,6 +667,7 @@ if(CONDUIT_BUILD_TESTS)
         Tests/Core/LaunchQuantizationTests.cpp
         Tests/Core/LooperMathTests.cpp
         Tests/Core/LooperClipMathTests.cpp
+        Tests/Core/LooperDistanceTests.cpp
         Tests/Core/BarSampleAnchorsTests.cpp
         Tests/Core/LooperSourceTests.cpp
         Tests/Core/LooperWaveformTapTests.cpp

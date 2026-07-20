@@ -130,6 +130,12 @@ public:
         float progress01 = 0.0f;   // Loop-Phase (Sweep)
         juce::String label;        // "Clip 3 · 4 Bars"
         juce::String rateBadge;    // "0.71×" (leer bei 1×)
+
+        // LEN/POS (07/2026): Loop-Fenster im Content — der NICHT loopende
+        // Teil dunkelt ab, „/n"-Badge bei gerasterter Länge
+        float loopStart01 = 0.0f;
+        float loopLen01 = 1.0f;
+        juce::String divBadge;     // "/2" … (leer bei vollem Loop/Free)
     };
 
     /** [Editor-Timer] Repaint nur bei sichtbarer Änderung. */
@@ -232,6 +238,8 @@ public:
     std::function<void (int sendIndex, float level01)> onSendLevelChanged;
     std::function<void (bool muted)> onMuteToggled;
     std::function<void (bool solo)> onSoloToggled;
+    std::function<void()> onPlay;        // ▶ startet aktiven/ersten belegten Slot
+    std::function<void()> onResetSync;   // Long-Press auf ▶ = ReSet (Rate 1×, Re-Sync)
     std::function<void()> onStop;
     std::function<void (int slotIndex)> onSlotTapped;
     std::function<void()> onHeaderLongPress;             // Track entfernen
@@ -279,6 +287,7 @@ public:
     [[nodiscard]] push::TextTile& getMuteTile() noexcept { return muteTile; }
     [[nodiscard]] push::TextTile& getSoloTile() noexcept { return soloTile; }
     [[nodiscard]] push::TextTile& getStopTile() noexcept { return stopTile; }
+    [[nodiscard]] push::HoldTile& getPlayTile() noexcept { return playTile; }
     [[nodiscard]] LooperXyPad& getXyPad() noexcept { return xyPad; }
     [[nodiscard]] LooperSendTile& getSendTile (int sendIndex);
 
@@ -329,6 +338,7 @@ private:
     push::TextTile muteTile { "M", push::colours::ledOrange };
     push::TextTile soloTile { "S", push::colours::ledCyan };
     push::TextTile stopTile { juce::String::fromUTF8 ("■"), push::colours::ledWhite };
+    push::HoldTile playTile { juce::String::fromUTF8 ("▶"), push::colours::ledGreen };
     LooperXyPad xyPad;
     std::array<std::unique_ptr<LooperSendTile>, 4> sendTiles;
 

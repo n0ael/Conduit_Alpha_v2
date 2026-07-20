@@ -8,10 +8,52 @@ LooperClipControlsRow::LooperClipControlsRow()
 {
     setName ("looperClipControls");
 
-    doubleTile.onClick = [this] { if (controlsEnabled && onDoubleLength) onDoubleLength(); };
-    halveTile.onClick  = [this] { if (controlsEnabled && onHalveLength) onHalveLength(); };
     reverseTile.onClick = [this] { if (controlsEnabled && onReverseToggled) onReverseToggled(); };
-    syncTile.onClick   = [this] { if (controlsEnabled && onResetWithSync) onResetWithSync(); };
+
+    // Sync (Takt-Raster) / Free (stufenlos) — Modus der LEN/POS-Potis
+    syncFreeTile.setActive (true);
+    syncFreeTile.onClick = [this]
+    {
+        if (onSyncFreeToggled != nullptr)
+            onSyncFreeToggled (! syncMode);
+    };
+
+    // LEN: Loop-Länge (Sync: /8 /4 /2 /1 · Free: 50 ms–60 s); DK = voll
+    lenKnob.setSliderStyle (juce::Slider::RotaryVerticalDrag);
+    lenKnob.setTextBoxStyle (juce::Slider::NoTextBox, true, 0, 0);
+    lenKnob.setRange (0.0, 1.0, 0.0);
+    lenKnob.setValue (1.0, juce::dontSendNotification);
+    lenKnob.setDoubleClickReturnValue (true, 1.0);
+    lenKnob.setName ("lenKnob");
+    lenKnob.onValueChange = [this]
+    {
+        if (! controlsEnabled)
+            return;
+        if (onLoopLenChanged != nullptr)
+            onLoopLenChanged (lenKnob.getValue(), syncMode);
+    };
+
+    // POS: Loop-Fenster verschieben (Sync: fensterweise · Free: ms); DK = 0
+    posKnob.setSliderStyle (juce::Slider::RotaryVerticalDrag);
+    posKnob.setTextBoxStyle (juce::Slider::NoTextBox, true, 0, 0);
+    posKnob.setRange (0.0, 1.0, 0.0);
+    posKnob.setValue (0.0, juce::dontSendNotification);
+    posKnob.setDoubleClickReturnValue (true, 0.0);
+    posKnob.setName ("posKnob");
+    posKnob.onValueChange = [this]
+    {
+        if (! controlsEnabled)
+            return;
+        if (onLoopPosChanged != nullptr)
+            onLoopPosChanged (posKnob.getValue(), syncMode);
+    };
+
+    lenLabel.setJustificationType (juce::Justification::centred);
+    lenLabel.setInterceptsMouseClicks (false, false);
+    lenLabel.setColour (juce::Label::textColourId, push::colours::textDim);
+    posLabel.setJustificationType (juce::Justification::centred);
+    posLabel.setInterceptsMouseClicks (false, false);
+    posLabel.setColour (juce::Label::textColourId, push::colours::textDim);
 
     rasterTile.onClick = [this]
     {
@@ -45,13 +87,15 @@ LooperClipControlsRow::LooperClipControlsRow()
     activeLabel.setInterceptsMouseClicks (false, false);
     activeLabel.setColour (juce::Label::textColourId, push::colours::textDim);
 
-    addAndMakeVisible (doubleTile);
-    addAndMakeVisible (halveTile);
+    addAndMakeVisible (syncFreeTile);
+    addAndMakeVisible (lenKnob);
+    addAndMakeVisible (lenLabel);
+    addAndMakeVisible (posKnob);
+    addAndMakeVisible (posLabel);
     addAndMakeVisible (reverseTile);
     addAndMakeVisible (variKnob);
     addAndMakeVisible (rateLabel);
     addAndMakeVisible (rasterTile);
-    addAndMakeVisible (syncTile);
     addAndMakeVisible (targetTile);
     addAndMakeVisible (activeLabel);
 
@@ -88,8 +132,12 @@ void LooperClipControlsRow::knobMoved()
 
 void LooperClipControlsRow::updateRateLabel()
 {
-    rateLabel.setText (juce::String (currentRate, 2) + juce::String::fromUTF8 ("×"),
-                       juce::dontSendNotification);
+    // VARI Display (07/2026): der Editor injiziert den Formatter
+    // („+3 st" oder „♭3" bei Quant); Fallback = Faktor-Anzeige
+    const auto text = rateFormatter != nullptr
+                    ? rateFormatter (currentRate)
+                    : juce::String (currentRate, 2) + juce::String::fromUTF8 ("×");
+    rateLabel.setText (text, juce::dontSendNotification);
     rateLabel.setColour (juce::Label::textColourId,
                          std::abs (currentRate - 1.0) > 1.0e-3
                              ? push::colours::ledOrange
@@ -102,11 +150,11 @@ void LooperClipControlsRow::setClipControlsEnabled (bool enabled)
     controlsEnabled = enabled;
 
     const auto alpha = enabled ? 1.0f : 0.4f;
-    doubleTile.setAlpha (alpha);
-    halveTile.setAlpha (alpha);
+    syncFreeTile.setAlpha (alpha);
+    lenKnob.setAlpha (alpha);
+    posKnob.setAlpha (alpha);
     reverseTile.setAlpha (alpha);
     variKnob.setAlpha (alpha);
-    syncTile.setAlpha (alpha);
 }
 
 void LooperClipControlsRow::setRate (double rate)
@@ -125,6 +173,31 @@ void LooperClipControlsRow::setRasterQuantized (bool quantized)
 {
     rasterQuantized = quantized;
     rasterTile.setActive (quantized);
+    rasterTile.setText (quantized ? "Quant" : "Tape");
+    updateRateLabel();
+}
+
+void LooperClipControlsRow::setSyncFree (bool sync)
+{
+    if (syncMode == sync)
+        return;
+    syncMode = sync;
+    syncFreeTile.setActive (sync);
+    syncFreeTile.setText (sync ? "Sync" : "Free");
+}
+
+void LooperClipControlsRow::setLoopLenNorm (double norm01, const juce::String& display)
+{
+    if (! lenKnob.isMouseButtonDown())
+        lenKnob.setValue (juce::jlimit (0.0, 1.0, norm01), juce::dontSendNotification);
+    lenLabel.setText (display, juce::dontSendNotification);
+}
+
+void LooperClipControlsRow::setLoopPosNorm (double norm01, const juce::String& display)
+{
+    if (! posKnob.isMouseButtonDown())
+        posKnob.setValue (juce::jlimit (0.0, 1.0, norm01), juce::dontSendNotification);
+    posLabel.setText (display, juce::dontSendNotification);
 }
 
 void LooperClipControlsRow::setTargetVisible (bool visible)
@@ -144,20 +217,28 @@ void LooperClipControlsRow::resized()
 {
     auto bounds = getLocalBounds().reduced (2);
     const auto tileWidth = juce::jmin (44, bounds.getWidth() / 8);
+    const auto knobWidth = juce::jmax (tileWidth, 44);
 
-    doubleTile.setBounds (bounds.removeFromLeft (tileWidth).reduced (1));
-    halveTile.setBounds (bounds.removeFromLeft (tileWidth).reduced (1));
+    syncFreeTile.setBounds (bounds.removeFromLeft (juce::jmax (tileWidth, 48)).reduced (1));
+
+    auto lenArea = bounds.removeFromLeft (knobWidth);
+    lenLabel.setBounds (lenArea.removeFromBottom (14));
+    lenKnob.setBounds (lenArea);
+
+    auto posArea = bounds.removeFromLeft (knobWidth);
+    posLabel.setBounds (posArea.removeFromBottom (14));
+    posKnob.setBounds (posArea);
+
     reverseTile.setBounds (bounds.removeFromLeft (tileWidth).reduced (1));
 
-    auto knobArea = bounds.removeFromLeft (juce::jmax (tileWidth, 48));
+    auto knobArea = bounds.removeFromLeft (knobWidth);
     rateLabel.setBounds (knobArea.removeFromBottom (14));
     variKnob.setBounds (knobArea);
 
-    rasterTile.setBounds (bounds.removeFromLeft (tileWidth).reduced (1));
-    syncTile.setBounds (bounds.removeFromLeft (tileWidth).reduced (1));
+    rasterTile.setBounds (bounds.removeFromLeft (juce::jmax (tileWidth, 52)).reduced (1));
 
     if (targetTile.isVisible())
-        targetTile.setBounds (bounds.removeFromLeft (juce::jmax (tileWidth, 64)).reduced (1));
+        targetTile.setBounds (bounds.removeFromLeft (juce::jmax (tileWidth, 48)).reduced (1));
 
     activeLabel.setBounds (bounds.reduced (2, 0));
 }

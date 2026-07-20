@@ -62,6 +62,10 @@ void LooperPanel::wireTrack (LooperTrackStrip& track, int trackIndex)
     { if (onTrackMute) onTrackMute (trackIndex, muted); };
     track.onSoloToggled = [this, trackIndex] (bool solo)
     { if (onTrackSolo) onTrackSolo (trackIndex, solo); };
+    track.onPlay = [this, trackIndex]
+    { if (onTrackPlay) onTrackPlay (trackIndex); };
+    track.onResetSync = [this, trackIndex]
+    { if (onTrackResetSync) onTrackResetSync (trackIndex); };
     track.onStop = [this, trackIndex]
     { if (onTrackStop) onTrackStop (trackIndex); };
     track.onSlotTapped = [this, trackIndex] (int slotIndex)

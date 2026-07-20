@@ -297,6 +297,9 @@ void LooperSlotCell::setState (const State& newState)
                       || state.active != newState.active
                       || state.reversed != newState.reversed
                       || std::abs (state.progress01 - newState.progress01) > 0.005f
+                      || std::abs (state.loopStart01 - newState.loopStart01) > 0.004f
+                      || std::abs (state.loopLen01 - newState.loopLen01) > 0.004f
+                      || state.divBadge != newState.divBadge
                       || state.label != newState.label
                       || state.rateBadge != newState.rateBadge;
     state = newState;
@@ -401,6 +404,26 @@ void LooperSlotCell::paint (juce::Graphics& g)
             g.drawImage (thumbnail, bounds.reduced (2.0f),
                          juce::RectanglePlacement::stretchToFit);
 
+        // LEN/POS (07/2026): der NICHT aktiv loopende Clip-Teil dunkelt
+        // ab — das Fenster bleibt hell (Handoff „abgedunkelt")
+        if (state.loopLen01 < 0.999f || state.loopStart01 > 0.001f)
+        {
+            const auto window = bounds.reduced (2.0f);
+            const auto startX = window.getX() + window.getWidth() * state.loopStart01;
+            const auto endX = juce::jmin (window.getRight(),
+                                          startX + window.getWidth() * state.loopLen01);
+            g.setColour ((inked ? juce::Colours::black : push::colours::background)
+                             .withAlpha (0.55f));
+            if (startX > window.getX() + 0.5f)
+                g.fillRect (juce::Rectangle<float> (window.getX(), window.getY(),
+                                                    startX - window.getX(),
+                                                    window.getHeight()));
+            if (endX < window.getRight() - 0.5f)
+                g.fillRect (juce::Rectangle<float> (endX, window.getY(),
+                                                    window.getRight() - endX,
+                                                    window.getHeight()));
+        }
+
         // Progress-Sweep als Fade-Schweif (User 09.07.2026): nicht der
         // gesamte abgespielte Teil dunkelt ab — ein begrenztes Band hinter
         // der Abspielkante läuft nach hinten transparent aus. Der Loop ist
@@ -504,8 +527,10 @@ void LooperSlotCell::paint (juce::Graphics& g)
         auto textArea = headline;
         textArea.removeFromLeft (2.0f);
 
-        // Badges rechts: Rate ("0.71×") und Reverse (◁)
+        // Badges rechts: "/n" (LEN), Rate ("0.71×") und Reverse (◁)
         juce::String badge = state.rateBadge;
+        if (state.divBadge.isNotEmpty())
+            badge = badge.isEmpty() ? state.divBadge : state.divBadge + " " + badge;
         if (state.reversed)
             badge = badge.isEmpty() ? juce::String::fromUTF8 ("◁")
                                     : badge + juce::String::fromUTF8 (" ◁");
@@ -580,6 +605,20 @@ LooperTrackStrip::LooperTrackStrip (int number)
             onStop();
     };
 
+    // Footer-Play (07/2026): Kurzklick startet den aktiven, sonst den
+    // ersten belegten Slot; Long-Press = ReSet (Rate 1×, vorwärts,
+    // Re-Sync — aus der Controls-Zeile hierher gewandert)
+    playTile.onShortClick = [this]
+    {
+        if (onPlay != nullptr)
+            onPlay();
+    };
+    playTile.onHoldChanged = [this] (bool holding)
+    {
+        if (holding && onResetSync != nullptr)
+            onResetSync();
+    };
+
     // XY-Panner: X = Pan, Y = Distanz (beide Hooks getrennt nach oben)
     xyPad.onChanged = [this] (float newPan, float newDistance)
     {
@@ -610,6 +649,7 @@ LooperTrackStrip::LooperTrackStrip (int number)
     addAndMakeVisible (muteTile);
     addAndMakeVisible (soloTile);
     addAndMakeVisible (xyPad);
+    addAndMakeVisible (playTile);
     addAndMakeVisible (stopTile);
 
     setVisibleSlots (8);
@@ -833,7 +873,7 @@ juce::Rectangle<int> LooperTrackStrip::barArea() const
 {
     auto bounds = getLocalBounds();
     auto footer = bounds.removeFromBottom (footerHeight);
-    footer.removeFromLeft (footer.getWidth() / 2);
+    footer.removeFromLeft (footer.getWidth() * 2 / 3);   // ▶ + ■
     return footer;
 }
 
@@ -879,8 +919,9 @@ void LooperTrackStrip::resized()
     }
 
     auto footer = bounds.removeFromBottom (footerHeight);
+    playTile.setBounds (footer.removeFromLeft (footer.getWidth() / 3).reduced (2));
     stopTile.setBounds (footer.removeFromLeft (footer.getWidth() / 2).reduced (2));
-    // rechte Fußhälfte = Takt-Anzeige (paint)
+    // rechtes Fußdrittel = Takt-Anzeige (paint)
 
     // Slot-Zellen füllen den Rest gleichmäßig
     const auto count = (int) cells.size();

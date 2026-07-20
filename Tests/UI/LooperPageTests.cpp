@@ -377,46 +377,79 @@ TEST_CASE ("LooperClipControlsRow: Dispatch nur mit Aktiv-Clip, VARI-Mapping", "
     conduit::LooperClipControlsRow row;
     row.setBounds (0, 0, 640, 58);
 
-    int doubled = 0, halved = 0, reversed = 0, synced = 0, cycles = 0;
+    int reversed = 0, cycles = 0;
     double lastRate = 1.0;
     bool lastRaster = false;
+    double lastLenNorm = -1.0, lastPosNorm = -1.0;
+    bool lastSyncFlag = false, lastSyncToggle = true;
+    int lenEvents = 0, posEvents = 0, syncToggles = 0;
 
-    row.onDoubleLength = [&] { ++doubled; };
-    row.onHalveLength = [&] { ++halved; };
     row.onReverseToggled = [&] { ++reversed; };
-    row.onResetWithSync = [&] { ++synced; };
     row.onTargetCycle = [&] { ++cycles; };
     row.onRateChanged = [&] (double rate) { lastRate = rate; };
     row.onRasterToggled = [&] (bool quantized) { lastRaster = quantized; };
+    row.onSyncFreeToggled = [&] (bool sync) { lastSyncToggle = sync; ++syncToggles; };
+    row.onLoopLenChanged = [&] (double norm, bool sync)
+    { lastLenNorm = norm; lastSyncFlag = sync; ++lenEvents; };
+    row.onLoopPosChanged = [&] (double norm, bool sync)
+    { lastPosNorm = norm; lastSyncFlag = sync; ++posEvents; };
 
     SECTION ("Ohne Aktiv-Clip sind die Clip-Controls wirkungslos (Übergabe §3)")
     {
         row.setClipControlsEnabled (false);
-        row.getDoubleTile().onClick();
-        row.getHalveTile().onClick();
         row.getReverseTile().onClick();
-        row.getSyncTile().onClick();
-        
-        REQUIRE (doubled + halved + reversed + synced == 0);
+        row.getLenKnob().setValue (0.5, juce::sendNotificationSync);
+        row.getPosKnob().setValue (0.5, juce::sendNotificationSync);
 
-        // Raster-Button bleibt bedienbar (Track-Eigenschaft, kein Clip nötig)
+        REQUIRE (reversed + lenEvents + posEvents == 0);
+
+        // Tape/Quant bleibt bedienbar (Track-Eigenschaft, kein Clip nötig)
         row.getRasterTile().onClick();
-        
+
         REQUIRE (lastRaster);
     }
 
-    SECTION ("Mit Aktiv-Clip feuern die Hooks")
+    SECTION ("Mit Aktiv-Clip feuern die Hooks; LEN/POS liefern Norm + Modus")
     {
         row.setClipControlsEnabled (true);
-        row.getDoubleTile().onClick();
-        row.getHalveTile().onClick();
         row.getReverseTile().onClick();
-        row.getSyncTile().onClick();
-        
-        REQUIRE (doubled == 1);
-        REQUIRE (halved == 1);
         REQUIRE (reversed == 1);
-        REQUIRE (synced == 1);
+
+        // Sync-Modus ist der Default; der Toggle meldet den Wechsel
+        REQUIRE (row.isSyncMode());
+        row.getSyncFreeTile().onClick();
+        REQUIRE (syncToggles == 1);
+        REQUIRE_FALSE (lastSyncToggle);
+        row.setSyncFree (false);   // Editor spiegelt zurück
+        REQUIRE_FALSE (row.isSyncMode());
+
+        row.getLenKnob().setValue (0.25, juce::sendNotificationSync);
+        REQUIRE (lenEvents == 1);
+        REQUIRE (lastLenNorm == Approx (0.25));
+        REQUIRE_FALSE (lastSyncFlag);   // Free-Modus aktiv
+
+        row.getPosKnob().setValue (0.6, juce::sendNotificationSync);
+        REQUIRE (posEvents == 1);
+        REQUIRE (lastPosNorm == Approx (0.6));
+
+        // Anzeige-Setter fassen die Knobs ohne Callback an
+        row.setLoopLenNorm (1.0, "4 Bars");
+        row.setLoopPosNorm (0.0, juce::String::fromUTF8 ("—"));
+        REQUIRE (lenEvents == 1);
+        REQUIRE (posEvents == 1);
+    }
+
+    SECTION ("LEN/POS-Mapping-Helfer: Sync-Raster + Free-Log")
+    {
+        using namespace conduit::looperui;
+        REQUIRE (syncFractionFromNorm (1.0) == Approx (1.0));
+        REQUIRE (syncFractionFromNorm (0.0) == Approx (0.125));
+        REQUIRE (syncFractionFromNorm (2.0 / 3.0) == Approx (0.5));
+        REQUIRE (syncNormFromFraction (0.25) == Approx (1.0 / 3.0));
+        REQUIRE (freeLenSecondsFromNorm (0.0) == Approx (0.05));
+        REQUIRE (freeLenSecondsFromNorm (1.0) == Approx (60.0));
+        REQUIRE (freeLenNormFromSeconds (freeLenSecondsFromNorm (0.4))
+                 == Approx (0.4));
     }
 
     SECTION ("VARI-Knob: Oktav-Mapping, Detent bei 1×, Rastung via snapFunction")

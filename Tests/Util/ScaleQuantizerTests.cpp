@@ -132,3 +132,19 @@ TEST_CASE ("ScaleQuantizer: quantize rastet in neuen Skalen korrekt", "[scale][b
     REQUIRE (scale::quantize (5.0f / 60.0f, 0, conduit::ScaleType::inSen)
              == Approx (5.0f / 60.0f));
 }
+
+//==============================================================================
+TEST_CASE ("ScaleQuantizer: degreeName — Intervall-Tabelle + Oktaven", "[scale]")
+{
+    using conduit::scale::degreeName;
+
+    REQUIRE (degreeName (0) == "1");
+    REQUIRE (degreeName (3) == juce::String::fromUTF8 ("\xe2\x99\xad""3"));
+    REQUIRE (degreeName (7) == "5");
+    REQUIRE (degreeName (11) == "7");
+    REQUIRE (degreeName (12) == "1+8va");
+    REQUIRE (degreeName (15) == juce::String::fromUTF8 ("\xe2\x99\xad""3+8va"));
+    REQUIRE (degreeName (24) == "1+28va");
+    REQUIRE (degreeName (-3) == juce::String::fromUTF8 ("\xe2\x88\x92\xe2\x99\xad""3"));
+    REQUIRE (degreeName (-12) == juce::String::fromUTF8 ("\xe2\x88\x92") + "1+8va");
+}

@@ -150,6 +150,34 @@ namespace scale
         return (maskFor (type) & (1 << (((semitoneAboveRoot % 12) + 12) % 12))) != 0;
     }
 
+    /** Skalen-Stufen-Anzeige (VARI Display „Scale Degrees", 07/2026):
+        Intervall-Name relativ zum Grundton über die feste ♭-Tabelle
+        (0 = „1", 3 = „♭3", 7 = „5" …) — bewusst skalen-unabhängig
+        (Intervall-Semantik). Oktav-Überträge als „8va"-Suffix, negative
+        Offsets mit „−"-Präfix. */
+    [[nodiscard]] inline juce::String degreeName (int semitoneOffset)
+    {
+        static const char* const intervalNames[12] = {
+            "1", "\xe2\x99\xad""2", "2", "\xe2\x99\xad""3", "3", "4",
+            "\xe2\x99\xad""5", "5", "\xe2\x99\xad""6", "6", "\xe2\x99\xad""7", "7"
+        };
+
+        const auto magnitude = semitoneOffset < 0 ? -semitoneOffset : semitoneOffset;
+        auto text = juce::String::fromUTF8 (intervalNames[magnitude % 12]);
+
+        if (const auto octaves = magnitude / 12; octaves > 0)
+        {
+            text << "+";
+            if (octaves > 1)
+                text << juce::String (octaves);
+            text << "8va";
+        }
+
+        if (semitoneOffset < 0)
+            text = juce::String::fromUTF8 ("\xe2\x88\x92") + text;
+        return text;
+    }
+
     /** Quantisiert einen CV-Wert (0–1) auf den nächstgelegenen Skalenton —
         pure function, allocation-free, Audio-Thread-tauglich. Bei Gleichstand
         gewinnt der höhere Ton. Wiederverwendbar für ein späteres

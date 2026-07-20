@@ -42,6 +42,8 @@ public:
     std::function<void (int trackIndex, int sendIndex, float level01)> onTrackSendLevel;
     std::function<void (int trackIndex, bool muted)> onTrackMute;
     std::function<void (int trackIndex, bool solo)> onTrackSolo;
+    std::function<void (int trackIndex)> onTrackPlay;        // ▶ Footer
+    std::function<void (int trackIndex)> onTrackResetSync;   // Long-Press ▶
     std::function<void (int trackIndex)> onTrackStop;
     std::function<void (int trackIndex)> onTrackHeaderLongPress;
     std::function<void (int trackIndex)> onTrackHeaderTapped;   // M7: Delete-Geste

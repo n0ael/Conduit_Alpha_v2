@@ -232,6 +232,12 @@ private:
     // TARGET-Halten pro Looper (Aktiv-Auswahl statt Launch, Übergabe §2)
     std::array<bool, 4> looperTargetHold {};
 
+    // Sync/Free-Modus der LEN/POS-Potis pro Looper (VIEW-Zustand, 07/2026)
+    std::array<bool, 4> looperLenSync { true, true, true, true };
+
+    /** LEN/POS-Knob-Positionen + Anzeigen aus dem Aktiv-Clip nachziehen. */
+    void refreshLooperLenPos (int looperIndex);
+
     // M7: Header-Gesten der Looper-Page (Delete/Save halten + Ziel
     // antippen; Delete optional als Latch — Menü-Option für Nicht-Touch)
     enum class LooperGesture { none, deleteClips, saveClips };

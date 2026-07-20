@@ -1022,6 +1022,54 @@ void EngineEditor::wireLooperPanels()
                 l, t, launchQuantBeats (engine.getLooperSettings().getLaunchQuant()));
         };
 
+        // Footer-Play (07/2026): startet den aktiven, sonst den ersten
+        // belegten Slot des Tracks — synchron am Launch-Grid
+        panel.onTrackPlay = [this, l] (int t)
+        {
+            auto& session = engine.getLooperSession();
+            const auto qBeats = launchQuantBeats (
+                engine.getLooperSettings().getLaunchQuant());
+
+            auto slot = -1;
+            if (const auto active = session.getActiveSlot (l);
+                active.isValid() && active.track == t
+                && session.clipAt (l, t, active.slot) != nullptr)
+                slot = active.slot;
+            else
+                for (int s = 0; s < LooperSessionModel::maxSlots; ++s)
+                    if (session.clipAt (l, t, s) != nullptr)
+                    {
+                        slot = s;
+                        break;
+                    }
+
+            if (slot < 0)
+                return;
+            if (const auto result = session.startSlot (l, t, slot, qBeats);
+                result.failed())
+                captureToast.show (result.getErrorMessage());
+        };
+
+        // Long-Press auf ▶ = ReSet (Rate 1×, vorwärts-Anker, Re-Sync) —
+        // wirkt auf den spielenden Clip des Tracks, sonst den Aktiv-Clip
+        panel.onTrackResetSync = [this, l] (int t)
+        {
+            auto& session = engine.getLooperSession();
+            LooperClip* clip = nullptr;
+            if (const auto playing = session.getPlayingSlot (l, t); playing >= 0)
+                clip = session.clipAt (l, t, playing);
+            if (clip == nullptr)
+                if (const auto active = session.getActiveSlot (l);
+                    active.isValid() && active.track == t)
+                    clip = session.clipAt (l, t, active.slot);
+
+            if (clip != nullptr)
+            {
+                engine.getLooperBank().resetClipWithSync (*clip);
+                looperPage.getPanel (l).getControls().setRate (1.0);
+            }
+        };
+
         panel.onAddTrack = [this, l]
         {
             auto& looperSettings = engine.getLooperSettings();
@@ -1042,37 +1090,80 @@ void EngineEditor::wireLooperPanels()
         // ── Clip-Controls (wirken auf den Aktiv-Clip, Übergabe §2) ──────
         auto& controls = panel.getControls();
 
-        controls.onDoubleLength = [this, l]
+        // LEN/POS-Potis (07/2026): die Row liefert die Knob-NORM, hier
+        // wird mit Clip-Info in Content-Beats umgerechnet (Sync: Raster
+        // /8 /4 /2 /1 bzw. fensterweise · Free: 50 ms–60 s bzw. ms)
+        controls.setSyncFree (looperLenSync[(size_t) l]);
+        controls.onSyncFreeToggled = [this, l] (bool sync)
         {
-            if (auto* clip = engine.getLooperSession().getActiveClip (l))
-                engine.getLooperBank().multiplyClipLength (*clip, true,
-                                         engine.getLooperSettings().getHalveMode());
+            looperLenSync[(size_t) l] = sync;
+            looperPage.getPanel (l).getControls().setSyncFree (sync);
+            refreshLooperLenPos (l);
         };
-        controls.onHalveLength = [this, l]
+        controls.onLoopLenChanged = [this, l] (double norm, bool sync)
         {
-            if (auto* clip = engine.getLooperSession().getActiveClip (l))
-                engine.getLooperBank().multiplyClipLength (*clip, false,
-                                         engine.getLooperSettings().getHalveMode());
+            auto* clip = engine.getLooperSession().getActiveClip (l);
+            if (clip == nullptr || clip->contentBeats <= 0.0)
+                return;
+
+            const auto beats = sync
+                ? clip->contentBeats * looperui::syncFractionFromNorm (norm)
+                : looperui::freeLenSecondsFromNorm (norm) * engine.getSampleRate()
+                      / juce::jmax (1.0, clip->samplesPerBeatRecorded);
+            engine.getLooperBank().setClipLengthBeats (*clip, beats,
+                                       engine.getLooperSettings().getHalveMode());
+            refreshLooperLenPos (l);
         };
+        controls.onLoopPosChanged = [this, l] (double norm, bool sync)
+        {
+            auto* clip = engine.getLooperSession().getActiveClip (l);
+            if (clip == nullptr || clip->contentBeats <= 0.0)
+                return;
+
+            const auto length = clip->stagedLengthBeats.load (std::memory_order_relaxed);
+            const auto maxOffset = juce::jmax (0.0, clip->contentBeats - length);
+            auto offset = norm * maxOffset;
+            if (sync && length > 0.0)
+                offset = juce::jlimit (0.0, maxOffset,
+                                       std::round (offset / length) * length);
+            engine.getLooperBank().setClipWindowOffsetBeats (*clip, offset);
+            refreshLooperLenPos (l);
+        };
+
         controls.onReverseToggled = [this, l]
         {
             if (auto* clip = engine.getLooperSession().getActiveClip (l))
+            {
+                const auto mode = engine.getLooperSettings().getReverseMode();
                 engine.getLooperBank().toggleClipReverse (*clip,
-                                        engine.getLooperSettings().getReverseMode()
-                                            == LooperSettings::ReverseMode::boundary);
+                    mode == LooperSettings::ReverseMode::boundary,
+                    mode == LooperSettings::ReverseMode::quantized
+                        ? launchQuantBeats (engine.getLooperSettings().getLaunchQuant())
+                        : 0.0);
+            }
         };
         controls.onRateChanged = [this, l] (double rate)
         {
             if (auto* clip = engine.getLooperSession().getActiveClip (l))
                 engine.getLooperBank().setClipRate (*clip, rate);
         };
-        controls.onResetWithSync = [this, l]
+
+        // VARI Display (Quant): „+3 st" oder Skalen-Stufe „♭3", solange
+        // die Rate auf einem Halbton rastet — sonst Faktor-Anzeige
+        controls.rateFormatter = [this] (double rate)
         {
-            if (auto* clip = engine.getLooperSession().getActiveClip (l))
+            const auto semis = std::log2 (juce::jmax (1.0e-6, rate)) * 12.0;
+            const auto nearest = std::round (semis);
+            if (std::abs (semis - nearest) < 0.05)
             {
-                engine.getLooperBank().resetClipWithSync (*clip);
-                looperPage.getPanel (l).getControls().setRate (1.0);
+                const auto n = (int) nearest;
+                if (engine.getLooperSettings().getVariDisplay()
+                        == LooperSettings::VariDisplay::scaleDegrees)
+                    return scale::degreeName (n);
+                return (n >= 0 ? juce::String ("+") : juce::String())
+                     + juce::String (n) + " st";
             }
+            return juce::String (rate, 2) + juce::String::fromUTF8 ("×");
         };
 
         controls.onRasterToggled = [this, l] (bool quantized)
@@ -1120,6 +1211,55 @@ void EngineEditor::wireLooperPanels()
 
     // Nach dem Neuaufbau Quellen-Listen + Zustände nachziehen
     rebuildLooperSources();
+}
+
+void EngineEditor::refreshLooperLenPos (int looperIndex)
+{
+    auto& controls = looperPage.getPanel (looperIndex).getControls();
+    auto* clip = engine.getLooperSession().getActiveClip (looperIndex);
+    if (clip == nullptr || clip->contentBeats <= 0.0)
+    {
+        controls.setLoopLenNorm (1.0, {});
+        controls.setLoopPosNorm (0.0, {});
+        return;
+    }
+
+    const auto sync = looperLenSync[(size_t) juce::jlimit (0, 3, looperIndex)];
+    const auto length = clip->stagedLengthBeats.load (std::memory_order_relaxed);
+    const auto window = clip->stagedWindowOffsetBeats.load (std::memory_order_relaxed);
+    const auto lengthSeconds = length * juce::jmax (1.0, clip->samplesPerBeatRecorded)
+                             / juce::jmax (1.0, engine.getSampleRate());
+
+    const auto secondsText = [] (double seconds)
+    {
+        return seconds < 1.0
+             ? juce::String ((int) std::lround (seconds * 1000.0)) + " ms"
+             : juce::String (seconds, 2) + " s";
+    };
+
+    // LEN: gerastert „/n" bzw. Takte, frei in s·ms
+    const auto divisor = looper::lengthDivisor (clip->contentBeats, length);
+    if (sync && divisor > 0)
+        controls.setLoopLenNorm (
+            looperui::syncNormFromFraction (1.0 / divisor),
+            divisor > 1 ? "/" + juce::String (divisor)
+                        : juce::String (clip->commitBars)
+                              + (clip->commitBars == 1 ? " Bar" : " Bars"));
+    else
+        controls.setLoopLenNorm (looperui::freeLenNormFromSeconds (lengthSeconds),
+                                 secondsText (lengthSeconds));
+
+    // POS: fensterweise „+k" bzw. ms; „—" am Content-Anfang
+    const auto maxOffset = juce::jmax (0.0, clip->contentBeats - length);
+    const auto posNorm = maxOffset > 0.0 ? window / maxOffset : 0.0;
+    juce::String posText = juce::String::fromUTF8 ("—");
+    if (window > 1.0e-6)
+        posText = sync && length > 0.0
+                ? "+" + juce::String ((int) std::lround (window / length))
+                : "+" + secondsText (window
+                                     * juce::jmax (1.0, clip->samplesPerBeatRecorded)
+                                     / juce::jmax (1.0, engine.getSampleRate()));
+    controls.setLoopPosNorm (posNorm, posText);
 }
 
 void EngineEditor::removeLooperTrack (int looperIndex, int trackIndex)
@@ -1233,7 +1373,12 @@ void EngineEditor::handleLooperSlotTap (int looperIndex, int trackIndex, int slo
         return;
     }
 
-    const auto qBeats = launchQuantBeats (settings.getLaunchQuant());
+    // Legato (07/2026): sofortiger, phasenstarrer Wechsel (qBeats 0 —
+    // der 5-ms-Voice-Crossfade deckt die Naht); Tap auf den spielenden
+    // Clip ist dann ein No-op
+    const auto legato = settings.getTapMode() == LooperSettings::TapMode::legato;
+    const auto qBeats = legato ? 0.0
+                               : launchQuantBeats (settings.getLaunchQuant());
     juce::Result result = juce::Result::ok();
 
     if (session.getPlayingSlot (looperIndex, trackIndex) == slotIndex)
@@ -1241,7 +1386,7 @@ void EngineEditor::handleLooperSlotTap (int looperIndex, int trackIndex, int slo
         // Tap auf den SPIELENDEN Clip: Verhalten aus dem Menü
         if (settings.getTapMode() == LooperSettings::TapMode::toggleStop)
             session.stopTrack (looperIndex, trackIndex, qBeats);
-        else
+        else if (! legato)
             result = session.retriggerSlot (looperIndex, trackIndex, slotIndex, qBeats);
     }
     else
@@ -1603,6 +1748,21 @@ void EngineEditor::refreshLooperStatus (bool devMode)
                     if (std::abs (rate - 1.0) > 1.0e-3)
                         state.rateBadge = juce::String (rate, 2) + juce::String::fromUTF8 ("×");
 
+                    // LEN/POS (07/2026): Fenster-Dimmung + „/n"-Badge
+                    if (clip->contentBeats > 0.0)
+                    {
+                        const auto lengthBeats =
+                            clip->stagedLengthBeats.load (std::memory_order_relaxed);
+                        const auto windowBeats =
+                            clip->stagedWindowOffsetBeats.load (std::memory_order_relaxed);
+                        state.loopStart01 = (float) (windowBeats / clip->contentBeats);
+                        state.loopLen01 = (float) (lengthBeats / clip->contentBeats);
+                        if (const auto divisor = looper::lengthDivisor (clip->contentBeats,
+                                                                        lengthBeats);
+                            divisor > 1)
+                            state.divBadge = "/" + juce::String (divisor);
+                    }
+
                     if (state.playing)
                     {
                         state.progress01 = clip->displayPhase01.load (std::memory_order_relaxed);
@@ -1667,11 +1827,13 @@ void EngineEditor::refreshLooperStatus (bool devMode)
                                      + juce::String::fromUTF8 (" · ")
                                      + juce::String (activeClip->commitBars)
                                      + (activeClip->commitBars == 1 ? " Bar" : " Bars"));
+            refreshLooperLenPos (l);
         }
         else
         {
             controls.setClipControlsEnabled (false);
             controls.setActiveLabel ({});
+            refreshLooperLenPos (l);
         }
     }
 

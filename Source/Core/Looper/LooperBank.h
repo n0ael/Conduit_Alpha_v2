@@ -166,9 +166,12 @@ public:
     [[nodiscard]] juce::Result setClipRate (int looperIndex, int trackIndex,
                                             double rate);
 
-    /** Reverse-Toggle; atBoundary = erst an der Loop-Grenze anwenden. */
+    /** Reverse-Toggle; atBoundary = erst an der Loop-Grenze anwenden;
+        quantBeats > 0 = erst im Block mit Grid-Übertritt (Reverse-Modus
+        „Quantized", Block-Granularität wie applyAtWrap). */
     [[nodiscard]] juce::Result toggleClipReverse (int looperIndex, int trackIndex,
-                                                  bool atBoundary);
+                                                  bool atBoundary,
+                                                  double quantBeats = 0.0);
 
     /** ×2 (doubleLength=true) / ÷2 — ändert NUR die Länge L (Clamps:
         ≥ 1 Takt, ≤ Content). ÷2-Hälfte nach HalveMode. */
@@ -197,7 +200,8 @@ public:
     // (TARGET-Halten kann JEDEN Clip wählen, nicht nur den spielenden)
 
     void setClipRate (LooperClip& clip, double rate) noexcept;
-    void toggleClipReverse (LooperClip& clip, bool atBoundary) noexcept;
+    void toggleClipReverse (LooperClip& clip, bool atBoundary,
+                            double quantBeats = 0.0) noexcept;
     void multiplyClipLength (LooperClip& clip, bool doubleLength,
                              looper::HalveMode halveMode) noexcept;
     void resetClipWithSync (LooperClip& clip) noexcept;
@@ -425,7 +429,8 @@ private:
     /** Kompletten Staged-Satz schreiben + Version bumpen [MT]. */
     static void stageClipParams (LooperClip& clip, double rate, double lengthBeats,
                                  double windowOffsetBeats, bool reversed,
-                                 bool followPhase, bool atWrap, bool resetGrid) noexcept;
+                                 bool followPhase, bool atWrap, bool resetGrid,
+                                 double quantBeats = 0.0) noexcept;
 
     /** Kanal chunked in den Clip-Buffer lesen (Export-Halte-Protokoll) [MT]. */
     static void readChannelChunked (const CaptureChannel* channel,

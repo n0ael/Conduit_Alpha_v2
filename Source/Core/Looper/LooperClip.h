@@ -73,6 +73,8 @@ struct LooperClip
     std::atomic<bool> windowFollowsPhase { false };  // ÷2 „aktuelle Hälfte": Fenster aus Apply-Phase
     std::atomic<bool> applyAtWrap { false };         // Reverse-Modus „an der Loop-Grenze"
     std::atomic<bool> resetAnchorToGrid { false };   // „Reset mit Sync": Anker → commitEndBeat
+    std::atomic<double> stagedApplyQuantBeats { 0.0 };  // Reverse „Quantized": Anwendung
+                                                        // erst im Block mit Grid-Übertritt (0 = sofort)
 
     std::atomic<std::uint32_t> paramVersion { 0 };
 

@@ -61,11 +61,15 @@ public:
     static constexpr int maxVisibleSlots = 12;
     static constexpr int defaultVisibleSlots = 8;
 
-    enum class TapMode : int { retrigger = 0, toggleStop };
-    enum class ReverseMode : int { immediate = 0, boundary };
+    enum class TapMode : int { retrigger = 0, toggleStop, legato };
+    enum class ReverseMode : int { immediate = 0, boundary, quantized };
     enum class VariRaster : int { semitones = 0, sessionScale };
-    enum class VariScope : int { perTrack = 0, perLooper };
+    enum class VariScope : int { perTrack = 0, perLooper, globalScope };
     enum class SoloScope : int { perLooper = 0, globalScope };
+
+    /** Anzeige der VARI-Rastung (Panel-Option „VARI Display (Quant)"):
+        Halbtöne („+3 st") oder Skalen-Stufen („♭3") — reine UI-Option. */
+    enum class VariDisplay : int { semitones = 0, scaleDegrees };
 
     /** Eigene Datei neben Conduit.settings (Muster ChannelNames). */
     [[nodiscard]] static juce::PropertiesFile::Options defaultOptions();
@@ -115,6 +119,30 @@ public:
 
     [[nodiscard]] bool isAutoAdvanceEnabled() const noexcept { return autoAdvance; }
     void setAutoAdvanceEnabled (bool enabled);
+
+    [[nodiscard]] VariDisplay getVariDisplay() const noexcept { return variDisplay; }
+    void setVariDisplay (VariDisplay display);
+
+    /** Sichtbare Send-Anzahl 0..4 (MIXER-Tab „+ Send / −") — reine
+        UI-Option, die Engine rendert immer alle 4 Send-Busse (ADR 012). */
+    [[nodiscard]] int getSendCount() const noexcept { return sendCount; }
+    void setSendCount (int count);
+
+    // DISPLAY-Optionen (UI-only): Mixer-Elemente ausblendbar —
+    // Use-Case „erst MIDI-mappen, dann verstecken"
+    [[nodiscard]] bool isShowStopAll() const noexcept { return showStopAll; }
+    void setShowStopAll (bool show);
+
+    [[nodiscard]] bool isHideMuteSolo() const noexcept { return hideMuteSolo; }
+    void setHideMuteSolo (bool hide);
+
+    [[nodiscard]] bool isHideMixerXy() const noexcept { return hideMixerXy; }
+    void setHideMixerXy (bool hide);
+
+    /** Collapse-Bitmaske der Seitenpanel-Sektionen (VIEW-Zustand,
+        Muster id::outCollapsed — Bit gesetzt = Sektion zu). */
+    [[nodiscard]] int getPanelCollapsedMask() const noexcept { return panelCollapsed; }
+    void setPanelCollapsedMask (int mask);
 
     [[nodiscard]] int getNumLoopers() const noexcept { return numLoopers; }
     void setNumLoopers (int count);
@@ -250,6 +278,12 @@ private:
     bool deleteLatch = false;
     bool autoAdvance = true;
     int numLoopers = 1;
+    VariDisplay variDisplay = VariDisplay::semitones;
+    int sendCount = 4;
+    bool showStopAll = true;
+    bool hideMuteSolo = false;
+    bool hideMixerXy = false;
+    int panelCollapsed = 0;
 
     std::array<LooperState, static_cast<std::size_t> (maxLoopers)> loopers;
     DistanceState distanceState;

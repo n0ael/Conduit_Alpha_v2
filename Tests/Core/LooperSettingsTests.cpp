@@ -227,6 +227,46 @@ TEST_CASE ("LooperSettings: Send-Level — Roundtrip + Legacy-Bitmasken-Migratio
     }
 }
 
+TEST_CASE ("LooperSettings: Panel-Optionen 07/2026 — Defaults + Roundtrip", "[looper]")
+{
+    juce::ScopedJuceInitialiser_GUI juceRuntime;
+    TempSettings temp;
+
+    {
+        LooperSettings settings { temp.options() };
+
+        REQUIRE (settings.getVariDisplay() == LooperSettings::VariDisplay::semitones);
+        REQUIRE (settings.getSendCount() == 4);
+        REQUIRE (settings.isShowStopAll());
+        REQUIRE_FALSE (settings.isHideMuteSolo());
+        REQUIRE_FALSE (settings.isHideMixerXy());
+        REQUIRE (settings.getPanelCollapsedMask() == 0);
+
+        settings.setTapMode (LooperSettings::TapMode::legato);
+        settings.setReverseMode (LooperSettings::ReverseMode::quantized);
+        settings.setVariScope (LooperSettings::VariScope::globalScope);
+        settings.setVariDisplay (LooperSettings::VariDisplay::scaleDegrees);
+        settings.setSendCount (2);
+        settings.setShowStopAll (false);
+        settings.setHideMuteSolo (true);
+        settings.setHideMixerXy (true);
+        settings.setPanelCollapsedMask (0b101);
+        settings.setSendCount (99);   // clampt auf 4
+        settings.flush();
+    }
+
+    LooperSettings reloaded { temp.options() };
+    REQUIRE (reloaded.getTapMode() == LooperSettings::TapMode::legato);
+    REQUIRE (reloaded.getReverseMode() == LooperSettings::ReverseMode::quantized);
+    REQUIRE (reloaded.getVariScope() == LooperSettings::VariScope::globalScope);
+    REQUIRE (reloaded.getVariDisplay() == LooperSettings::VariDisplay::scaleDegrees);
+    REQUIRE (reloaded.getSendCount() == 4);
+    REQUIRE_FALSE (reloaded.isShowStopAll());
+    REQUIRE (reloaded.isHideMuteSolo());
+    REQUIRE (reloaded.isHideMixerXy());
+    REQUIRE (reloaded.getPanelCollapsedMask() == 0b101);
+}
+
 TEST_CASE ("LooperSettings: Distanz — Defaults, Clamps, Roundtrip, Y-Link", "[looper]")
 {
     juce::ScopedJuceInitialiser_GUI juceRuntime;

@@ -71,20 +71,33 @@ void LooperSettings::loadFromFile()
 
     launchQuant = launchQuantFromKey (xml->getStringAttribute ("launchQuant").toStdString(),
                                       LaunchQuant::bar1);
-    tapMode = xml->getStringAttribute ("tapMode") == "stop" ? TapMode::toggleStop
-                                                            : TapMode::retrigger;
+    {
+        const auto tap = xml->getStringAttribute ("tapMode");
+        tapMode = tap == "stop"   ? TapMode::toggleStop
+                : tap == "legato" ? TapMode::legato
+                                  : TapMode::retrigger;
+    }
     halveMode = xml->getStringAttribute ("halveMode") == "current"
               ? looper::HalveMode::currentHalf
               : looper::HalveMode::firstHalf;
-    reverseMode = xml->getStringAttribute ("reverseMode") == "boundary"
-                ? ReverseMode::boundary
-                : ReverseMode::immediate;
+    {
+        const auto reverse = xml->getStringAttribute ("reverseMode");
+        reverseMode = reverse == "boundary" ? ReverseMode::boundary
+                    : reverse == "quant"    ? ReverseMode::quantized
+                                            : ReverseMode::immediate;
+    }
     variRaster = xml->getStringAttribute ("variRaster") == "scale"
                ? VariRaster::sessionScale
                : VariRaster::semitones;
-    variScope = xml->getStringAttribute ("variScope") == "looper"
-              ? VariScope::perLooper
-              : VariScope::perTrack;
+    {
+        const auto scope = xml->getStringAttribute ("variScope");
+        variScope = scope == "looper" ? VariScope::perLooper
+                  : scope == "global" ? VariScope::globalScope
+                                      : VariScope::perTrack;
+    }
+    variDisplay = xml->getStringAttribute ("variDisplay") == "degrees"
+                ? VariDisplay::scaleDegrees
+                : VariDisplay::semitones;
     soloScope = xml->getStringAttribute ("soloScope") == "global"
               ? SoloScope::globalScope
               : SoloScope::perLooper;
@@ -93,6 +106,11 @@ void LooperSettings::loadFromFile()
     deleteLatch = xml->getBoolAttribute ("deleteLatch", false);
     autoAdvance = xml->getBoolAttribute ("autoAdvance", true);
     numLoopers = juce::jlimit (1, maxLoopers, xml->getIntAttribute ("numLoopers", 1));
+    sendCount = juce::jlimit (0, 4, xml->getIntAttribute ("sendCount", 4));
+    showStopAll = xml->getBoolAttribute ("showStopAll", true);
+    hideMuteSolo = xml->getBoolAttribute ("hideMuteSolo", false);
+    hideMixerXy = xml->getBoolAttribute ("hideMixerXy", false);
+    panelCollapsed = xml->getIntAttribute ("panelCollapsed", 0);
 
     distanceState.hiDumpDb   = juce::jlimit (0.0f, 18.0f,
         (float) xml->getDoubleAttribute ("distHiDump", 9.0));
@@ -169,19 +187,32 @@ void LooperSettings::writeAndNotify()
     juce::XmlElement xml (xmlRoot.toString());
 
     xml.setAttribute ("launchQuant", launchQuantKey (launchQuant));
-    xml.setAttribute ("tapMode", tapMode == TapMode::toggleStop ? "stop" : "retrigger");
+    xml.setAttribute ("tapMode", tapMode == TapMode::toggleStop ? "stop"
+                                 : tapMode == TapMode::legato   ? "legato"
+                                                                : "retrigger");
     xml.setAttribute ("halveMode",
                       halveMode == looper::HalveMode::currentHalf ? "current" : "first");
     xml.setAttribute ("reverseMode",
-                      reverseMode == ReverseMode::boundary ? "boundary" : "immediate");
+                      reverseMode == ReverseMode::boundary  ? "boundary"
+                      : reverseMode == ReverseMode::quantized ? "quant"
+                                                              : "immediate");
     xml.setAttribute ("variRaster",
                       variRaster == VariRaster::sessionScale ? "scale" : "semi");
-    xml.setAttribute ("variScope", variScope == VariScope::perLooper ? "looper" : "track");
+    xml.setAttribute ("variScope", variScope == VariScope::perLooper ? "looper"
+                                   : variScope == VariScope::globalScope ? "global"
+                                                                         : "track");
+    xml.setAttribute ("variDisplay",
+                      variDisplay == VariDisplay::scaleDegrees ? "degrees" : "semi");
     xml.setAttribute ("soloScope", soloScope == SoloScope::globalScope ? "global" : "looper");
     xml.setAttribute ("visibleSlots", visibleSlots);
     xml.setAttribute ("deleteLatch", deleteLatch);
     xml.setAttribute ("autoAdvance", autoAdvance);
     xml.setAttribute ("numLoopers", numLoopers);
+    xml.setAttribute ("sendCount", sendCount);
+    xml.setAttribute ("showStopAll", showStopAll);
+    xml.setAttribute ("hideMuteSolo", hideMuteSolo);
+    xml.setAttribute ("hideMixerXy", hideMixerXy);
+    xml.setAttribute ("panelCollapsed", panelCollapsed);
 
     xml.setAttribute ("distHiDump", distanceState.hiDumpDb);
     xml.setAttribute ("distHiCut", distanceState.hiCutHz);
@@ -303,6 +334,55 @@ void LooperSettings::setAutoAdvanceEnabled (bool enabled)
     if (autoAdvance == enabled)
         return;
     autoAdvance = enabled;
+    writeAndNotify();
+}
+
+void LooperSettings::setVariDisplay (VariDisplay display)
+{
+    if (variDisplay == display)
+        return;
+    variDisplay = display;
+    writeAndNotify();
+}
+
+void LooperSettings::setSendCount (int count)
+{
+    const auto clamped = juce::jlimit (0, 4, count);
+    if (sendCount == clamped)
+        return;
+    sendCount = clamped;
+    writeAndNotify();
+}
+
+void LooperSettings::setShowStopAll (bool show)
+{
+    if (showStopAll == show)
+        return;
+    showStopAll = show;
+    writeAndNotify();
+}
+
+void LooperSettings::setHideMuteSolo (bool hide)
+{
+    if (hideMuteSolo == hide)
+        return;
+    hideMuteSolo = hide;
+    writeAndNotify();
+}
+
+void LooperSettings::setHideMixerXy (bool hide)
+{
+    if (hideMixerXy == hide)
+        return;
+    hideMixerXy = hide;
+    writeAndNotify();
+}
+
+void LooperSettings::setPanelCollapsedMask (int mask)
+{
+    if (panelCollapsed == mask)
+        return;
+    panelCollapsed = mask;
     writeAndNotify();
 }
 

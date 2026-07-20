@@ -402,6 +402,47 @@ TEST_CASE ("LooperBank: Looper-I/O-Busse — AudioView, sendToMaster, Kein Maste
 
 }
 
+TEST_CASE ("LooperBank: Reverse quantized wartet auf den Grid-Übertritt", "[looper]")
+{
+    BankRig rig;
+    rig.signal = [] (std::uint64_t pos)
+    { return 0.5f * static_cast<float> (pos % 24000) / 24000.0f; };
+
+    rig.feedBars (2.5);
+    REQUIRE (rig.commit (1).wasOk());
+    rig.feedBlocks (4);
+
+    // Mehrheits-Richtung der Sägezahn-Flanken im letzten Block
+    const auto direction = [&]
+    {
+        const auto* data = rig.output.getReadPointer (0);
+        int up = 0, down = 0;
+        for (int i = 1; i < blockSize; ++i)
+        {
+            if (data[i] > data[i - 1]) ++up;
+            else if (data[i] < data[i - 1]) ++down;
+        }
+        return up - down;
+    };
+
+    // Direkt hinter eine Taktgrenze fahren (Abstand zur nächsten ist groß)
+    while (std::fmod (rig.beat, 4.0) > 0.1)
+        rig.feedBlocks (1);
+    rig.feedBlocks (2);
+
+    REQUIRE (direction() > 0);   // vorwärts: Säge steigt
+
+    REQUIRE (rig.bank.toggleClipReverse (0, 0, false, 4.0).wasOk());
+    rig.feedBlocks (5);
+    REQUIRE (direction() > 0);   // staged, aber noch NICHT aktiv (kein Übertritt)
+
+    // Bis kurz hinter die nächste Taktgrenze füttern
+    const auto blocksToBar = static_cast<int> (
+        std::ceil ((4.0 - std::fmod (rig.beat, 4.0)) / 0.02)) + 3;
+    rig.feedBlocks (blocksToBar);
+    REQUIRE (direction() < 0);   // jetzt rückwärts: Säge fällt
+}
+
 TEST_CASE ("LooperBank: LEN/POS — stufenloses Loop-Fenster", "[looper]")
 {
     BankRig rig;

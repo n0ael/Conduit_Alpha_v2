@@ -416,7 +416,8 @@ bool LooperBank::getClipInfo (int looperIndex, int trackIndex, ClipInfo& out) co
 
 void LooperBank::stageClipParams (LooperClip& clip, double rate, double lengthBeats,
                                   double windowOffsetBeats, bool reversed,
-                                  bool followPhase, bool atWrap, bool resetGrid) noexcept
+                                  bool followPhase, bool atWrap, bool resetGrid,
+                                  double quantBeats) noexcept
 {
     clip.stagedRate.store (rate, std::memory_order_relaxed);
     clip.stagedLengthBeats.store (lengthBeats, std::memory_order_relaxed);
@@ -425,6 +426,7 @@ void LooperBank::stageClipParams (LooperClip& clip, double rate, double lengthBe
     clip.windowFollowsPhase.store (followPhase, std::memory_order_relaxed);
     clip.applyAtWrap.store (atWrap, std::memory_order_relaxed);
     clip.resetAnchorToGrid.store (resetGrid, std::memory_order_relaxed);
+    clip.stagedApplyQuantBeats.store (quantBeats, std::memory_order_relaxed);
     clip.paramVersion.fetch_add (1, std::memory_order_release);
 }
 
@@ -438,14 +440,16 @@ void LooperBank::setClipRate (LooperClip& clip, double rate) noexcept
                      false, false, false);
 }
 
-void LooperBank::toggleClipReverse (LooperClip& clip, bool atBoundary) noexcept
+void LooperBank::toggleClipReverse (LooperClip& clip, bool atBoundary,
+                                    double quantBeats) noexcept
 {
     stageClipParams (clip,
                      clip.stagedRate.load (std::memory_order_relaxed),
                      clip.stagedLengthBeats.load (std::memory_order_relaxed),
                      clip.stagedWindowOffsetBeats.load (std::memory_order_relaxed),
                      ! clip.stagedReversed.load (std::memory_order_relaxed),
-                     false, atBoundary, false);
+                     false, atBoundary, false,
+                     juce::jmax (0.0, quantBeats));
 }
 
 void LooperBank::multiplyClipLength (LooperClip& clip, bool doubleLength,
@@ -549,13 +553,14 @@ juce::Result LooperBank::setClipRate (int looperIndex, int trackIndex, double ra
     return juce::Result::ok();
 }
 
-juce::Result LooperBank::toggleClipReverse (int looperIndex, int trackIndex, bool atBoundary)
+juce::Result LooperBank::toggleClipReverse (int looperIndex, int trackIndex,
+                                            bool atBoundary, double quantBeats)
 {
     auto* clip = activeClipFor (looperIndex, trackIndex);
     if (clip == nullptr)
         return juce::Result::fail ("Kein Clip auf diesem Track");
 
-    toggleClipReverse (*clip, atBoundary);
+    toggleClipReverse (*clip, atBoundary, quantBeats);
     return juce::Result::ok();
 }
 
@@ -1095,6 +1100,17 @@ void LooperBank::applyClipParams (LooperClip& clip, double blockStartBeat,
                 blockStartBeat + beatStep * numSamples, clip.activeAnchorBeat,
                 clip.activeRate, clip.activeLengthBeats);
             defer = phaseEnd >= phaseStart;
+        }
+
+        // Reverse-Modus „Quantized": erst im Block mit Grid-Übertritt
+        // anwenden (Block-Granularität wie applyAtWrap; die Spiegelung
+        // selbst deckt der Splice-Duck)
+        if (! defer)
+        {
+            const auto quantBeats = clip.stagedApplyQuantBeats.load (std::memory_order_relaxed);
+            if (quantBeats > 0.0)
+                defer = looper::gridCrossingOffset (blockStartBeat, beatStep,
+                                                    numSamples, quantBeats) < 0;
         }
 
         if (! defer)

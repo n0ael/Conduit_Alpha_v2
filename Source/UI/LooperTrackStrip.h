@@ -1,5 +1,6 @@
 #pragma once
 
+#include <array>
 #include <functional>
 #include <vector>
 
@@ -9,6 +10,98 @@
 
 namespace conduit
 {
+
+namespace looperui
+{
+    /** Send-Farben S1–S4 (Handoff 20.07.2026): ● ■ ▲ ⬡. */
+    [[nodiscard]] inline juce::Colour sendColour (int sendIndex) noexcept
+    {
+        switch (sendIndex)
+        {
+            case 0:  return juce::Colour (0xffff8d28);
+            case 1:  return juce::Colour (0xff6155f5);
+            case 2:  return juce::Colour (0xff34c759);
+            default: return juce::Colour (0xff00c8b3);
+        }
+    }
+}
+
+//==============================================================================
+/**
+    XY-Panner des Track-Mixers (07/2026, Geometrie-Referenz „looper mixer
+    dark"-SVGs): X = Pan (L/C/R), Y = Distanz („FAR" oben). Der Puck
+    zeigt die Send-Farben des Tracks als Misch-Overlay (Alpha = Level).
+    Doppelklick = Reset (Center, Distanz 0). Kompakt-Variante (~56 px)
+    ohne FAR-Label und mit kleinerem Puck (3–4 Tracks pro Looper).
+    Reine UI: absolute Puck-Positionierung beim Ziehen, Hooks nach oben.
+*/
+class LooperXyPad final : public juce::Component
+{
+public:
+    LooperXyPad() { setName ("looperXyPad"); }
+
+    std::function<void (float pan, float distance01)> onChanged;
+
+    void setValues (float pan, float distance01);
+    [[nodiscard]] float getPan() const noexcept { return panValue; }
+    [[nodiscard]] float getDistance() const noexcept { return distanceValue; }
+
+    void setCompact (bool shouldBeCompact);
+    void setSendLevels (const std::array<float, 4>& levels, int visibleSendCount);
+
+    void paint (juce::Graphics& g) override;
+    void mouseDown (const juce::MouseEvent& event) override;
+    void mouseDrag (const juce::MouseEvent& event) override;
+    void mouseDoubleClick (const juce::MouseEvent& event) override;
+
+private:
+    void applyFromPosition (juce::Point<float> position, bool notify);
+
+    float panValue = 0.0f;        // −1..+1
+    float distanceValue = 0.0f;   // 0..1, „FAR" = 1
+    bool compact = false;
+    std::array<float, 4> sendLevels {};
+    int sendCount = 4;
+
+    JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (LooperXyPad)
+};
+
+//==============================================================================
+/**
+    Send-Kachel S1–S4 (07/2026): Form-Icon (● ■ ▲ ⬡) in der Send-Farbe,
+    Füllstand von unten = Send-Level; vertikal ziehen, Doppelklick = 0.
+    Optionales Text-Label „S1…" (nur bei 1 Track pro Looper); Y-Link-
+    Markierung als kleiner Punkt. 38-px-Optik in ≥44-px-Hit-Fläche.
+*/
+class LooperSendTile final : public juce::Component
+{
+public:
+    explicit LooperSendTile (int sendIndexToUse);
+
+    std::function<void (float level01)> onLevelChanged;
+
+    void setLevel (float level01);
+    [[nodiscard]] float getLevel() const noexcept { return level; }
+    void setShowLabel (bool show);
+    void setYLinked (bool linked);
+
+    void paint (juce::Graphics& g) override;
+    void mouseDown (const juce::MouseEvent& event) override;
+    void mouseDrag (const juce::MouseEvent& event) override;
+    void mouseDoubleClick (const juce::MouseEvent& event) override;
+
+private:
+    [[nodiscard]] juce::Path shapePath (juce::Rectangle<float> bounds) const;
+
+    int sendIndex;
+    float level = 0.0f;
+    bool showLabel = false;
+    bool yLinked = false;
+    float dragStartLevel = 0.0f;
+    juce::Point<int> dragStartPosition;
+
+    JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (LooperSendTile)
+};
 
 //==============================================================================
 /**
@@ -108,12 +201,14 @@ private:
 
 //==============================================================================
 /**
-    Track-Spalte eines Loopers (M6, Design-Mock 05.07.2026): Header
-    („TRACK n" + LED), Volume-Fader OBEN (VERTIKAL wischen — User-
-    Entscheidung; Anzeige horizontal: Marker-Linie über Post-Fader-Meter),
-    Pan-Zeile (Balance, horizontal ziehen, Doppelklick = Mitte), M/S-
-    Kacheln, Slot-Zellen (sichtbare Zahl aus den LooperSettings), Stop-
-    Kachel + Takt-Anzeige.
+    Track-Spalte eines Loopers (M6; Mixer-Umbau 07/2026): Header
+    („TRACK n" global + LED), Mitte-raus-STEREO-METER (RMS-Fläche +
+    Peak-Linie pro Seite, post-fader = bereits pan-gewichtet; VERTIKAL
+    wischen = Gain wie der frühere Fader), XY-Panner (X = Pan, Y =
+    Distanz), Send-Kacheln S1–S4 (Level von unten), M/S, Slot-Zellen,
+    Stop-Kachel + Takt-Anzeige. Die frühere Fader-/Pan-Zeile und die
+    SND-Kachel sind ERSETZT; Mute+Solo und XY sind global ausblendbar
+    (DISPLAY-Optionen — „erst mappen, dann verstecken").
 
     Reine UI (Muster TransportBar): Aktionen als Hooks, Zustand per
     Setter. Der Editor persistiert in die LooperSettings; die Engine folgt
@@ -132,10 +227,11 @@ public:
     //==========================================================================
     // Hooks [Page/Editor]
     std::function<void (float gain01)> onGainChanged;    // 0..1 (Unity = 1)
-    std::function<void (float pan)> onPanChanged;        // −1..+1
+    std::function<void (float pan)> onPanChanged;        // −1..+1 (XY-X)
+    std::function<void (float distance01)> onDistanceChanged;   // XY-Y („FAR" = 1)
+    std::function<void (int sendIndex, float level01)> onSendLevelChanged;
     std::function<void (bool muted)> onMuteToggled;
     std::function<void (bool solo)> onSoloToggled;
-    std::function<void()> onSendTileTapped;              // öffnet den Send-Dialog
     std::function<void()> onStop;
     std::function<void (int slotIndex)> onSlotTapped;
     std::function<void()> onHeaderLongPress;             // Track entfernen
@@ -152,15 +248,28 @@ public:
     [[nodiscard]] float getGain() const noexcept { return gain; }
     void setPan (float newPan);
     [[nodiscard]] float getPan() const noexcept { return pan; }
+    void setDistance (float distance01);
+    [[nodiscard]] float getDistance() const noexcept { return distance; }
     void setMute (bool muted);
     void setSolo (bool solo);
 
-    /** Send-Routing-Anzeige (Big Out): Kachel aktiv, sobald ein Send
-        gesetzt ist; Label zeigt PRE-Abgriff mit an. */
-    void setSendState (int sendMask, bool sendPre);
+    /** Send-Level S1–S4 (Kachel-Füllstand + Puck-Farb-Overlay). */
+    void setSendLevels (const std::array<float, 4>& levels);
+    /** Sichtbare Send-Anzahl (SENDS · GLOBAL, 0 = keine Kacheln). */
+    void setSendCount (int count);
+    /** Y-Link-Markierung (−1 = keiner). */
+    void setYLinkSend (int sendIndex);
+    /** Text-Labels „S1…" nur bei genau 1 Track pro Looper. */
+    void setSendLabelsVisible (bool visible);
 
-    /** [Editor-Timer] Post-Fader-Meter (RMS 0..1 pro Seite) + LED. */
-    void setMeter (float rmsLeft, float rmsRight, bool audible);
+    // DISPLAY-Optionen + Kompakt-Layout (Panel setzt nach Track-Zahl)
+    void setShowMuteSolo (bool show);
+    void setShowXy (bool show);
+    void setXyCompact (bool compact);
+
+    /** [Editor-Timer] Post-Fader-Meter (RMS + Peak 0..1 pro Seite) + LED. */
+    void setMeter (float rmsLeft, float rmsRight,
+                   float peakLeft, float peakRight, bool audible);
 
     /** [Editor-Timer] Takt-Anzeige: „2 / 4" + Pie; leer = „gestoppt". */
     void setBarDisplay (int currentBar, int totalBars, float progress01);
@@ -169,36 +278,48 @@ public:
 
     [[nodiscard]] push::TextTile& getMuteTile() noexcept { return muteTile; }
     [[nodiscard]] push::TextTile& getSoloTile() noexcept { return soloTile; }
-    [[nodiscard]] push::TextTile& getSendTile() noexcept { return sndTile; }
     [[nodiscard]] push::TextTile& getStopTile() noexcept { return stopTile; }
+    [[nodiscard]] LooperXyPad& getXyPad() noexcept { return xyPad; }
+    [[nodiscard]] LooperSendTile& getSendTile (int sendIndex);
 
     void paint (juce::Graphics& g) override;
     void resized() override;
     void mouseDown (const juce::MouseEvent& event) override;
     void mouseDrag (const juce::MouseEvent& event) override;
     void mouseUp (const juce::MouseEvent& event) override;
-    void mouseDoubleClick (const juce::MouseEvent& event) override;
 
 private:
     [[nodiscard]] juce::Rectangle<int> headerArea() const;
-    [[nodiscard]] juce::Rectangle<int> faderArea() const;
-    [[nodiscard]] juce::Rectangle<int> panArea() const;
+    [[nodiscard]] juce::Rectangle<int> meterArea() const;
     [[nodiscard]] juce::Rectangle<int> barArea() const;
+    [[nodiscard]] int xyHeight() const noexcept;
+    [[nodiscard]] int sendRowHeight() const noexcept;
+    void pushSendStateToChildren();
 
     int trackNumber;
 
     float gain = 1.0f;
     float pan = 0.0f;
+    float distance = 0.0f;
     bool mute = false;
     bool solo = false;
     float meterLeft = 0.0f, meterRight = 0.0f;
+    float peakLeft = 0.0f, peakRight = 0.0f;
     bool ledOn = false;
+
+    std::array<float, 4> sendLevels {};
+    int sendCount = 4;
+    int yLinkSend = -1;
+    bool sendLabels = false;
+    bool showMuteSolo = true;
+    bool showXy = true;
+    bool xyCompact = false;
 
     int barCurrent = 0, barTotal = 0;
     float barProgress = 0.0f;
 
-    // Drag-Zustand (Fader vertikal / Pan horizontal)
-    enum class DragMode { none, fader, pan };
+    // Drag-Zustand (Gain vertikal auf der Meter-Zeile)
+    enum class DragMode { none, gain };
     DragMode dragMode = DragMode::none;
     float dragStartValue = 0.0f;
     juce::Point<int> dragStartPosition;
@@ -207,8 +328,9 @@ private:
 
     push::TextTile muteTile { "M", push::colours::ledOrange };
     push::TextTile soloTile { "S", push::colours::ledCyan };
-    push::TextTile sndTile  { "SND", push::colours::ledGreen };
     push::TextTile stopTile { juce::String::fromUTF8 ("■"), push::colours::ledWhite };
+    LooperXyPad xyPad;
+    std::array<std::unique_ptr<LooperSendTile>, 4> sendTiles;
 
     std::vector<std::unique_ptr<LooperSlotCell>> cells;
 

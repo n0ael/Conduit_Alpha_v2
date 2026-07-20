@@ -38,9 +38,10 @@ public:
     std::function<void (int trackIndex, int slotIndex)> onSlotTapped;
     std::function<void (int trackIndex, float gain01)> onTrackGain;
     std::function<void (int trackIndex, float pan)> onTrackPan;
+    std::function<void (int trackIndex, float distance01)> onTrackDistance;
+    std::function<void (int trackIndex, int sendIndex, float level01)> onTrackSendLevel;
     std::function<void (int trackIndex, bool muted)> onTrackMute;
     std::function<void (int trackIndex, bool solo)> onTrackSolo;
-    std::function<void (int trackIndex)> onTrackSendTile;   // öffnet Send-Dialog
     std::function<void (int trackIndex)> onTrackStop;
     std::function<void (int trackIndex)> onTrackHeaderLongPress;
     std::function<void (int trackIndex)> onTrackHeaderTapped;   // M7: Delete-Geste

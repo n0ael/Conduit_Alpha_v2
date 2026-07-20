@@ -12,7 +12,6 @@
 #include "UI/LinkSendCreateDialog.h"
 #include "Core/Looper/LooperClipExporter.h"
 #include "UI/LooperDeleteConfirmDialog.h"
-#include "UI/LooperSendDialog.h"
 #include "UI/LooperDockTabs.h"
 #include "UI/LooperTrashDialog.h"
 #include "UI/SettingsWindow.h"
@@ -916,10 +915,18 @@ void EngineEditor::refreshLooperStructure()
             track.setDisplayNumber (LooperPatchOutModule::globalTrackNumber (l + 1, t + 1));
             track.setGain (settings.getTrackGain (l, t));
             track.setPan (settings.getTrackPan (l, t));
+            track.setDistance (settings.getTrackDistance (l, t));
             track.setMute (settings.isTrackMuted (l, t));
             track.setSolo (settings.isTrackSolo (l, t));
-            track.setSendState (settings.getTrackSends (l, t),
-                                settings.isTrackSendPre (l, t));
+
+            std::array<float, 4> levels {};
+            for (int s = 0; s < 4; ++s)
+                levels[(std::size_t) s] = settings.getTrackSendLevel (l, t, s);
+            track.setSendLevels (levels);
+            track.setSendCount (settings.getSendCount());
+            track.setYLinkSend (settings.getYLinkSend());
+            track.setShowMuteSolo (! settings.isHideMuteSolo());
+            track.setShowXy (! settings.isHideMixerXy());
         }
 
         // VARI-Rast-Zustand der Controls: Scope-abhängig (Track des
@@ -1001,30 +1008,13 @@ void EngineEditor::wireLooperPanels()
         panel.onTrackSolo = [this, l] (int t, bool solo)
         { engine.getLooperSettings().setTrackSolo (l, t, solo); };
 
-        // SND-Kachel → Send-Dialog (Big Out): S1–S4 + PRE/POST, Persistenz
-        // in die LooperSettings — die Engine folgt über applyLooperSettings
-        panel.onTrackSendTile = [this, l] (int t)
-        {
-            auto& settings = engine.getLooperSettings();
-            auto dialog = std::make_unique<LooperSendDialog> (
-                "Sends " + juce::String::fromUTF8 ("\xe2\x80\x94") + " Looper "
-                    + juce::String (l + 1) + juce::String::fromUTF8 (" \xc2\xb7 Track ")
-                    + juce::String (t + 1),
-                settings.getTrackSends (l, t), settings.isTrackSendPre (l, t));
-
-            // Maske komplett aus dem Dialog-Zustand übernehmen — der
-            // Settings-Broadcast spiegelt sie zurück in die SND-Kachel
-            auto* raw = dialog.get();
-            raw->onSendToggled = [this, l, t, raw] (int, bool)
-            { engine.getLooperSettings().setTrackSends (l, t, raw->getSendMask()); };
-            raw->onPreToggled = [this, l, t] (bool pre)
-            { engine.getLooperSettings().setTrackSendPre (l, t, pre); };
-
-            juce::CallOutBox::launchAsynchronously (
-                std::move (dialog),
-                looperPage.getPanel (l).getTrack (t).getSendTile().getScreenBounds(),
-                nullptr);
-        };
+        // Mixer 07/2026: Distanz (XY-Y) + Send-LEVEL direkt in die
+        // Settings — die Engine folgt über applyLooperSettings (der
+        // frühere SND-Dialog ist durch die Send-Kacheln ersetzt)
+        panel.onTrackDistance = [this, l] (int t, float distance)
+        { engine.getLooperSettings().setTrackDistance (l, t, distance); };
+        panel.onTrackSendLevel = [this, l] (int t, int s, float level)
+        { engine.getLooperSettings().setTrackSendLevel (l, t, s, level); };
 
         panel.onTrackStop = [this, l] (int t)
         {
@@ -1585,7 +1575,8 @@ void EngineEditor::refreshLooperStatus (bool devMode)
             const auto rmsRight = meter.getRms (1);
             const auto audible = juce::jmax (rmsLeft, rmsRight) > 1.0e-3f;
             anyAudible = anyAudible || audible;
-            track.setMeter (rmsLeft, rmsRight, audible);
+            track.setMeter (rmsLeft, rmsRight,
+                            meter.getPeak (0), meter.getPeak (1), audible);
 
             const auto playingSlot = session.getPlayingSlot (l, t);
             const auto target = session.getTarget (l);

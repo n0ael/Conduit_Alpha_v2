@@ -6,14 +6,281 @@ namespace conduit
 namespace
 {
     constexpr int headerHeight = 24;
-    constexpr int faderHeight  = 26;
-    constexpr int panHeight    = 16;
+    constexpr int meterHeight  = 26;   // Mitte-raus-Stereo-Meter (ex Fader-Zeile)
     constexpr int tileRow      = 44;   // Touch-Target (CLAUDE.md 10)
     constexpr int footerHeight = 44;
     constexpr int cellGap      = 4;
 
+    constexpr int xyFullHeight    = 96;   // XY-Panner (1–2 Tracks)
+    constexpr int xyCompactHeight = 56;   // Kompakt (3–4 Tracks, FAR-Label weg)
+
     constexpr float faderDragRange = 150.0f;   // Pixel für vollen Gain-Weg
     constexpr juce::uint32 longPressMs = 600;
+}
+
+//==============================================================================
+void LooperXyPad::setValues (float newPan, float newDistance)
+{
+    const auto clampedPan = juce::jlimit (-1.0f, 1.0f, newPan);
+    const auto clampedDistance = juce::jlimit (0.0f, 1.0f, newDistance);
+    if (juce::exactlyEqual (panValue, clampedPan)
+        && juce::exactlyEqual (distanceValue, clampedDistance))
+        return;
+
+    panValue = clampedPan;
+    distanceValue = clampedDistance;
+    repaint();
+}
+
+void LooperXyPad::setCompact (bool shouldBeCompact)
+{
+    if (compact == shouldBeCompact)
+        return;
+    compact = shouldBeCompact;
+    repaint();
+}
+
+void LooperXyPad::setSendLevels (const std::array<float, 4>& levels, int visibleSendCount)
+{
+    bool changed = sendCount != visibleSendCount;
+    for (std::size_t s = 0; s < levels.size(); ++s)
+        changed = changed || std::abs (sendLevels[s] - levels[s]) > 0.004f;
+    if (! changed)
+        return;
+
+    sendLevels = levels;
+    sendCount = visibleSendCount;
+    repaint();
+}
+
+void LooperXyPad::paint (juce::Graphics& g)
+{
+    const auto bounds = getLocalBounds().toFloat().reduced (1.0f);
+    g.setColour (push::colours::tile);
+    g.fillRoundedRectangle (bounds, 4.0f);
+
+    // Gekreuzte Diagonalen (Geometrie der Referenz-SVGs) — dezent
+    g.setColour (push::colours::outline.withAlpha (0.6f));
+    g.drawLine ({ bounds.getTopLeft(), bounds.getBottomRight() }, 1.0f);
+    g.drawLine ({ bounds.getBottomLeft(), bounds.getTopRight() }, 1.0f);
+
+    if (! compact)
+    {
+        g.setColour (push::colours::textDim);
+        g.setFont (push::scaledFont (9.0f));
+        g.drawText ("FAR", bounds.reduced (4.0f, 2.0f),
+                    juce::Justification::topRight, false);
+        g.drawText ("L", bounds.reduced (4.0f, 2.0f),
+                    juce::Justification::bottomLeft, false);
+        g.drawText ("C", bounds.reduced (4.0f, 2.0f),
+                    juce::Justification::centredBottom, false);
+        g.drawText ("R", bounds.reduced (4.0f, 2.0f),
+                    juce::Justification::bottomRight, false);
+    }
+
+    // Puck: Ring + Send-Farb-Overlays (Alpha = Level, Referenz-SVG)
+    const auto radius = compact ? 8.0f : 12.0f;
+    const auto inner = bounds.reduced (radius + 2.0f);
+    const auto centre = juce::Point<float> (
+        inner.getX() + inner.getWidth() * (panValue * 0.5f + 0.5f),
+        inner.getBottom() - inner.getHeight() * distanceValue);
+    const auto puck = juce::Rectangle<float> (radius * 2.0f, radius * 2.0f)
+                          .withCentre (centre);
+
+    g.setColour (push::colours::background);
+    g.fillEllipse (puck);
+    for (int s = 0; s < juce::jmin (4, sendCount); ++s)
+        if (sendLevels[(std::size_t) s] > 0.001f)
+        {
+            g.setColour (looperui::sendColour (s)
+                             .withAlpha (0.25f + 0.6f * sendLevels[(std::size_t) s]));
+            g.fillEllipse (puck.reduced (2.0f));
+        }
+    g.setColour (juce::Colour (0xff9d9d9d));
+    g.drawEllipse (puck, 2.0f);
+}
+
+void LooperXyPad::mouseDown (const juce::MouseEvent& event)
+{
+    applyFromPosition (event.position, true);
+}
+
+void LooperXyPad::mouseDrag (const juce::MouseEvent& event)
+{
+    applyFromPosition (event.position, true);
+}
+
+void LooperXyPad::mouseDoubleClick (const juce::MouseEvent&)
+{
+    setValues (0.0f, 0.0f);
+    if (onChanged != nullptr)
+        onChanged (panValue, distanceValue);
+}
+
+void LooperXyPad::applyFromPosition (juce::Point<float> position, bool notify)
+{
+    const auto radius = compact ? 8.0f : 12.0f;
+    const auto inner = getLocalBounds().toFloat().reduced (1.0f).reduced (radius + 2.0f);
+    if (inner.getWidth() <= 0.0f || inner.getHeight() <= 0.0f)
+        return;
+
+    const auto newPan = juce::jlimit (-1.0f, 1.0f,
+        ((position.x - inner.getX()) / inner.getWidth()) * 2.0f - 1.0f);
+    const auto newDistance = juce::jlimit (0.0f, 1.0f,
+        (inner.getBottom() - position.y) / inner.getHeight());
+
+    if (juce::exactlyEqual (panValue, newPan)
+        && juce::exactlyEqual (distanceValue, newDistance))
+        return;
+
+    panValue = newPan;
+    distanceValue = newDistance;
+    repaint();
+
+    if (notify && onChanged != nullptr)
+        onChanged (panValue, distanceValue);
+}
+
+//==============================================================================
+LooperSendTile::LooperSendTile (int sendIndexToUse)
+    : sendIndex (sendIndexToUse)
+{
+    setName ("looperSendTile" + juce::String (sendIndexToUse + 1));
+}
+
+void LooperSendTile::setLevel (float level01)
+{
+    const auto clamped = juce::jlimit (0.0f, 1.0f, level01);
+    if (juce::exactlyEqual (level, clamped))
+        return;
+    level = clamped;
+    repaint();
+}
+
+void LooperSendTile::setShowLabel (bool show)
+{
+    if (showLabel == show)
+        return;
+    showLabel = show;
+    repaint();
+}
+
+void LooperSendTile::setYLinked (bool linked)
+{
+    if (yLinked == linked)
+        return;
+    yLinked = linked;
+    repaint();
+}
+
+juce::Path LooperSendTile::shapePath (juce::Rectangle<float> bounds) const
+{
+    juce::Path path;
+    switch (sendIndex)
+    {
+        case 0:   // S1 ●
+            path.addEllipse (bounds);
+            break;
+        case 1:   // S2 ■
+            path.addRectangle (bounds);
+            break;
+        case 2:   // S3 ▲
+            path.addTriangle (bounds.getCentreX(), bounds.getY(),
+                              bounds.getRight(), bounds.getBottom(),
+                              bounds.getX(), bounds.getBottom());
+            break;
+        default:  // S4 ⬡ (regelmäßiges Sechseck, Spitze oben)
+            for (int corner = 0; corner < 6; ++corner)
+            {
+                const auto angle = juce::MathConstants<float>::pi / 3.0f
+                                       * static_cast<float> (corner);
+                const auto point = bounds.getCentre()
+                    + juce::Point<float> (std::sin (angle), -std::cos (angle))
+                          * (bounds.getWidth() * 0.5f);
+                if (corner == 0)
+                    path.startNewSubPath (point);
+                else
+                    path.lineTo (point);
+            }
+            path.closeSubPath();
+            break;
+    }
+    return path;
+}
+
+void LooperSendTile::paint (juce::Graphics& g)
+{
+    // 38-px-Optik in der (≥44 px) Hit-Fläche
+    auto tile = getLocalBounds().toFloat();
+    tile = tile.withSizeKeepingCentre (juce::jmin (tile.getWidth(), 44.0f),
+                                       juce::jmin (tile.getHeight(), 38.0f));
+    g.setColour (push::colours::tile);
+    g.fillRoundedRectangle (tile, 4.0f);
+
+    const auto side = juce::jmin (20.0f, tile.getHeight() - 12.0f);
+    auto iconBox = juce::Rectangle<float> (side, side);
+    iconBox.setCentre (showLabel ? juce::Point<float> (tile.getX() + 8.0f + side * 0.5f,
+                                                       tile.getCentreY())
+                                 : tile.getCentre());
+
+    const auto shape = shapePath (iconBox);
+    const auto colour = looperui::sendColour (sendIndex);
+
+    // Füllstand von unten (Referenz-SVGs): Clip auf die untere Teilfläche
+    if (level > 0.001f)
+    {
+        juce::Graphics::ScopedSaveState clipState (g);
+        g.reduceClipRegion (iconBox.withTop (iconBox.getBottom()
+                                             - iconBox.getHeight() * level)
+                                .getSmallestIntegerContainer());
+        g.setColour (colour);
+        g.fillPath (shape);
+    }
+
+    g.setColour (level > 0.001f ? colour : push::colours::textDim);
+    g.strokePath (shape, juce::PathStrokeType (1.4f));
+
+    if (showLabel)
+    {
+        g.setColour (push::colours::text);
+        g.setFont (push::scaledFont (11.0f));
+        g.drawText ("S" + juce::String (sendIndex + 1),
+                    tile.reduced (8.0f, 0.0f).withLeft (iconBox.getRight() + 6.0f),
+                    juce::Justification::centredLeft, false);
+    }
+
+    if (yLinked)
+    {
+        g.setColour (push::colours::ledCyan);
+        g.fillEllipse (juce::Rectangle<float> (5.0f, 5.0f)
+                           .withCentre ({ tile.getRight() - 6.0f, tile.getY() + 6.0f }));
+    }
+}
+
+void LooperSendTile::mouseDown (const juce::MouseEvent& event)
+{
+    dragStartLevel = level;
+    dragStartPosition = event.getPosition();
+}
+
+void LooperSendTile::mouseDrag (const juce::MouseEvent& event)
+{
+    const auto delta = (float) (dragStartPosition.y - event.getPosition().y);
+    const auto next = juce::jlimit (0.0f, 1.0f, dragStartLevel + delta / faderDragRange);
+    if (juce::exactlyEqual (next, level))
+        return;
+
+    level = next;
+    repaint();
+    if (onLevelChanged != nullptr)
+        onLevelChanged (level);
+}
+
+void LooperSendTile::mouseDoubleClick (const juce::MouseEvent&)
+{
+    setLevel (0.0f);
+    if (onLevelChanged != nullptr)
+        onLevelChanged (0.0f);
 }
 
 //==============================================================================
@@ -307,20 +574,42 @@ LooperTrackStrip::LooperTrackStrip (int number)
         if (onSoloToggled != nullptr)
             onSoloToggled (! solo);
     };
-    sndTile.onClick = [this]
-    {
-        if (onSendTileTapped != nullptr)
-            onSendTileTapped();
-    };
     stopTile.onClick = [this]
     {
         if (onStop != nullptr)
             onStop();
     };
 
+    // XY-Panner: X = Pan, Y = Distanz (beide Hooks getrennt nach oben)
+    xyPad.onChanged = [this] (float newPan, float newDistance)
+    {
+        const auto panChanged = ! juce::exactlyEqual (pan, newPan);
+        const auto distanceChanged = ! juce::exactlyEqual (distance, newDistance);
+        pan = newPan;
+        distance = newDistance;
+        if (panChanged && onPanChanged != nullptr)
+            onPanChanged (pan);
+        if (distanceChanged && onDistanceChanged != nullptr)
+            onDistanceChanged (distance);
+    };
+
+    for (int s = 0; s < 4; ++s)
+    {
+        auto tile = std::make_unique<LooperSendTile> (s);
+        tile->onLevelChanged = [this, s] (float level)
+        {
+            sendLevels[(std::size_t) s] = level;
+            xyPad.setSendLevels (sendLevels, sendCount);
+            if (onSendLevelChanged != nullptr)
+                onSendLevelChanged (s, level);
+        };
+        addAndMakeVisible (*tile);
+        sendTiles[(std::size_t) s] = std::move (tile);
+    }
+
     addAndMakeVisible (muteTile);
     addAndMakeVisible (soloTile);
-    addAndMakeVisible (sndTile);
+    addAndMakeVisible (xyPad);
     addAndMakeVisible (stopTile);
 
     setVisibleSlots (8);
@@ -369,13 +658,19 @@ LooperSlotCell& LooperTrackStrip::getSlotCell (int slotIndex)
 void LooperTrackStrip::setGain (float gain01)
 {
     gain = juce::jlimit (0.0f, 1.0f, gain01);
-    repaint (faderArea());
+    repaint (meterArea());
 }
 
 void LooperTrackStrip::setPan (float newPan)
 {
     pan = juce::jlimit (-1.0f, 1.0f, newPan);
-    repaint (panArea());
+    xyPad.setValues (pan, distance);
+}
+
+void LooperTrackStrip::setDistance (float distance01)
+{
+    distance = juce::jlimit (0.0f, 1.0f, distance01);
+    xyPad.setValues (pan, distance);
 }
 
 void LooperTrackStrip::setMute (bool muted)
@@ -390,24 +685,101 @@ void LooperTrackStrip::setSolo (bool newSolo)
     soloTile.setActive (newSolo);
 }
 
-void LooperTrackStrip::setSendState (int sendMask, bool sendPre)
+void LooperTrackStrip::setSendLevels (const std::array<float, 4>& levels)
 {
-    sndTile.setActive (sendMask != 0);
-    sndTile.setText (sendMask != 0 && sendPre ? "SND·P" : "SND");
+    sendLevels = levels;
+    pushSendStateToChildren();
 }
 
-void LooperTrackStrip::setMeter (float rmsLeft, float rmsRight, bool audible)
+void LooperTrackStrip::setSendCount (int count)
+{
+    const auto clamped = juce::jlimit (0, 4, count);
+    if (sendCount == clamped)
+        return;
+    sendCount = clamped;
+    pushSendStateToChildren();
+    resized();
+}
+
+void LooperTrackStrip::setYLinkSend (int sendIndex)
+{
+    if (yLinkSend == sendIndex)
+        return;
+    yLinkSend = sendIndex;
+    pushSendStateToChildren();
+}
+
+void LooperTrackStrip::setSendLabelsVisible (bool visible)
+{
+    if (sendLabels == visible)
+        return;
+    sendLabels = visible;
+    pushSendStateToChildren();
+}
+
+void LooperTrackStrip::setShowMuteSolo (bool show)
+{
+    if (showMuteSolo == show)
+        return;
+    showMuteSolo = show;
+    muteTile.setVisible (show);
+    soloTile.setVisible (show);
+    resized();
+}
+
+void LooperTrackStrip::setShowXy (bool show)
+{
+    if (showXy == show)
+        return;
+    showXy = show;
+    xyPad.setVisible (show);
+    resized();
+}
+
+void LooperTrackStrip::setXyCompact (bool compact)
+{
+    if (xyCompact == compact)
+        return;
+    xyCompact = compact;
+    xyPad.setCompact (compact);
+    resized();
+}
+
+void LooperTrackStrip::pushSendStateToChildren()
+{
+    for (int s = 0; s < 4; ++s)
+    {
+        auto& tile = *sendTiles[(std::size_t) s];
+        tile.setLevel (sendLevels[(std::size_t) s]);
+        tile.setShowLabel (sendLabels);
+        tile.setYLinked (s == yLinkSend);
+        tile.setVisible (s < sendCount);
+    }
+    xyPad.setSendLevels (sendLevels, sendCount);
+}
+
+LooperSendTile& LooperTrackStrip::getSendTile (int sendIndex)
+{
+    return *sendTiles[(std::size_t) juce::jlimit (0, 3, sendIndex)];
+}
+
+void LooperTrackStrip::setMeter (float rmsLeft, float rmsRight,
+                                 float newPeakLeft, float newPeakRight, bool audible)
 {
     const auto changed = std::abs (meterLeft - rmsLeft) > 0.004f
                       || std::abs (meterRight - rmsRight) > 0.004f
+                      || std::abs (peakLeft - newPeakLeft) > 0.004f
+                      || std::abs (peakRight - newPeakRight) > 0.004f
                       || ledOn != audible;
     meterLeft = rmsLeft;
     meterRight = rmsRight;
+    peakLeft = newPeakLeft;
+    peakRight = newPeakRight;
     ledOn = audible;
     if (changed)
     {
         repaint (headerArea());
-        repaint (faderArea());
+        repaint (meterArea());
     }
 }
 
@@ -436,18 +808,25 @@ juce::Rectangle<int> LooperTrackStrip::headerArea() const
     return getLocalBounds().removeFromTop (headerHeight);
 }
 
-juce::Rectangle<int> LooperTrackStrip::faderArea() const
+juce::Rectangle<int> LooperTrackStrip::meterArea() const
 {
     auto bounds = getLocalBounds();
     bounds.removeFromTop (headerHeight);
-    return bounds.removeFromTop (faderHeight);
+    return bounds.removeFromTop (meterHeight);
 }
 
-juce::Rectangle<int> LooperTrackStrip::panArea() const
+int LooperTrackStrip::xyHeight() const noexcept
 {
-    auto bounds = getLocalBounds();
-    bounds.removeFromTop (headerHeight + faderHeight);
-    return bounds.removeFromTop (panHeight);
+    return showXy ? (xyCompact ? xyCompactHeight : xyFullHeight) : 0;
+}
+
+int LooperTrackStrip::sendRowHeight() const noexcept
+{
+    if (sendCount <= 0)
+        return 0;
+
+    // Breite Strips: eine Zeile; schmale (3–4 Tracks): 2×2-Raster
+    return getWidth() >= 132 || sendCount <= 2 ? tileRow : tileRow * 2;
 }
 
 juce::Rectangle<int> LooperTrackStrip::barArea() const
@@ -461,31 +840,42 @@ juce::Rectangle<int> LooperTrackStrip::barArea() const
 void LooperTrackStrip::resized()
 {
     auto bounds = getLocalBounds();
-    bounds.removeFromTop (headerHeight + faderHeight + panHeight);
+    bounds.removeFromTop (headerHeight + meterHeight);
 
-    // M/S/SND nebeneinander (Touch-Target 44px pro Kachel); darunter
-    // M/S geteilt + SND in eigener Zeile, sehr schmal alles untereinander
-    if (getWidth() >= 132)
+    // XY-Panner (ausblendbar; kompakt bei 3–4 Tracks)
+    if (showXy)
+        xyPad.setBounds (bounds.removeFromTop (xyHeight()).reduced (2, 2));
+
+    // Send-Kacheln: eine Zeile (breit / ≤2 Sends) oder 2×2-Raster
+    if (sendCount > 0)
+    {
+        auto sendArea = bounds.removeFromTop (sendRowHeight());
+        if (sendRowHeight() > tileRow)
+        {
+            auto upper = sendArea.removeFromTop (tileRow);
+            const auto upperCount = juce::jmin (2, sendCount);
+            for (int s = 0; s < upperCount; ++s)
+                sendTiles[(std::size_t) s]->setBounds (
+                    upper.removeFromLeft (upper.getWidth() / (upperCount - s)));
+            const auto lowerCount = sendCount - upperCount;
+            for (int s = 0; s < lowerCount; ++s)
+                sendTiles[(std::size_t) (upperCount + s)]->setBounds (
+                    sendArea.removeFromLeft (sendArea.getWidth() / (lowerCount - s)));
+        }
+        else
+        {
+            for (int s = 0; s < sendCount; ++s)
+                sendTiles[(std::size_t) s]->setBounds (
+                    sendArea.removeFromLeft (sendArea.getWidth() / (sendCount - s)));
+        }
+    }
+
+    // M/S (ausblendbar)
+    if (showMuteSolo)
     {
         auto tiles = bounds.removeFromTop (tileRow);
-        muteTile.setBounds (tiles.removeFromLeft (tiles.getWidth() / 3).reduced (2));
-        soloTile.setBounds (tiles.removeFromLeft (tiles.getWidth() / 2).reduced (2));
-        sndTile.setBounds (tiles.reduced (2));
-    }
-    else if (getWidth() >= 88)
-    {
-        auto tiles = bounds.removeFromTop (tileRow * 2);
-        auto upper = tiles.removeFromTop (tileRow);
-        muteTile.setBounds (upper.removeFromLeft (upper.getWidth() / 2).reduced (2));
-        soloTile.setBounds (upper.reduced (2));
-        sndTile.setBounds (tiles.reduced (2));
-    }
-    else
-    {
-        auto tiles = bounds.removeFromTop (tileRow * 3);
-        muteTile.setBounds (tiles.removeFromTop (tileRow).reduced (2));
-        soloTile.setBounds (tiles.removeFromTop (tileRow).reduced (2));
-        sndTile.setBounds (tiles.reduced (2));
+        muteTile.setBounds (tiles.removeFromLeft (tiles.getWidth() / 2).reduced (2));
+        soloTile.setBounds (tiles.reduced (2));
     }
 
     auto footer = bounds.removeFromBottom (footerHeight);
@@ -521,44 +911,53 @@ void LooperTrackStrip::paint (juce::Graphics& g)
     g.setColour (ledOn ? push::colours::ledGreen : push::colours::outline);
     g.fillEllipse (led);
 
-    // Fader-Zeile: Post-Fader-Meter als Hintergrund, Marker = Gain
-    auto fader = faderArea().toFloat().reduced (2.0f);
+    // Meter-Zeile (ersetzt den Fader): STEREO von der Mitte aus — L läuft
+    // nach links, R nach rechts; RMS als Fläche, Peak als Linie pro Seite.
+    // Post-fader-Daten sind bereits pan-gewichtet (Engine). Vertikal
+    // wischen = Gain (Geste des früheren Faders); die Gain-Marker sitzen
+    // symmetrisch am jeweiligen Zeilen-Ende des Regelwegs.
+    auto meter = meterArea().toFloat().reduced (2.0f);
     g.setColour (push::colours::tile);
-    g.fillRoundedRectangle (fader, 3.0f);
+    g.fillRoundedRectangle (meter, 3.0f);
 
-    const auto meterMax = juce::jlimit (0.0f, 1.0f, juce::jmax (meterLeft, meterRight));
-    if (meterMax > 0.001f)
+    const auto centreX = meter.getCentreX();
+    const auto halfWidth = meter.getWidth() * 0.5f - 3.0f;
+    const auto lane = meter.reduced (2.0f);
+
+    const auto drawSide = [&] (float rms, float peak, bool leftSide)
     {
-        auto meterBar = fader.reduced (2.0f);
-        meterBar = meterBar.removeFromLeft (meterBar.getWidth() * meterMax);
-        g.setColour (push::colours::ledGreen.withAlpha (0.45f));
-        g.fillRoundedRectangle (meterBar, 2.0f);
-    }
+        const auto direction = leftSide ? -1.0f : 1.0f;
+        if (rms > 0.001f)
+        {
+            const auto extent = halfWidth * juce::jlimit (0.0f, 1.0f, rms);
+            const auto bar = leftSide
+                ? juce::Rectangle<float> (centreX - extent, lane.getY(), extent, lane.getHeight())
+                : juce::Rectangle<float> (centreX, lane.getY(), extent, lane.getHeight());
+            g.setColour (push::colours::ledGreen.withAlpha (0.45f));
+            g.fillRect (bar);
+        }
+        if (peak > 0.001f)
+        {
+            const auto peakX = centreX + direction * halfWidth
+                                   * juce::jlimit (0.0f, 1.0f, peak);
+            g.setColour (peak >= 0.999f ? push::colours::ledRed
+                                        : push::colours::ledGreen);
+            g.fillRect (juce::Rectangle<float> (peakX - 0.75f, lane.getY(),
+                                                1.5f, lane.getHeight()));
+        }
+    };
+    drawSide (meterLeft, peakLeft, true);
+    drawSide (meterRight, peakRight, false);
 
-    const auto markerX = fader.getX() + fader.getWidth() * gain;
-    g.setColour (push::colours::ledWhite);
-    g.fillRect (juce::Rectangle<float> (markerX - 1.0f, fader.getY(),
-                                        2.0f, fader.getHeight()));
-
-    juce::Path marker;
-    marker.addTriangle (markerX - 4.0f, fader.getY(),
-                        markerX + 4.0f, fader.getY(),
-                        markerX, fader.getY() + 5.0f);
-    g.fillPath (marker);
-
-    // Pan-Zeile: Mittel-Kerbe + Marker
-    auto panRow = panArea().toFloat().reduced (2.0f, 1.0f);
-    g.setColour (push::colours::tile);
-    g.fillRoundedRectangle (panRow, 3.0f);
+    // Mittellinie + Gain-Marker (⌶ beidseitig, Abstand = Gain)
     g.setColour (push::colours::outline);
-    g.fillRect (juce::Rectangle<float> (1.0f, panRow.getHeight() - 4.0f)
-                    .withPosition (panRow.getCentreX() - 0.5f, panRow.getY() + 2.0f));
-
-    const auto panX = panRow.getCentreX() + pan * (panRow.getWidth() * 0.5f - 4.0f);
-    g.setColour (std::abs (pan) > 0.01f ? push::colours::ledCyan
-                                        : push::colours::textDim);
-    g.fillEllipse (juce::Rectangle<float> (7.0f, 7.0f)
-                       .withCentre ({ panX, panRow.getCentreY() }));
+    g.fillRect (juce::Rectangle<float> (centreX - 0.5f, lane.getY(),
+                                        1.0f, lane.getHeight()));
+    const auto gainExtent = halfWidth * gain;
+    g.setColour (push::colours::ledWhite);
+    for (const auto side : { -1.0f, 1.0f })
+        g.fillRect (juce::Rectangle<float> (centreX + side * gainExtent - 1.0f,
+                                            lane.getY(), 2.0f, lane.getHeight()));
 
     // Takt-Anzeige (rechte Fußhälfte): Pie + "Takt / Länge"
     auto barBox = barArea().toFloat();
@@ -596,16 +995,10 @@ void LooperTrackStrip::mouseDown (const juce::MouseEvent& event)
 {
     const auto position = event.getPosition();
 
-    if (faderArea().contains (position))
+    if (meterArea().contains (position))
     {
-        dragMode = DragMode::fader;
+        dragMode = DragMode::gain;
         dragStartValue = gain;
-        dragStartPosition = position;
-    }
-    else if (panArea().contains (position))
-    {
-        dragMode = DragMode::pan;
-        dragStartValue = pan;
         dragStartPosition = position;
     }
     else if (headerArea().contains (position))
@@ -617,32 +1010,19 @@ void LooperTrackStrip::mouseDown (const juce::MouseEvent& event)
 
 void LooperTrackStrip::mouseDrag (const juce::MouseEvent& event)
 {
-    if (dragMode == DragMode::fader)
+    if (dragMode == DragMode::gain)
     {
-        // VERTIKAL wischen (User-Entscheidung): hoch = lauter
+        // VERTIKAL wischen (User-Entscheidung, Geste des alten Faders):
+        // hoch = lauter — die Meter-Zeile bleibt der Gain-Regler
         const auto delta = (float) (dragStartPosition.y - event.getPosition().y);
         const auto next = juce::jlimit (0.0f, 1.0f,
                                         dragStartValue + delta / faderDragRange);
         if (! juce::exactlyEqual (next, gain))
         {
             gain = next;
-            repaint (faderArea());
+            repaint (meterArea());
             if (onGainChanged != nullptr)
                 onGainChanged (gain);
-        }
-    }
-    else if (dragMode == DragMode::pan)
-    {
-        const auto width = juce::jmax (8.0f, (float) panArea().getWidth() - 8.0f);
-        const auto delta = (float) (event.getPosition().x - dragStartPosition.x);
-        const auto next = juce::jlimit (-1.0f, 1.0f,
-                                        dragStartValue + delta / (width * 0.5f));
-        if (! juce::exactlyEqual (next, pan))
-        {
-            pan = next;
-            repaint (panArea());
-            if (onPanChanged != nullptr)
-                onPanChanged (pan);
         }
     }
 }
@@ -662,17 +1042,6 @@ void LooperTrackStrip::mouseUp (const juce::MouseEvent& event)
             else if (heldMs < longPressMs && onHeaderTapped != nullptr)
                 onHeaderTapped();   // M7: Delete-Geste wertet den Tap aus
         }
-    }
-}
-
-void LooperTrackStrip::mouseDoubleClick (const juce::MouseEvent& event)
-{
-    if (panArea().contains (event.getPosition()))
-    {
-        pan = 0.0f;
-        repaint (panArea());
-        if (onPanChanged != nullptr)
-            onPanChanged (pan);
     }
 }
 

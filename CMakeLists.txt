@@ -174,7 +174,6 @@ set(CONDUIT_CPP_SOURCES
     Source/UI/LooperPatchInPanel.cpp
     Source/UI/LooperPanel.cpp
     Source/UI/LooperDockTabs.cpp
-    Source/UI/LooperSendDialog.cpp
     Source/UI/LooperTrackStrip.cpp
     Source/UI/LooperTrashDialog.cpp
     Source/Core/Looper/LooperBank.cpp
@@ -816,7 +815,6 @@ if(CONDUIT_BUILD_TESTS)
         Source/UI/LooperPatchInPanel.cpp
         Source/UI/LooperPanel.cpp
         Source/UI/LooperDockTabs.cpp
-        Source/UI/LooperSendDialog.cpp
         Source/UI/LooperTrackStrip.cpp
         Source/UI/LooperTrashDialog.cpp
         Source/Core/Looper/LooperBank.cpp

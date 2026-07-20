@@ -3,7 +3,6 @@
 
 #include "Core/LooperSettings.h"
 #include "UI/LooperPage.h"
-#include "UI/LooperSendDialog.h"
 #include "UI/LooperDockTabs.h"
 #include "UI/TransportBar.h"
 
@@ -294,61 +293,81 @@ TEST_CASE ("LooperTrackStrip: Hooks liefern Track-lokale Indizes und Werte", "[l
     }
 }
 
-TEST_CASE ("LooperSendDialog: S1–S4-Maske und PRE/POST-Abgriff", "[looper][ui]")
-{
-    juce::ScopedJuceInitialiser_GUI juceRuntime;
-
-    conduit::LooperSendDialog dialog { "Looper 1 · Track 2", 0b0001, false };
-    dialog.setBounds (0, 0, 228, 128);
-
-    int lastSend = -1;
-    bool lastEnabled = false, lastPre = false;
-    int sendEvents = 0, preEvents = 0;
-    dialog.onSendToggled = [&] (int s, bool enabled)
-    { lastSend = s; lastEnabled = enabled; ++sendEvents; };
-    dialog.onPreToggled = [&] (bool pre) { lastPre = pre; ++preEvents; };
-
-    REQUIRE (dialog.getSendMask() == 0b0001);
-    REQUIRE_FALSE (dialog.isPre());
-
-    // S3 dazu, S1 wieder raus — Maske folgt, Hook liefert Einzel-Events
-    dialog.sendTile (2).onClick();
-    REQUIRE (dialog.getSendMask() == 0b0101);
-    REQUIRE (lastSend == 2);
-    REQUIRE (lastEnabled);
-
-    dialog.sendTile (0).onClick();
-    REQUIRE (dialog.getSendMask() == 0b0100);
-    REQUIRE (lastSend == 0);
-    REQUIRE_FALSE (lastEnabled);
-    REQUIRE (sendEvents == 2);
-
-    // PRE-Toggle
-    dialog.preTile.onClick();
-    REQUIRE (dialog.isPre());
-    REQUIRE (lastPre);
-    dialog.preTile.onClick();
-    REQUIRE_FALSE (dialog.isPre());
-    REQUIRE (preEvents == 2);
-}
-
-TEST_CASE ("LooperTrackStrip: SND-Kachel — Hook und Zustands-Spiegel", "[looper][ui]")
+TEST_CASE ("LooperTrackStrip: Mixer — XY-Panner, Send-Kacheln, Display-Flags", "[looper][ui]")
 {
     juce::ScopedJuceInitialiser_GUI juceRuntime;
 
     conduit::LooperTrackStrip strip { 1 };
-    strip.setBounds (0, 0, 160, 520);
+    strip.setBounds (0, 0, 160, 620);
 
-    int taps = 0;
-    strip.onSendTileTapped = [&] { ++taps; };
-    strip.getSendTile().onClick();
-    REQUIRE (taps == 1);
+    SECTION ("XY-Panner: Setter spiegeln, Doppelklick reset meldet Hooks")
+    {
+        strip.setPan (0.5f);
+        strip.setDistance (0.75f);
+        REQUIRE (strip.getXyPad().getPan() == Catch::Approx (0.5f));
+        REQUIRE (strip.getXyPad().getDistance() == Catch::Approx (0.75f));
 
-    strip.setSendState (0b0011, false);
-    REQUIRE (strip.getSendTile().isActive());
+        float lastPan = -9.0f, lastDistance = -9.0f;
+        strip.onPanChanged = [&] (float pan) { lastPan = pan; };
+        strip.onDistanceChanged = [&] (float distance) { lastDistance = distance; };
 
-    strip.setSendState (0, false);
-    REQUIRE_FALSE (strip.getSendTile().isActive());
+        // Doppelklick = Reset (Center, Distanz 0) — beide Hooks feuern
+        const auto centre = strip.getXyPad().getLocalBounds().getCentre().toFloat();
+        juce::MouseEvent dummy { juce::Desktop::getInstance().getMainMouseSource(),
+                                 centre, {}, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f,
+                                 &strip.getXyPad(), &strip.getXyPad(),
+                                 juce::Time::getCurrentTime(), centre,
+                                 juce::Time::getCurrentTime(), 2, false };
+        strip.getXyPad().mouseDoubleClick (dummy);
+        REQUIRE (lastPan == Catch::Approx (0.0f));
+        REQUIRE (lastDistance == Catch::Approx (0.0f));
+    }
+
+    SECTION ("Send-Kacheln: Level-Anzeige, Anzahl, Y-Link, Doppelklick = 0")
+    {
+        strip.setSendLevels ({ 0.4f, 0.0f, 1.0f, 0.2f });
+        REQUIRE (strip.getSendTile (0).getLevel() == Catch::Approx (0.4f));
+        REQUIRE (strip.getSendTile (2).getLevel() == Catch::Approx (1.0f));
+
+        strip.setSendCount (2);
+        REQUIRE (strip.getSendTile (0).isVisible());
+        REQUIRE (strip.getSendTile (1).isVisible());
+        REQUIRE_FALSE (strip.getSendTile (2).isVisible());
+        REQUIRE_FALSE (strip.getSendTile (3).isVisible());
+
+        int lastSend = -1;
+        float lastLevel = -1.0f;
+        strip.onSendLevelChanged = [&] (int s, float level)
+        { lastSend = s; lastLevel = level; };
+
+        auto& tile = strip.getSendTile (0);
+        const auto centre = tile.getLocalBounds().getCentre().toFloat();
+        juce::MouseEvent dummy { juce::Desktop::getInstance().getMainMouseSource(),
+                                 centre, {}, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f,
+                                 &tile, &tile, juce::Time::getCurrentTime(), centre,
+                                 juce::Time::getCurrentTime(), 2, false };
+        tile.mouseDoubleClick (dummy);
+        REQUIRE (lastSend == 0);
+        REQUIRE (lastLevel == Catch::Approx (0.0f));
+        REQUIRE (tile.getLevel() == Catch::Approx (0.0f));
+    }
+
+    SECTION ("Display-Flags: Mute+Solo und XY ausblendbar")
+    {
+        REQUIRE (strip.getMuteTile().isVisible());
+        REQUIRE (strip.getXyPad().isVisible());
+
+        strip.setShowMuteSolo (false);
+        strip.setShowXy (false);
+        REQUIRE_FALSE (strip.getMuteTile().isVisible());
+        REQUIRE_FALSE (strip.getSoloTile().isVisible());
+        REQUIRE_FALSE (strip.getXyPad().isVisible());
+
+        strip.setShowMuteSolo (true);
+        strip.setShowXy (true);
+        REQUIRE (strip.getMuteTile().isVisible());
+        REQUIRE (strip.getXyPad().isVisible());
+    }
 }
 
 TEST_CASE ("LooperClipControlsRow: Dispatch nur mit Aktiv-Clip, VARI-Mapping", "[looper][ui]")

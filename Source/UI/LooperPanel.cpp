@@ -54,12 +54,14 @@ void LooperPanel::wireTrack (LooperTrackStrip& track, int trackIndex)
     { if (onTrackGain) onTrackGain (trackIndex, gain); };
     track.onPanChanged = [this, trackIndex] (float pan)
     { if (onTrackPan) onTrackPan (trackIndex, pan); };
+    track.onDistanceChanged = [this, trackIndex] (float distance)
+    { if (onTrackDistance) onTrackDistance (trackIndex, distance); };
+    track.onSendLevelChanged = [this, trackIndex] (int sendIndex, float level)
+    { if (onTrackSendLevel) onTrackSendLevel (trackIndex, sendIndex, level); };
     track.onMuteToggled = [this, trackIndex] (bool muted)
     { if (onTrackMute) onTrackMute (trackIndex, muted); };
     track.onSoloToggled = [this, trackIndex] (bool solo)
     { if (onTrackSolo) onTrackSolo (trackIndex, solo); };
-    track.onSendTileTapped = [this, trackIndex]
-    { if (onTrackSendTile) onTrackSendTile (trackIndex); };
     track.onStop = [this, trackIndex]
     { if (onTrackStop) onTrackStop (trackIndex); };
     track.onSlotTapped = [this, trackIndex] (int slotIndex)
@@ -87,6 +89,14 @@ void LooperPanel::setTrackCount (int count)
         wireTrack (*track, trackIndex);
         addAndMakeVisible (*track);
         tracks.push_back (std::move (track));
+    }
+
+    // Mixer-Layout folgt der Track-Zahl: Kompakt-XY ab 3 Tracks,
+    // Send-Labels „S1…" nur bei genau 1 Track (Handoff 20.07.2026)
+    for (auto& track : tracks)
+    {
+        track->setXyCompact ((int) tracks.size() >= 3);
+        track->setSendLabelsVisible ((int) tracks.size() == 1);
     }
 
     resized();

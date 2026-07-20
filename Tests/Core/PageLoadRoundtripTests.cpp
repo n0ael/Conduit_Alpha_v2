@@ -3,6 +3,7 @@
 #include "Core/EngineProcessor.h"
 #include "Modules/AttenuatorModule.h"
 #include "UI/NodeCanvas.h"
+#include "UI/PageOverviewComponent.h"
 #include "TestSettingsFolder.h"
 
 namespace
@@ -85,6 +86,20 @@ juce::String dumpPageInvariants (const juce::ValueTree& root)
 }
 
 constexpr auto attenuatorId = conduit::AttenuatorModule::staticModuleId;
+
+/** Synthetischer Tap für Component::mouseUp — Position in Ziel-Koordinaten. */
+juce::MouseEvent tapAt (juce::Component& target, juce::Point<int> position)
+{
+    const auto pos = position.toFloat();
+    const auto now = juce::Time::getCurrentTime();
+    return { juce::Desktop::getInstance().getMainMouseSource(), pos, {},
+             juce::MouseInputSource::defaultPressure,
+             juce::MouseInputSource::defaultOrientation,
+             juce::MouseInputSource::defaultRotation,
+             juce::MouseInputSource::defaultTiltX,
+             juce::MouseInputSource::defaultTiltY,
+             &target, &target, now, pos, now, 1, false };
+}
 
 } // namespace
 
@@ -308,5 +323,81 @@ TEST_CASE ("Multipage-Load: Alt-Patch ohne Pages-Block lädt weiterhin (Migratio
 
     CHECK (canvas.getNumNodeComponents() == savedNodeCount);
 
+    file.deleteFile();
+}
+
+//==============================================================================
+// BUG-PAGENAV — Repro/Regression: Patch laden → neue Seite über den UI-Pfad
+// anlegen (navigatePages = Wisch ins Leere) → 5-Finger-Übersicht → Rückwechsel
+// über den ECHTEN Klickpfad (synthetischer mouseUp auf dem Kachel-Zentrum →
+// onPageChosen → der Canvas zerstört das Overlay). Vor dem Stack-Kopie-Fix:
+// heap-use-after-free (Callback-Zerstörung während der Ausführung), Debug
+// SIGSEGV — Release überlebte zufällig.
+TEST_CASE ("Multipage-Navigation: Seite anlegen + Overview-Rückwechsel crasht nicht",
+           "[pages][pagenav]")
+{
+    juce::ScopedJuceInitialiser_GUI juceRuntime;
+    conduit::test::ScopedSettingsFolder settingsFolder;
+    const auto file = tempPresetFile ("conduit_pagenav");
+
+    {
+        conduit::EngineProcessor source { settingsFolder.folder };
+        source.getGraphManager().addModuleNode (attenuatorId, { 300, 200 });
+        REQUIRE (source.savePreset (file).wasOk());
+    }
+
+    conduit::EngineProcessor target { settingsFolder.folder };
+    conduit::NodeCanvas canvas { target.getRootState(), target.getGraphManager(),
+                                 target.getNodeUiRegistry(),
+                                 nullptr, nullptr, nullptr, nullptr, nullptr,
+                                 &target.getPageManager(), nullptr };
+    canvas.setBounds (0, 0, 1280, 800);
+
+    REQUIRE (target.loadPreset (file).wasOk());
+
+    const auto firstPage = target.getPageManager().getActivePageUuid();
+
+    // Neue Seite anlegen + hinwechseln (UI-Pfad des 4-Finger-Wischs ins Leere)
+    canvas.navigatePages (1, 0);
+    const auto secondPage = target.getPageManager().getActivePageUuid();
+    REQUIRE (secondPage != firstPage);
+
+    // 5-Finger-Übersicht öffnen, Overlay-Kind greifen
+    canvas.togglePageOverview();
+    REQUIRE (canvas.isPageOverviewVisible());
+
+    conduit::PageOverviewComponent* overview = nullptr;
+
+    for (auto* child : canvas.getChildren())
+        if (auto* o = dynamic_cast<conduit::PageOverviewComponent*> (child))
+            overview = o;
+
+    REQUIRE (overview != nullptr);
+
+    // Rückwechsel auf die erste Seite — der ECHTE Klickpfad: mouseUp auf dem
+    // Kachel-Zentrum ruft onPageChosen, der Canvas zerstört das Overlay
+    const auto firstTile = overview->tileBoundsFor (firstPage);
+    REQUIRE_FALSE (firstTile.isEmpty());
+    overview->mouseUp (tapAt (*overview, firstTile.getCentre()));
+
+    CHECK_FALSE (canvas.isPageOverviewVisible());
+    CHECK (target.getPageManager().getActivePageUuid() == firstPage);
+
+    // Sequenz wiederholen (Übersicht erneut, Wechsel zur zweiten Seite)
+    canvas.togglePageOverview();
+    REQUIRE (canvas.isPageOverviewVisible());
+
+    overview = nullptr;
+    for (auto* child : canvas.getChildren())
+        if (auto* o = dynamic_cast<conduit::PageOverviewComponent*> (child))
+            overview = o;
+
+    REQUIRE (overview != nullptr);
+    const auto secondTile = overview->tileBoundsFor (secondPage);
+    REQUIRE_FALSE (secondTile.isEmpty());
+    overview->mouseUp (tapAt (*overview, secondTile.getCentre()));
+    CHECK (target.getPageManager().getActivePageUuid() == secondPage);
+
+    SUCCEED ("Anlage + Overview-Rückwechsel ohne Absturz");
     file.deleteFile();
 }

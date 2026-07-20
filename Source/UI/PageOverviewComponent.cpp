@@ -273,12 +273,21 @@ void PageOverviewComponent::mouseUp (const juce::MouseEvent& event)
         }
 
         if (onPageChosen)
-            onPageChosen (tile.pageUuid);
+        {
+            // Kopie auf den Stack: der Callback zerstört das Overlay (und
+            // damit das function-Member samt Captures) — die laufende
+            // Kopie bleibt gültig (UAF-Lektion 20.07.2026)
+            const auto chosen = onPageChosen;
+            chosen (tile.pageUuid);
+        }
         return;
     }
 
     if (onDismiss)
-        onDismiss();   // Tap auf den Hintergrund schließt
+    {
+        const auto dismiss = onDismiss;
+        dismiss();   // Tap auf den Hintergrund schließt
+    }
 }
 
 bool PageOverviewComponent::keyPressed (const juce::KeyPress& key)
@@ -286,7 +295,10 @@ bool PageOverviewComponent::keyPressed (const juce::KeyPress& key)
     if (key == juce::KeyPress::escapeKey)
     {
         if (onDismiss)
-            onDismiss();
+        {
+            const auto dismiss = onDismiss;   // Stack-Kopie, s. mouseUp
+            dismiss();
+        }
         return true;
     }
 

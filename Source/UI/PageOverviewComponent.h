@@ -32,10 +32,13 @@ public:
     PageOverviewComponent (juce::ValueTree rootTree, PageManager& pageManagerToUse);
     ~PageOverviewComponent() override;
 
-    /** Kachel-Tap → Seitenwechsel übernimmt der Besitzer (Canvas). */
+    /** Kachel-Tap → Seitenwechsel übernimmt der Besitzer (Canvas).
+        Callbacks dürfen das Overlay zerstören — Aufruf IMMER über
+        Stack-Kopie (UAF-Lektion 20.07.2026). */
     std::function<void (const juce::String& pageUuid)> onPageChosen;
 
-    /** Hintergrund-Tap/Esc → schließen. */
+    /** Hintergrund-Tap/Esc → schließen. Callbacks dürfen das Overlay
+        zerstören — Aufruf IMMER über Stack-Kopie (UAF-Lektion 20.07.2026). */
     std::function<void()> onDismiss;
 
     void paint (juce::Graphics& g) override;

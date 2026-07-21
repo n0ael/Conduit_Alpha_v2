@@ -8,6 +8,16 @@ Motivation: DC-coupled Interfaces (ES-3, ESX-8CV etc.) haben
 hardware-spezifische DC-Offsets und Gain-Abweichungen. `0.0f` digital
 ≠ `0.000V` analog → Out-of-Tune bei 1V/Oct.
 
+**Spannungs-Konvention — Beispiele (Kern-Regel bleibt CLAUDE.md 8.0):**
+
+- Intern gilt: float ±1.0 == Full Scale des Interfaces. Bei ±10-V-Hardware
+  (ES-Serie) entspricht 1 V also 0.1f; Eurorack-Gate-High (+5 V) = 0.5f.
+- Module rechnen IMMER in dieser normalisierten Skala; die Umrechnung in
+  echte Volt passiert ausschließlich im HardwareIOModule über das
+  CalibrationProfile (dcOffset/gainTrim) plus `fullScaleVolts` pro
+  Interface (Profil-Feld, Default 10.0).
+- UI zeigt Volt an, speichert normalisiert.
+
 ## 8.1 CalibrationProfile (per Interface)
 
 ```cpp

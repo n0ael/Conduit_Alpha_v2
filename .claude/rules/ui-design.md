@@ -28,6 +28,17 @@ paths:
   (CharPointer-Assertion).
 - Touch-first: `setAcceptsTouchEvents(true)`, minimale Touch-Target-Größe
   44px, vollständig Mouse/Keyboard-kompatibel — kein Touch-only Code.
+- **Gesten-Parität (User-Regel 18.07.2026):** Jede Geste existiert in
+  drei Pfaden: Touch nativ, Trackpad (2-Finger nativ via Magnify/Scroll;
+  höhere Ebenen via Modifier-Taste), Maus+Tastatur. Kein Feature ist
+  touch-only, keines touch-verkrüppelt.
+- **Eingaberegeln sind seitenspezifisch (User-Regel 18.07.2026):** Jede
+  Page definiert ihre eigene Eingabe-Tabelle (Touch, Trackpad, Maus+Tasten)
+  in ihrer Rule bzw. ihrem Dossier — Grid: Rule `grid` (MPE-Flächen
+  verhalten sich selbst wie ein Trackpad), TouchLive/EQ8: docs/TouchLive.md,
+  Node-Patch-Editor: Rule `node-editor` + docs/NodeEditor.md (umgesetzt
+  18.07.2026). Die Gesten-Tabelle unten gilt nur, wo eine Page nichts
+  Eigenes definiert.
 - Jedes UI-Element mit Touch-State reagiert in ≤ 1 Frame visuell; keine
   blockierenden Operationen im `paint()`-Callback.
 - **UI-Framerate (User-Regel 14.07.2026, ersetzt die alte 30-fps-Regel):**
@@ -42,7 +53,12 @@ paths:
   lock-free Ringbuffer, die UI liest pro Frame-Tick.
 - UI-Components binden NUR an den ValueTree-Subtree, nie an den Processor
   (Zombie-UI-Schutz, CLAUDE.md §5 / docs/PatchEngine.md 5.3);
-  `stopUpdates()`-Hook für Phase 1.
+  `stopUpdates()`-Hook für Phase 1. Sanktionierter Laufzeit-Zugriff auf
+  Modul-Objekte ausschließlich über die NodeUiRegistry (ADR 014).
+- Stille Lebensdauer-Kontrakte: Service-Pointer in UI (LevelMeter, Taps,
+  ChannelNames, UiSettings …) sind EngineProcessor-Member und überleben
+  jede UI; GraphManager-Service-Pointer folgen der Deklarationsreihenfolge
+  im EngineProcessor.
 
 Touch-Gesten (App-weiter FALLBACK — gilt nur, wo eine Page nichts
 Eigenes definiert, CLAUDE.md §10.0; Node-Patch-Editor → Rule

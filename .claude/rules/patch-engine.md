@@ -43,3 +43,14 @@ Looper-I/O — Nummern 5.1–5.7).
 - `SmoothedValue`-Rampzeit 5 ms default, pro Node konfigurierbar;
   `fadeComplete` ist `std::atomic<bool>` — kein Mutex; kein
   `new`/`malloc` während des gesamten Ablaufs.
+
+## Lebensdauer-Kontrakte (Querschnitt, CLAUDE.md §5)
+
+- **UI-Component hält niemals einen Pointer auf den Processor — nur auf
+  den ValueTree-Subtree** (Zombie-UI-Schutz, Delete-Pfad 5.3); der einzige
+  sanktionierte Laufzeit-Zugriff auf Modul-Objekte läuft über die
+  NodeUiRegistry.
+- Stille Lebensdauer-Kontrakte: Service-Pointer in UI (LevelMeter, Taps,
+  ChannelNames, UiSettings …) sind EngineProcessor-Member und überleben
+  jede UI; GraphManager-Service-Pointer folgen der Deklarationsreihenfolge
+  im EngineProcessor.

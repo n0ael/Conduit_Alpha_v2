@@ -109,6 +109,25 @@ RootTree
        └── gainTrim           (float)
 ```
 
+**Laufzeit-IDs (Ergänzung zur Kern-Invariante CLAUDE.md §6):**
+
+- **Session-transiente IDs nie serialisieren:** Connections/Referenzen
+  auf Objekte, deren IDs pro Session neu vergeben werden, dürfen nicht
+  in Presets landen (v1-Lektion: gespeicherte Encoder-Verbindungen luden
+  als Phantom-Connections). In v2 sind Node-Uuids persistent — die Regel
+  gilt für alles Künftige mit Laufzeit-IDs (z. B. Link-Audio-ChannelIds
+  von Peers: discoverbar, nie Teil des Patches).
+
+**Audio-I/O als reguläre Browser-Module (ADR 009 — umgesetzt
+18.07.2026):**
+
+- Audio-I/O sind reguläre Browser-Module (`AudioEndpointModule`,
+  factoryIds `audio_input`/`audio_output`): voller Delete-Pfad,
+  Mehrfach-Instanzen (Graph summiert nativ); der GraphManager zieht
+  implizite Anker-Kabel zu den AudioGraphIOProcessor-Ankern. Default-Patch
+  enthält Stereo-I/O (Migration rootStateVersion 3, kein Auto-Repair —
+  Patch ohne Output = bewusste Stille).
+
 **Session-Skala (Ergänzung zu scaleRoot/scaleType, ClockState):**
 
 - Skalen-Vollausbau: die globale Session-Skala unterstützt die 25 Scale-
@@ -124,3 +143,38 @@ RootTree
 - Scale-Quantisierung als Index-Mapping in die aktive Notenliste
   (jedes Bitmuster trifft eine gültige Note), nicht Nearest-Note-Rundung —
   klingt bei generativen Quellen (Turing/Random) deutlich musikalischer.
+
+## Modul-Hierarchie & Pflicht-API (ausgelagert aus CLAUDE.md v5.7 §4.1/§4.4)
+
+Basisklassen (jedes Modul ist ein eigenständiger `AudioProcessor` im
+`juce::AudioProcessorGraph`, CLAUDE.md §5):
+
+```
+ConduitModule                    (abstrakte Basis, erbt AudioProcessor)
+├── GeneratorModule              LFO, Envelope, MIDI→CV
+├── ProcessorModule
+│    └── PluginModule            CLAP-Host wrapper (v2.x)
+├── AudioEndpointModule          audio_input/audio_output (ADR 009 — reguläre Browser-Module)
+├── IOModule                     Looper patch IN/OUT (ADR 010/013);
+│                                HardwareIOModule (ES-3/ES-5/ESX-8GT/ESX-8CV)
+│                                und NetworkIOModule (OSC ↔ Ableton M4L): Roadmap
+├── AnalysisModule               Scope, Tuner, FFT, CVTunerModule
+└── UtilityModule                Mixer, Attenuator, DC Block, Math, Offset
+```
+
+Pflicht-Methoden jedes Moduls:
+
+- `createState()` — lazy, VOR `addNode()` aufgerufen, **nicht** im Konstruktor
+- `getModuleId()` — named_id für OSC-Pfad, z.B. `neutron_filter`
+- `getModuleDisplayName()` — lokalisierter UI-Name, getrennt von moduleId
+- `getType()` — ModuleType enum für GraphManager
+- `getStateVersion()` — int für Serialisierungs-Versioning (Rückwärtskompatibilität)
+
+Mixin-Interfaces (IClockSource/IClockSlave/ISidechain/IStochastic/
+IPolyphonic/ITouchMacro): Thread-Ownership je Interface ist in der
+Header-Doku unter `Source/Interfaces/` normativ; Thread-Grenzen-
+überschreitende Methoden nur via SPSC-Queue oder `std::atomic`
+(CLAUDE.md §4.2). Beispiel-Komposition (Roadmap):
+`class TuringModule : public GeneratorModule, public IClockSlave,
+public IStochastic {};` — primärer CV/Trigger-Output via Basisklasse,
+Takt + Zufall als Mixins [Audio Thread].

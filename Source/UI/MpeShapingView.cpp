@@ -299,6 +299,8 @@ MpeShapingView::~MpeShapingView()
     // wäre Zombie-UI.
     if (activeColourPicker != nullptr)
         activeColourPicker->dismiss();
+
+    cursorHider.end();   // falls eine Geste durch Löschen abreißt
 }
 
 //==============================================================================
@@ -905,6 +907,10 @@ void MpeShapingView::mouseDrag (const juce::MouseEvent& event)
     if (gesture.target == grid::CurveEditInteraction::Target::None)
         return;
 
+    // Griff/Kurve folgt der absoluten Position → Cursor ausblenden (NoCursor),
+    // erst hier, wenn wirklich ein Ein-Finger-Ziehen läuft.
+    cursorHider.begin (*this, event, ui::DragCursorHider::Mode::absolute);
+
     auto& curve = engine.responseCurve (section.axis);
 
     switch (gesture.target)
@@ -947,6 +953,8 @@ void MpeShapingView::mouseDrag (const juce::MouseEvent& event)
 
 void MpeShapingView::mouseUp (const juce::MouseEvent& event)
 {
+    cursorHider.end();
+
     const auto sourceIndex = event.source.getIndex();
     const auto it = gestures.find (sourceIndex);
     const auto sectionIndex = it != gestures.end() ? it->second.sectionIndex : -1;

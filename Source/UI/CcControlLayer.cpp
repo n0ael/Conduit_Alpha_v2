@@ -207,6 +207,8 @@ void CcControlLayer::mouseDrag (const juce::MouseEvent& event)
 
 void CcControlLayer::mouseUp (const juce::MouseEvent& event)
 {
+    cursorHider.end();   // Cursor zurück (idempotent, auch ohne aktive Geste)
+
     if (mapMode)
         return;
 
@@ -393,6 +395,11 @@ void CcControlLayer::handlePlayDrag (const juce::MouseEvent& event)
 
     if (auto* control = model.find (it->second))
     {
+        // Nur die Zielflächen (Fader/XY, Wert springt zum Finger) blenden den
+        // Cursor aus — Push/Toggle sind diskrete Taps und behalten ihn.
+        if (control->type == grid::CcTool::fader || control->type == grid::CcTool::xy)
+            cursorHider.begin (*this, event, ui::DragCursorHider::Mode::absolute);
+
         applyPlayGesture (*control, event.position, false);
         repaint();
     }

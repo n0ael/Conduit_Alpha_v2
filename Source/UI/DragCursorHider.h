@@ -23,10 +23,15 @@ namespace conduit::ui
       bleiben dabei stetig — die relative Zieh-Mathematik ist unberührt.
 
     - `absolute`  — der gezeichnete Punkt folgt dem Cursor DIREKT
-      (On-Screen-XY, Kurven-Editoren, Grid-Sonne, Kabelende). Hier IST der
-      Punkt schon der Cursor: wir verstecken nur den Pfeil
-      (`MouseCursor::NoCursor`) und stellen den vorherigen Cursor am Ende
-      wieder her — die echte Cursorposition bleibt erhalten.
+      (On-Screen-XY, Kurven-Editoren, Grid-Sonne). Hier IST der Punkt schon
+      der Cursor: wir verstecken nur den Pfeil (`MouseCursor::NoCursor`) und
+      stellen den vorherigen Cursor am Ende wieder her — die echte
+      Cursorposition bleibt erhalten.
+
+    - `crosshair` — wie `absolute`, aber statt den Cursor zu verstecken wird
+      er zum Fadenkreuz „+" (`MouseCursor::CrosshairCursor`). Fürs
+      Node-Kabel-Ziehen: das Kabelende zielt präzise auf einen Port, ein
+      sichtbares Kreuz hilft beim Treffen (User-Wunsch 22.07.2026).
 
     Greift NUR bei echtem Zeiger-Input (Maus/Trackpad) und nur, wenn das
     Component tatsächlich auf einem Fenster liegt (`getPeer()`): Touch hat nie
@@ -40,7 +45,7 @@ namespace conduit::ui
 class DragCursorHider
 {
 public:
-    enum class Mode { relative, absolute };
+    enum class Mode { relative, absolute, crosshair };
 
     /** Startet das Ausblenden. No-op bei Touch/Pen, ohne Peer, oder wenn
         bereits aktiv (erster Drag gewinnt). */
@@ -61,7 +66,9 @@ public:
         {
             target = &owner;
             previousCursor = owner.getMouseCursor();
-            owner.setMouseCursor (juce::MouseCursor::NoCursor);
+            owner.setMouseCursor (currentMode == Mode::crosshair
+                                      ? juce::MouseCursor::CrosshairCursor
+                                      : juce::MouseCursor::NoCursor);
         }
     }
 

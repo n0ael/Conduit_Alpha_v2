@@ -12,6 +12,7 @@
 #include "Core/GridVoiceEngine.h"
 #include "Core/PadGridLayout.h"
 #include "Core/RingTouchModel.h"
+#include "DragCursorHider.h"
 #include "Util/ScaleQuantizer.h"
 
 namespace conduit
@@ -41,6 +42,7 @@ class GridKeyboardComponent final : public juce::Component
 public:
     explicit GridKeyboardComponent (grid::GridVoiceEngine& engineToUse,
                                      const grid::PadGridLayout::Config& layoutConfig = {});
+    ~GridKeyboardComponent() override { cursorHider.end(); }
 
     void paint (juce::Graphics& g) override;
 
@@ -290,6 +292,8 @@ private:
     grid::GridVoiceEngine& engine;
     grid::PadGridLayout    layout;
     grid::RingTouchModel   ring;
+
+    ui::DragCursorHider cursorHider;   // Cursor weg beim Spielen mit der Maus
 
     // Gecachte Basiswerte fuer die Sensitivity-/Range-Regler (Block A2/A3) --
     // vor jeder Skalierung MULTIPLIZIEREN, nie den aktuellen Config-Wert

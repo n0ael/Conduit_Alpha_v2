@@ -4,6 +4,8 @@
 
 #include <juce_gui_basics/juce_gui_basics.h>
 
+#include "DragCursorHider.h"
+
 namespace conduit
 {
 
@@ -27,6 +29,7 @@ class ExpressionRibbon final : public juce::Component
 {
 public:
     explicit ExpressionRibbon (juce::String labelText, bool bipolarMode = false);
+    ~ExpressionRibbon() override { cursorHider.end(); }
 
     /** Feuert bei jedem Down/Drag mit dem aus der Y-Position abgeleiteten
         Wert [0, 1]. */
@@ -41,6 +44,7 @@ public:
     void paint (juce::Graphics& g) override;
     void mouseDown (const juce::MouseEvent& event) override;
     void mouseDrag (const juce::MouseEvent& event) override;
+    void mouseUp (const juce::MouseEvent& event) override;
 
     /** Reine Ableitung: normY (0 = oben) → value01 (1 = oben, Maximum).
         Testbar, keine UI-Abhängigkeit. */
@@ -53,6 +57,8 @@ private:
     bool  bipolar = false;
     float currentValue = 0.0f;
     juce::Colour fillColour;   // Default push::colours::ledWhite (Ctor)
+
+    ui::DragCursorHider cursorHider;   // Cursor weg während des Ziehens
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (ExpressionRibbon)
 };

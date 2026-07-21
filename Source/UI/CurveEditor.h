@@ -4,6 +4,7 @@
 
 #include <juce_gui_basics/juce_gui_basics.h>
 
+#include "DragCursorHider.h"
 #include "Modules/ChassisSchema.h"
 
 namespace conduit
@@ -41,6 +42,7 @@ public:
                  const juce::String& currentLinkSource = {},
                  double currentLinkAmount = 0.0,
                  const juce::String& initialLinkCurve = {});
+    ~CurveEditor() override { cursorHider.end(); }
 
     std::function<void (const juce::String&)> onCurveChanged;
     std::function<bool (double newMin, double newMax)> onRangeChanged;
@@ -85,6 +87,7 @@ public:
     void resized() override;
     void mouseDown (const juce::MouseEvent& event) override;
     void mouseDrag (const juce::MouseEvent& event) override;
+    void mouseUp (const juce::MouseEvent& event) override;
 
 private:
     struct CurveState
@@ -119,6 +122,8 @@ private:
     juce::StringArray sources;
 
     juce::TextButton resetButton { "linear" };
+
+    ui::DragCursorHider cursorHider;   // Cursor weg während des Punkt-Ziehens
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (CurveEditor)
 };

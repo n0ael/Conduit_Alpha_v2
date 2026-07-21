@@ -459,6 +459,11 @@ void CurveEditor::mouseDrag (const juce::MouseEvent& event)
     if (draggedHandle < 0)
         return;
 
+    // Punkt folgt der absoluten Position → NoCursor. Erst bei echter
+    // Bewegung (mouseDown ruft mouseDrag einmal synthetisch für den Griff).
+    if (event.mouseWasDraggedSinceMouseDown())
+        cursorHider.begin (*this, event, ui::DragCursorHider::Mode::absolute);
+
     const auto area = plotArea();
 
     // Endpunkte: Fader-Tab = userMin/userMax, Link-Tab = Response-Start/-Ende
@@ -491,6 +496,11 @@ void CurveEditor::mouseDrag (const juce::MouseEvent& event)
     const auto yNorm = span > 0.0 ? (value - currentMin) / span : 0.0;
 
     setHandle (draggedHandle, x, static_cast<float> (yNorm));
+}
+
+void CurveEditor::mouseUp (const juce::MouseEvent&)
+{
+    cursorHider.end();
 }
 
 } // namespace conduit

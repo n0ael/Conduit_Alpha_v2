@@ -2,6 +2,8 @@
 
 #include <juce_gui_basics/juce_gui_basics.h>
 
+#include "DragCursorHider.h"
+
 namespace conduit
 {
 
@@ -39,6 +41,7 @@ class PortComponent final : public juce::Component,
 {
 public:
     explicit PortComponent (PortInfo portInfo);
+    ~PortComponent() override { cursorHider.end(); }
 
     static constexpr int hitSize = 24;
 
@@ -64,6 +67,9 @@ private:
     // Dwell-Erkennung: Zeitpunkt des Drückens; erste Bewegung entscheidet
     juce::int64 pointerDownMs = 0;
     bool dragResolved = false;
+
+    // Kabelziehen: Cursor wird zum Fadenkreuz „+" (zielt aufs Port)
+    ui::DragCursorHider cursorHider;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (PortComponent)
 };

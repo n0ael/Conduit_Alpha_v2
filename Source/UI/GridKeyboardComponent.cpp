@@ -111,11 +111,15 @@ void GridKeyboardComponent::mouseDown (const juce::MouseEvent& event)
 
 void GridKeyboardComponent::mouseDrag (const juce::MouseEvent& event)
 {
+    // Beim Spielen mit der Maus folgt die „Sonne" dem Zeiger absolut →
+    // Cursor ausblenden, damit der Pfeil den Leuchtpunkt nicht verdeckt.
+    cursorHider.begin (*this, event, ui::DragCursorHider::Mode::absolute);
     touchMove (fingerIdFor (event), event.position);
 }
 
 void GridKeyboardComponent::mouseUp (const juce::MouseEvent& event)
 {
+    cursorHider.end();
     touchUp (fingerIdFor (event), event.position);
 }
 

@@ -10,6 +10,7 @@
 #include "Core/FigmaSnap.h"
 #include "Core/GridPanelSettings.h"
 #include "Core/GridPhysics.h"
+#include "DragCursorHider.h"
 
 namespace conduit
 {
@@ -42,6 +43,7 @@ class CcControlLayer final : public juce::Component,
 {
 public:
     CcControlLayer (grid::CcControlModel& modelToUse, int colsToUse, int rowsToUse);
+    ~CcControlLayer() override { cursorHider.end(); }
 
     /** CC-Modus (Bearbeiten) an/aus — bricht laufende Gesten ab und löst
         gehaltene Push-Controls. */
@@ -198,6 +200,8 @@ private:
     const GridPanelSettings* panelSettings = nullptr;
     std::map<int, PhysicsState> physicsStates;   // Control-Id → Feder-Zustand
     double lastPhysicsTickMs = 0.0;
+
+    ui::DragCursorHider cursorHider;   // Cursor weg beim Fader-/XY-Ziehen
 
     // Letzter Member: tickt erst nach vollständiger Konstruktion.
     juce::VBlankAttachment physicsVBlank { this, [this] { physicsTick(); } };

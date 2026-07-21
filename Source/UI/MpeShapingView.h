@@ -10,6 +10,7 @@
 #include "Core/CurveEditInteraction.h"
 #include "Core/GridPanelSettings.h"
 #include "Core/GridVoiceEngine.h"
+#include "DragCursorHider.h"
 #include "LockToggle.h"
 #include "NoteCircleFadeTracker.h"
 #include "NumberFieldBracket.h"
@@ -293,6 +294,8 @@ private:
 
     grid::GridVoiceEngine& engine;
     GridPanelSettings& panelSettings;
+
+    ui::DragCursorHider cursorHider;   // Cursor weg beim Kurven-Ziehen (Maus)
 
     std::array<AxisSection, 3> sections;
 

@@ -43,7 +43,16 @@ void ExpressionRibbon::handlePointer (const juce::MouseEvent& event)
 }
 
 void ExpressionRibbon::mouseDown (const juce::MouseEvent& event) { handlePointer (event); }
-void ExpressionRibbon::mouseDrag (const juce::MouseEvent& event) { handlePointer (event); }
+
+void ExpressionRibbon::mouseDrag (const juce::MouseEvent& event)
+{
+    // Wert folgt der absoluten Y-Position → NoCursor (Füllstand zeigt den
+    // Wert), erst beim tatsächlichen Ziehen.
+    cursorHider.begin (*this, event, ui::DragCursorHider::Mode::absolute);
+    handlePointer (event);
+}
+
+void ExpressionRibbon::mouseUp (const juce::MouseEvent&) { cursorHider.end(); }
 
 void ExpressionRibbon::paint (juce::Graphics& g)
 {
